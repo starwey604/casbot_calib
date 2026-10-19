@@ -1,0 +1,20 @@
+stage: F
+trajectory:
+  lever: 0.2
+  speed: 1.0
+  stroke: 0.1
+  reversal: 0.05
+contact:
+  string_mass: 0.01
+  string_spring: 400.0
+  # Reduced synthetic damping lets re-plucks encounter continuing vibration.
+  string_damping: 0.03
+  contact_spring: 700.0
+  contact_damping: 0.2
+  pick_offset: 0.0
+  attack_angle: 0.0
+sources:
+  - casbot_tasks/scripts/casbot_dual_arm_model/guitar_strumming_config.yaml
+  - single-joint mapping x=0.2*q; 100 mm stroke, 1 m/s, 50 ms reversal
+  - re-excitation 2022, DOI 10.3390/app12031659
+  - micro-changes 2025, DOI 10.21008/j.0860-6897.2025.2.05

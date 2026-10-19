@@ -1,0 +1,134 @@
+schema_version: 1
+task_name: guitar_pick_strumming_stage1
+
+# The audited 14-DoF plant remains the dynamics ground truth.  The supplied
+# guitar model and motion capture are used only for appearance and pose priors.
+arm_model: scripts/casbot_dual_arm_model/models/casbot_dual_arm_benchmark_nominal.xml
+source_urdf: urdfs/casbot_robot_urdf/urdf/urdf/CASBOT02_ENCOS_7dof_shell_20251015_P1L.urdf
+source_guitar_mjcf: urdfs/casbot_robot_urdf/urdf/xml/CASBOT02_ENCOS_7dof_shell_20251015_P1L_guitar.xml
+source_motion_csv: urdfs/casbot_robot_urdf/data/TongYongKaNongChuanShao_casbot02-guitar1_6R7R2R1R_hand01_whole_50hz_v662.csv
+output_model: scripts/casbot_dual_arm_model/models/casbot_guitar_strumming_stage1.xml
+
+control:
+  frequency_hz: 500
+  physics_timestep_s: 0.0005
+  armature_kg_m2: 0.2
+  damping_nms_rad: 0.5
+
+pick:
+  # Position of the plectrum tip in right_wrist_roll_link coordinates.  All
+  # Cartesian acceptance metrics are evaluated here, not at the palm TCP.
+  tip_local_m: [0.035, 0.0, -0.205]
+  visual_center_local_m: [0.035, 0.0, -0.193]
+  visual_half_size_m: [0.018, 0.0012, 0.012]
+  collision_radius_m: 0.0015
+
+trajectory:
+  forward_stroke_s: 0.100
+  first_reversal_s: 0.050
+  reverse_stroke_s: 0.100
+  second_reversal_s: 0.050
+  stroke_length_m: 0.100
+  # The two straight portions run at 1 m/s.  During each 50 ms turnaround a
+  # constant 40 m/s^2 acceleration reverses velocity.  Position and velocity
+  # are continuous; acceleration changes only at the unconstrained endpoints.
+  straight_speed_m_s: 1.0
+  reversal_acceleration_m_s2: 40.0
+  ik_grid_half_extent_m: 0.067
+  ik_grid_samples: 269
+  # Deterministic endpoint-robust result of the Stage-1 guitar/base-frame
+  # search.  It is unit length in the fixed robot world frame.
+  sweep_axis_world: [-0.58190344, -0.31307930, -0.75057960]
+  optimization:
+    seed: 20260920
+    evaluated_directions: 242
+    objective: minimize_peak_normalized_inverse_dynamics_torque_at_center_and_turnaround_extrema
+
+inverse_kinematics:
+  position_weight: 1000.0
+  orientation_weight: 2.0
+  posture_weight: 0.1
+  joint_margin_rad: 0.03
+  maximum_function_evaluations: 400
+
+guitar:
+  lower_bout_pos_local_m: [0.0, -0.070, 0.055]
+  lower_bout_radii_m: [0.155, 0.140, 0.045]
+  upper_bout_pos_local_m: [0.0, 0.105, 0.050]
+  upper_bout_radii_m: [0.120, 0.120, 0.040]
+  neck_pos_local_m: [0.0, 0.355, 0.027]
+  neck_half_size_m: [0.045, 0.250, 0.017]
+  headstock_pos_local_m: [0.0, 0.625, 0.027]
+  headstock_half_size_m: [0.060, 0.050, 0.017]
+  sound_hole_pos_local_m: [0.0, 0.015, 0.007]
+  sound_hole_radius_m: 0.045
+  bridge_pos_local_m: [0.0, -0.080, 0.004]
+  bridge_half_size_m: [0.060, 0.012, 0.004]
+  string_x_offsets_m: [-0.025, -0.015, -0.005, 0.005, 0.015, 0.025]
+  string_y_from_m: -0.105
+  string_y_to_m: 0.625
+  string_radius_m: 0.00055
+  # Effective proxy values include the bridge/nut constraint seen by a short
+  # picked segment; they are intentionally larger than bare string mass.
+  string_mass_kg: 0.010
+  string_slide_range_m: [-0.030, 0.030]
+  string_stiffness_n_m: 400.0
+  string_damping_ns_m: 2.0
+  string_contact_solref: [0.020, 1.0]
+
+acceptance:
+  stroke_length_tolerance_m: 0.0001
+  timing_tolerance_s: 0.000001
+  maximum_reference_tip_error_m: 0.0002
+  maximum_reference_straightness_error_m: 0.0002
+  maximum_pick_orientation_deviation_deg: 0.5
+  minimum_joint_margin_rad: 0.03
+  maximum_joint_velocity_limit_fraction: 0.90
+  maximum_inverse_dynamics_torque_limit_fraction: 0.90
+  required_string_count: 6
+  required_strings_crossed_per_stroke: 6
+  maximum_pick_string_penetration_m: 0.002
+  maximum_unexpected_contact_samples: 0
+
+comparison_contract:
+  same_plant: true
+  same_initial_state: true
+  same_reference_hash: true
+  same_torque_limits: true
+  same_control_frequency: true
+  same_collision_and_string_parameters: true
+  free_space_and_contact_results_reported_separately: true
+  baseline: MIT_joint_PD_plus_gravity
+  proposed: computed_torque_plus_super_twisting_sliding_mode
+
+stage2:
+  evaluation_cycles: 30
+  save_contact_traces: true
+  mit:
+    kp: [100, 100, 80, 80, 55, 45, 35,
+         100, 100, 80, 80, 55, 45, 35]
+    kd: [12, 12, 10, 10, 7, 6, 5,
+         12, 12, 10, 10, 7, 6, 5]
+  computed_torque_stsm:
+    # Guitar-specific high-bandwidth gains.  The boundary layer prevents a
+    # discontinuous sign command at 500 Hz; the resulting formal run remains
+    # below both conservative effort limits and the saturation gate.
+    lambda: [70, 70, 70, 70, 70, 70, 70,
+             70, 70, 70, 70, 70, 70, 70]
+    k1: [160, 160, 160, 160, 160, 160, 160,
+         160, 160, 160, 160, 160, 160, 160]
+    k2: [600, 600, 600, 600, 600, 600, 600,
+         600, 600, 600, 600, 600, 600, 600]
+    integral_limit_rad_s2: 600.0
+    integral_leak_per_s: 0.5
+    boundary_layer_rad_s: 0.05
+  acceptance:
+    maximum_stsm_contact_stroke_tip_error_m: 0.001
+    maximum_stsm_contact_tip_rmse_m: 0.0005
+    minimum_complete_six_string_stroke_fraction: 0.95
+    maximum_stsm_torque_saturation_fraction: 0.01
+    maximum_unexpected_contact_physics_samples: 0
+    maximum_idle_left_arm_peak_to_peak_rad: 0.0001
+    minimum_pick_string_contact_force_n: 0.01
+    minimum_string_deflection_m: 0.00001
+    maximum_string_deflection_m: 0.0305

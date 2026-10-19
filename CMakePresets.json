@@ -1,0 +1,9 @@
+{
+  "version": 6,
+  "configurePresets": [{
+    "name": "dev", "generator": "Ninja", "binaryDir": "${sourceDir}/build/dev",
+    "cacheVariables": {"CMAKE_BUILD_TYPE": "Release", "BUILD_TESTING": "ON"}
+  }],
+  "buildPresets": [{"name": "dev", "configurePreset": "dev"}],
+  "testPresets": [{"name": "dev", "configurePreset": "dev", "output": {"outputOnFailure": true}}]
+}

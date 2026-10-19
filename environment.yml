@@ -1,0 +1,21 @@
+name: casbot_calib
+channels:
+  - conda-forge
+platforms:
+  - linux-64
+  - win-64
+dependencies:
+  - python=3.12
+  - pip
+  - numpy>=2,<3
+  - scipy>=1.14,<2
+  - matplotlib-base>=3.9,<4
+  - pyyaml>=6,<7
+  - pytest>=8,<10
+  - cmake>=3.26,<5
+  - ninja
+  - eigen>=3.4,<4
+  - pybind11>=2.13,<4
+  - scikit-build-core>=0.10,<1
+  - conda-lock>=3,<5
+  - cxx-compiler  # [linux]

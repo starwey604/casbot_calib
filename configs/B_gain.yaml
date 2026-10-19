@@ -1,0 +1,5 @@
+stage: B
+added_inertia: 0.04
+sources:
+  - Gautier/Briot 2012, DOI 10.1109/ICRA.2012.6225099
+  - known added inertia is an output-side synthetic test fixture

@@ -1,0 +1,7 @@
+stage: C
+# Accuracy baseline has adequate sampling bandwidth; this is not an ENCOS spec.
+# The same protocol additionally reports a 1 ms fast-drive sampling stress case.
+pure_lag_current_tau_s: 0.02
+sources:
+  - EtherCAT clock synchronization does not remove actuator or sensor filter dynamics
+  - synthetic current lag 1.7 ms; command delay 0 or 1.5 ms; feedback transport 2 ms

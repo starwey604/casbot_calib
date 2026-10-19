@@ -1,0 +1,7 @@
+stage: D
+mismatch:
+  motor_inertia: 0.02
+  coupling_spring: 90.0
+  coupling_damping: 0.25
+sources:
+  - fixed two-inertia mismatch generator, no internal gearbox parameter recovery

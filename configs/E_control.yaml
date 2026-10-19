@@ -1,0 +1,11 @@
+stage: E
+baseline_pd: [12.0, 1.2]
+original_model:
+  inertia: 0.045
+  damping: 0.06
+  spring: 1.5
+  coulomb: 0.025
+pd_factors: [0.5, 0.75, 1.0, 1.25, 1.5]
+sources:
+  - THMOS2025/encos-driver supports kp kd q_ref dq_ref torque_ff
+  - synthetic limits; actual module firmware capability still needs confirmation

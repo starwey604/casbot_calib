@@ -1,0 +1,49 @@
+name: Linux and Windows validation
+on: [push, pull_request, workflow_dispatch]
+jobs:
+  calibration:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash -el {0}
+    env:
+      OPENBLAS_NUM_THREADS: 1
+      OMP_NUM_THREADS: 1
+      MPLBACKEND: Agg
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ilammy/msvc-dev-cmd@v1
+        if: runner.os == 'Windows'
+      - uses: conda-incubator/setup-miniconda@v4
+        with:
+          miniforge-version: latest
+          activate-environment: casbot_calib
+          python-version: '3.12'
+      - run: conda install -n base -c conda-forge conda-lock -y
+      - run: conda run -n base conda-lock install --no-mamba -n casbot_calib conda-lock.yml
+      - run: python -m pip install . --no-build-isolation
+      - run: cmake --preset dev && cmake --build --preset dev && ctest --preset dev
+      - run: python -m pytest -q
+      - run: casbot-calib suite --configs configs --output artifacts/validation
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: calibration-${{ matrix.os }}
+          path: artifacts/validation
+  compare:
+    needs: calibration
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: calibration-*
+          path: reports
+      - run: python scripts/compare_reports.py reports/calibration-ubuntu-latest reports/calibration-windows-latest

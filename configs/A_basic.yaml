@@ -1,0 +1,22 @@
+stage: A
+duration_s: 24
+plant:
+  inertia: 0.08
+  damping: 0.12
+  coulomb: 0.06
+  spring: 3.0
+  gain: 2.0
+identification:
+  gain: 2.0
+  period_s: 2.0
+  harmonics: 40
+  discard_s: 12.0
+noise:
+  position_noise: 0.000001
+  current_noise: 0.0002
+  position_quantum: 0.000001
+  current_quantum: 0.0001
+sources:
+  - synthetic values, not measured ENCOS module parameters
+  - Swevers 1997, DOI 10.1109/70.631234
+  - Panda 2019, DOI 10.1109/LRA.2019.2931248
