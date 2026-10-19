@@ -1,0 +1,8 @@
+# Merge with environment.yml using conda-lock; core physics dependencies unchanged.
+channels:
+  - conda-forge
+dependencies:
+  - pillow>=10
+  - pip:
+    - mujoco==3.16.0
+    - imageio-ffmpeg==0.6.0

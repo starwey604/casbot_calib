@@ -1,0 +1,132 @@
+{
+  "robot_model_id": "casbot_20251015_geometry_preview",
+  "joints": [
+    {
+      "name": "left_shoulder_pitch_joint",
+      "model_joint": "left_shoulder_pitch_joint",
+      "scale_rad_per_unit": 1.0,
+      "direction": 1,
+      "zero_raw": 0.0,
+      "current_scale_a_per_unit": 1.0,
+      "current_direction": 1
+    },
+    {
+      "name": "left_shoulder_roll_joint",
+      "model_joint": "left_shoulder_roll_joint",
+      "scale_rad_per_unit": 1.0,
+      "direction": 1,
+      "zero_raw": 0.0,
+      "current_scale_a_per_unit": 1.0,
+      "current_direction": 1
+    },
+    {
+      "name": "left_shoulder_yaw_joint",
+      "model_joint": "left_shoulder_yaw_joint",
+      "scale_rad_per_unit": 1.0,
+      "direction": 1,
+      "zero_raw": 0.0,
+      "current_scale_a_per_unit": 1.0,
+      "current_direction": 1
+    },
+    {
+      "name": "left_elbow_pitch_joint",
+      "model_joint": "left_elbow_pitch_joint",
+      "scale_rad_per_unit": 1.0,
+      "direction": 1,
+      "zero_raw": 0.0,
+      "current_scale_a_per_unit": 1.0,
+      "current_direction": 1
+    },
+    {
+      "name": "left_wrist_yaw_joint",
+      "model_joint": "left_wrist_yaw_joint",
+      "scale_rad_per_unit": 1.0,
+      "direction": 1,
+      "zero_raw": 0.0,
+      "current_scale_a_per_unit": 1.0,
+      "current_direction": 1
+    },
+    {
+      "name": "left_wrist_pitch_joint",
+      "model_joint": "left_wrist_pitch_joint",
+      "scale_rad_per_unit": 1.0,
+      "direction": 1,
+      "zero_raw": 0.0,
+      "current_scale_a_per_unit": 1.0,
+      "current_direction": 1
+    },
+    {
+      "name": "left_wrist_roll_joint",
+      "model_joint": "left_wrist_roll_joint",
+      "scale_rad_per_unit": 1.0,
+      "direction": 1,
+      "zero_raw": 0.0,
+      "current_scale_a_per_unit": 1.0,
+      "current_direction": 1
+    },
+    {
+      "name": "right_shoulder_pitch_joint",
+      "model_joint": "right_shoulder_pitch_joint",
+      "scale_rad_per_unit": 1.0,
+      "direction": 1,
+      "zero_raw": 0.0,
+      "current_scale_a_per_unit": 1.0,
+      "current_direction": 1
+    },
+    {
+      "name": "right_shoulder_roll_joint",
+      "model_joint": "right_shoulder_roll_joint",
+      "scale_rad_per_unit": 1.0,
+      "direction": 1,
+      "zero_raw": 0.0,
+      "current_scale_a_per_unit": 1.0,
+      "current_direction": 1
+    },
+    {
+      "name": "right_shoulder_yaw_joint",
+      "model_joint": "right_shoulder_yaw_joint",
+      "scale_rad_per_unit": 1.0,
+      "direction": 1,
+      "zero_raw": 0.0,
+      "current_scale_a_per_unit": 1.0,
+      "current_direction": 1
+    },
+    {
+      "name": "right_elbow_pitch_joint",
+      "model_joint": "right_elbow_pitch_joint",
+      "scale_rad_per_unit": 1.0,
+      "direction": 1,
+      "zero_raw": 0.0,
+      "current_scale_a_per_unit": 1.0,
+      "current_direction": 1
+    },
+    {
+      "name": "right_wrist_yaw_joint",
+      "model_joint": "right_wrist_yaw_joint",
+      "scale_rad_per_unit": 1.0,
+      "direction": 1,
+      "zero_raw": 0.0,
+      "current_scale_a_per_unit": 1.0,
+      "current_direction": 1
+    },
+    {
+      "name": "right_wrist_pitch_joint",
+      "model_joint": "right_wrist_pitch_joint",
+      "scale_rad_per_unit": 1.0,
+      "direction": 1,
+      "zero_raw": 0.0,
+      "current_scale_a_per_unit": 1.0,
+      "current_direction": 1
+    },
+    {
+      "name": "right_wrist_roll_joint",
+      "model_joint": "right_wrist_roll_joint",
+      "scale_rad_per_unit": 1.0,
+      "direction": 1,
+      "zero_raw": 0.0,
+      "current_scale_a_per_unit": 1.0,
+      "current_direction": 1
+    }
+  ],
+  "note": "Synthetic SI pose example only. SDK units, zero and directions are NOT verified."
+}

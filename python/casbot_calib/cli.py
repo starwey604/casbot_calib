@@ -1,6 +1,5 @@
 from __future__ import annotations
 import argparse
-from dataclasses import fields
 from datetime import datetime, timezone
 from pathlib import Path
 import platform
@@ -22,7 +21,49 @@ def main(argv=None):
     estimate=sub.add_parser("identify",help="Re-estimate from observations only; no evaluation truth required")
     estimate.add_argument("run_folder",type=Path);estimate.add_argument("--config",type=Path,required=True)
     estimate.add_argument("--output",type=Path,required=True)
+    demo=sub.add_parser("demo",help="Collect the calibration workflow, then export the read-only viewer video")
+    demo.add_argument("--output",required=True,type=Path)
+    demo.add_argument("--collect-only",action="store_true",help="Run the workflow without importing MuJoCo")
+    demo.add_argument("--fps",type=int,default=24)
+    render=sub.add_parser("render-demo",help="Render an existing workflow without rerunning physics or identification")
+    render.add_argument("folder",type=Path);render.add_argument("--output",type=Path)
+    render.add_argument("--fps",type=int,default=24)
+    render.add_argument("--width",type=int,default=1280);render.add_argument("--height",type=int,default=720)
+    render.add_argument("--clip-seconds",type=float,help="Override each clip duration for a short preview")
+    render.add_argument("--snapshots-only",action="store_true")
+    view=sub.add_parser("view",help="Read-only interactive joint viewer (recording or external JSONL telemetry)")
+    source=view.add_mutually_exclusive_group(required=True)
+    source.add_argument("--run-folder",type=Path);source.add_argument("--telemetry-jsonl",type=Path)
+    view.add_argument("--mapping",type=Path);view.add_argument("--scene",type=Path)
+    view.add_argument("--follow",action="store_true",help="Follow an externally appended JSONL file")
     args=parser.parse_args(argv)
+    if args.command=="demo":
+        from .demo import run_demo
+        run_demo(args.output)
+        if not args.collect_only:
+            from .presentation import render_demo
+            render_demo(args.output,fps=args.fps)
+        print(f"Workflow complete -> {args.output}")
+        return 0
+    if args.command=="render-demo":
+        from .presentation import render_demo
+        result=render_demo(args.folder,args.output,fps=args.fps,width=args.width,height=args.height,
+            clip_seconds=args.clip_seconds,video=not args.snapshots_only)
+        print(f"Presentation -> {result}")
+        return 0
+    if args.command=="view":
+        from .viewer import default_adapter,show
+        from .telemetry import TelemetryAdapter,ReplaySource
+        adapter=TelemetryAdapter.load(args.mapping) if args.mapping else default_adapter()
+        if args.run_folder:
+            replay=ReplaySource.load(args.run_folder,adapter)
+            show(replay,adapter,args.scene,duration_s=replay.times[-1]*1e-9)
+        else:
+            from .live import JsonlTelemetrySource
+            stream=JsonlTelemetrySource(args.telemetry_jsonl,adapter,follow=args.follow)
+            try:show(stream,adapter,args.scene)
+            finally:stream.close()
+        return 0
     if args.command=="identify":
         config=yaml.safe_load(args.config.read_text(encoding="utf-8"))
         result=identify(load_observations(args.run_folder),Prior(**config.get("identification",{})))

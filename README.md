@@ -84,3 +84,30 @@ casbot-calib identify artifacts/validation/A/friction --config configs/A_basic.y
 后续 SDK 只实现 C++ `JointDevice` 的 `write/read/capabilities`。`SimulationRunner` 持有虚拟时间推进能力；真实 SDK 不必模拟时间。先保存相同观测格式，再接现有 Python 流程。默认只有输出侧位置／速度／电流；由电流换算的力矩不是独立传感器。内环 PI 可调性和实际增益范围等待型号／固件资料确认。
 
 详细见 [模型与参数](docs/model_and_parameters.md)、[实验协议与验收](docs/experiments.md)、[资料来源](docs/references.md)、[开发与 SDK 接入](docs/development.md)。本轮实测结果见 [验证记录](docs/validation.md)。
+
+## 只读 MuJoCo 标定演示
+
+![Calibration workflow](docs/assets/calibration_workflow.png)
+
+新增八阶段演示：映射／方向检查 → 驱动响应 → 已知负载尺度 → 机械辨识 → 独立验证 → 固定 PD 前馈对照 → PD 选择 → 结果交接。C++ Mock 计算运动、Python 辨识；MuJoCo **只更新几何显示**，不参与动力学、积分或设备控制。
+
+本机环境已装好 viewer。新机器可用可选双平台锁文件：
+
+```bash
+conda-lock install -n casbot_calib conda-viewer-lock.yml
+conda activate casbot_calib
+python -m pip install -e '.[viewer]' --no-build-isolation --no-deps
+casbot-calib demo --output artifacts/my_viewer_demo
+```
+
+默认生成 41 秒、1280×720、24 fps 视频、八张阶段截图、原始记录、JSON／CSV 报告和可复查的事件日志。本机已生成的完整视频位于 `artifacts/calibration_viewer_demo/presentation/calibration_workflow.mp4`，该目录按实验产物忽略，不提交进 Git。
+
+交互回放：
+
+```bash
+casbot-calib view --run-folder artifacts/my_viewer_demo/records/direction_jog --mapping artifacts/my_viewer_demo/mapping.json
+```
+
+用空格暂停、R 重播、鼠标拖动旋转、滚轮缩放、Tab 切换检查关节。未来 SDK 可发布同一格式的原始遥测，通过 `view --telemetry-jsonl ... --follow` 接入；viewer 始终只读。
+
+详见 [演示、方向检查及实机遥测接入](docs/viewer_demo.md)。已有 CASBOT 20251015 双臂模型也做了只读几何接入验证；自定义模型通过 `--scene` 和映射文件加载，不需要将模型动力学接入标定器。

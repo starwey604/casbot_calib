@@ -1,0 +1,12 @@
+{
+  "robot_model_id": "synthetic_joint_bench_v1",
+  "joints": [{
+    "name": "joint_1",
+    "model_joint": "observed_joint",
+    "scale_rad_per_unit": 0.0003834951969714103,
+    "direction": -1,
+    "zero_raw": 8192.0,
+    "current_scale_a_per_unit": 1.0,
+    "current_direction": 1
+  }]
+}

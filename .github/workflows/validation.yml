@@ -47,3 +47,31 @@ jobs:
           pattern: calibration-*
           path: reports
       - run: python scripts/compare_reports.py reports/calibration-ubuntu-latest reports/calibration-windows-latest
+  viewer:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash -el {0}
+    env:
+      MUJOCO_GL: egl
+      CASBOT_TEST_RENDER: '1'
+      OPENBLAS_NUM_THREADS: '1'
+      OMP_NUM_THREADS: '1'
+    steps:
+      - uses: actions/checkout@v7
+      - run: sudo apt-get update && sudo apt-get install -y libegl1 libopengl0 libgl1-mesa-dri
+      - uses: conda-incubator/setup-miniconda@v4
+        with:
+          miniforge-version: latest
+          activate-environment: casbot_calib
+          python-version: '3.12'
+      - run: conda install -n base -c conda-forge conda-lock -y
+      - run: conda run -n base conda-lock install --no-mamba -n casbot_calib conda-viewer-lock.yml
+      - run: python -m pip install -e '.[viewer]' --no-build-isolation --no-deps
+      - run: python -m pytest -q
+      - run: casbot-calib demo --output artifacts/viewer_demo --fps 6
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: calibration-viewer
+          path: artifacts/viewer_demo
