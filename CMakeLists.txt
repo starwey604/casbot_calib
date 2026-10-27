@@ -1,20 +1,24 @@
-cmake_minimum_required(VERSION 3.26)
+cmake_minimum_required(VERSION 3.22)
 project(casbot_calib VERSION 0.1.0 LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
-if(DEFINED ENV{CONDA_PREFIX})
-  list(PREPEND CMAKE_PREFIX_PATH "$ENV{CONDA_PREFIX}" "$ENV{CONDA_PREFIX}/Library")
-endif()
+include(GNUInstallDirs)
+include(CMakePackageConfigHelpers)
 find_package(Eigen3 3.4 REQUIRED NO_MODULE)
-find_package(Boost 1.88 REQUIRED CONFIG)
+find_package(Boost 1.74 REQUIRED CONFIG)
 find_package(pinocchio 3.9 REQUIRED)
 add_library(calib_integration INTERFACE)
-target_include_directories(calib_integration INTERFACE cpp/include)
+add_library(casbot_calib::integration ALIAS calib_integration)
+set_target_properties(calib_integration PROPERTIES EXPORT_NAME integration)
+target_compile_features(calib_integration INTERFACE cxx_std_17)
+target_include_directories(calib_integration INTERFACE
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/cpp/include>
+  $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
 target_link_libraries(calib_integration INTERFACE Eigen3::Eigen Boost::headers)
 add_library(calib_core STATIC cpp/src/simulator.cpp cpp/src/arm_dynamics.cpp cpp/src/arm_simulator.cpp)
-set_target_properties(calib_core PROPERTIES POSITION_INDEPENDENT_CODE ON)
-target_include_directories(calib_core PUBLIC cpp/include)
+add_library(casbot_calib::core ALIAS calib_core)
+set_target_properties(calib_core PROPERTIES POSITION_INDEPENDENT_CODE ON EXPORT_NAME core)
 target_link_libraries(calib_core PUBLIC calib_integration pinocchio::pinocchio)
 if(MSVC)
   target_compile_options(calib_core PRIVATE /W4)
@@ -24,11 +28,26 @@ endif()
 option(CALIB_BUILD_PYTHON "Build NumPy bindings" ON)
 if(CALIB_BUILD_PYTHON)
   find_package(Python COMPONENTS Interpreter Development.Module REQUIRED)
-  find_package(pybind11 CONFIG REQUIRED)
+  find_package(pybind11 2.13 CONFIG REQUIRED)
   pybind11_add_module(_core cpp/src/bindings.cpp cpp/src/arm_bindings.cpp cpp/src/arm_simulator_bindings.cpp)
   target_link_libraries(_core PRIVATE calib_core)
-  install(TARGETS _core LIBRARY DESTINATION casbot_calib RUNTIME DESTINATION casbot_calib)
+  install(TARGETS _core
+    LIBRARY DESTINATION casbot_calib COMPONENT Python
+    RUNTIME DESTINATION casbot_calib COMPONENT Python)
 endif()
+install(TARGETS calib_core calib_integration EXPORT casbot_calibTargets
+  ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR} COMPONENT Core)
+install(DIRECTORY cpp/include/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR} COMPONENT Core)
+install(EXPORT casbot_calibTargets FILE casbot_calibTargets.cmake NAMESPACE casbot_calib::
+  DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/casbot_calib COMPONENT Core)
+configure_package_config_file(cmake/casbot_calibConfig.cmake.in
+  ${CMAKE_CURRENT_BINARY_DIR}/casbot_calibConfig.cmake
+  INSTALL_DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/casbot_calib)
+write_basic_package_version_file(${CMAKE_CURRENT_BINARY_DIR}/casbot_calibConfigVersion.cmake
+  VERSION ${PROJECT_VERSION} COMPATIBILITY SameMajorVersion)
+install(FILES ${CMAKE_CURRENT_BINARY_DIR}/casbot_calibConfig.cmake
+  ${CMAKE_CURRENT_BINARY_DIR}/casbot_calibConfigVersion.cmake
+  DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/casbot_calib COMPONENT Core)
 include(CTest)
 if(BUILD_TESTING)
   add_executable(integration_tests cpp/tests/integration_tests.cpp)

@@ -76,7 +76,9 @@ def fit_parameters(features,torque,start,active=None):
     _,singular,vt=np.linalg.svd(scaled,full_matrices=False);rank=int(np.count_nonzero(singular>singular[0]*1e-7))
     n=len(start)//3;lower=np.r_[np.full(n,.2),np.zeros(2*n)][active];upper=np.r_[np.full(n,3.),np.ones(2*n)][active]
     fit=least_squares(lambda p:x@p-y,np.clip(start[active],lower+1e-10,upper-1e-10),
-        jac=lambda p:x,bounds=(lower,upper),loss='soft_l1',f_scale=.02,x_scale=1./safe,max_nfev=100,
+        # SciPy's robust loss may scale the returned Jacobian in place. Keep the
+        # residual's constant regression matrix immutable across evaluations.
+        jac=lambda p:x.copy(),bounds=(lower,upper),loss='soft_l1',f_scale=.02,x_scale=1./safe,max_nfev=100,
         ftol=1e-10,xtol=1e-10,gtol=1e-10)
     parameters=start.copy();parameters[active]=fit.x
     null=vt[rank:] if rank<len(active) else np.empty((0,len(active)))

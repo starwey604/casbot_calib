@@ -1,0 +1,69 @@
+# Humble迁移、通信验证与双臂分阶段标定实施计划
+
+日期：2026-10-27。目标环境为甲方ROS 2 Humble，整机腰部刚性抱紧、双臂保持完整装配。先做动力学，千分计/TriCal运动学后续复用同一模型和记录接口。
+
+## 已确认边界
+
+- 以太网连接标定端和机器人主机；预计通过ROS topic持续发送位置或力矩。整段轨迹下发能力未确认，不作为系统成立的前提。
+- ROS端是否能够记录指令接收/采用时刻、设备原始采样时刻，以及开放哪些命令/状态接口，均需后续能力配置确认。
+- 不新增SOEM/EtherCAT主站。优先复用甲方hardware_interface/控制器；Mock另提供适配，防止重复控制循环。
+- MuJoCo只显示几何和结果，不执行机械计算或碰撞判定；Pinocchio计算运动学/动力学，Coal检查碰撞/距离，Boost.Odeint推进Mock。
+- 设备参数和限制暂未实测；全部默认数值明确为合成配置。碰撞检查不等于夹具刚度、反力或实机性能认证。
+
+## 环境决策
+
+主开发/测试/交付环境迁往Ubuntu 22.04 + ROS 2 Humble，基于已有`ros2-humble` distrobox。apt/rosdep管理系统和ROS依赖，colcon/ament构建ROS包；Python额外依赖使用系统Python 3.10创建的venv。禁止混入conda的PATH、Python包、CMake前缀和运行时库。
+
+conda Python 3.12/Pinocchio 3.9/Boost 1.88环境在迁移期保留，作为冻结对照；验收通过后退出主工作流。库源码仍支持独立CMake和Python安装，ROS不是离线辨识算法的强制依赖。Windows暂保留原离线入口，不宣称ROS实机侧已跨平台验证。
+
+初始检查：distrobox为Ubuntu 22.04.5、Python 3.10.12、CMake 3.22.1、GCC 11.4、Boost 1.74、Eigen 3.4，Humble/rclpy/colcon可用，ros2_control未安装。当前apt索引列出Pinocchio 4.0.0和Coal 3.0.3；先实际验证该组合，通过再锁定。不能只降低版本声明而不测试。
+
+## 交付轮次与验收
+
+| 轮次 | 工作与交付 | 完成条件 |
+| --- | --- | --- |
+| M1 环境/构建迁移 | 容器依赖安装入口、Python 3.10环境、CMake核心安装/导出、可选ament封装、运行脚本、依赖清单和回归报告 | C++/Python测试通过；A–F及R1原66项指标与冻结基线按已有容差一致；完整双臂新流程通过；核心库可由独立CMake/colcon消费者加载；无conda路径污染 |
+| M2 ROS通信与频率 | 真实ROS双端Mock、命令/状态及可选主机诊断契约、频率矩阵、时间处理与报告 | 分开发送/接收/采用/反馈频率；测抖动、丢帧、乱序、积压和失联；同机回环与物理网络结果明确区分；冻结模型跨频率验证 |
+| M3 碰撞门禁 | 完整碰撞几何、审核过的排除表、夹具代理、C++批量检查、轨迹候选筛选和视频标注 | 覆盖进出姿态/过渡/点动/脉冲/保持/动态/停止；距离余量及采样间隔运动检查；参考与Mock实际轨迹均检查；不合格轨迹不能进入采集 |
+| M4 重力/运动摩擦 | 多构型正反向接近静态保持，多档正反向匀速扫描，阶段模型和独立验收 | 重力参数组合秩分析；位置匹配、剔除起停/加速；报告绝对/归一化残差、偏置、跨构型速度一致性；不宣称静态独立恢复所有质量/质心 |
+| M5 起动摩擦 | 最小粘住/脱离Mock、多构型重力补偿起动、正反向力矩斜坡与重复批次 | 位移+速度持续判据；静置时间/斜率影响；与重力误差和电流响应分离；不以tanh零速模型冒充静摩擦 |
+| M6 惯量与综合交付 | 碰撞约束下的多频加速度激励、惯性参数求解、独立验证、有限联合校正、完整中文视频 | 由物理一致参数生成M(q)/速度耦合项；不自由拟合一张常数惯量矩阵；联合修正不得破坏前序独立验收；保留当前固定COM/形状模型作为基线 |
+
+按轮次推进，每轮记录已完成/待完成证据。不得用M1通过声称M2网络、M3碰撞或M4–M6新辨识已完成。优先在目标环境验证原流程，再扩展模型；不用一次性放宽现有验收阈值迁就环境变化。
+
+## M1实施细则
+
+1. 冻结当前源码摘要、完整测试结果、A–F/R1数值及双臂v2结果；保留全部原始记录。
+2. 在Humble容器安装并记录原生依赖；使用全新Python 3.10 venv、独立构建/产物目录，不复用conda wheel或CMake缓存。
+3. 核心CMake提供命名导出目标、头文件和依赖声明；Python绑定可关闭。ament薄封装安装相同核心，不复制一套算法。
+4. 审核CMake/Boost最低版本与Python代码/科学库支持范围；以实际测试为依据修改要求。Pinocchio/Coal使用同一ROS工具链，避免多个Boost/Pinocchio版本进入一个进程。
+5. 执行CTest、含EGL的pytest、A–F、R1、完整双臂采集/辨识/渲染；独立安装/导入检查，记录所有版本和数值对照。容器版本、包精确版本和源码摘要进入运行清单。
+
+## M2时间与执行契约
+
+发端C++节点连续发布指令；主机端控制器按自身循环消费最新有效指令。Python负责实验编排和求解。若对方支持整段轨迹，可增加执行后端，现有记录/验收保持一致。
+
+每条命令包含实验/序号/模式/单位及发送时钟声明。接收端若可改造，回传接收序号、采用序号、接收/采用时刻和超时状态；观测保留位置、速度、原始电流、采样/发布/接收时刻及各自时钟域。由电流派生的effort标明来源，不能冒充独立力矩测量。
+
+频率矩阵分别改变命令与反馈频率，具体档位按接口能力配置。统计实际频率、间隔分布、P50/P95/P99/最大延迟、丢帧/重复/乱序、命令年龄与积压；记录RMW、QoS、消息大小、录包和后台负载。ROS topic hz仅作辅助，不代替执行链路测量。未知时钟偏移时不直接跨机相减，不把RTT/2当已知单向延迟；仅有客户端观测时明确不可分离的量。
+
+固定延迟、电流响应、主机保持/插值、网络抖动分别建模/实验。频率选择后，用冻结模型在独立轨迹验收，不逐频重新拟合掩盖依赖。失联/陈旧指令处理和停止由接口能力显式定义，不依赖消息队列自动保证。
+
+## M3碰撞与M4–M6参数边界
+
+Coal共享Pinocchio几何位姿；粗筛使用经验证的包络，最终离线检查保留网格参考。检查同臂、跨臂、躯干和夹具/支架。原SRDF的Never排除项逐项审核；夹具未测量时只使用标注的代理。检查应包含距离、自适应细分和保守运动界，不能只凭固定采样点无碰撞认定整段安全。
+
+重力阶段辨识可观测的质量/一阶矩组合；无尺度锚点不输出绝对质量恢复。运动摩擦先采用库仑+黏滞，残差支持后再扩展方向/姿态依赖。静摩擦先恢复起动阈值分布，不细化减速器内部。前序参数冻结用于动态基线，最后仅在已验收不确定范围内联合校正，并重跑各阶段独立验收。
+
+## 参考与现有证据
+
+- [现有双臂流程](dual_arm_workflow.md)、[本机验证历史](validation.md)。
+- [ROS Python解释器/二进制兼容规则](https://raw.githubusercontent.com/ros2/ros2_documentation/humble/source/How-To-Guides/Using-Python-Packages.rst)。
+- [ros2_control架构](https://control.ros.org/humble/doc/getting_started/getting_started.html)、[ROS QoS](https://raw.githubusercontent.com/ros2/ros2_documentation/humble/source/Concepts/Intermediate/About-Quality-of-Service-Settings.rst)。
+- [Pinocchio](https://github.com/stack-of-tasks/pinocchio)、[Coal](https://github.com/coal-library/coal)、[Boost.Odeint](https://www.boost.org/latest/libs/numeric/odeint/doc/html/boost_numeric_odeint/getting_started/usage__compilation__headers.html)。
+- Grotjahn等，2001，[分组摩擦/刚体辨识](https://doi.org/10.1016/S0020-7683(00)00141-4)；Indri/Trapani，2020，[摩擦辨识框架](https://iris.polito.it/handle/11583/2839166)。
+
+## 推进记录
+
+- M1：已完成。Humble原生Pinocchio 4.0.0 / Coal 3.0.3 / Boost 1.74.0；87项Python测试、3项C++测试通过，A–F/R1/双臂114项冻结数值按原容差一致。独立CMake、ament消费者及wheel隔离导入通过；[验收记录](humble_m1_validation.md)。
+- M2–M6：待实施；甲方网络接口与时间戳能力待确认。

@@ -2,6 +2,8 @@
 
 ## 环境和构建
 
+主环境迁往Humble，当前入口见[Humble构建说明](humble_environment.md)，分轮验收见[实施计划](humble_migration_plan.md)。以下conda说明保留为旧环境/Windows离线对照，不能与系统ROS underlay混用。
+
 本机 Miniforge 根目录为 `/opt/miniforge`，base 只读；本项目环境位于 `~/.conda/envs/casbot_calib`。没有修改 bashrc、系统编译器或现有项目环境。交互激活需 `source /opt/miniforge/etc/profile.d/conda.sh`；脚本可始终使用绝对路径 `conda run --no-capture-output -n casbot_calib ...`。CMake 编译命令通过 `conda run` 执行时会自动取得激活后的 conda 编译工具链。
 
 `environment.yml` 描述可维护依赖范围，`conda-lock.yml` 固定 linux-64/win-64 的精确版本、下载地址和哈希。Linux `cxx-compiler` 仅通过平台选择器启用；Windows 使用外部 MSVC。更新依赖：
@@ -9,10 +11,10 @@
 ```bash
 conda-lock lock -f environment.yml -p linux-64 -p win-64
 conda-lock install -n casbot_calib conda-lock.yml
-python -m pip install -e . --no-build-isolation
+python -m pip install -e . --no-build-isolation --config-settings=cmake.args=--preset=conda
 ```
 
-Python 代码修改立即生效；**C++ 修改后重新运行 pip install**。`cmake --build --preset dev` 只更新独立 CMake 构建树，不会自动替换 Python 已安装扩展。发布包用 `python -m pip wheel . --no-build-isolation --no-deps`。无 Python 的核心构建：`cmake -S . -B build/core -G Ninja -DCALIB_BUILD_PYTHON=OFF`。
+Python代码修改立即生效；**C++修改后重新运行pip install**。`cmake --build --preset conda`只更新独立CMake构建树，不会自动替换Python已安装扩展。旧环境打包也传入`--config-settings=cmake.args=--preset=conda`，避免宿主依赖混入。Humble的构建和打包统一由`validate.sh`验证，不复用conda缓存。
 
 积分统一使用Boost.Odeint RK4；`calib_integration`接口目标显式链接Eigen/Boost头文件，`calib_core`及后续整臂Mock复用。工作区、整数区间、指令边界和后端版本记录见 [积分后端说明](integration_backend.md)。当前锁文件已含Boost1.88，提升为直接依赖无需重新安装或升级环境。
 

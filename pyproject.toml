@@ -6,8 +6,8 @@ build-backend = "scikit_build_core.build"
 name = "casbot-calib"
 version = "0.1.0"
 description = "Output-side joint calibration with a C++ virtual device"
-requires-python = ">=3.12"
-dependencies = ["numpy>=2", "scipy>=1.14", "PyYAML>=6", "matplotlib>=3.9"]
+requires-python = ">=3.10"
+dependencies = ["numpy>=1.26", "scipy>=1.14", "PyYAML>=6", "matplotlib>=3.9"]
 
 [project.optional-dependencies]
 viewer = ["mujoco>=3.3,<4", "Pillow>=10", "imageio-ffmpeg>=0.6,<1"]
@@ -18,7 +18,8 @@ casbot-calib = "casbot_calib.cli:main"
 [tool.scikit-build]
 cmake.build-type = "Release"
 wheel.packages = ["python/casbot_calib"]
-sdist.include = ["configs/**", "docs/**", "tests/**", "cpp/**", "CMakePresets.json"]
+install.components = ["Python"]
+sdist.include = ["configs/**", "docs/**", "tests/**", "cpp/**", "cmake/**", "ros/**", "scripts/humble/**", "CMakePresets.json"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

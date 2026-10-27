@@ -1,5 +1,7 @@
 # casbot_calib
 
+主开发环境已迁至 **Ubuntu 22.04 / ROS 2 Humble**：[分轮实施计划](docs/humble_migration_plan.md)、[distrobox安装与运行](docs/humble_environment.md)、[M1验收记录](docs/humble_m1_validation.md)。下一轮做ROS通信/频率测试，再做碰撞门禁和重力→运动摩擦→起动摩擦→惯量分阶段辨识。conda入口暂保留作为迁移对照。
+
 动力学标定实验框架：**C++ 模拟采集 → Python 时间处理与辨识 → 独立验证 → PD／前馈对照 → 报告**。现有单关节具备合成标定闭环，新增七轴R1统一模型与独立正确性检查；当前无实机控制入口。
 
 当前实机目标已更新为：[腰部抱紧固定的14轴双臂动力学标定](docs/dual_arm_dynamics_plan.md)。已实现首个 [nominal双臂Mock流程](docs/dual_arm_workflow.md)：树形模型、14轴采集、多频激励、受限惯性/摩擦辨识、独立验证与中文回放。先做动力学，千分计/TriCal运动学暂缓；尚未接实机。
@@ -22,7 +24,7 @@ R1入口：`casbot-calib arm-check --output artifacts/my_r1`；增加 `--render`
 
 Pinocchio 扩展已加入刚体参数回归矩阵、含摩擦的正逆动力学解析导数、TCP世界方向雅可比和独立复用工作区。`arm-check` 同时输出参数列/单位契约、探针矩阵秩和数值核对；这些是后续标定的计算基础，不是已完成参数标定。
 
-## 本机运行（bash）
+## 旧conda环境运行（迁移对照）
 
 本机已发现 `/opt/miniforge/condabin/conda`，环境名 `casbot_calib`。交互 bash 可这样接入：
 
@@ -30,10 +32,10 @@ Pinocchio 扩展已加入刚体参数回归矩阵、含摩擦的正逆动力学�
 source /opt/miniforge/etc/profile.d/conda.sh
 conda activate casbot_calib
 cd ~/codings/casbot_calib
-python -m pip install -e . --no-build-isolation
-cmake --preset dev
-cmake --build --preset dev
-ctest --preset dev
+python -m pip install -e . --no-build-isolation --config-settings=cmake.args=--preset=conda
+cmake --preset conda
+cmake --build --preset conda
+ctest --preset conda
 python -m pytest -q
 OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 casbot-calib suite --configs configs --output artifacts/my_validation
 ```
@@ -52,15 +54,15 @@ OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 casbot-calib suite --configs configs --
 conda install -n base -c conda-forge conda-lock
 conda-lock install -n casbot_calib conda-lock.yml
 conda activate casbot_calib
-python -m pip install -e . --no-build-isolation
-cmake --preset dev
-cmake --build --preset dev
-ctest --preset dev
+python -m pip install -e . --no-build-isolation --config-settings=cmake.args=--preset=conda
+cmake --preset conda
+cmake --build --preset conda
+ctest --preset conda
 python -m pytest -q
 casbot-calib suite --configs configs --output artifacts/validation
 ```
 
-Windows 先安装 **Visual Studio 2022 Build Tools 的 C++ 工作负载与 Windows SDK**，在 Developer PowerShell／Developer Command Prompt 中激活 conda 后执行上述命令。conda 不打包 MSVC 编译器。Linux 编译器由锁文件提供；CMake 自动查找 conda 根目录和 Windows 的 `Library` 子目录。也可用 `conda env create -f environment.yml` 开发，但复现实验优先使用已提交的双平台锁文件。
+Windows 先安装 **Visual Studio 2022 Build Tools 的 C++ 工作负载与 Windows SDK**，在 Developer PowerShell／Developer Command Prompt 中激活 conda 后执行上述命令。conda 不打包 MSVC 编译器。Linux 编译器由锁文件提供；`conda` preset显式选择conda根目录和Windows的`Library`子目录。也可用 `conda env create -f environment.yml` 开发，但复现实验优先使用已提交的双平台锁文件。
 
 CI 为 Linux、Windows 分别构建、执行 CTest、pytest、A–F 全套实验，并对关键数值按容差比较。**本机只能验证 Linux，Windows 实际结果以 CI 为准**。
 

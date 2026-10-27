@@ -1,0 +1,16 @@
+# Python 3.10 profile. NumPy 1.x matches the ROS binary extensions' ABI.
+pip==25.2
+numpy==1.26.4
+scipy==1.15.3
+matplotlib==3.10.0
+PyYAML==6.0.3
+pybind11==2.13.6
+scikit-build-core==0.11.6
+pytest==8.4.2
+mujoco==3.3.7
+Pillow==11.3.0
+imageio-ffmpeg==0.6.0
+wheel==0.45.1
+# Required by ROS generate_parameter_library_py exposed by the underlay.
+Jinja2==3.1.6
+typeguard==2.13.3

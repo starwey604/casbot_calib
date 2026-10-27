@@ -1,9 +1,20 @@
 {
-  "version": 6,
+  "version": 3,
   "configurePresets": [{
     "name": "dev", "generator": "Ninja", "binaryDir": "${sourceDir}/build/dev",
     "cacheVariables": {"CMAKE_BUILD_TYPE": "Release", "BUILD_TESTING": "ON"}
+  }, {
+    "name": "conda", "inherits": "dev", "binaryDir": "${sourceDir}/build/conda",
+    "cacheVariables": {"CMAKE_PREFIX_PATH": "$env{CONDA_PREFIX};$env{CONDA_PREFIX}/Library"}
+  }, {
+    "name": "humble", "inherits": "dev", "binaryDir": "${sourceDir}/build/humble",
+    "cacheVariables": {
+      "CMAKE_PREFIX_PATH": "/opt/ros/humble",
+      "CMAKE_INSTALL_PREFIX": "${sourceDir}/install/humble-native",
+      "pybind11_DIR": "$env{VIRTUAL_ENV}/lib/python3.10/site-packages/pybind11/share/cmake/pybind11",
+      "Python_EXECUTABLE": "$env{VIRTUAL_ENV}/bin/python"
+    }
   }],
-  "buildPresets": [{"name": "dev", "configurePreset": "dev"}],
-  "testPresets": [{"name": "dev", "configurePreset": "dev", "output": {"outputOnFailure": true}}]
+  "buildPresets": [{"name": "dev", "configurePreset": "dev"}, {"name": "conda", "configurePreset": "conda"}, {"name": "humble", "configurePreset": "humble", "jobs": 1}],
+  "testPresets": [{"name": "dev", "configurePreset": "dev", "output": {"outputOnFailure": true}}, {"name": "conda", "configurePreset": "conda", "output": {"outputOnFailure": true}}, {"name": "humble", "configurePreset": "humble", "output": {"outputOnFailure": true}}]
 }

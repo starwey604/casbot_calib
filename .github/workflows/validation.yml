@@ -26,8 +26,8 @@ jobs:
           python-version: '3.12'
       - run: conda install -n base -c conda-forge conda-lock -y
       - run: conda run -n base conda-lock install --no-mamba -n casbot_calib conda-lock.yml
-      - run: python -m pip install . --no-build-isolation
-      - run: cmake --preset dev && cmake --build --preset dev && ctest --preset dev
+      - run: python -m pip install . --no-build-isolation --config-settings=cmake.args=--preset=conda
+      - run: cmake --preset conda && cmake --build --preset conda && ctest --preset conda
       - run: python -m pytest -q
       - run: casbot-calib suite --configs configs --output artifacts/validation
       - run: casbot-calib arm-check --output artifacts/validation/R1
@@ -38,7 +38,7 @@ jobs:
           name: calibration-${{ matrix.os }}
           path: artifacts/validation
   compare:
-    needs: calibration
+    needs: [calibration, humble]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -50,6 +50,23 @@ jobs:
           pattern: calibration-*
           path: reports
       - run: python scripts/compare_reports.py reports/calibration-ubuntu-latest reports/calibration-windows-latest
+      - run: python scripts/compare_reports.py reports/calibration-ubuntu-latest reports/calibration-humble/experiments
+  humble:
+    runs-on: ubuntu-latest
+    container: osrf/ros:humble-desktop-full
+    defaults:
+      run:
+        shell: bash --noprofile --norc -eo pipefail {0}
+    steps:
+      - uses: actions/checkout@v7
+      - run: bash scripts/humble/install_system.sh
+      - run: bash scripts/humble/setup_python.sh
+      - run: bash scripts/humble/run.sh bash scripts/humble/validate.sh artifacts/humble_validation
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: calibration-humble
+          path: artifacts/humble_validation
   viewer:
     runs-on: ubuntu-latest
     defaults:
@@ -71,7 +88,7 @@ jobs:
           python-version: '3.12'
       - run: conda install -n base -c conda-forge conda-lock -y
       - run: conda run -n base conda-lock install --no-mamba -n casbot_calib conda-viewer-lock.yml
-      - run: python -m pip install -e '.[viewer]' --no-build-isolation --no-deps
+      - run: python -m pip install -e '.[viewer]' --no-build-isolation --no-deps --config-settings=cmake.args=--preset=conda
       - run: python -m pytest -q
       - run: casbot-calib demo --output artifacts/viewer_demo --fps 6
       - run: casbot-calib arm-check --output artifacts/viewer_demo/R1 --render

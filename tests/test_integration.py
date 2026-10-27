@@ -21,7 +21,7 @@ def test_fractional_steps_and_delivery_match_piecewise_analytic_motion():
     np.testing.assert_array_equal(observations['sample_ns'],np.arange(len(t))*plant['sample_period_ns'])
     np.testing.assert_array_equal(observations['receive_ns']-observations['sample_ns'],plant['feedback_delay_ns'])
     assert metadata['integration_backend']==_core.SimulationRunner.integration_backend()
-    assert metadata['integration_backend'].startswith('boost.odeint.rk4/1.88.')
+    assert metadata['integration_backend'].startswith('boost.odeint.rk4/')
     assert metadata['integration_step_ns']==73_001
     assert metadata['integration_schedule']=='int64_ns_event_truncated'
 

@@ -1,0 +1,14 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>casbot_calib_core</name>
+  <version>0.1.0</version>
+  <description>ROS installation of the shared casbot calibration C++ core.</description>
+  <maintainer email="moonbite233@gmail.com">WindWeaver</maintainer>
+  <!-- Repository licensing has not been declared; resolve before publishing. -->
+  <license>TODO</license>
+  <buildtool_depend>ament_cmake</buildtool_depend>
+  <depend>eigen</depend>
+  <depend>boost</depend>
+  <depend>pinocchio</depend>
+  <export><build_type>ament_cmake</build_type></export>
+</package>

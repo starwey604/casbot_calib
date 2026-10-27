@@ -1,5 +1,7 @@
 # 本机验证记录
 
+最新主环境验收见 [M1：Humble迁移完成记录](humble_m1_validation.md)：87项Python测试、3项C++测试、114项冻结数值对照通过。以下保留原环境与各轮实现的历史记录。
+
 2026-10-19，Linux、Python 3.12.15、NumPy 2.5.4、SciPy 1.18.1。以下均为本仓库合成参数下的结果，不代表 ENCOS 实机或乐器演奏性能。
 
 完整输出位于本机 [artifacts/release_validation](../artifacts/release_validation/README.md)，含所有原始采集、真值、配置、JSON／CSV 报告和 22 张 PNG。新机器请按 README 重跑；大体积实验输出通过 `.gitignore` 排除。
