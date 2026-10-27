@@ -22,7 +22,8 @@ def torque_commands(duration_s=24., period_ns=1_000_000, frequencies=(.5, 1.5, 2
 def feedforward(q, dq, ddq, model, spring_zero=0., friction_velocity=.03):
     return (model.get("inertia", 0)*ddq + model.get("damping", 0)*dq
             + model.get("spring", 0)*(q-spring_zero)
-            + model.get("coulomb", 0)*np.tanh(dq/friction_velocity))
+            + model.get("coulomb", 0)*np.tanh(dq/friction_velocity)
+            + model.get("gravity_sin", 0)*np.sin(q)+model.get("gravity_cos", 0)*np.cos(q))
 
 def tracking_commands(model, kp, kd, duration_s=6., period_ns=1_000_000, validation=False,
                       spring_zero=0., friction_velocity=.03):

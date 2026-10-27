@@ -2,6 +2,7 @@
 #include <Eigen/Core>
 #include <cstdint>
 #include <deque>
+#include <string>
 #include <vector>
 
 namespace casbot {
@@ -34,6 +35,7 @@ class JointDevice {
 struct SimulationConfig {
   double inertia = 0.08, damping = 0.12, coulomb = 0.06, spring = 3.0;
   double spring_zero = 0, friction_velocity = 0.03, gain = 2.0;
+  double gravity_sin = 0, gravity_cos = 0;  // signed output-side Nm, other joints fixed
   double current_tau = 0, current_filter_tau = 0;
   double torque_limit = 20, current_limit = 10;
   double initial_q = 0, initial_v = 0, initial_string_x = 0, initial_string_v = 0;
@@ -78,6 +80,7 @@ class MockJointDevice final : public JointDevice {
 class SimulationRunner {
  public:
   explicit SimulationRunner(SimulationConfig config);
+  static std::string integration_backend();
   SimulationResult run(const std::vector<JointCommand>& commands, Nanoseconds duration_ns) const;
   SimulationResult run(MockJointDevice& device, Nanoseconds duration_ns) const;
  private:

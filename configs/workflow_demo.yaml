@@ -1,0 +1,22 @@
+# 合成参数，不代表 ENCOS 实测。整场采集期间驱动响应和链路配置固定。
+plant:
+  current_tau: 0.002
+  command_delay_ns: 1300000
+  position_noise: 0.000001
+  current_noise: 0.0002
+  seed: 20261020
+identification:
+  gain: 1.7  # 故意有误的初始先验；已知附加惯量提供绝对尺度
+added_inertia: 0.04  # kg m²，配平飞轮；不改变重心、摩擦等其他参数
+repeat_noise:
+  position_noise: 0.000001
+  current_noise: 0.0002
+  position_quantum: 0.000001
+  current_quantum: 0.0001
+  drop_probability: 0.01
+  repeat_probability: 0.01
+acceptance:
+  torque_rmse_nm: 0.01
+  current_rmse_a: 0.005
+  repeat_relative_limit: 0.05
+  minimum_repeat_passes: 9

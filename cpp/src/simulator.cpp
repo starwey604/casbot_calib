@@ -1,4 +1,5 @@
 #include "casbot_calib/simulator.hpp"
+#include "casbot_calib/integration.hpp"
 #include <algorithm>
 #include <cmath>
 #include <deque>
@@ -37,7 +38,8 @@ State derivative(const SimulationConfig& c, const State& s, const JointCommand& 
   State d = State::Zero();
   const double i = c.current_tau > 0 ? s[2] : u.target_current;
   const double friction = c.damping*s[1] + c.coulomb*std::tanh(s[1]/c.friction_velocity);
-  const double load = friction + c.spring*(s[0]-c.spring_zero);
+  const double load = friction + c.spring*(s[0]-c.spring_zero)
+    + c.gravity_sin*std::sin(s[0]) + c.gravity_cos*std::cos(s[0]);
   const double contact_torque = c.lever * std::cos(c.attack_angle) * u.force;
   d[0] = s[1];
   if (c.double_inertia) {
@@ -53,7 +55,8 @@ State derivative(const SimulationConfig& c, const State& s, const JointCommand& 
   return d;
 }
 double energy(const SimulationConfig& c, const State& s) {
-  double result = .5*c.inertia*s[1]*s[1] + .5*c.spring*std::pow(s[0]-c.spring_zero,2)
+  double result = -c.gravity_sin*std::cos(s[0]) + c.gravity_cos*std::sin(s[0])
+    + .5*c.inertia*s[1]*s[1] + .5*c.spring*std::pow(s[0]-c.spring_zero,2)
     + .5*c.string_mass*s[6]*s[6] + .5*c.string_spring*s[5]*s[5];
   if(c.double_inertia) result += .5*c.motor_inertia*s[4]*s[4]+.5*c.coupling_spring*std::pow(s[3]-s[0],2);
   double r = (c.lever*s[0]+c.pick_offset)*std::cos(c.attack_angle)-s[5];
@@ -62,6 +65,7 @@ double energy(const SimulationConfig& c, const State& s) {
   return result;
 }
 }
+std::string SimulationRunner::integration_backend() { return casbot::integration_backend(); }
 SimulationRunner::SimulationRunner(SimulationConfig config) : config_(config) {
   const auto& c = config_;
   for(double x : {c.inertia,c.gain,c.friction_velocity,c.motor_inertia,c.string_mass,c.lever,c.depth,c.torque_limit,c.current_limit})
@@ -70,6 +74,8 @@ SimulationRunner::SimulationRunner(SimulationConfig config) : config_(config) {
     if(!std::isfinite(x) || x<0) throw std::invalid_argument("Damping, stiffness, noise and time constants must be nonnegative finite");
   if(c.integration_ns<=0 || c.sample_period_ns<=0 || c.command_delay_ns<0 || c.feedback_delay_ns<0 || c.jitter_ns<0 || c.current_lag_ns<0)
     throw std::invalid_argument("Invalid nanosecond schedule");
+  if(!std::isfinite(c.gravity_sin) || !std::isfinite(c.gravity_cos))
+    throw std::invalid_argument("Gravity coefficients must be finite");
   double step = c.integration_ns*1e-9;
   if((c.current_tau>0 && step>c.current_tau/2) || (c.current_filter_tau>0 && step>c.current_filter_tau/2))
     throw std::invalid_argument("Integration step too large for current time constant");
@@ -107,7 +113,9 @@ SimulationResult SimulationRunner::run(const std::vector<JointCommand>& commands
   std::stable_sort(events.begin(),events.end(),[](const auto& a,const auto& b){return a.time<b.time;});
   State s=State::Zero(); s[0]=c.initial_q;s[1]=c.initial_v;s[3]=c.initial_q;s[4]=c.initial_v;
   s[5]=c.initial_string_x;s[6]=c.initial_string_v;
+  FixedStepIntegrator<State> integrator(s,c.integration_ns);
   JointCommand held;
+  const auto system=[&](const State& state,State& rate,double /*time_s*/) {rate=derivative(c,state,held);};
   SimulationResult result;
   std::deque<std::pair<Nanoseconds,double>> history{{0,0}};
   Nanoseconds t=0, next_sample=0,last_order=-1,seq=0;
@@ -159,12 +167,7 @@ SimulationResult SimulationRunner::run(const std::vector<JointCommand>& commands
     if(t==duration_ns) break;
     Nanoseconds next=std::min({t+c.integration_ns,next_sample,duration_ns});
     if(event_index<events.size()) next=std::min(next,events[event_index].time);
-    double dt=(next-t)*1e-9;
-    auto a=derivative(c,s,held);
-    auto b=derivative(c,(s+dt*.5*a).eval(),held);
-    auto d=derivative(c,(s+dt*.5*b).eval(),held);
-    auto e=derivative(c,(s+dt*d).eval(),held);
-    s+=dt/6*(a+2*b+2*d+e);
+    integrator.step(system,s,t,next);
     if(!s.allFinite() || s.cwiseAbs().maxCoeff()>1e8) throw std::runtime_error("Unstable simulation");
     t=next;
   }

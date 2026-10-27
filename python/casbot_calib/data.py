@@ -8,7 +8,7 @@ import numpy as np
 UNITS = {"q": "rad", "dq": "rad/s", "ddq": "rad/s^2", "current": "A",
          "estimated_torque": "Nm (derived from current; not independent)",
          "time": "int64 ns", "inertia": "kg m^2", "damping": "Nm s/rad",
-         "spring": "Nm/rad", "gain": "Nm/A output side", "temperature": "deg C"}
+         "gravity_sin": "Nm", "gravity_cos": "Nm", "spring": "Nm/rad", "gain": "Nm/A output side", "temperature": "deg C"}
 
 def jsonable(value):
     if isinstance(value, dict):

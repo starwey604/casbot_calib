@@ -24,6 +24,7 @@ def main(argv=None):
     demo=sub.add_parser("demo",help="Collect the calibration workflow, then export the read-only viewer video")
     demo.add_argument("--output",required=True,type=Path)
     demo.add_argument("--collect-only",action="store_true",help="Run the workflow without importing MuJoCo")
+    demo.add_argument("--config",type=Path,help="Optional workflow YAML: plant, identification, repeat_noise, acceptance")
     demo.add_argument("--fps",type=int,default=24)
     render=sub.add_parser("render-demo",help="Render an existing workflow without rerunning physics or identification")
     render.add_argument("folder",type=Path);render.add_argument("--output",type=Path)
@@ -31,15 +32,52 @@ def main(argv=None):
     render.add_argument("--width",type=int,default=1280);render.add_argument("--height",type=int,default=720)
     render.add_argument("--clip-seconds",type=float,help="Override each clip duration for a short preview")
     render.add_argument("--snapshots-only",action="store_true")
+    arm=sub.add_parser("arm-check",help="R1 Pinocchio rigid-arm correctness report (no acquisition)")
+    arm.add_argument("--output",required=True,type=Path)
+    arm.add_argument("--render",action="store_true",help="Optional geometry-only Chinese snapshot")
+    dual=sub.add_parser("dual-calibrate",help="Nominal fixed-waist dual-arm mock workflow; no hardware")
+    dual.add_argument("--config",type=Path,default=Path("configs/dual_arm_dynamics.yaml"))
+    dual.add_argument("--output",required=True,type=Path)
+    dual.add_argument("--render",action="store_true",help="Optional Chinese geometry-only recording playback")
+    dual_estimate=sub.add_parser("dual-identify",help="Re-identify saved dual-arm observations without evaluation truth")
+    dual_estimate.add_argument("folder",type=Path);dual_estimate.add_argument("--output",required=True,type=Path)
+    dual_render=sub.add_parser("render-dual",help="Render an existing dual-arm workflow; no simulation")
+    dual_render.add_argument("folder",type=Path);dual_render.add_argument("--output",type=Path)
+    dual_render.add_argument("--fps",type=int,default=12);dual_render.add_argument("--snapshots-only",action="store_true")
     view=sub.add_parser("view",help="Read-only interactive joint viewer (recording or external JSONL telemetry)")
     source=view.add_mutually_exclusive_group(required=True)
     source.add_argument("--run-folder",type=Path);source.add_argument("--telemetry-jsonl",type=Path)
     view.add_argument("--mapping",type=Path);view.add_argument("--scene",type=Path)
     view.add_argument("--follow",action="store_true",help="Follow an externally appended JSONL file")
     args=parser.parse_args(argv)
+    if args.command=="dual-calibrate":
+        from .dual_workflow import run_dual_workflow
+        config=yaml.safe_load(args.config.read_text(encoding="utf-8"))
+        result=run_dual_workflow(args.output,config)
+        if args.render and result['passed']:
+            from .dual_presentation import render_dual_workflow
+            render_dual_workflow(args.output)
+        print(f"Dual-arm mock: {'PASS' if result['passed'] else 'FAIL'} -> {args.output}")
+        return 0 if result['passed'] else 1
+    if args.command=="render-dual":
+        from .dual_presentation import render_dual_workflow
+        path=render_dual_workflow(args.folder,args.output,fps=args.fps,video=not args.snapshots_only)
+        print(f"Dual-arm presentation -> {path}")
+        return 0
+    if args.command=="dual-identify":
+        from .dual_workflow import identify_dual_session
+        result,_=identify_dual_session(args.folder,args.output)
+        print(f"Dual-arm observations: {'PASS' if result['passed'] else 'FAIL'} -> {args.output}")
+        return 0 if result['passed'] else 1
+    if args.command=="arm-check":
+        from .arm_report import run_arm_checks
+        report=run_arm_checks(args.output,render=args.render)
+        print(f"R1: {'PASS' if report['passed'] else 'FAIL'} -> {args.output}")
+        return 0 if report["passed"] else 1
     if args.command=="demo":
         from .demo import run_demo
-        run_demo(args.output)
+        config=yaml.safe_load(args.config.read_text(encoding="utf-8")) if args.config else None
+        run_demo(args.output,config=config)
         if not args.collect_only:
             from .presentation import render_demo
             render_demo(args.output,fps=args.fps)

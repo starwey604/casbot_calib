@@ -31,3 +31,15 @@
 ## 构建资料
 
 [pybind11 NumPy 接口](https://pybind11.readthedocs.io/en/stable/advanced/pycpp/numpy.html)、[conda-lock](https://conda.github.io/conda-lock/)、[CMake Presets](https://cmake.org/cmake/help/latest/manual/cmake-presets.7.html)、[SciPy least_squares](https://docs.scipy.org/doc/scipy/reference/generated/scipy.optimize.least_squares.html)。
+
+## 新增产品研发需求
+
+[机械臂研发需求](<../references/机械臂研发需求(1).pdf>)：七轴S-R-S机械臂的KIN/DYN/PLAN/CTRL需求、阶段与测量口径。逐项来源页、原优先级、验收目标与当前实验的对应关系见 [需求对应表](requirements_matrix.md) 和 [CSV](sources/requirements_matrix.csv)。源文件摘要记录在对应表中；待定产品目标不采用现有合成门槛代填。
+
+## R1刚体计算后端
+
+[Pinocchio官方项目](https://github.com/stack-of-tasks/pinocchio)：本轮按用户指定，采用其C++正/逆动力学、质量矩阵、重力、速度耦合和运动学接口，未保留自实现递归动力学。锁文件固定3.9.0；接口映射、独立二连杆解析校验与七轴几何来源见 [R1说明](arm_r1.md)。
+
+2026-10-27 扩展到 `computeJointTorqueRegressor`、`computeRNEADerivatives`、`computeABADerivatives` 和TCP雅可比；参数顺序/原点惯量与摩擦/转子分离约定见同一说明。有限差分仅用于验证解析导数，后续辨识不再手写整臂刚体回归展开。
+
+[Boost.Odeint官方实现](https://github.com/boostorg/odeint/tree/boost-1.88.0)：统一固定步长RK4与官方Eigen适配，版本来自双平台现有Boost1.88锁记录。事件调度仍由项目维护，后端与验证说明见 [统一积分接口](integration_backend.md)。

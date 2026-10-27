@@ -7,16 +7,27 @@ from time import perf_counter
 import numpy as np
 from .data import write_json, load_observations
 from .telemetry import ReplaySource, TelemetryAdapter
+from .presentation_text import LABELS, STORIES
 
 BG=(10,17,27);PANEL=(17,28,42);EDGE=(40,58,76);TEXT=(226,235,243)
 MUTED=(139,160,180);CYAN=(50,220,190);GOLD=(255,195,78);RED=(250,106,108)
 
 
 def _font(size,bold=False):
+    """Use an installed CJK font; fail clearly instead of emitting missing glyphs."""
     from PIL import ImageFont
-    import matplotlib
-    return ImageFont.truetype(str(Path(matplotlib.get_data_path())/"fonts/ttf"/
-                                 ("DejaVuSans-Bold.ttf" if bold else "DejaVuSans.ttf")),size)
+    import os
+    candidates=[os.environ.get("CASBOT_CJK_FONT", ""),
+        "/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc",
+        "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+        "C:/Windows/Fonts/msyh.ttc", "C:/Windows/Fonts/simhei.ttf",
+        "/System/Library/Fonts/PingFang.ttc"]
+    for candidate in candidates:
+        if candidate and Path(candidate).is_file():
+            # Noto CJK collection index 2 is Simplified Chinese.
+            index=2 if "NotoSansCJK" in candidate and candidate.endswith(".ttc") else 0
+            return ImageFont.truetype(candidate,size,index=index)
+    raise RuntimeError("中文渲染需要 CJK 字体；安装 fonts-noto-cjk 或设置 CASBOT_CJK_FONT")
 
 
 class DemoPresentation:
@@ -25,6 +36,8 @@ class DemoPresentation:
         self.folder=Path(folder);self.width=width;self.height=height
         self.report=json.loads((self.folder/"demo_report.json").read_text(encoding="utf-8"))
         self.clips=json.loads((self.folder/"storyboard.json").read_text(encoding="utf-8"))["clips"]
+        for clip in self.clips:
+            clip["title"],clip["note"]=STORIES[clip["key"]]
         self.adapter=TelemetryAdapter.load(self.folder/"mapping.json")
         self.sources={};self.observations={}
         for clip in self.clips:
@@ -42,8 +55,8 @@ class DemoPresentation:
 
     def _wrap(self,draw,text,width,size=14):
         lines=[];line=""
-        for word in text.split():
-            candidate=f"{line} {word}".strip()
+        for word in text:
+            candidate=line+word
             if draw.textlength(candidate,font=self.fonts[size])>width and line:
                 lines.append(line);line=word
             else:line=candidate
@@ -57,10 +70,10 @@ class DemoPresentation:
     def _plot(self,draw,clip,cursor_s):
         bounds=(24,474,824,652);draw.rounded_rectangle(bounds,12,fill=PANEL,outline=EDGE)
         name=clip["run"];obs=self.observations[name]
-        time=obs["sample_ns"]*1e-9;curves=[];title="OUTPUT ANGLE";unit="deg"
+        time=obs["sample_ns"]*1e-9;curves=[];title="输出侧角度";unit="deg"
         if clip["key"]=="timing":
-            title="CURRENT RESPONSE";unit="A"
-            curves=[("measured",obs["current"],CYAN)]
+            title="电流阶跃响应";unit="A"
+            curves=[("采集值",obs["current"],CYAN)]
             # Focus on 120 ms of the actually recorded response.
             time_limit=.12
             take=time<=time_limit;time=time[take]
@@ -70,15 +83,15 @@ class DemoPresentation:
             from .excitation import multisine
             reference=multisine(time,frequencies=(.75,1.25,2.75),amplitudes=(.07,.04,.018),phases=(0.,0.,0.))[0]
             before=self.observations[clip["before"]]
-            curves=[("original model",(before["q"]-reference)*1000,RED),
-                    ("identified model",(obs["q"]-reference)*1000,CYAN)]
-            title="INDEPENDENT TRACKING ERROR";unit="mrad"
+            curves=[("原模型",(before["q"]-reference)*1000,RED),
+                    ("辨识模型",(obs["q"]-reference)*1000,CYAN)]
+            title="独立轨迹跟踪误差";unit="mrad"
         else:
-            curves=[("measured",np.degrees(obs["q"]),CYAN)]
+            curves=[("采集值",np.degrees(obs["q"]),CYAN)]
             if clip["key"]=="direction":
                 commands=self.sources[name].commands
                 target=np.interp(time,commands["send_ns"]*1e-9,commands["commands"][:,1])
-                curves.append(("target",np.degrees(target),GOLD))
+                curves.append(("目标值",np.degrees(target),GOLD))
         if clip.get("before"):
             take=time>=1.
             time=time[take];curves=[(name,data[take],color) for name,data,color in curves]
@@ -115,21 +128,21 @@ class DemoPresentation:
         previous=self.sources[clip["before"]].read(play_ns) if clip.get("before") else None
         rgb=self.view.render(frame,previous)
         canvas=Image.new("RGB",(1280,720),BG);draw=ImageDraw.Draw(canvas)
-        self._text(draw,(24,18),"CASBOT / CALIBRATION WORKFLOW",24,TEXT,True)
-        self._text(draw,(894,23),"SYNTHETIC  /  READ-ONLY VIEW",13,CYAN,True)
-        self._text(draw,(24,53),"Recorded evidence  /  output-side joint  /  geometry-only visualization",13,MUTED)
-        labels=("MAPPING","TIMING","SCALE","IDENTIFY","VALIDATE","FEEDFORWARD","PD SELECT","RESULT")
+        self._text(draw,(24,18),"CASBOT / 动力学标定流程",24,TEXT,True)
+        self._text(draw,(894,23),"合成实验 / 只读回放",13,CYAN,True)
+        self._text(draw,(24,53),"独立采集记录 / 输出侧等效关节 / 仅作几何显示",13,MUTED)
+        labels=LABELS
         for i,label in enumerate(labels):
             x=24+i*155
             draw.rounded_rectangle((x,83,x+145,109),5,fill=CYAN if i==index else PANEL)
             self._text(draw,(x+9,89),f"{i+1:02}  {label}",11,BG if i==index else MUTED,i==index)
         canvas.paste(Image.fromarray(rgb),(24,122))
         draw.rounded_rectangle((24,122,824,462),12,outline=EDGE,width=1)
-        self._text(draw,(42,138),"JOINT 1  /  LOCAL +Z  /  + ROTATION = CCW",12,TEXT,True)
-        self._text(draw,(42,432),"measured",12,CYAN,True)
-        if frame.target_q is not None:self._text(draw,(146,432),"target",12,GOLD,True)
-        if previous is not None:self._text(draw,(226,432),"original model",12,RED,True)
-        self._text(draw,(392,432),"Overlay heights offset; angles are unscaled",11,MUTED)
+        self._text(draw,(42,138),"关节 1 / 局部 +Z 轴 / 正转为逆时针",12,TEXT,True)
+        self._text(draw,(42,432),"采集值",12,CYAN,True)
+        if frame.target_q is not None:self._text(draw,(146,432),"目标值",12,GOLD,True)
+        if previous is not None:self._text(draw,(226,432),"原模型",12,RED,True)
+        self._text(draw,(392,432),"对照杆仅错开高度，角度未放大",11,MUTED)
         draw.rounded_rectangle((848,122,1256,652),12,fill=PANEL,outline=EDGE)
         self._text(draw,(868,140),f"{index+1:02} / {labels[index]}",12,CYAN,True)
         y=170
@@ -138,47 +151,51 @@ class DemoPresentation:
         y+=12
         r=self.report
         if clip["key"]=="direction":
-            metrics=[("Encoder raw (synthetic)","unavailable" if frame.raw_position is None else f"{frame.raw_position[0]:.2f}"),
-                ("Direction / zero","-1 / 8192"),("Normalized angle",f"{np.degrees(frame.q[0]):+.3f} deg"),
-                ("Software mapping","PASS"),("Physical direction","UNCONFIRMED")]
+            metrics=[("原始编码器（合成）","不可用" if frame.raw_position is None else f"{frame.raw_position[0]:.2f}"),
+                ("方向 / 零位","-1 / 8192"),("归一化角度",f"{np.degrees(frame.q[0]):+.3f} deg"),
+                ("软件映射","通过"),("实机物理方向","待确认")]
         elif clip["key"]=="timing":
-            metrics=[("Response time constant",f"{1000*r['driver_response']['current_tau_s']:.3f} ms"),
-                ("Command delay",f"{1000*r['driver_response']['command_delay_s']:.3f} ms"),
-                ("Current fit RMSE",f"{1000*r['driver_response']['rmse_a']:.3f} mA"),
-                ("Position / current timing","separate channels")]
+            metrics=[("电流响应时间常数",f"{1000*r['driver_response']['current_tau_s']:.3f} ms"),
+                ("指令延迟",f"{1000*r['driver_response']['command_delay_s']:.3f} ms"),
+                ("电流拟合误差",f"{1000*r['driver_response']['rmse_a']:.3f} mA"),
+                ("位置 / 电流时序","分通道对齐")]
         elif clip["key"]=="scale":
-            metrics=[("Known added inertia","0.040 kg m2"),("Output gain",f"{r['drive_scale']['gain']:.4f} Nm/A"),
-                ("Scale anchor","KNOWN LOAD"),("Independent force sensor","not required")]
+            metrics=[("已知附加惯量",f"{r['drive_scale']['added_inertia']:.3f} kg m2"),("输出侧力矩增益",f"{r['drive_scale']['gain']:.4f} Nm/A"),
+                ("绝对尺度锚点","已知负载"),("独立力传感器","非必要")]
         elif clip["key"] in ("identify","summary"):
             p=r["identified"]["parameters"]
-            metrics=[("Equivalent inertia",f"{p['inertia']:.5f} kg m2"),("Viscous damping",f"{p['damping']:.5f}"),
-                ("Fixture stiffness",f"{p['spring']:.5f} Nm/rad"),("Coulomb friction",f"{p['coulomb']:.5f} Nm"),
-                ("Regressor rank",f"{r['identified']['rank']} / {r['identified']['columns']}")]
+            metrics=[("等效惯量",f"{p['inertia']:.5f} kg m2"),("黏性阻尼",f"{p['damping']:.5f}"),
+                ("夹具物理刚度",f"{p['spring']:.5f} Nm/rad" if "spring" in p else "未辨识"),("库仑摩擦",f"{p['coulomb']:.5f} Nm"),
+                ("回归矩阵秩",f"{r['identified']['rank']} / {r['identified']['columns']}")]
         elif clip["key"]=="validate":
-            metrics=[("Independent torque RMSE",f"{1000*r['heldout']['torque_rmse']:.3f} mNm"),
-                ("Training / validation","separate batches"),("Parameters during validation","FROZEN"),
-                ("Truth used by estimator","NO")]
+            metrics=[("独立轨迹力矩残差",f"{1000*r['heldout']['torque_rmse']:.3f} mNm"),
+                ("训练 / 验证","独立整批记录"),("验证期间参数","冻结"),
+                ("辨识读取真值","否")]
+            if "repeatability" in r:
+                metrics.append(("含噪整批验证",f"{r['repeatability']['passed_count']} / {r['repeatability']['total']} 通过"))
+            if "gravity" in r:
+                metrics.append(("固定姿态重力残差",f"{1000*r['gravity']['heldout']['torque_rmse']:.3f} mNm"))
         else:
             suffix="baseline" if clip["key"]=="feedforward" else "selected"
             old=r["controls"][f"original_{suffix}"];new=r["controls"][f"identified_{suffix}"]
-            metrics=[("Original model RMSE",f"{1000*old['rmse_rad']:.3f} mrad"),
-                ("Identified model RMSE",f"{1000*new['rmse_rad']:.3f} mrad"),
-                ("Selected Kp / Kd",f"{new['kp']:.1f} / {new['kd']:.2f}"),
-                ("Saturation fraction",f"{100*new['saturation_fraction']:.2f}%"),
-                ("Control comparison","4 GROUPS")]
+            metrics=[("原模型轨迹误差",f"{1000*old['rmse_rad']:.3f} mrad"),
+                ("辨识后轨迹误差",f"{1000*new['rmse_rad']:.3f} mrad"),
+                ("所用 Kp / Kd",f"{new['kp']:.1f} / {new['kd']:.2f}"),
+                ("饱和样本比例",f"{100*new['saturation_fraction']:.2f}%"),
+                ("控制对照","四组")]
         for label,value in metrics:
-            self._metric(draw,y,label,value,GOLD if value=="UNCONFIRMED" else TEXT);y+=43
+            self._metric(draw,y,label,value,GOLD if value=="待确认" else TEXT);y+=43
         draw.line((868,y+2,1236,y+2),fill=EDGE)
         y+=18
         for line in self._wrap(draw,clip["note"],356,12):
             self._text(draw,(868,y),line,12,MUTED);y+=18
         self._text(draw,(868,610),f"q {np.degrees(frame.q[0]):+.2f} deg   i {frame.current[0]:+.3f} A",12,CYAN)
-        self._text(draw,(868,630),f"seq {frame.sequence}   source: C++ Mock",11,MUTED)
+        self._text(draw,(868,630),f"序号 {frame.sequence}   来源：C++ 模拟设备",11,MUTED)
         self._plot(draw,clip,play_ns*1e-9)
         virtual_s=(last-first)*1e-9
         speed=virtual_s/clip["seconds"]
-        self._text(draw,(24,674),f"RECORDED REPLAY  {speed:.2f}x   |   sample time {frame.sample_ns*1e-9:.3f} s",12,MUTED)
-        self._text(draw,(735,674),"Geometry only. No dynamics. No device writes.",12,CYAN)
+        self._text(draw,(24,674),f"采集记录回放  {speed:.2f}x   |   采样时间 {frame.sample_ns*1e-9:.3f} s",12,MUTED)
+        self._text(draw,(735,674),"仅作几何显示；不计算动力学，不下发指令。",12,CYAN)
         draw.rectangle((24,702,1256,706),fill=EDGE)
         draw.rectangle((24,702,24+1232*(index+progress)/len(self.clips),706),fill=CYAN)
         if (self.width,self.height)!=(1280,720):
@@ -225,6 +242,7 @@ def render_demo(folder,output=None,*,fps=24,width=1280,height=720,clip_seconds=N
     write_json(output/"viewer_manifest.json",{"fps":fps,"width":width,"height":height,"frame_count":frame_count,
         "video_duration_s":frame_count/fps,"wall_s":perf_counter()-start,"raw_evidence_unchanged":True,
         "mujoco_usage":"mj_kinematics and mj_camlight only; no dynamics or integration",
+        "language":"zh-CN",
         "data_source":"recorded observations and command logs; no evaluation truth read",
         "clips":presentation.clips})
     return output

@@ -4,13 +4,17 @@
 #include <pybind11/stl.h>
 namespace py=pybind11;
 using namespace casbot;
+void bind_arm(py::module_& m);
+void bind_arm_simulator(py::module_& m);
 template<class T> py::array_t<T> column(std::size_t n) { return py::array_t<T>(n); }
 PYBIND11_MODULE(_core,m) {
+  bind_arm(m);
+  bind_arm_simulator(m);
   m.doc()="Platform-independent virtual joint; arrays use SI units and int64 nanoseconds";
   py::class_<SimulationConfig> config(m,"SimulationConfig"); config.def(py::init<>());
 #define FIELD(x) config.def_readwrite(#x,&SimulationConfig::x)
   FIELD(inertia);FIELD(damping);FIELD(coulomb);FIELD(spring);FIELD(spring_zero);FIELD(friction_velocity);FIELD(gain);
-  FIELD(current_tau);FIELD(current_filter_tau);FIELD(torque_limit);FIELD(current_limit);
+  FIELD(gravity_sin);FIELD(gravity_cos);FIELD(current_tau);FIELD(current_filter_tau);FIELD(torque_limit);FIELD(current_limit);
   FIELD(initial_q);FIELD(initial_v);FIELD(initial_string_x);FIELD(initial_string_v);
   FIELD(position_noise);FIELD(velocity_noise);FIELD(current_noise);FIELD(position_quantum);FIELD(current_quantum);
   FIELD(temperature);FIELD(drop_probability);FIELD(repeat_probability);FIELD(integration_ns);FIELD(sample_period_ns);
@@ -25,6 +29,7 @@ PYBIND11_MODULE(_core,m) {
     .def_readonly("inner_pi_tunable",&DeviceCapabilities::inner_pi_tunable);
   py::class_<SimulationRunner>(m,"SimulationRunner")
     .def(py::init<SimulationConfig>())
+    .def_static("integration_backend",&SimulationRunner::integration_backend)
     .def("run",[](const SimulationRunner& runner,
       py::array_t<Nanoseconds,py::array::c_style|py::array::forcecast> times,
       py::array_t<double,py::array::c_style|py::array::forcecast> values, Nanoseconds duration_ns) {

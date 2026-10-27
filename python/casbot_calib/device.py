@@ -13,7 +13,10 @@ def simulate(plant: dict, times_ns: np.ndarray, commands: np.ndarray, duration_n
     start = perf_counter()
     observations, truth = _core.SimulationRunner(config).run(times_ns, commands, int(duration_ns))
     return observations, truth, {"simulation_wall_s": perf_counter()-start,
-                                 "virtual_duration_s": duration_ns*1e-9}
+                                 "virtual_duration_s": duration_ns*1e-9,
+                                 "integration_backend": _core.SimulationRunner.integration_backend(),
+                                 "integration_step_ns": config.integration_ns,
+                                 "integration_schedule": "int64_ns_event_truncated"}
 
 def default_plant() -> dict:
     """Public synthetic plant fixture, not an ENCOS specification."""

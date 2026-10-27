@@ -1,0 +1,63 @@
+schema_version: 1
+mode: mock_only
+fixture:
+  location: 腰部前方圆形开口，用户图片红圈处抱紧
+  rigid: true
+  transform_known: false
+  geometry_policy: 保留nominal固定腰部姿态，不从截图推测毫米坐标
+motion:
+  center: [0, 0.2, 0, -0.65, 0, 0, 0, 0, -0.2, 0, -0.65, 0, 0, 0]
+  period_s: 6.0
+  periods: 6
+  discard_periods: 2
+  amplitude: [0.45, 0.4, 0.45, 0.55, 0.6, 0.5, 0.6, 0.45, 0.4, 0.45, 0.55, 0.6, 0.5, 0.6]
+  candidate_seeds: [27, 28, 29, 30, 31]
+  control_period_ns: 1000000
+  gravity_hold_s: 5.0
+  gravity_poses: 8
+  kp: [80, 80, 40, 40, 10, 8, 5, 80, 80, 40, 40, 10, 8, 5]
+  kd: [8, 8, 4, 3, 1, 0.7, 0.5, 8, 8, 4, 3, 1, 0.7, 0.5]
+  synthetic_envelope:
+    speed_rad_s: 2.0
+    acceleration_rad_s2: 8.0
+    jerk_rad_s3: 60.0
+preflight:
+  direction_amplitude_rad: 0.45
+  direction_slot_s: 6.0
+  initial_hold_s: 3.0
+  minimum_jog_range_rad: 0.35
+  encoder_counts_per_revolution: 131072
+  encoder_directions: [1, -1, 1, -1, 1, -1, 1, -1, 1, -1, 1, -1, 1, -1]
+  encoder_zero_ticks: [65536, 66048, 66560, 67072, 67584, 68096, 68608, 69120, 69632, 70144, 70656, 71168, 71680, 72192]
+  timing_duration_s: 0.64
+  delay_bounds_s: [0.0, 0.005]
+  current_tau_bounds_s: [0.0002, 0.006]
+  current_validation_rmse_a: 0.0015
+presentation:
+  stage_seconds: 6.0
+  direction_seconds_per_joint: 2.0
+drive_assumptions:
+  gain_nm_a: 2.0
+  gain_status: synthetic_declared
+  integration_ns: 50000
+  sample_period_ns: 1000000
+  command_delay_ns: 1350000
+  feedback_delay_ns: 700000
+  current_tau: 0.001
+  torque_limit: 100.0
+  position_noise: 0.000001
+  current_noise: 0.0002
+identification:
+  parameterization: body_scales_fixed_com_shape_plus_viscous_coulomb
+  friction_velocity: 0.03
+  harmonics: 24
+  phase_points: 512
+  torque_floor_nm: 0.2
+  maximum_validation_nrmse: 0.05
+  minimum_dynamic_velocity_rms_rad_s: 0.01
+  minimum_dynamic_acceleration_rms_rad_s2: 0.02
+mock:
+  body_scales: [1.15, 0.9, 1.08, 1.2, 0.85, 1.1, 0.95, 0.9, 1.18, 0.87, 1.12, 1.2, 0.92, 1.1]
+  viscous: 0.035
+  coulomb: 0.06
+  seed: 20261027

@@ -14,6 +14,8 @@ python -m pip install -e . --no-build-isolation
 
 Python 代码修改立即生效；**C++ 修改后重新运行 pip install**。`cmake --build --preset dev` 只更新独立 CMake 构建树，不会自动替换 Python 已安装扩展。发布包用 `python -m pip wheel . --no-build-isolation --no-deps`。无 Python 的核心构建：`cmake -S . -B build/core -G Ninja -DCALIB_BUILD_PYTHON=OFF`。
 
+积分统一使用Boost.Odeint RK4；`calib_integration`接口目标显式链接Eigen/Boost头文件，`calib_core`及后续整臂Mock复用。工作区、整数区间、指令边界和后端版本记录见 [积分后端说明](integration_backend.md)。当前锁文件已含Boost1.88，提升为直接依赖无需重新安装或升级环境。
+
 pybind11 在调用前复制整段命令数组到原生结构，运行期间释放 GIL，返回批量 NumPy 数组。不在每个积分步回调 Python，不宣称当前离线模拟满足硬实时。高频实验推荐固定 BLAS 为单线程，避免小矩阵的线程调度成本；科学结果不应依赖线程数。
 
 ## C++ 设备契约
@@ -36,4 +38,14 @@ pybind11 在调用前复制整段命令数组到原生结构，运行期间释�
 
 首版 `model_version=output_joint_v1` 明确为合成单关节。未来扩展共享 run_id、joint_names、robot_model_id、时间／单位、工具／负载和观测格式，动力学参数与几何参数分别保存。evt6 TriCal 与 CASBOT 20251015 吉他模型必须使用不同 robot_model_id，不能直接混用标定结果。
 
-先添加多轴数组和真实模型适配，再决定是否引入 Pinocchio 刚体回归矩阵。转子折算惯量、摩擦和驱动增益仍需单独处理，不因为用了 URDF 就认为这些参数可靠。对于可见柔顺性，沿 TriCal 路线使用位移与已知载荷，不需要细化或调整模组内部齿轮。
+R1已采用Pinocchio实现统一正/逆动力学、多轴模型、刚体回归矩阵、状态解析导数和TCP雅可比；后续多轴采集、真实模型适配与基参数辨识按R2/R3推进。转子折算惯量、摩擦和驱动增益仍需单独处理，不因为用了 URDF 就认为这些参数可靠。对于可见柔顺性，沿 TriCal 路线使用位移与已知载荷，不需要细化或调整模组内部齿轮。
+
+## 动力学标定与前馈的下一阶段
+
+需求边界、当前CTRL-1缺口和逐机/工具参数生命周期见 [需求对应表](requirements_matrix.md)。下一轮按其中CAL-02、CAL-03和VAL-01的基础部分建立多关节刚体逆动力学、摩擦与分项前馈验证；表中协议编号仅用于规划，尚无对应CLI实现。型号公共模型、单机校准、工具负载和控制配置分别版本化，动力学与几何共享坐标系/零位版本；MuJoCo继续仅作viewer。
+
+当前实施顺序以 [腰部抱紧固定的双臂动力学计划](dual_arm_dynamics_plan.md)为准：树形内核、14轴Mock/同步采集、受约束加速度激励与分阶段辨识、冻结验证和中文演示；运动学暂缓。原 [单臂五轮计划](whole_arm_calibration_plan.md)保留历史R1记录和可复用门槛。刚体计算与多轴数据契约显式版本化；旧单关节接口与A–F保持回归。
+
+首个 [nominal双臂Mock流程](dual_arm_workflow.md)已经实现。`dual-calibrate`采集并辨识受限物理参数，`dual-identify`只从观测重辨识，`render-dual`只读回放；实机先验/限制确认暂缓，不做运动学。树形模型/模拟器代码位于 `arm_dynamics.*`、`arm_simulator.*`，Python实验位于 `dual_*`，沿用现有构建入口。
+
+R1接口、原生依赖、批量调用及模型来源见 [Pinocchio整臂内核](arm_r1.md)。批量计算每批复用一个独立Pinocchio Data；C++循环可显式持有独立工作区，返回矩阵仍可能分配内存。尚未实现R2虚拟设备调度或无分配控制接口，不把批量平均耗时当作实时控制承诺。

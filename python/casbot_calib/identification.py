@@ -18,6 +18,7 @@ class Prior:
     friction_velocity: float = .03
     include_spring: bool = True
     include_friction: bool = True
+    include_gravity: bool = False
     receive_to_sample_s: float = 0.
 
 def prepare(observations, prior: Prior, use_timestamps=True):
@@ -88,6 +89,10 @@ def features(q, dq, ddq, prior):
         spectrum[prior.harmonics+1:]=0
         friction=np.fft.irfft(spectrum,n=len(friction))
         columns.append(friction); names.append("coulomb")
+    if prior.include_gravity:
+        for name, value in (("gravity_sin", np.sin(q)), ("gravity_cos", np.cos(q))):
+            spectrum=np.fft.rfft(value); spectrum[prior.harmonics+1:]=0
+            columns.append(np.fft.irfft(spectrum,n=len(q))); names.append(name)
     return np.column_stack(columns), names
 
 def scaled_fit(x, y, names, robust=True):
@@ -105,7 +110,7 @@ def scaled_fit(x, y, names, robust=True):
     params = linear/scale
     if robust:
         # Explicit bounds enforce positive inertia and dissipative coefficients.
-        lower = np.array([1e-8 if n=="inertia" else 0. for n in names])*scale
+        lower = np.array([-np.inf if n.startswith("gravity_") else (1e-8 if n=="inertia" else 0.) for n in names])*scale
         opt = least_squares(lambda p: xs@p-y, np.maximum(linear, lower+1e-10),
                             bounds=(lower, np.full(len(names), np.inf)), loss="soft_l1",
                             f_scale=.01, ftol=1e-10, xtol=1e-10, gtol=1e-10)
@@ -154,7 +159,7 @@ def identify(observations, prior=Prior(), *, use_timestamps=True, offset_bounds_
     result = scaled_fit(x, y, names)
     result.update(offset_s=offset, diagnostics=diagnostics, prior=prior.__dict__,
                   fit_band_hz=[1/prior.period_s, prior.harmonics/prior.period_s],
-                  solve_wall_s=perf_counter()-start, model_version="output_joint_v1",
+                  solve_wall_s=perf_counter()-start, model_version="output_joint_gravity_v2" if prior.include_gravity else "output_joint_v1",
                   absolute_scale="declared_gain_prior", scope="periodic training trajectory")
     return result
 
@@ -190,41 +195,75 @@ def identify_gain(unloaded, loaded, added_inertia, prior=Prior()):
     if inverse_gain<=1e-8:
         return {"identifiable":False,"reason":"inconsistent_load_scale","parameters":{}}
     gain=1/inverse_gain
-    return {**fit,"gain":gain,
+    return {**{k:v for k,v in fit.items() if k!="torque_rmse"},"gain":gain,
+            "current_rmse_a":fit["torque_rmse"],
             "parameters":{n:v*gain for n,v in fit["parameters"].items()},
             "added_inertia":added_inertia,"scale_anchor":"known_added_output_inertia",
             "assumption":"only known added inertia changes between the two runs"}
 
-def identify_current_response(observations, send_ns, commands, gain, delay_bounds_s=(0., .005), tau_bounds_s=(.0001, .01)):
-    """Separate open-loop actuator experiment, using measured current and ZOH requests.
-
-    A one-step exact first-order recurrence is fit on acquisition-time samples.
-    Commands must be pure torque and unsaturated. Mechanical model is not fitted.
-    """
-    if np.any(commands[:, 0] != 0):
+def _current_response_problem(observations, send_ns, commands, gain):
+    if not np.isfinite(gain) or gain<=0:
+        raise ValueError("Output gain must be positive finite")
+    if commands.ndim!=2 or commands.shape[1]!=6 or len(commands)!=len(send_ns):
+        raise ValueError("Expected send_ns[N] and commands[N,6]")
+    if np.any(commands[:,0]!=0):
         raise ValueError("Current response fit requires torque-only excitation")
-    keep = (observations["status"] == 0) & (observations["current_sample_ns"] >= 0)
-    t = observations["current_sample_ns"][keep]*1e-9
-    measured = observations["current"][keep]
-    order = np.argsort(t); t, measured = t[order], measured[order]
-    sends = np.asarray(send_ns)*1e-9
-    targets = commands[:, 3]/gain
-    def evaluate(tau, delay):
-        arrival = sends+delay
-        state = 0.; at = 0.; command_index = 0; held = 0.; output=[]
+    if np.any(observations["status"]&1):
+        raise ValueError("Saturated current response experiment is invalid")
+    keep=(observations["status"]==0)&(observations["current_sample_ns"]>=0)
+    t=observations["current_sample_ns"][keep]*1e-9
+    measured=observations["current"][keep]
+    order=np.argsort(t); t,measured=t[order],measured[order]
+    if len(t)<20 or np.any(np.diff(t)<=0) or not np.all(np.isfinite(measured)):
+        raise ValueError("Current response needs valid, known, distinct acquisition timestamps")
+    sends=np.asarray(send_ns)*1e-9
+    if len(sends)==0 or sends[0]<0 or np.any(np.diff(sends)<=0) or not np.all(np.isfinite(commands)):
+        raise ValueError("Invalid torque command log")
+    targets=commands[:,3]/gain
+    # Retain only actual ZOH changes: constant requests sent every cycle add no information.
+    changed=np.r_[True,np.diff(targets)!=0]
+    sends,targets=sends[changed],targets[changed]
+    if np.ptp(targets)<1e-8:
+        raise ValueError("Current timing identification requires changing torque requests")
+    def evaluate(tau,delay):
+        arrival=sends+delay
+        state=0.; at=0.; command_index=0; held=0.; output=[]
         for sample_t in t:
             while command_index<len(arrival) and arrival[command_index]<=sample_t:
-                change = arrival[command_index]
-                state = held+(state-held)*np.exp(-(change-at)/tau)
+                change=arrival[command_index]
+                state=held+(state-held)*np.exp(-(change-at)/tau)
                 at=change; held=targets[command_index]; command_index+=1
             output.append(held+(state-held)*np.exp(-(sample_t-at)/tau))
         return np.asarray(output)
+    return measured,evaluate
+
+
+def identify_current_response(observations, send_ns, commands, gain, delay_bounds_s=(0.,.005),
+                              tau_bounds_s=(.0001,.01), *, fit_gain=False):
+    """Open-loop ZOH plus first-order fit, zero initial current, known channel time.
+
+    Free amplitude is a preliminary nuisance fit, never an absolute scale anchor.
+    After known-load calibration, call again with fit_gain=False and validate on
+    a different pulse pattern using current_response_residual without refitting.
+    """
+    measured,evaluate=_current_response_problem(observations,send_ns,commands,gain)
     lo,hi=delay_bounds_s
-    # Joint robust nonlinear fit; delay bounds must be within one excitation feature.
-    fit=least_squares(lambda p:evaluate(p[0],p[1])-measured,
-                      [(tau_bounds_s[0]+tau_bounds_s[1])/2, (lo+hi)/2],
-                      bounds=([tau_bounds_s[0],lo],[tau_bounds_s[1],hi]),
-                      diff_step=1e-3,loss="soft_l1",f_scale=.01,xtol=1e-10,gtol=1e-10,ftol=1e-10)
-    return {"current_tau_s": float(fit.x[0]), "command_delay_s": float(fit.x[1]),
-            "rmse_a": float(np.sqrt(np.mean(fit.fun**2))), "success": bool(fit.success),
-            "model": "ZOH plus first-order current response; separate from mechanical parameters"}
+    fit=least_squares(lambda p:evaluate(p[0],p[1])*(p[2] if fit_gain else 1.)-measured,
+        [(tau_bounds_s[0]+tau_bounds_s[1])/2,(lo+hi)/2]+([1.] if fit_gain else []),
+        bounds=([tau_bounds_s[0],lo]+([.1] if fit_gain else []),
+                [tau_bounds_s[1],hi]+([10.] if fit_gain else [])),
+        diff_step=1e-3,loss="soft_l1",f_scale=.01,xtol=1e-10,gtol=1e-10,ftol=1e-10)
+    return dict(current_tau_s=float(fit.x[0]),command_delay_s=float(fit.x[1]),
+        rmse_a=float(np.sqrt(np.mean(fit.fun**2))),success=bool(fit.success),
+        gain_status="preliminary_free_amplitude_not_scale_anchor" if fit_gain else "fixed_independently_anchored_gain",
+        effective_gain=float(gain/fit.x[2]) if fit_gain else float(gain),
+        model="ZOH plus first-order current response; separate from mechanical parameters")
+
+
+def current_response_residual(observations,send_ns,commands,gain,tau_s,delay_s):
+    measured,evaluate=_current_response_problem(observations,send_ns,commands,gain)
+    if tau_s<=0 or delay_s<0:
+        raise ValueError("Invalid fixed driver response parameters")
+    residual=evaluate(tau_s,delay_s)-measured
+    return dict(rmse_a=float(np.sqrt(np.mean(residual**2))),
+        peak_a=float(np.max(np.abs(residual))),parameters_frozen=True)

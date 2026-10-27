@@ -30,6 +30,28 @@ def compare(left, right):
     for aa,bb in zip(metrics(left,"F")["tasks"],metrics(right,"F")["tasks"],strict=True):
         for key in ("rmse_rad","peak_contact_force_n_truth","peak_string_displacement_m_truth"):
             values.append((f"F.{aa['case']}.{key}",aa[key],bb[key],1e-5))
+    r1_paths=[root/"R1/report.json" for root in (left,right)]
+    if any(path.exists() for path in r1_paths):
+        if not all(path.exists() for path in r1_paths):raise ValueError("R1 report missing on one platform")
+        r1_a,r1_b=[json.loads(path.read_text(encoding="utf-8")) for path in r1_paths]
+        if not r1_a["passed"] or not r1_b["passed"]:raise ValueError("R1 did not pass on both platforms")
+        for key in ("minimum_mass_eigenvalue","maximum_mass_condition","maximum_off_diagonal_mass","maximum_velocity_bias_nm",
+                    "maximum_regressor_torque_error_nm","maximum_tcp_jacobian_error","maximum_workspace_component_error_nm",
+                    "probe_regressor_rank","rigid_parameter_count"):
+            values.append((f"R1.{key}",r1_a["metrics"][key],r1_b["metrics"][key],1e-8))
+    dual_paths=[root/"D14/workflow.json" for root in (left,right)]
+    if any(path.exists() for path in dual_paths):
+        if not all(path.exists() for path in dual_paths):raise ValueError("Dual-arm report missing on one platform")
+        workflows=[json.loads(path.read_text(encoding="utf-8")) for path in dual_paths]
+        reports=[json.loads((root/"D14/identification/report.json").read_text(encoding="utf-8")) for root in (left,right)]
+        if not all(r['passed'] for r in workflows+reports):raise ValueError('Dual-arm workflow failed')
+        for i,(a,b) in enumerate(zip(reports[0]['stages']['dynamic']['parameters'],reports[1]['stages']['dynamic']['parameters'],strict=True)):
+            values.append((f'D14.parameter{i}',a,b,1e-5))
+        values.append(('D14.rigid_rank',reports[0]['full_rigid_regressor']['rank'],reports[1]['full_rigid_regressor']['rank'],0.))
+        for name,value in reports[0]['validation'].items():
+            values.append((f'D14.{name}',value['maximum_normalized_rmse'],reports[1]['validation'][name]['maximum_normalized_rmse'],1e-5))
+        for key in ('aggregate_nominal_rmse_rad','aggregate_identified_rmse_rad'):
+            values.append((f'D14.{key}',workflows[0]['control'][key],workflows[1]['control'][key],1e-6))
     failed=[]
     for name,a,b,atol in values:
         if not math.isclose(a,b,rel_tol=1e-3,abs_tol=atol):

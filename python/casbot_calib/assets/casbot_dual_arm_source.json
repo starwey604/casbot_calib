@@ -1,0 +1,12 @@
+{
+  "source": "casbot_tasks/scripts/casbot_dual_arm_model/models/casbot_dual_arm_benchmark_nominal.urdf",
+  "sha256": "3a707a8ed703504922478481758ddf22ac97c9f2d03558580644ec86d927d955",
+  "geometry": "nominal 20251015, not calibrated",
+  "inertias": "benchmark CAD-derived, not hardware truth",
+  "hands": "fixed right-hand aggregate with mirrored left, retained once",
+  "mesh_policy": "not bundled or needed for dynamics; geometry viewer uses primitives",
+  "fixture": "waist front opening in supplied screenshot; exact transform unknown; nominal fixed base retained",
+  "hardware_validated": false,
+  "fixture_transform_known": false,
+  "waist_fixed": true
+}

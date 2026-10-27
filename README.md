@@ -1,8 +1,26 @@
 # casbot_calib
 
-单关节输出侧动力学校准实验：**C++ 模拟采集 → Python 时间处理与辨识 → 独立验证 → PD／前馈对照 → 报告**。首版仅使用合成设备，无实机控制入口。
+动力学标定实验框架：**C++ 模拟采集 → Python 时间处理与辨识 → 独立验证 → PD／前馈对照 → 报告**。现有单关节具备合成标定闭环，新增七轴R1统一模型与独立正确性检查；当前无实机控制入口。
 
-模拟器包含等效惯量、摩擦、外部夹具弹簧、一阶电流响应、通信时序和简化单弦接触。双惯量只生成固定模型失配，不辨识减速器内部参数。`Kp/Kd` 控制增益与物理刚度 `spring` 严格区分。默认数值均不是 ENCOS 实测或厂家保证值。
+当前实机目标已更新为：[腰部抱紧固定的14轴双臂动力学标定](docs/dual_arm_dynamics_plan.md)。已实现首个 [nominal双臂Mock流程](docs/dual_arm_workflow.md)：树形模型、14轴采集、多频激励、受限惯性/摩擦辨识、独立验证与中文回放。先做动力学，千分计/TriCal运动学暂缓；尚未接实机。
+
+新版双臂流程已补方向／编码器软件零位、14轴电流响应和指令延迟辨识、1/2/4ms周期对照；实际多频行程扩大，并按完整周期回放。腕部加入非轴对称方向标记，几何角度不放大。[观看新版70秒中文视频](artifacts/dual_arm_workflow_v2_release/presentation_final/dual_calibration_zh.mp4)；阶段依据和运行说明见上方双臂文档。
+
+模拟器包含等效惯量、摩擦、外部夹具弹簧、可选的单关节重力项、一阶电流响应、通信时序和简化单弦接触。双惯量只生成固定模型失配，不辨识减速器内部参数。`Kp/Kd` 控制增益与物理刚度 `spring` 严格区分。默认数值均不是 ENCOS 实测或厂家保证值。
+
+Mock统一使用 [Boost.Odeint积分后端](docs/integration_backend.md)，保留整数纳秒事件调度；积分步在指令/采样边界截断。每次采集会记录实际后端版本和最大步长。
+
+## 研发需求与标定规划
+
+新需求的19项对应关系见 [需求—实验—验收—交付表](docs/requirements_matrix.md)，可筛选版本见 [CSV](docs/sources/requirements_matrix.csv)。当前双臂已实现固定名义质心/形状下的惯性比例与摩擦Mock辨识；完整惯量恢复、实机采集和产品验收仍待后续实施。
+
+原单臂实现记录见 [五轮计划](docs/whole_arm_calibration_plan.md)，R1已实现Pinocchio模型与正确性检查。后续按新的双臂流程推进树形模型 → 14轴Mock/同步采集 → 激励设计与重力/摩擦/动态辨识 → 冻结验证和中文演示。
+
+R1入口：`casbot-calib arm-check --output artifacts/my_r1`；增加 `--render` 生成中文七轴快照。详情见 [Pinocchio模型与验证](docs/arm_r1.md)。更新后的环境/锁文件包含Pinocchio原生依赖，安装锁文件后需重新安装本地包。
+
+双臂入口：`casbot-calib dual-calibrate --output artifacts/my_dual --render`；观测重辨识：`casbot-calib dual-identify artifacts/my_dual --output artifacts/my_dual_reidentified`。使用 [双臂配置](configs/dual_arm_dynamics.yaml)，默认只运行Mock，设备先验/限制确认暂缓。
+
+Pinocchio 扩展已加入刚体参数回归矩阵、含摩擦的正逆动力学解析导数、TCP世界方向雅可比和独立复用工作区。`arm-check` 同时输出参数列/单位契约、探针矩阵秩和数值核对；这些是后续标定的计算基础，不是已完成参数标定。
 
 ## 本机运行（bash）
 
@@ -74,7 +92,8 @@ casbot-calib identify artifacts/validation/A/friction --config configs/A_basic.y
 | 位置 | 职责 |
 | --- | --- |
 | `cpp/include/casbot_calib/simulator.hpp` | 设备协议、能力、批量 Mock、模拟配置 |
-| `cpp/src/simulator.cpp` | 虚拟时钟、RK4、驱动／传感器／链路／接触 |
+| `cpp/src/simulator.cpp` | 虚拟时钟、驱动／传感器／链路／接触 |
+| `cpp/include/casbot_calib/integration.hpp` | 统一Boost.Odeint RK4后端，供单轴/后续多轴复用 |
 | `cpp/src/bindings.cpp` | 整段 NumPy 输入输出；模拟期间释放 GIL |
 | `python/casbot_calib/identification.py` | 傅里叶解析求导、频带投影、SVD、约束鲁棒拟合、时序与增益辨识 |
 | `python/casbot_calib/experiments.py` | A–F 编排、独立验证、控制选择 |
@@ -97,10 +116,12 @@ casbot-calib identify artifacts/validation/A/friction --config configs/A_basic.y
 conda-lock install -n casbot_calib conda-viewer-lock.yml
 conda activate casbot_calib
 python -m pip install -e '.[viewer]' --no-build-isolation --no-deps
-casbot-calib demo --output artifacts/my_viewer_demo
+casbot-calib demo --config configs/workflow_demo.yaml --output artifacts/my_viewer_demo
 ```
 
-默认生成 41 秒、1280×720、24 fps 视频、八张阶段截图、原始记录、JSON／CSV 报告和可复查的事件日志。本机已生成的完整视频位于 `artifacts/calibration_viewer_demo/presentation/calibration_workflow.mp4`，该目录按实验产物忽略，不提交进 Git。
+演示现已统一驱动会话配置，已知负载确定增益后重新核验时序，再检查十个含噪批次、三档控制周期及其他关节固定时的重力模型。阈值在采集前声明，失败停止并保留记录。
+
+默认生成中文 41 秒、1280×720、24 fps 视频、八张阶段截图、原始记录、JSON／CSV 报告和可复查的事件日志。本机已生成的完整视频位于 `artifacts/calibration_zh_release/presentation/calibration_workflow.mp4`，该目录按实验产物忽略，不提交进 Git。
 
 交互回放：
 

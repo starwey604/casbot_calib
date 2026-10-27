@@ -47,3 +47,31 @@ def test_offscreen_rasterization_does_not_call_dynamics(monkeypatch):
         image=view.render(frame())
         assert image.shape==(180,320,3) and image.std()>5
         np.testing.assert_array_equal(view.data.qacc,np.zeros(view.model.nv))
+
+
+@pytest.mark.skipif(os.environ.get("CASBOT_TEST_RENDER")!="1",reason="Chinese video rendering opt-in")
+def test_chinese_captions_have_glyphs_and_wrap_without_spaces():
+    pytest.importorskip("PIL")
+    from PIL import Image,ImageDraw
+    from casbot_calib.presentation import DemoPresentation,_font,STORIES
+    font=_font(14)
+    missing=bytes(font.getmask(chr(0x10ffff)))
+    for char in "中文动力学标定":
+        assert bytes(font.getmask(char))!=missing
+    presentation=object.__new__(DemoPresentation);presentation.fonts={14:font}
+    draw=ImageDraw.Draw(Image.new("RGB",(400,200)))
+    text=STORIES["timing"][1]
+    lines=presentation._wrap(draw,text,150,14)
+    assert len(lines)>1 and "".join(lines)==text
+    assert all(draw.textlength(line,font=font)<=150 for line in lines)
+
+
+@pytest.mark.skipif(os.environ.get("CASBOT_TEST_RENDER")!="1",reason="Explicit GPU/Mesa render smoke opt-in")
+def test_seven_joint_snapshot_matches_pinocchio_fk_without_mujoco_dynamics(tmp_path,monkeypatch):
+    mj=pytest.importorskip('mujoco');forbid_dynamics(monkeypatch,mj)
+    from casbot_calib.arm_model import default_arm_config,load_arm_model
+    from casbot_calib import _core
+    from casbot_calib.arm_viewer import render_arm_snapshot
+    result=render_arm_snapshot(default_arm_config(),_core.ArmDynamics(load_arm_model()),tmp_path)
+    assert result['passed'] and len(result['body_errors'])==8
+    assert (tmp_path/'arm_geometry.png').exists()

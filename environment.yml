@@ -15,6 +15,8 @@ dependencies:
   - cmake>=3.26,<5
   - ninja
   - eigen>=3.4,<4
+  - libboost-headers>=1.88,<1.89  # Odeint; match the native Boost family in the locks
+  - pinocchio>=3.9,<4
   - pybind11>=2.13,<4
   - scikit-build-core>=0.10,<1
   - conda-lock>=3,<5

@@ -4,7 +4,7 @@
 
 输出侧主模型：
 
-`J*ddq + b*dq + fc*tanh(dq/vs) + k*(q-q0) = g*i + tau_contact`。
+`J*ddq + b*dq + fc*tanh(dq/vs) + k*(q-q0) + gravity_sin*sin(q) + gravity_cos*cos(q) = g*i + tau_contact`。
 
 `g` 已经是输出侧 Nm/A，不再乘减速比；`J` 是整体等效惯量，不再另加已折算转子惯量。`k` 是外部实验夹具或整体可见柔顺性，不代表要调整集成模组的内部减速器。
 
@@ -14,6 +14,7 @@
 | `damping` | 0.12 | Nm s/rad；主要辨识参数 |
 | `coulomb` | 0.06 | Nm；主要辨识参数 |
 | `spring` | 3.0 | Nm/rad；自由关节设 0 并关闭相应回归列 |
+| `gravity_sin/gravity_cos` | 0 / 0 | Nm；带符号的单关节重力系数，其他关节固定 |
 | `spring_zero` | 0 | rad；固定先验 |
 | `friction_velocity` | 0.03 | rad/s；固定先验 |
 | `gain` | 2.0 | 输出侧 Nm/A；先验或已知附加惯量实验确定 |
@@ -28,6 +29,10 @@
 驱动请求为 `kp*(q_ref-q)+kd*(dq_ref-dq)+torque_ff`。混合 PD 使用内部当前真实状态计算；纯力矩模式忽略 PD。请求先限幅，再按一阶响应转为实际电流。无 FOC、电磁或齿轮接触细节。
 
 固定双惯量压力场景使用 `motor_inertia=0.02 kg m²`、`coupling_spring=90 Nm/rad`、`coupling_damping=0.25 Nm s/rad`。电流作用在驱动侧，输出位置仍是唯一默认位置观测。辨识只输出单惯量有效模型，附带独立频带残差。
+
+重力项默认关闭，因此原 A–F 数值模型保持原设定。启用 `Prior.include_gravity=True` 时，sin/cos 列与摩擦一样投影到相同傅里叶频带，允许正负系数；惯量仍为正，摩擦／阻尼／夹具刚度仍非负。势能增加 `-gravity_sin*cos(q)+gravity_cos*sin(q)`，已由独立解析数据辨识和能量测试检查。
+
+演示的重力补充实验移除物理弹簧，使用宽角度轨迹，配置 `gravity_sin=0.35 Nm`、`gravity_cos=-0.12 Nm`，均为合成值。不能把二者当成各连杆质量／重心的唯一解；同样不能在很小角度下同时自由恢复线性弹簧与正弦重力。其结果使用 `output_joint_gravity_v2` 版本，和弹簧台 `output_joint_v1` 分开保存。
 
 ## 单弦与拨片
 
@@ -56,6 +61,8 @@
 
 所有 C++ 时序为 `int64` 纳秒。物理步长默认 50 µs，接触默认 10 µs。事件时间与积分网格分离，积分步会在指令送达或传感器采样前截断，不把 1.35 ms 延迟取整为 1 或 2 ms。
 
+统一积分后端为Boost.Odeint RK4，固定步长上限、事件处缩短；每批采集元数据记录Boost版本与步长。单惯量、双惯量和接触共用后端，详见 [积分接口与时序语义](integration_backend.md)。
+
 - 指令：`send_ns` 是主机发送时间，延迟／抖动后送达；乱序旧指令不会覆盖更新的指令。
 - 反馈：`sample_ns` 是位置／速度采样时刻；`current_sample_ns` 是电流实际采样时刻；`receive_ns` 是反馈送达主机时刻。
 - `current_lag_ns` 模拟通道之间的实际观测错位，独立于反馈包的整体传输延迟。
@@ -68,3 +75,7 @@
 NPZ 存数值数组，JSON 存配置、单位、来源、时序声明、版本和 SHA256。真值在独立 `evaluation_truth.npz`，包含实际加速度、接触力、弦状态与机械能。`identify` 不读真值或含有真值的 metadata，只读 observations 和显式 Prior。
 
 双编码器存在不等于 SDK 同时开放两侧数据。默认能力没有独立力矩或外部力传感器，也不预设内部 PI 可调。后续千分表作为可选位移列接入；必须结合已知负载才讨论刚度，不能把位移计当作力传感器。
+
+## R1整臂模型
+
+上述单关节实验继续保留；新增模型以arm schema 1 / `serial_rigid_v1`单独保存，由Pinocchio计算M(q)、科氏/离心向量、重力、正/逆动力学与FK，摩擦显式附加。默认七轴右臂的惯性/摩擦是合成配置，未进行参数标定。模型来源、转子/工具只计一次的约定及检查见 [R1说明](arm_r1.md)。
