@@ -1,0 +1,437 @@
+{
+  "schema_version": 1,
+  "model_id": "casbot_20251015_nominal",
+  "source_urdf_sha256": "3a707a8ed703504922478481758ddf22ac97c9f2d03558580644ec86d927d955",
+  "mesh_sha256": {
+    "base_link.STL": "e9f1c06ae8cabed1fe5466fe976960995ce01fae2c53b68a951e0c655967dc56",
+    "waist_yaw_link.STL": "f1af2cfce5e7227400e17b77af1d78bcfd85e60208d806cc258b4c3f4b99b81a",
+    "left_shoulder_pitch_link.STL": "323a37cfd46a682fdab03b325781c2ef60b35092708134eabee93e6f57e5a8b5",
+    "left_shoulder_roll_link.STL": "538c22b169b5986743656c1446347cef72d5d5406cedc542f361199983ae0eaa",
+    "left_shoulder_yaw_link.STL": "f6ea616868014fa9729e2e51bd465265644bacfef037c05ec47c8232b1a4eddd",
+    "left_elbow_pitch_link.STL": "36a8e7126425b8337fe247a1ee5a9095a841d9e510b1a1250e1ef4910bc9cf5a",
+    "left_wrist_yaw_link.STL": "584e480eb5f1e1ad534b48aaf83b05faea53a6cd6bccd0345ff4f0123864e94e",
+    "left_wrist_pitch_link.STL": "c850dfbb7a5d99fe9a860a76031db4ec4e5f35d4c29b37b666c24b86ce299274",
+    "left_wrist_roll_link.STL": "21b34b44e526a81e041a9356339b49bf7f3c60409b59879fcbe10a73fab9588d",
+    "left_palm_base_link.STL": "39f81fe44efcbf07b3498b2d383229bd7565d6b2a5bdbb90b7497e4058f9c167",
+    "left_index_mcp_link.STL": "cebeb133c56eab9fb287ffac7ee347ed27b5093ca545365d027289cc93898be8",
+    "left_index_dip_link.STL": "fa7264cb81c42a7ec37ff0599c3d314f412f1dc2e913fedd6b86106da279e69f",
+    "left_middle_mcp_link.STL": "94a10f89417a46c980ccd9c7d2260938c57b8940c353d0a485fd169808073056",
+    "left_middle_dip_link.STL": "9732e57966caeac2917495c20cf1c1594b7ea498df2272939a484beb05aef018",
+    "left_pinky_mcp_link.STL": "b4a50380bacfaf359e954b03e527a3235976cae85d90834264f0b43a6f0326ea",
+    "left_pinky_dip_link.STL": "dd6d37ce938aef891a35d3a025ed1270f52407a8a296509f2c0b4ed6ee808c26",
+    "left_ring_mcp_link.STL": "f919c0bc8eacb08cc5ae077cebcfcb0d7b338ca83fa1aca482b3a8f93f066fe6",
+    "left_ring_dip_link.STL": "778010ac35f66091dcde74dd3cb7cbc0c6e3b397b571938a84022e302b5ffb1b",
+    "left_thumb_mcp_roll_link.STL": "4242a7c10bab463620074323bf4d2d115d5e48c78ee938d3713fa8954ec01d89",
+    "left_thumb_mcp_pitch_link.STL": "0b3196a4cd04c0c4af9354a2c7dce4d76eada35e9f3bfa1a594df3c227f5538d",
+    "left_thumb_dip_link.STL": "e02d215b2b2adeac8a413ff39323cc588b62c5a99e5491278fae581e443d22c8",
+    "right_shoulder_pitch_link.STL": "deb88ee633c19de42f6f3750e67b2cd1929f5b57d95804240ada0376646b5c00",
+    "right_shoulder_roll_link.STL": "3c374e7bc2125a15e8169419612245bfe0e0463071d0a136ae26f8dd74aa68c6",
+    "right_shoulder_yaw_link.STL": "93651d6190a957056188eb6a507895c100f78d41155d32054b2548fbf00bdf55",
+    "right_elbow_pitch_link.STL": "727f6ca8d06def27dfe0947fbc0342672611e03fbf8a6b172b4b85bc117a2428",
+    "right_wrist_yaw_link.STL": "f8071d4307d8d19defee2f301178a91ff145389df64bcf91cc9b5d998b6631a2",
+    "right_wrist_pitch_link.STL": "798053845674e799fd4507e75069a44571130e26d03f58090b1f67f1b9f7c822",
+    "right_wrist_roll_link.STL": "4001acd9a74cc3af7eb7d618c408de4bf2d677eee05b51305d73f91f35caf8e8",
+    "right_palm_base_link.STL": "f4570a116c277d25c5f46e4af02956284850e319924d4022de7588d9b66b7df7",
+    "right_index_mcp_link.STL": "b0b34c2c7a9c15b69f3f154febde5cd0c0105a77c8fa9b04184951128e24f8f8",
+    "right_index_dip_link.STL": "8a7b637fd751cf0f62d828e6e99fe6845fbd2ad4173a44aa3019b0291e067176",
+    "right_index_tip_link.STL": "f3bdd4157641478e98a6ecb03273760c951d8dcc47eb5c143b159a0e0b452486",
+    "right_middle_mcp_link.STL": "dfe7ce9a9f5a3ccc7a08b3f57990fb0583e4724678d47d244141ab48c1fb2eb6",
+    "right_middle_dip_link.STL": "19303a64c84cf39d26a5731ac446a66114499c631f849a10881caa58c197b954",
+    "right_middle_tip_link.STL": "852ca113c69b00a9c77a003dce8e0b5b17f16977cf26d9094b4e974c7e6cd75f",
+    "right_pinky_mcp_link.STL": "a2d96d1e7c5d570293db174c9b79d231fffb1f0f7a31700c6bce3d914830404c",
+    "right_pinky_dip_link.STL": "a0564c28d164e7e4937e832ae2d66e81dd4898310c36f0653d8800623f28dc55",
+    "right_pinky_tip_link.STL": "46d8902ccd9a8401216eab8bc2f57b10e1c0293f75fe0c2fe0a3bc0c54b66022",
+    "right_ring_mcp_link.STL": "a21984506e3dcc9f8a420f6db3a4979fd4064483fe3fb01497c869c6f529bae1",
+    "right_ring_dip_link.STL": "3b0267ef68924ed1b1b18190beaae8699d6720e8f1fd6fc09a1349d2dd64ff9b",
+    "right_ring_tip_link.STL": "3fb52a2a99be346ba52fd4eaa20e0f453f5f36d5f38c674584a84e63bbd7bc07",
+    "right_thumb_mcp_roll_link.STL": "678f0f7e690c948fd7136b6002175d94c0b4ab79ec6b9debda7528c303221301",
+    "right_thumb_mcp_pitch_link.STL": "1ae28886af10ddb3e3100bdbb63ef6f8bbc7521e6b18008187be03823f128303",
+    "right_thumb_dip_link.STL": "d232949e3060a22047e4d11a7c0a07d921f375d5de7a76c3547a9da28a4592b9",
+    "right_thumb_tip_link.STL": "902f5c2cf36e0b32aaba61cd5712b547bc029f14524d14467402614b31be17ac"
+  },
+  "array_sha256": "fe5e9581e6afba76e0c696298af1ea792e960e7b0af4bb72d30be3c896492df4",
+  "joint_names": [
+    "left_shoulder_pitch_joint",
+    "left_shoulder_roll_joint",
+    "left_shoulder_yaw_joint",
+    "left_elbow_pitch_joint",
+    "left_wrist_yaw_joint",
+    "left_wrist_pitch_joint",
+    "left_wrist_roll_joint",
+    "right_shoulder_pitch_joint",
+    "right_shoulder_roll_joint",
+    "right_shoulder_yaw_joint",
+    "right_elbow_pitch_joint",
+    "right_wrist_yaw_joint",
+    "right_wrist_pitch_joint",
+    "right_wrist_roll_joint"
+  ],
+  "builder": "Pinocchio URDF geometry + SciPy spatial.ConvexHull (Qhull)",
+  "envelopes": "One convex outer envelope per movable joint; fixed root shells kept separate; fixed fingers merged; geometric over-approximation",
+  "geometries": [
+    {
+      "name": "fixed_base_link_0",
+      "parent_joint_index": -1,
+      "array_key": "g0",
+      "kind": "robot",
+      "frame": "parent joint local; Pinocchio fixed-link geometry transforms already applied",
+      "source_meshes": [
+        "base_link.STL"
+      ],
+      "source_vertices": 35400,
+      "hull_vertices": 3851,
+      "triangles": 7698,
+      "maximum_vertex_plane_violation_m": 5.551115123125783e-17,
+      "maximum_local_radius_m": 0.15840229304115594
+    },
+    {
+      "name": "fixed_waist_yaw_link_0",
+      "parent_joint_index": -1,
+      "array_key": "g1",
+      "kind": "robot",
+      "frame": "parent joint local; Pinocchio fixed-link geometry transforms already applied",
+      "source_meshes": [
+        "waist_yaw_link.STL"
+      ],
+      "source_vertices": 26862,
+      "hull_vertices": 1100,
+      "triangles": 2196,
+      "maximum_vertex_plane_violation_m": 1.1102230246251565e-16,
+      "maximum_local_radius_m": 0.5244302378050733
+    },
+    {
+      "name": "left_shoulder_pitch_joint",
+      "parent_joint_index": 0,
+      "array_key": "g2",
+      "kind": "robot",
+      "frame": "parent joint local; Pinocchio fixed-link geometry transforms already applied",
+      "source_meshes": [
+        "left_shoulder_pitch_link.STL"
+      ],
+      "source_vertices": 6524,
+      "hull_vertices": 888,
+      "triangles": 1772,
+      "maximum_vertex_plane_violation_m": 3.400058012914542e-16,
+      "maximum_local_radius_m": 0.11116996964212958
+    },
+    {
+      "name": "left_shoulder_roll_joint",
+      "parent_joint_index": 1,
+      "array_key": "g3",
+      "kind": "robot",
+      "frame": "parent joint local; Pinocchio fixed-link geometry transforms already applied",
+      "source_meshes": [
+        "left_shoulder_roll_link.STL"
+      ],
+      "source_vertices": 8503,
+      "hull_vertices": 1416,
+      "triangles": 2828,
+      "maximum_vertex_plane_violation_m": 2.7755575615628914e-17,
+      "maximum_local_radius_m": 0.11178230481766102
+    },
+    {
+      "name": "left_shoulder_yaw_joint",
+      "parent_joint_index": 2,
+      "array_key": "g4",
+      "kind": "robot",
+      "frame": "parent joint local; Pinocchio fixed-link geometry transforms already applied",
+      "source_meshes": [
+        "left_shoulder_yaw_link.STL"
+      ],
+      "source_vertices": 8940,
+      "hull_vertices": 522,
+      "triangles": 1040,
+      "maximum_vertex_plane_violation_m": 1.3877787807814457e-17,
+      "maximum_local_radius_m": 0.12012181917444052
+    },
+    {
+      "name": "left_elbow_pitch_joint",
+      "parent_joint_index": 3,
+      "array_key": "g5",
+      "kind": "robot",
+      "frame": "parent joint local; Pinocchio fixed-link geometry transforms already applied",
+      "source_meshes": [
+        "left_elbow_pitch_link.STL"
+      ],
+      "source_vertices": 10495,
+      "hull_vertices": 680,
+      "triangles": 1356,
+      "maximum_vertex_plane_violation_m": 1.3877787807814457e-17,
+      "maximum_local_radius_m": 0.0855172026664359
+    },
+    {
+      "name": "left_wrist_yaw_joint",
+      "parent_joint_index": 4,
+      "array_key": "g6",
+      "kind": "robot",
+      "frame": "parent joint local; Pinocchio fixed-link geometry transforms already applied",
+      "source_meshes": [
+        "left_wrist_yaw_link.STL"
+      ],
+      "source_vertices": 16758,
+      "hull_vertices": 1131,
+      "triangles": 2258,
+      "maximum_vertex_plane_violation_m": 4.163336342344337e-17,
+      "maximum_local_radius_m": 0.1903228723155337
+    },
+    {
+      "name": "left_wrist_pitch_joint",
+      "parent_joint_index": 5,
+      "array_key": "g7",
+      "kind": "robot",
+      "frame": "parent joint local; Pinocchio fixed-link geometry transforms already applied",
+      "source_meshes": [
+        "left_wrist_pitch_link.STL"
+      ],
+      "source_vertices": 9604,
+      "hull_vertices": 1576,
+      "triangles": 3148,
+      "maximum_vertex_plane_violation_m": 1.3877787807814457e-17,
+      "maximum_local_radius_m": 0.04903894004359586
+    },
+    {
+      "name": "left_wrist_roll_joint",
+      "parent_joint_index": 6,
+      "array_key": "g8",
+      "kind": "robot",
+      "frame": "parent joint local; Pinocchio fixed-link geometry transforms already applied",
+      "source_meshes": [
+        "left_wrist_roll_link.STL",
+        "left_palm_base_link.STL",
+        "left_index_mcp_link.STL",
+        "left_index_dip_link.STL",
+        "left_middle_mcp_link.STL",
+        "left_middle_dip_link.STL",
+        "left_pinky_mcp_link.STL",
+        "left_pinky_dip_link.STL",
+        "left_ring_mcp_link.STL",
+        "left_ring_dip_link.STL",
+        "left_thumb_mcp_roll_link.STL",
+        "left_thumb_mcp_pitch_link.STL",
+        "left_thumb_dip_link.STL"
+      ],
+      "source_vertices": 91467,
+      "hull_vertices": 1591,
+      "triangles": 3178,
+      "maximum_vertex_plane_violation_m": 2.7755575615628914e-16,
+      "maximum_local_radius_m": 0.26390582221374786
+    },
+    {
+      "name": "right_shoulder_pitch_joint",
+      "parent_joint_index": 7,
+      "array_key": "g9",
+      "kind": "robot",
+      "frame": "parent joint local; Pinocchio fixed-link geometry transforms already applied",
+      "source_meshes": [
+        "right_shoulder_pitch_link.STL"
+      ],
+      "source_vertices": 10327,
+      "hull_vertices": 882,
+      "triangles": 1760,
+      "maximum_vertex_plane_violation_m": 3.400058012914542e-16,
+      "maximum_local_radius_m": 0.11116996964212958
+    },
+    {
+      "name": "right_shoulder_roll_joint",
+      "parent_joint_index": 8,
+      "array_key": "g10",
+      "kind": "robot",
+      "frame": "parent joint local; Pinocchio fixed-link geometry transforms already applied",
+      "source_meshes": [
+        "right_shoulder_roll_link.STL"
+      ],
+      "source_vertices": 8478,
+      "hull_vertices": 1415,
+      "triangles": 2826,
+      "maximum_vertex_plane_violation_m": 2.7755575615628914e-17,
+      "maximum_local_radius_m": 0.11178215939655954
+    },
+    {
+      "name": "right_shoulder_yaw_joint",
+      "parent_joint_index": 9,
+      "array_key": "g11",
+      "kind": "robot",
+      "frame": "parent joint local; Pinocchio fixed-link geometry transforms already applied",
+      "source_meshes": [
+        "right_shoulder_yaw_link.STL"
+      ],
+      "source_vertices": 8952,
+      "hull_vertices": 509,
+      "triangles": 1014,
+      "maximum_vertex_plane_violation_m": 1.3877787807814457e-17,
+      "maximum_local_radius_m": 0.12012181917444052
+    },
+    {
+      "name": "right_elbow_pitch_joint",
+      "parent_joint_index": 10,
+      "array_key": "g12",
+      "kind": "robot",
+      "frame": "parent joint local; Pinocchio fixed-link geometry transforms already applied",
+      "source_meshes": [
+        "right_elbow_pitch_link.STL"
+      ],
+      "source_vertices": 12743,
+      "hull_vertices": 680,
+      "triangles": 1356,
+      "maximum_vertex_plane_violation_m": 1.3877787807814457e-17,
+      "maximum_local_radius_m": 0.0855172026664359
+    },
+    {
+      "name": "right_wrist_yaw_joint",
+      "parent_joint_index": 11,
+      "array_key": "g13",
+      "kind": "robot",
+      "frame": "parent joint local; Pinocchio fixed-link geometry transforms already applied",
+      "source_meshes": [
+        "right_wrist_yaw_link.STL"
+      ],
+      "source_vertices": 18538,
+      "hull_vertices": 1098,
+      "triangles": 2192,
+      "maximum_vertex_plane_violation_m": 1.5265566588595902e-16,
+      "maximum_local_radius_m": 0.1903228723155337
+    },
+    {
+      "name": "right_wrist_pitch_joint",
+      "parent_joint_index": 12,
+      "array_key": "g14",
+      "kind": "robot",
+      "frame": "parent joint local; Pinocchio fixed-link geometry transforms already applied",
+      "source_meshes": [
+        "right_wrist_pitch_link.STL"
+      ],
+      "source_vertices": 9733,
+      "hull_vertices": 1574,
+      "triangles": 3144,
+      "maximum_vertex_plane_violation_m": 1.3877787807814457e-17,
+      "maximum_local_radius_m": 0.04903894004359586
+    },
+    {
+      "name": "right_wrist_roll_joint",
+      "parent_joint_index": 13,
+      "array_key": "g15",
+      "kind": "robot",
+      "frame": "parent joint local; Pinocchio fixed-link geometry transforms already applied",
+      "source_meshes": [
+        "right_wrist_roll_link.STL",
+        "right_palm_base_link.STL",
+        "right_index_mcp_link.STL",
+        "right_index_dip_link.STL",
+        "right_index_tip_link.STL",
+        "right_middle_mcp_link.STL",
+        "right_middle_dip_link.STL",
+        "right_middle_tip_link.STL",
+        "right_pinky_mcp_link.STL",
+        "right_pinky_dip_link.STL",
+        "right_pinky_tip_link.STL",
+        "right_ring_mcp_link.STL",
+        "right_ring_dip_link.STL",
+        "right_ring_tip_link.STL",
+        "right_thumb_mcp_roll_link.STL",
+        "right_thumb_mcp_pitch_link.STL",
+        "right_thumb_dip_link.STL",
+        "right_thumb_tip_link.STL"
+      ],
+      "source_vertices": 97352,
+      "hull_vertices": 1433,
+      "triangles": 2862,
+      "maximum_vertex_plane_violation_m": 2.498001805406602e-16,
+      "maximum_local_radius_m": 0.2641901312998796
+    }
+  ],
+  "excluded_pairs": [
+    {
+      "first": "left_shoulder_pitch_joint",
+      "second": "fixed_base_link_0",
+      "reason": "URDF adjacent mechanical assembly; enclosing shells meet at the joint interface; travel limits must be checked separately"
+    },
+    {
+      "first": "left_shoulder_pitch_joint",
+      "second": "fixed_waist_yaw_link_0",
+      "reason": "URDF adjacent mechanical assembly; enclosing shells meet at the joint interface; travel limits must be checked separately"
+    },
+    {
+      "first": "left_shoulder_roll_joint",
+      "second": "left_shoulder_pitch_joint",
+      "reason": "URDF adjacent mechanical assembly; enclosing shells meet at the joint interface; travel limits must be checked separately"
+    },
+    {
+      "first": "left_shoulder_yaw_joint",
+      "second": "left_shoulder_roll_joint",
+      "reason": "URDF adjacent mechanical assembly; enclosing shells meet at the joint interface; travel limits must be checked separately"
+    },
+    {
+      "first": "left_elbow_pitch_joint",
+      "second": "left_shoulder_yaw_joint",
+      "reason": "URDF adjacent mechanical assembly; enclosing shells meet at the joint interface; travel limits must be checked separately"
+    },
+    {
+      "first": "left_wrist_yaw_joint",
+      "second": "left_elbow_pitch_joint",
+      "reason": "URDF adjacent mechanical assembly; enclosing shells meet at the joint interface; travel limits must be checked separately"
+    },
+    {
+      "first": "left_wrist_pitch_joint",
+      "second": "left_wrist_yaw_joint",
+      "reason": "URDF adjacent mechanical assembly; enclosing shells meet at the joint interface; travel limits must be checked separately"
+    },
+    {
+      "first": "left_wrist_roll_joint",
+      "second": "left_wrist_pitch_joint",
+      "reason": "URDF adjacent mechanical assembly; enclosing shells meet at the joint interface; travel limits must be checked separately"
+    },
+    {
+      "first": "right_shoulder_pitch_joint",
+      "second": "fixed_base_link_0",
+      "reason": "URDF adjacent mechanical assembly; enclosing shells meet at the joint interface; travel limits must be checked separately"
+    },
+    {
+      "first": "right_shoulder_pitch_joint",
+      "second": "fixed_waist_yaw_link_0",
+      "reason": "URDF adjacent mechanical assembly; enclosing shells meet at the joint interface; travel limits must be checked separately"
+    },
+    {
+      "first": "right_shoulder_roll_joint",
+      "second": "right_shoulder_pitch_joint",
+      "reason": "URDF adjacent mechanical assembly; enclosing shells meet at the joint interface; travel limits must be checked separately"
+    },
+    {
+      "first": "right_shoulder_yaw_joint",
+      "second": "right_shoulder_roll_joint",
+      "reason": "URDF adjacent mechanical assembly; enclosing shells meet at the joint interface; travel limits must be checked separately"
+    },
+    {
+      "first": "right_elbow_pitch_joint",
+      "second": "right_shoulder_yaw_joint",
+      "reason": "URDF adjacent mechanical assembly; enclosing shells meet at the joint interface; travel limits must be checked separately"
+    },
+    {
+      "first": "right_wrist_yaw_joint",
+      "second": "right_elbow_pitch_joint",
+      "reason": "URDF adjacent mechanical assembly; enclosing shells meet at the joint interface; travel limits must be checked separately"
+    },
+    {
+      "first": "right_wrist_pitch_joint",
+      "second": "right_wrist_yaw_joint",
+      "reason": "URDF adjacent mechanical assembly; enclosing shells meet at the joint interface; travel limits must be checked separately"
+    },
+    {
+      "first": "right_wrist_roll_joint",
+      "second": "right_wrist_pitch_joint",
+      "reason": "URDF adjacent mechanical assembly; enclosing shells meet at the joint interface; travel limits must be checked separately"
+    },
+    {
+      "first": "left_wrist_yaw_joint",
+      "second": "left_wrist_roll_joint",
+      "reason": "Known nominal wrist-yaw/wrist-roll housing overlap; source benchmark MJCF explicit exclusion"
+    },
+    {
+      "first": "right_wrist_yaw_joint",
+      "second": "right_wrist_roll_joint",
+      "reason": "Known nominal wrist-yaw/wrist-roll housing overlap; source benchmark MJCF explicit exclusion"
+    }
+  ],
+  "exclusions_policy": "Only same-body fixed aggregation, explicitly listed adjacent assemblies and two audited wrist overlaps; no SRDF Never blanket suppression",
+  "coverage": "Geometry present in the nominal upper-body URDF only; fixture/environment proxies are configured independently",
+  "source_geometry_count": 45
+}

@@ -1,0 +1,22 @@
+schema_version: 1
+scope: localhost_ros_mock
+duration_s: 1.6
+tail_s: 0.25
+control_hz: 500
+gain_nm_a: 2.0
+gain_status: synthetic_declared
+maximum_current_rmse_a: 0.0015
+cases:
+  - {name: train_500_500, command_hz: 500, feedback_hz: 500, train: true}
+  - {name: validate_500_500, command_hz: 500, feedback_hz: 500}
+  - {name: validate_250_500, command_hz: 250, feedback_hz: 500}
+  - {name: validate_100_500, command_hz: 100, feedback_hz: 500}
+  - {name: feedback_500_250, command_hz: 500, feedback_hz: 250}
+  - {name: feedback_250_100, command_hz: 250, feedback_hz: 100}
+  - {name: control_1000, command_hz: 500, feedback_hz: 500, control_hz: 1000}
+  - {name: compare_1000_1000, command_hz: 1000, feedback_hz: 1000, control_hz: 1000}
+  - {name: software_pd, command_hz: 250, feedback_hz: 250, mode: 1}
+  - {name: best_effort, command_hz: 500, feedback_hz: 500, reliable: false}
+  - {name: cpu_load, command_hz: 500, feedback_hz: 500, load_workers: 1}
+  - {name: rosbag, command_hz: 500, feedback_hz: 500, record: true}
+  - {name: faults, command_hz: 250, feedback_hz: 250, faults: true, inject_every: 17, inject_delay_ns: 60000000, valid_for_ns: 30000000}

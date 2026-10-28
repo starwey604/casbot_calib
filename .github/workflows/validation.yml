@@ -62,11 +62,20 @@ jobs:
       - run: bash scripts/humble/install_system.sh
       - run: bash scripts/humble/setup_python.sh
       - run: bash scripts/humble/run.sh bash scripts/humble/validate.sh artifacts/humble_validation
+      - run: bash scripts/humble/run.sh bash scripts/humble/ros.sh casbot-calib ros-benchmark --output artifacts/humble_validation/ros_stream
+      - run: bash scripts/humble/run.sh python scripts/humble/verify_m2.py --folder artifacts/humble_validation/ros_stream --regression artifacts/humble_validation
+      - run: bash scripts/humble/run.sh casbot-calib staged-suite --output artifacts/humble_validation/staged --fps 6 --ros-report artifacts/humble_validation/ros_stream/analysis/report.json
+      - run: bash scripts/humble/run.sh python scripts/humble/verify_release.py --regression artifacts/humble_validation --ros artifacts/humble_validation/ros_stream --staged artifacts/humble_validation/staged --output artifacts/humble_validation/release.json
       - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: calibration-humble
-          path: artifacts/humble_validation
+          path: |
+            artifacts/humble_validation
+            !artifacts/humble_validation/staged/runs/**/observations.npz
+            !artifacts/humble_validation/staged/runs/**/commands.npz
+            !artifacts/humble_validation/staged/runs/**/planned_commands.npz
+            !artifacts/humble_validation/staged/evaluation/**/truth.npz
   viewer:
     runs-on: ubuntu-latest
     defaults:

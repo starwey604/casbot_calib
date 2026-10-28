@@ -12,7 +12,8 @@
 | [TriCal 2020](https://doi.org/10.3390/s20205919) | 未来几何＋整体柔顺性；已有 task 版本仅做几何，未实现论文刚度部分 |
 | [再激励 2022](https://www.mdpi.com/2076-3417/12/3/1659) | 弦振动状态在重复拨动间持续，接触改变后续响应 |
 | [微轨迹 2025](https://vibsys.put.poznan.pl/_journal/2025-36-2/articles/vps_2025205.pdf) | 深度、材料作为条件，不把论文 192 µm 步长当机器人精度要求 |
-| [物理一致性 2018](https://arxiv.org/abs/1701.04395) | 多轴后续方向；首版仅正惯量／非负耗散，无 SDP/LMI |
+| [Wensing/Kim/Slotine，物理一致性 2018](https://arxiv.org/abs/1701.04395) | 新版双臂已用4×4伪惯性PSD/LMI和Clarabel；未采用额外CAD椭球支撑约束 |
+| [Grotjahn等 2001](https://doi.org/10.1016/S0020-7683(00)00141-4)、[Indri/Trapani 2020](https://iris.polito.it/handle/11583/2839166) | 分阶段刚体/摩擦设计参考；本项目的起动阈值回溯和保护策略单独验证，不宣称复现全文 |
 
 ## 当前 task 的来源记录
 
@@ -43,3 +44,5 @@
 2026-10-27 扩展到 `computeJointTorqueRegressor`、`computeRNEADerivatives`、`computeABADerivatives` 和TCP雅可比；参数顺序/原点惯量与摩擦/转子分离约定见同一说明。有限差分仅用于验证解析导数，后续辨识不再手写整臂刚体回归展开。
 
 [Boost.Odeint官方实现](https://github.com/boostorg/odeint/tree/boost-1.88.0)：统一固定步长RK4与官方Eigen适配，版本来自双平台现有Boost1.88锁记录。事件调度仍由项目维护，后端与验证说明见 [统一积分接口](integration_backend.md)。
+
+当前Humble主环境实际使用Pinocchio4.0.0、Coal3.0.3和Boost1.74；上述3.9/1.88对应保留的conda回归环境。新版分阶段流程的论文落实、数值方法与适用边界见[分阶段流程](collision_staged_workflow.md)，不以文献实验精度代替本项目实机指标。

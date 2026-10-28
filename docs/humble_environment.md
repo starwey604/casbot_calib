@@ -33,14 +33,12 @@ bash scripts/humble/container.sh cmake -S tests/installation -B build/humble-con
   -DCMAKE_PREFIX_PATH="$PWD/install/humble-native;/opt/ros/humble"
 bash scripts/humble/container.sh cmake --build build/humble-consumer
 bash scripts/humble/container.sh build/humble-consumer/calib_consumer
-bash scripts/humble/container.sh colcon --log-base log/humble build --base-paths ros \
-  --build-base build/humble-ros --install-base install/humble-ros \
-  --cmake-args -DCMAKE_BUILD_TYPE=Release -DPython3_EXECUTABLE=/usr/bin/python3
+bash scripts/humble/container.sh bash scripts/humble/build_ros.sh
 ```
 
 colcon入口明确扫描`ros/`，避免根目录独立CMake项目影响嵌套包发现。ament/rosidl构建辅助脚本显式使用系统Python，以匹配apt安装的catkin_pkg等构建依赖；离线求解/绑定使用同版本系统Python创建的venv。`casbot_calib_core`是ament安装薄封装，编译同一份`cpp/`源码。独立消费者使用 `find_package(casbot_calib CONFIG REQUIRED)`；ROS消费者使用 `find_package(casbot_calib_core REQUIRED)`，均链接 `casbot_calib::core`，不复制算法。Python wheel只安装Python组件，C++开发文件通过Core组件/ament安装。
 
-本轮ROS包只安装核心，不是硬件驱动或标定控制器；甲方SDK和topic接口在M2实现。package.xml维护者取自本机Git配置，仓库未声明许可证，发布前应明确许可元数据。
+ROS包包括核心ament薄封装、消息接口与C++双端Mock。Mock端点使用wall timer，尚非ros2_control硬件插件；甲方SDK/topic适配仍待确认。package.xml维护者取自本机Git配置，仓库未声明许可证，发布前应明确许可元数据。
 
 ## 实验
 

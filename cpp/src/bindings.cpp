@@ -6,10 +6,12 @@ namespace py=pybind11;
 using namespace casbot;
 void bind_arm(py::module_& m);
 void bind_arm_simulator(py::module_& m);
+void bind_collision(py::module_& m);
 template<class T> py::array_t<T> column(std::size_t n) { return py::array_t<T>(n); }
 PYBIND11_MODULE(_core,m) {
   bind_arm(m);
   bind_arm_simulator(m);
+  bind_collision(m);
   m.doc()="Platform-independent virtual joint; arrays use SI units and int64 nanoseconds";
   py::class_<SimulationConfig> config(m,"SimulationConfig"); config.def(py::init<>());
 #define FIELD(x) config.def_readwrite(#x,&SimulationConfig::x)

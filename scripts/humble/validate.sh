@@ -19,8 +19,8 @@ cmake -S tests/installation -B build/humble-consumer -G Ninja \
   -DCMAKE_PREFIX_PATH="$PWD/install/humble-native;/opt/ros/humble"
 cmake --build build/humble-consumer
 build/humble-consumer/calib_consumer > "$output_dir/native-consumer.txt"
-colcon --log-base log/humble build --base-paths ros --build-base build/humble-ros \
-  --install-base install/humble-ros --cmake-args -DCMAKE_BUILD_TYPE=Release -DPython3_EXECUTABLE=/usr/bin/python3
+env PATH="/opt/ros/humble/bin:/usr/bin:/bin" colcon --log-base log/humble build --base-paths ros --build-base build/humble-ros \
+  --install-base install/humble-ros --cmake-args -DCMAKE_BUILD_TYPE=Release -DPython3_EXECUTABLE=/usr/bin/python3 -DPYTHON_EXECUTABLE=/usr/bin/python3
 cmake -S tests/installation -B build/humble-ament-consumer -G Ninja \
   -DCALIB_CONSUME_AMENT=ON -DCMAKE_PREFIX_PATH="$PWD/install/humble-ros/casbot_calib_core;/opt/ros/humble"
 cmake --build build/humble-ament-consumer

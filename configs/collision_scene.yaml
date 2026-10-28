@@ -1,0 +1,10 @@
+schema_version: 1
+clearance_m: 0.01
+fixture_geometry_measured: false
+coverage: nominal upper-body collision hulls plus synthetic waist fixture envelope
+obstacles:
+  - name: waist_fixture_proxy_unmeasured
+    attached_to_base: true
+    center: [0.07, 0.0, 0.15424]
+    half_extents: [0.12, 0.17, 0.05]
+    source: synthetic box around nominal waist height; not dimensions recovered from the screenshot

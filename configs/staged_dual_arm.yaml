@@ -1,0 +1,65 @@
+schema_version: 1
+mode: mock_only
+model: casbot_20251015_nominal_fixed_waist_dual
+control_period_ns: 2000000
+sample_period_ns: 1000000
+integration_ns: 50000
+timing_integration_ns: 25000  # pulse / stick-slip transitions require finer convergence
+collision_scene: configs/collision_scene.yaml
+home_rad: [0, 0.45, 0, -0.9, 0, 0, 0, 0, -0.45, 0, -0.9, 0, 0, 0]
+pose_amplitude_rad: [0.4, 0.18, 0.35, 0.4, 0.5, 0.4, 0.5, 0.4, 0.18, 0.35, 0.4, 0.5, 0.4, 0.5]
+settle_s: 0.6
+transition_s: 1.0
+gravity_train_poses: 24
+gravity_validation_poses: 8
+gravity_hold_s: 1.4
+friction_poses: 2
+friction_stroke_half_rad: 0.08
+friction_sample_period_ns: 250000
+friction_convergence_sample_period_ns: 125000
+friction_speeds_rad_s: [0.04, 0.08, 0.14]
+breakaway_dwell_s: [0.5, 1.5]
+breakaway_ramp_s: 1.0
+breakaway_slopes_nm_s: [0.12, 0.24]
+breakaway_repeats: 2
+breakaway_tracking_allowance_nm: 0.08
+breakaway_motion_allowance_rad: 0.003
+dynamic_period_s: 6.0
+dynamic_periods: 4
+dynamic_transition_s: 2.0
+dynamic_candidate_seeds: [27, 28, 29]
+inertia_sample_period_ns: 250000
+wrist_probe:
+  frequency_hz: 5.0
+  amplitude_rad: 0.004
+  bias_speed_rad_s: 0.18
+  duration_s: 2.0
+drive:
+  gain_nm_a: 2.0
+  gain_status: synthetic_declared
+  current_tau: 0.001
+  command_delay_ns: 1350000
+  feedback_delay_ns: 700000
+  torque_limit_nm: 100.0
+  position_noise_rad: 0.0000001
+  current_noise_a: 0.0002
+  kp: [150, 150, 80, 80, 20, 15, 10, 150, 150, 80, 80, 20, 15, 10]
+  kd: [10, 10, 5, 5, 1, 1, 0.7, 10, 10, 5, 5, 1, 1, 0.7]
+acceptance:
+  gravity_pair_rmse_nm: 0.01
+  gravity_absolute_rmse_nm: 0.08
+  friction_absolute_rmse_nm: 0.02
+  dynamic_normalized_rmse: 0.05
+  torque_floor_nm: 0.2
+mock:
+  seed: 20261028
+  mass_scales: [1.15, 0.9, 1.08, 1.2, 0.85, 1.1, 0.95, 0.9, 1.18, 0.87, 1.12, 1.2, 0.92, 1.1]
+  com_offset_m: 0.003
+  inertia_shape_scale: 1.08
+  viscous_nm_s_rad: 0.035
+  coulomb_nm: 0.04
+  static_friction_nm: 0.07
+notes:
+  - All parameters are synthetic, not manufacturer capabilities or measured limits.
+  - Common home must be independently verified before executing any real trial.
+  - Torque-ramp reference is a hold; realised displacement is checked after Mock collection.

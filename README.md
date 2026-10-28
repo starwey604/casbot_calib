@@ -1,6 +1,10 @@
 # casbot_calib
 
-主开发环境已迁至 **Ubuntu 22.04 / ROS 2 Humble**：[分轮实施计划](docs/humble_migration_plan.md)、[distrobox安装与运行](docs/humble_environment.md)、[M1验收记录](docs/humble_m1_validation.md)。下一轮做ROS通信/频率测试，再做碰撞门禁和重力→运动摩擦→起动摩擦→惯量分阶段辨识。conda入口暂保留作为迁移对照。
+主开发环境已迁至 **Ubuntu 22.04 / ROS 2 Humble**：[分轮实施计划](docs/humble_migration_plan.md)、[distrobox安装与运行](docs/humble_environment.md)、[M1验收记录](docs/humble_m1_validation.md)。按计划推进ROS通信/频率测试、碰撞门禁和重力→运动摩擦→起动摩擦→惯量分阶段辨识。conda入口暂保留作为迁移对照。
+
+M2本机ROS双端Mock与频率/延迟测试已实现：[运行与数据契约](docs/ros_transport.md)、[验收记录](docs/ros_m2_validation.md)。默认命令/控制/反馈发布500Hz，设备采样独立；频率实际达标情况另报，尚未接甲方实机接口。
+
+新版入口见[分阶段流程与碰撞门禁](docs/collision_staged_workflow.md)：`staged-suite`执行完整规划、采集、分阶段辨识、独立综合验收和中文视频；`staged-calibrate`可按阶段检查点运行。包含Coal碰撞门禁、448组起动摩擦、完整物理一致惯性参数及四组控制对照。验收证据见[本轮交付记录](docs/staged_release_validation.md)；下文原双臂视频及 `dual-calibrate` 作为历史回归保留。
 
 动力学标定实验框架：**C++ 模拟采集 → Python 时间处理与辨识 → 独立验证 → PD／前馈对照 → 报告**。现有单关节具备合成标定闭环，新增七轴R1统一模型与独立正确性检查；当前无实机控制入口。
 
@@ -14,7 +18,7 @@ Mock统一使用 [Boost.Odeint积分后端](docs/integration_backend.md)，保�
 
 ## 研发需求与标定规划
 
-新需求的19项对应关系见 [需求—实验—验收—交付表](docs/requirements_matrix.md)，可筛选版本见 [CSV](docs/sources/requirements_matrix.csv)。当前双臂已实现固定名义质心/形状下的惯性比例与摩擦Mock辨识；完整惯量恢复、实机采集和产品验收仍待后续实施。
+新需求的19项对应关系见 [需求—实验—验收—交付表](docs/requirements_matrix.md)，可筛选版本见 [CSV](docs/sources/requirements_matrix.csv)。新版双臂使用140个标准刚体参数的物理一致可观测组合辨识，M(q)、速度耦合和重力均由Pinocchio生成；逐连杆参数不保证唯一。实机采集和产品验收仍待接口与条件确认。
 
 原单臂实现记录见 [五轮计划](docs/whole_arm_calibration_plan.md)，R1已实现Pinocchio模型与正确性检查。后续按新的双臂流程推进树形模型 → 14轴Mock/同步采集 → 激励设计与重力/摩擦/动态辨识 → 冻结验证和中文演示。
 

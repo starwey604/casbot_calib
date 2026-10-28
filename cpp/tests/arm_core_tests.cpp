@@ -1,4 +1,5 @@
 #include "casbot_calib/arm_dynamics.hpp"
+#include "casbot_calib/arm_simulator.hpp"
 #include "casbot_calib/integration.hpp"
 #include <Eigen/Eigenvalues>
 #include <cmath>
@@ -69,6 +70,26 @@ int main() {
     return state;
   };
   check((integrate_arm(2000000)-integrate_arm(1000000)).norm()<1e-8,"coupled Pinocchio integration step convergence");
+  ArmSimulationConfig streaming_config;streaming_config.gain=Eigen::Vector2d(2.,2.);
+  streaming_config.drop_probability=.1;streaming_config.repeat_probability=.2;
+  ArmCommand first{0,q,Eigen::Vector2d::Zero(),Eigen::Vector2d(.3,-.2),Eigen::Vector2d::Zero(),Eigen::Vector2d::Zero()};
+  auto later=first;later.send_ns=7'133'007;later.torque*=-1.;
+  const auto batch=ArmSimulationRunner(free_arm,streaming_config).run({first,later},20'000'000,q,v);
+  ArmSimulationSession streaming(free_arm,streaming_config,q,v,true);streaming.submit(first);
+  ArmSimulationResult streamed;
+  for(Nanoseconds end:{5'000'000,7'133'007,10'000'000,20'000'000}) {
+    if(end==10'000'000) streaming.submit(later);
+    auto chunk=streaming.advance_to(end);
+    streamed.observations.insert(streamed.observations.end(),chunk.observations.begin(),chunk.observations.end());
+  }
+  check(streamed.observations.size()==batch.observations.size(),"streaming preserves packet RNG and sample schedule");
+  for(std::size_t i=0;i<batch.observations.size();++i) {
+    check((batch.observations[i].q-streamed.observations[i].q).norm()<1e-12,"persistent state matches batch across late command submission");
+    check(batch.observations[i].sample_ns==streamed.observations[i].sample_ns,"streaming timestamps survive chunk boundaries");
+  }
+  bool retroactive=false;try {streaming.submit(first);}catch(const std::invalid_argument&){retroactive=true;}
+  check(retroactive,"streaming cannot submit commands in the past");
+  check(streaming.advance_to(20'000'000).observations.empty(),"same time does not resample");
   bool rejected=false;
   try {model.joints[0].axis*=2.;ArmDynamics invalid(model);}catch(const std::invalid_argument&){rejected=true;}
   check(rejected,"reject non-unit joint axis");

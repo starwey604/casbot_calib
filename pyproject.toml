@@ -10,6 +10,7 @@ requires-python = ">=3.10"
 dependencies = ["numpy>=1.26", "scipy>=1.14", "PyYAML>=6", "matplotlib>=3.9"]
 
 [project.optional-dependencies]
+staged = ["clarabel>=0.11,<0.12"]
 viewer = ["mujoco>=3.3,<4", "Pillow>=10", "imageio-ffmpeg>=0.6,<1"]
 
 [project.scripts]
@@ -19,7 +20,7 @@ casbot-calib = "casbot_calib.cli:main"
 cmake.build-type = "Release"
 wheel.packages = ["python/casbot_calib"]
 install.components = ["Python"]
-sdist.include = ["configs/**", "docs/**", "tests/**", "cpp/**", "cmake/**", "ros/**", "scripts/humble/**", "CMakePresets.json"]
+sdist.include = ["configs/**", "docs/**", "tests/**", "cpp/**", "cmake/**", "ros/**", "scripts/humble/**", "scripts/import_collision_geometry.py", "CMakePresets.json"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

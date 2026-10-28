@@ -90,6 +90,18 @@ void bind_arm(py::module_& m) {
     .def("workspace",&ArmDynamics::workspace)
     .def("rigid_parameters",&ArmDynamics::rigid_parameters)
     .def("rigid_parameter_names",&ArmDynamics::rigid_parameter_names)
+    .def("gravity_batch",[](const ArmDynamics& engine,const Eigen::MatrixXd& positions) {
+      const Eigen::MatrixXd owned=positions;const py::ssize_t n=engine.model().joints.size();
+      if(owned.cols()!=n || !owned.allFinite())throw std::invalid_argument("Expected finite gravity positions[N,J]");
+      py::array_t<double> gravity({static_cast<py::ssize_t>(owned.rows()),n});auto output=gravity.mutable_unchecked<2>();
+      {py::gil_scoped_release release;auto workspace=engine.workspace();
+        for(Eigen::Index i=0;i<owned.rows();++i) {
+          const auto value=workspace.gravity(owned.row(i).transpose());
+          for(Eigen::Index j=0;j<n;++j)output(i,j)=value[j];
+        }
+      }
+      return gravity;
+    })
     .def("evaluate_batch",[](const ArmDynamics& engine,
        py::array_t<double,py::array::c_style|py::array::forcecast> q,
        py::array_t<double,py::array::c_style|py::array::forcecast> dq,

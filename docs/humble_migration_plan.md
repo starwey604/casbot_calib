@@ -7,6 +7,7 @@
 - 以太网连接标定端和机器人主机；预计通过ROS topic持续发送位置或力矩。整段轨迹下发能力未确认，不作为系统成立的前提。
 - ROS端是否能够记录指令接收/采用时刻、设备原始采样时刻，以及开放哪些命令/状态接口，均需后续能力配置确认。
 - 不新增SOEM/EtherCAT主站。优先复用甲方hardware_interface/控制器；Mock另提供适配，防止重复控制循环。
+- 默认命令、主机控制和反馈发布频率统一500Hz；设备原始采样单独配置（Mock为1kHz），1000Hz收发仅作显式对照。旧回归实验的固定条件保留。
 - MuJoCo只显示几何和结果，不执行机械计算或碰撞判定；Pinocchio计算运动学/动力学，Coal检查碰撞/距离，Boost.Odeint推进Mock。
 - 设备参数和限制暂未实测；全部默认数值明确为合成配置。碰撞检查不等于夹具刚度、反力或实机性能认证。
 
@@ -63,7 +64,13 @@ Coal共享Pinocchio几何位姿；粗筛使用经验证的包络，最终离线�
 - [Pinocchio](https://github.com/stack-of-tasks/pinocchio)、[Coal](https://github.com/coal-library/coal)、[Boost.Odeint](https://www.boost.org/latest/libs/numeric/odeint/doc/html/boost_numeric_odeint/getting_started/usage__compilation__headers.html)。
 - Grotjahn等，2001，[分组摩擦/刚体辨识](https://doi.org/10.1016/S0020-7683(00)00141-4)；Indri/Trapani，2020，[摩擦辨识框架](https://iris.polito.it/handle/11583/2839166)。
 
-## 推进记录
+## 推进记录（2026-10-28完整合成验收）
 
-- M1：已完成。Humble原生Pinocchio 4.0.0 / Coal 3.0.3 / Boost 1.74.0；87项Python测试、3项C++测试通过，A–F/R1/双臂114项冻结数值按原容差一致。独立CMake、ament消费者及wheel隔离导入通过；[验收记录](humble_m1_validation.md)。
-- M2–M6：待实施；甲方网络接口与时间戳能力待确认。
+- M1：完成。Humble原生Pinocchio4.0.0/Coal3.0.3/Boost1.74；当前111项Python、3项C++通过，原114项冻结数值一致，CMake/ament消费者和wheel隔离导入通过。
+- M2：完成本机真实ROS双端Mock、13组频率/延迟/故障/录包实验和真值隔离。默认500Hz；最新默认批次实际发布/采用/接收498.8/496.3/497.6Hz。本机单批通过不推广为实机网络或硬实时保证，[记录](ros_m2_validation.md)。
+- M3：完成764条全部阶段及过渡的参考门禁、采集后观测插值门禁与独立复核。CAD凸包络、审核排除表、夹具代理、保守区间界与未决拒绝均已实现；实机夹具和环境仍未测量。
+- M4：完成多姿态正反接近重力与三档正反匀速摩擦。静态秩28/140，物理一致组合；4kHz/8kHz采样收敛通过，1kHz混叠原型保留且拒绝验收。
+- M5：完成448组重力补偿起动、反馈持续确认/恢复、实际执行指令及独立重复阈值验收；质量矩阵约束及停止投影通过解析/耦合/耗散检查。
+- M6：完成140参数物理一致组合、整臂与腕部加速度激励、三条独立轨迹、受限联合校正及前序重新验收。四组控制对照、积分减半、真值目录移除后的新进程分析、73秒中文只读视频均通过。
+
+当前完整数值、适用边界和复现入口见[最终交付记录](staged_release_validation.md)。主会话`artifacts/staged_release`；权威完成标志为`delivery.json`与统一`release.json`。实机/SDK/ros2_control插件、物理以太网和运动学不在本轮合成验收范围。

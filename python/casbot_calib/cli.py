@@ -18,6 +18,29 @@ def main(argv=None):
     run.add_argument("config",type=Path);run.add_argument("--output",required=True,type=Path)
     suite=sub.add_parser("suite",help="Run all protocols and acceptance checks")
     suite.add_argument("--configs",type=Path,default=Path("configs"));suite.add_argument("--output",required=True,type=Path)
+    staged=sub.add_parser('plan-staged',help='Plan and collision-gate all staged dual-arm trials (no collection)')
+    staged.add_argument('--config',type=Path,default=Path('configs/staged_dual_arm.yaml'));staged.add_argument('--output',type=Path,required=True)
+    staged_run=sub.add_parser('staged-calibrate',help='Acquire staged Mock calibration and independently validate four control groups')
+    staged_run.add_argument('--config',type=Path,default=Path('configs/staged_dual_arm.yaml'));staged_run.add_argument('--output',type=Path,required=True)
+    staged_run.add_argument('--through',choices=('gravity','friction','breakaway','inertia','all'),default='all');staged_run.add_argument('--resume',action='store_true')
+    staged_analysis=sub.add_parser('staged-identify',help='Reanalyse staged raw observations without plant configuration or evaluation truth')
+    staged_analysis.add_argument('folder',type=Path);staged_analysis.add_argument('--output',type=Path,required=True)
+    staged_analysis.add_argument('--through',choices=('gravity','friction','breakaway','inertia'),default='inertia')
+    staged_verify=sub.add_parser('staged-verify',help='Recheck all collision gates, numerical convergence and truth-isolated inference')
+    staged_verify.add_argument('folder',type=Path);staged_verify.add_argument('--output',type=Path,required=True)
+    staged_render=sub.add_parser('render-staged',help='Chinese geometry-only playback of accepted staged records')
+    staged_render.add_argument('folder',type=Path);staged_render.add_argument('--output',type=Path)
+    staged_render.add_argument('--fps',type=int,default=12);staged_render.add_argument('--snapshots-only',action='store_true')
+    staged_render.add_argument('--ros-report',type=Path,help='Optional separately captured local ROS analysis JSON')
+    staged_suite=sub.add_parser('staged-suite',help='Calibration, comprehensive verification and Chinese viewer delivery')
+    staged_suite.add_argument('--config',type=Path,default=Path('configs/staged_dual_arm.yaml'))
+    staged_suite.add_argument('--output',type=Path,required=True);staged_suite.add_argument('--resume',action='store_true')
+    staged_suite.add_argument('--fps',type=int,default=12)
+    staged_suite.add_argument('--ros-report',type=Path)
+    transport=sub.add_parser('ros-benchmark',help='Local real ROS streaming / timing / frequency Mock (no hardware)')
+    transport.add_argument('--config',type=Path,default=Path('configs/ros_transport.yaml'));transport.add_argument('--output',type=Path,required=True)
+    transport_analysis=sub.add_parser('ros-analyse',help='Re-analyse ROS stream records without running nodes or reading Mock truth')
+    transport_analysis.add_argument('folder',type=Path);transport_analysis.add_argument('--output',type=Path,required=True)
     estimate=sub.add_parser("identify",help="Re-estimate from observations only; no evaluation truth required")
     estimate.add_argument("run_folder",type=Path);estimate.add_argument("--config",type=Path,required=True)
     estimate.add_argument("--output",type=Path,required=True)
@@ -50,6 +73,35 @@ def main(argv=None):
     view.add_argument("--mapping",type=Path);view.add_argument("--scene",type=Path)
     view.add_argument("--follow",action="store_true",help="Follow an externally appended JSONL file")
     args=parser.parse_args(argv)
+    if args.command=='render-staged':
+        from .staged_presentation import render_staged
+        result=render_staged(args.folder,args.output,fps=args.fps,video=not args.snapshots_only,ros_report=args.ros_report)
+        return 0 if result['passed'] else 1
+    if args.command=='staged-verify':
+        from .staged_validation import verify_staged
+        result=verify_staged(args.folder,args.output)
+        print(f"Comprehensive staged verification: {'PASS' if result['passed'] else 'FAIL'} -> {args.output}",flush=True)
+        return 0 if result['passed'] else 1
+    if args.command=='staged-suite':
+        from .staged_delivery import run_suite
+        result=run_suite(args.output,yaml.safe_load(args.config.read_text(encoding='utf-8')),args.resume,args.fps,args.ros_report)
+        print(f"Staged delivery: {'PASS' if result['passed'] else 'FAIL'} -> {args.output}",flush=True)
+        return 0 if result['passed'] else 1
+    if args.command=='staged-identify':
+        from .staged_analysis import identify_staged
+        result=identify_staged(args.folder,args.output,args.through)
+        print(f"Staged analysis: {'PASS' if result['passed'] else 'FAIL'} -> {args.output}",flush=True)
+        return 0 if result['passed'] else 1
+    if args.command=='staged-calibrate':
+        from .staged_workflow import run_staged
+        result=run_staged(args.output,yaml.safe_load(args.config.read_text(encoding='utf-8')),args.through,args.resume)
+        print(f"Staged checkpoint: {'PASS' if result['checkpoint_passed'] else 'FAIL'} through {result['completed_through']} -> {args.output}",flush=True)
+        return 0 if result['checkpoint_passed'] else 1
+    if args.command=='plan-staged':
+        from .staged_plan import plan_session
+        result=plan_session(args.output,yaml.safe_load(args.config.read_text(encoding='utf-8')))
+        print(f"Staged plan: {'PASS' if result['passed'] else 'REJECT'} -> {args.output}",flush=True)
+        return 0 if result['passed'] else 1
     if args.command=="dual-calibrate":
         from .dual_workflow import run_dual_workflow
         config=yaml.safe_load(args.config.read_text(encoding="utf-8"))
@@ -68,6 +120,11 @@ def main(argv=None):
         from .dual_workflow import identify_dual_session
         result,_=identify_dual_session(args.folder,args.output)
         print(f"Dual-arm observations: {'PASS' if result['passed'] else 'FAIL'} -> {args.output}")
+        return 0 if result['passed'] else 1
+    if args.command in ('ros-benchmark','ros-analyse'):
+        from .ros_benchmark import run_suite,analyse_suite
+        result=run_suite(args.output,yaml.safe_load(args.config.read_text(encoding='utf-8'))) if args.command=='ros-benchmark' else analyse_suite(args.folder,args.output)
+        print(f"ROS stream: {'PASS' if result['passed'] else 'FAIL'} -> {args.output}",flush=True)
         return 0 if result['passed'] else 1
     if args.command=="arm-check":
         from .arm_report import run_arm_checks

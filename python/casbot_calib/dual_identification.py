@@ -35,7 +35,7 @@ def valid_observations(obs):
     return clean
 
 
-def periodic_observations(obs,period_s,discard_periods,harmonics=24,phase_points=512):
+def periodic_observations(obs,period_s,discard_periods,harmonics=24,phase_points=512,extra_keys=()):
     """Fit actual positions/current at acquisition time, then analytically differentiate.
 
     Missing samples enter a timestamped regression; no finite differences cross gaps.
@@ -50,11 +50,15 @@ def periodic_observations(obs,period_s,discard_periods,harmonics=24,phase_points
             w=2*np.pi*k/period_s
             columns.extend([w**derivative*np.sin(w*times+derivative*np.pi/2),w**derivative*np.cos(w*times+derivative*np.pi/2)])
         return np.column_stack(columns)
-    basis=design(t);coef=np.linalg.lstsq(basis,np.column_stack([q,current]),rcond=1e-10)[0]
+    basis=design(t);extra=[obs[key][keep] for key in extra_keys]
+    coef=np.linalg.lstsq(basis,np.column_stack([q,current,*extra]),rcond=1e-10)[0]
     if np.linalg.matrix_rank(basis)<basis.shape[1]:raise ValueError('Rank-deficient temporal Fourier fit')
     phase=np.arange(phase_points)*period_s/phase_points;n=q.shape[1]
+    projected={};offset=2*n
+    for key,values in zip(extra_keys,extra):
+        width=values.shape[1];projected[key]=design(phase)@coef[:,offset:offset+width];offset+=width
     return dict(q=design(phase)@coef[:,:n],dq=design(phase,1)@coef[:,:n],ddq=design(phase,2)@coef[:,:n],
-        current=design(phase)@coef[:,n:],phase_s=phase,harmonics=harmonics)
+        current=design(phase)@coef[:,n:2*n],phase_s=phase,harmonics=harmonics,projected_channels=projected)
 
 
 def feature_matrix(nominal,q,v,a,smoothing_velocity=.03,project_harmonics=None):

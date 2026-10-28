@@ -1,0 +1,16 @@
+uint8 RECEIVED=0
+uint8 ADOPTED=1
+uint8 REJECTED=2
+uint8 WATCHDOG=3
+uint8 ACCEPTED=4
+string<=64 experiment_id
+string<=128 clock_id
+string<=128 source_clock_id
+uint64 event_sequence
+uint64 command_sequence
+uint8 kind
+string<=64 reason
+int64 source_send_ns
+int64 receive_ns
+int64 decision_ns
+int64 event_publish_ns
