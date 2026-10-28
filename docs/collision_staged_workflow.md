@@ -75,3 +75,7 @@ bash scripts/humble/container.sh casbot-calib render-staged artifacts/my_staged 
 综合验证包含六类轨迹的积分步减半、逐积分步耗散检查、Pinocchio分量加和/质量矩阵正定、全部764条参考与观测插值碰撞复核，以及将整个`evaluation/`物理移走后在新Python进程重新辨识。原始数据、控制命令及前馈模型均校验摘要；不跨丢帧求导。
 
 中文视频只回放记录的实际角度，不放大运动、不参与积分；同帧比较MuJoCo几何位姿与Pinocchio FK，并检查输入摘要未改变。显示未测量夹具代理，区分软件零位与尚待实测的机械零位。完整报告与最终实测数值见[本轮交付记录](staged_release_validation.md)。
+
+## 后续三个P0
+
+[双臂动力学三个P0实施计划](staged_dynamics_p0_plan.md)规定多构型与独立批次验证、参数与动力学算子稳定性验收、频段与模型分量收益归因。三项目前待实现，将使用新的合成配置和会话；现有M1–M6交付不代表已通过这些新增验收。
