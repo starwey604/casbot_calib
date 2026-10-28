@@ -19,6 +19,8 @@
 
 - `scripts/trical_sphere_calibration/README.md`：evt6 右臂、21 个 joint origin 平移参数；位置约束有规范自由度，仿真 10 µm 噪声不是实机精度。
 - 2026-10-28新增[双臂TriCal K1–K5计划与K1基础](kinematics_trical_plan.md)：具名TCP、三表理想几何/观测格式及合成球架已接入；自动对中、MDH/Hayati、几何辨识和外测验收仍待后续实现，不将旧演示或论文精度作为当前验收。
+- 后续[K2合成测量闭环](kinematics_trical_k2.md)接入三表Mock、有限测头/行程、自动对中及稳定窗口；仍不含MDH/Hayati、几何参数求解、真实表杆载荷或实机精度结论。
+- [K3合成几何辨识](kinematics_trical_k3.md)落实TriCal式(1)的MDH/Hayati变换顺序、Pinocchio几何回归量、训练选点/选参及独立批次位置约束验证。每臂三非共线球心和固定工具/球架计量输入是本轮合成条件；真实表杆载荷、独立外测和实机精度仍未验收。
 - `scripts/casbot_dual_arm_model/guitar_strumming_config.yaml`：20251015 模型、500 Hz、100 mm／1 m/s／50 ms；本项目只复用动作规格和代理弦参数。原配置快照见 [legacy_guitar_strumming.yaml](sources/legacy_guitar_strumming.yaml)。
 - `scripts/casbot_dual_arm_model/output/source_model_issues.md` 和 `benchmark_model_audit.md`：旧 MJCF 的统一 armature=0.2、damping=0.5 来源未确认，不能当作本项目真值。后来的手部质量修正仍不是实测负载；两版本手臂模型不可混用。
 

@@ -1,0 +1,3 @@
+# K2离线双臂测量闭环；未接实机。
+profile: trical_workflow_v1
+control_period_ns: 2000000

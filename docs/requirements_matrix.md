@@ -8,6 +8,10 @@
 
 2026-10-28更新：运动学已启动[K1–K5工作包](kinematics_trical_plan.md)。K1完成具名左右工具、三表记录/理想几何及参数约定；自动对中、几何辨识、MDH/Hayati映射和产品精度验收仍未完成。
 
+K2随后接入[合成测量闭环](kinematics_trical_k2.md)：三表Mock、接近/退出碰撞门禁、自动对中及稳定采样。几何参数辨识、MDH/Hayati映射、实机产线与产品精度目标仍未验收。
+
+K3随后增加[六球合成几何辨识](kinematics_trical_k3.md)：MDH/Hayati等价映射、Pinocchio解析导数、训练选点/选参、分层求解及独立设备批次的位置约束验证。使用有界鲁棒TRF，算法与需求中LM的口径需确认；K4/K5仍需完整计量/重复性/节拍及实机验收。
+
 ## 状态和仓库边界
 
 - **部分覆盖，仅合成**：存在相关子实验或接口，尚未满足整臂/实机产品验收。
@@ -24,7 +28,7 @@
 
 | 需求 / 原优先级 | 当前状态 | 现有证据与边界 | 拟建实验 | 后续交付 |
 | --- | --- | --- | --- | --- |
-| KIN-1 / P0（PDF p.3） | 部分覆盖，仅合成基础 | [K1具名双臂TCP、三表数据及固定球架](kinematics_trical_plan.md)；未实现几何辨识/MDH-Hayati/自动采样 | CAL-01、VAL-05 | K2–K5接入测量闭环、几何标定与独立外测，保留模型版本和节拍 |
+| KIN-1 / P0（PDF p.3） | 部分覆盖，仅合成 | [K1共享几何](kinematics_trical_plan.md)、[K2测量闭环](kinematics_trical_k2.md)、[K3 MDH/Hayati六球辨识](kinematics_trical_k3.md)；未完成实机采样/产品计量验收，当前求解为有界鲁棒TRF | CAL-01、VAL-05 | K4/K5补完整独立外测/重复性/节拍，确认LM口径，保留版本 |
 | KIN-2 / P1（PDF p.3） | 部分覆盖，仅合成 | [A](../configs/A_basic.yaml) 冷/热摩擦；[D](../configs/D_mismatch.yaml) 固定失配 | CAL-05、VAL-05 | 背隙/柔度/温漂单因子实验及末端补偿验证 |
 | KIN-3 / P1（PDF p.3） | 未实现 | [显示映射](../configs/viewer_casbot_20251015.json)，无冗余求解 | CAL-01、VAL-05 | 构型标识、适用范围及连续性证据；求解器外部协作 |
 | KIN-4 / P1（PDF p.3） | 未实现 | 无 IK 实现 | CAL-01、VAL-05 | 独立工作空间采样，成功率/耗时/构型约束报告 |

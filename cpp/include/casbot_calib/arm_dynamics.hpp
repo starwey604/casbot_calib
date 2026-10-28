@@ -55,6 +55,11 @@ struct ArmTerms {
 struct ArmEnergy { double kinetic, potential; };
 struct ArmInverseDerivatives { Eigen::MatrixXd dtau_dq, dtau_dv, dtau_da; };
 struct ArmForwardDerivatives { Eigen::MatrixXd ddq_dq, ddq_dv, ddq_dtau; };
+struct ArmPointGeometry {
+  Eigen::Vector3d position;
+  Eigen::MatrixXd placements; // 3 x 6J, right-local joint origin increments [v,w].
+  Eigen::MatrixXd joints;    // 3 x J, observed joint-angle derivatives.
+};
 class ArmWorkspace;
 
 // Immutable validated copy: changing a caller's model cannot change a running device.
@@ -90,6 +95,7 @@ class ArmDynamics {
   Eigen::Matrix4d frame_pose(const Eigen::VectorXd& q,const std::string& name) const;
   // LOCAL_WORLD_ALIGNED, rows [linear, angular], columns in model joint order.
   Eigen::MatrixXd frame_jacobian(const Eigen::VectorXd& q,const std::string& name) const;
+  ArmPointGeometry point_geometry(const Eigen::VectorXd& q,const std::string& name,const Eigen::Vector3d& offset) const;
  private:
   friend class ArmWorkspace;
   std::shared_ptr<const ArmModel> model_;
@@ -124,6 +130,7 @@ class ArmWorkspace {
   Eigen::MatrixXd tool_jacobian(const Eigen::VectorXd& q);
   Eigen::Matrix4d frame_pose(const Eigen::VectorXd& q,const std::string& name);
   Eigen::MatrixXd frame_jacobian(const Eigen::VectorXd& q,const std::string& name);
+  ArmPointGeometry point_geometry(const Eigen::VectorXd& q,const std::string& name,const Eigen::Vector3d& offset);
  private:
   friend class ArmDynamics;
   explicit ArmWorkspace(const ArmDynamics& engine);

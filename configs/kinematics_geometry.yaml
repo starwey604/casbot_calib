@@ -1,0 +1,10 @@
+# K3：统一六球基准（每臂三球）、真实Mock采样、训练选点与独立验证。
+profile: trical_geometry_v1
+design:
+  design_seed: 20261030
+  training_per_ball: 4
+  validation_per_ball: 2
+  pool_per_ball: 12
+  maximum_condition: 200.0
+  sigma_m: 0.000002
+  validation_limit_m: 0.000020

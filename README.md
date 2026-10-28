@@ -179,7 +179,7 @@ bash scripts/humble/validate.sh
 ## 📚 更多文档
 
 关于算法细节、硬件参数与各阶段验证报告，请参阅 `docs/` 目录下的详细文档：
-* [双臂千分计运动学K1–K5计划与K1入口](docs/kinematics_trical_plan.md)：已接具名TCP、三表数据及合成工装基础；自动对中和几何辨识待后续轮次。
+* [双臂千分计运动学K1–K5计划](docs/kinematics_trical_plan.md)、[K2测量闭环](docs/kinematics_trical_k2.md)及[K3几何辨识](docs/kinematics_trical_k3.md)：三表Mock、碰撞门禁、自动对中/稳定采样、六球选点、MDH/Hayati分层求解与候选URDF导出；实机和完整计量验收仍待K4/K5。
 * [机器人建模与参数说明](docs/model_and_parameters.md)
 * [单臂 (Arm R1) 几何与标定文档](docs/arm_r1.md)
 * [整臂标定计划](docs/whole_arm_calibration_plan.md) & [双臂动力学标定计划](docs/dual_arm_dynamics_plan.md)

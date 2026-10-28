@@ -67,6 +67,8 @@ def nominal_profile(engine=None,scene=None):
 def _certify(profile,evaluate,variation,intervals,margin,max_depth,time_map=None):
     if not np.isfinite(margin) or margin<0 or max_depth<0:raise ValueError('Invalid clearance/refinement depth')
     started=perf_counter();pending=[(float(a),float(b),0) for a,b in intervals];certified=queries=0
+    thresholds=np.asarray(getattr(profile,'pair_clearance_m',np.full(len(profile.pairs),margin)),dtype=float)
+    if thresholds.shape!=(len(profile.pairs),) or not np.isfinite(thresholds).all():raise ValueError('Invalid audited pair clearances')
     minimum=np.inf;lower_min=np.inf;witness=None
     while pending:
         next_round=[]
@@ -78,15 +80,16 @@ def _certify(profile,evaluate,variation,intervals,margin,max_depth,time_map=None
             observed=profile.check(q);distances=observed['distances'];queries+=len(rows)
             lower=distances-bounds@profile.radii.T
             for i,(a,b,depth) in enumerate(rows):
-                nearest=int(observed['worst_pair'][i]);distance=float(distances[i,nearest]);bound=float(lower[i].min())
+                nearest=int(np.argmin(distances[i]-thresholds));distance=float(distances[i,nearest]);bound=float(lower[i].min())
                 if distance<minimum:
                     minimum=distance;pair=profile.pairs[nearest]
                     witness=dict(parameter=float(mid[i]),time=float(time_map(mid[i])) if time_map else float(mid[i]),q=q[i].tolist(),
                         first=profile.names[pair[0]],second=profile.names[pair[1]],distance_m=distance,
-                        first_point=observed['first_point'][i].tolist(),second_point=observed['second_point'][i].tolist())
-                if distance<=margin:
+                        first_point=observed['first_point'][i].tolist() if nearest==observed['worst_pair'][i] else None,
+                        second_point=observed['second_point'][i].tolist() if nearest==observed['worst_pair'][i] else None)
+                if np.any(distances[i]<=thresholds):
                     return dict(passed=False,reason='collision_or_clearance',minimum_sampled_distance_m=minimum,witness=witness,queries=queries,wall_s=perf_counter()-started)
-                if bound>margin:
+                if np.all(lower[i]>thresholds):
                     certified+=1;lower_min=min(lower_min,bound)
                 elif depth>=max_depth:
                     return dict(passed=False,reason='interval_not_certified',minimum_sampled_distance_m=minimum,witness=witness,queries=queries,wall_s=perf_counter()-started)

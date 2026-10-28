@@ -17,7 +17,7 @@ target_include_directories(calib_integration INTERFACE
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/cpp/include>
   $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
 target_link_libraries(calib_integration INTERFACE Eigen3::Eigen Boost::headers)
-add_library(calib_core STATIC cpp/src/simulator.cpp cpp/src/arm_dynamics.cpp cpp/src/arm_session.cpp cpp/src/collision.cpp cpp/src/arm_guard.cpp cpp/src/trical.cpp)
+add_library(calib_core STATIC cpp/src/simulator.cpp cpp/src/arm_dynamics.cpp cpp/src/arm_session.cpp cpp/src/collision.cpp cpp/src/arm_guard.cpp cpp/src/trical.cpp cpp/src/trical_mock.cpp)
 add_library(casbot_calib::core ALIAS calib_core)
 set_target_properties(calib_core PROPERTIES POSITION_INDEPENDENT_CODE ON EXPORT_NAME core)
 target_link_libraries(calib_core PUBLIC calib_integration pinocchio::pinocchio coal::coal)

@@ -1,8 +1,10 @@
 #include "casbot_calib/arm_simulator.hpp"
 #include "casbot_calib/arm_guard.hpp"
+#include "casbot_calib/trical_mock.hpp"
 #include <pybind11/eigen.h>
 #include <pybind11/numpy.h>
 #include <pybind11/pybind11.h>
+#include <pybind11/stl.h>
 namespace py=pybind11;
 using namespace casbot;
 namespace {
@@ -47,6 +49,34 @@ void bind_arm_simulator(py::module_& m) {
   FIELD(torque_limit);FIELD(position_noise);FIELD(current_noise);FIELD(seed);FIELD(gain);FIELD(drop_probability);FIELD(repeat_probability);
   FIELD(stiction_enabled);FIELD(stick_velocity_tolerance);
 #undef FIELD
+  auto sensor=py::class_<TricalMockConfig>(m,"TricalMockConfig").def(py::init<>());
+#define FIELD(x) sensor.def_readwrite(#x,&TricalMockConfig::x)
+  FIELD(calibration);FIELD(minimum);FIELD(maximum);FIELD(bias);FIELD(encoder_offset);FIELD(face_radius);FIELD(noise_std);FIELD(quantum);
+  FIELD(drop_probability);FIELD(period_ns);FIELD(delay_ns);FIELD(jitter_ns);FIELD(phase_ns);FIELD(expose_sample_time);FIELD(seed);
+#undef FIELD
+  py::class_<TricalMockSession>(m,"TricalMockSession")
+    .def(py::init<ArmDynamics,ArmSimulationConfig,TricalMockConfig,const Eigen::VectorXd&,const Eigen::VectorXd&,bool>(),
+      py::arg("plant"),py::arg("arm"),py::arg("sensor"),py::arg("q0"),py::arg("v0"),py::arg("retain_truth")=false)
+    .def_property_readonly("time_ns",&TricalMockSession::time_ns)
+    .def("select_target",&TricalMockSession::select_target)
+    .def("set_fault",&TricalMockSession::set_fault)
+    .def("submit",[](TricalMockSession& session,Nanoseconds time,const Eigen::MatrixXd& values){
+      if(values.cols()!=5)throw std::invalid_argument("Expected command[J,5]");
+      ArmCommand c;c.send_ns=time;c.q=values.col(0);c.dq=values.col(1);c.torque=values.col(2);c.kp=values.col(3);c.kd=values.col(4);
+      session.submit(c);
+    })
+    .def("advance_to",[](TricalMockSession& session,Nanoseconds end){
+      TricalMockResult result;
+      {py::gil_scoped_release release;result=session.advance_to(end);}
+      const py::ssize_t n=session.joint_count();
+      auto state=pack_result(result.simulation,n);py::list packets;
+      for(const auto& p:result.indicators){py::dict row;
+        row["channel"]=p.channel;row["status"]=p.status;row["sequence"]=p.sequence;row["sample_ns"]=p.sample_ns;
+        row["receive_ns"]=p.receive_ns;row["sample_known"]=p.sample_known;row["reading_m"]=p.reading;
+        row["target_id"]=p.target_id;row["tool_frame"]=p.tool_frame;packets.append(row);
+      }
+      return py::make_tuple(state[0],packets,state[1]);
+    });
   auto guard=py::class_<ArmGuardConfig>(m,"ArmGuardConfig").def(py::init<>());
 #define FIELD(x) guard.def_readwrite(#x,&ArmGuardConfig::x)
   FIELD(joint);FIELD(begin_ns);FIELD(end_ns);FIELD(sustain_ns);FIELD(max_sample_age_ns);

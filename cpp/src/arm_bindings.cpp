@@ -102,6 +102,22 @@ void bind_arm(py::module_& m) {
     .def("rigid_parameters",&ArmDynamics::rigid_parameters)
     .def("rigid_parameter_names",&ArmDynamics::rigid_parameter_names)
     .def("frame_names",&ArmDynamics::frame_names)
+    .def("point_geometry_batch",[](const ArmDynamics& engine,const Eigen::MatrixXd& positions,const std::string& frame,const Eigen::MatrixXd& offsets) {
+      const Eigen::MatrixXd q=positions,d=offsets;const py::ssize_t n=engine.model().joints.size(),count=q.rows();
+      if(q.cols()!=n || d.rows()!=count || d.cols()!=3 || !q.allFinite() || !d.allFinite())
+        throw std::invalid_argument("Expected finite q[N,J], offsets[N,3]");
+      const auto names=engine.frame_names();
+      if(std::find(names.begin(),names.end(),frame)==names.end())throw std::invalid_argument("Unknown observation frame: "+frame);
+      py::array_t<double> points({count,py::ssize_t(3)}),placement({count,py::ssize_t(3),6*n}),joint({count,py::ssize_t(3),n});
+      auto pp=points.mutable_unchecked<2>();auto gg=placement.mutable_unchecked<3>();auto jj=joint.mutable_unchecked<3>();
+      {py::gil_scoped_release release;auto workspace=engine.workspace();
+        for(py::ssize_t row=0;row<count;++row){const auto result=workspace.point_geometry(q.row(row).transpose(),frame,d.row(row).transpose());
+          for(int a=0;a<3;++a){pp(row,a)=result.position[a];for(py::ssize_t b=0;b<6*n;++b)gg(row,a,b)=result.placements(a,b);
+            for(py::ssize_t b=0;b<n;++b)jj(row,a,b)=result.joints(a,b);}
+        }
+      }
+      py::dict result;result["positions"]=points;result["placement_jacobians"]=placement;result["joint_jacobians"]=joint;return result;
+    },py::arg("positions"),py::arg("frame"),py::arg("offsets"))
     .def("frame_batch",[](const ArmDynamics& engine,const Eigen::MatrixXd& positions,const std::string& frame) {
       const Eigen::MatrixXd owned=positions;const py::ssize_t n=engine.model().joints.size();
       if(owned.cols()!=n || !owned.allFinite())throw std::invalid_argument("Expected finite frame positions[N,J]");

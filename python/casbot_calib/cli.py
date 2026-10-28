@@ -17,6 +17,23 @@ def main(argv=None):
     kinematics=sub.add_parser('kinematics-check',help='K1 named dual-arm TCP and TriCal schema checks; no motion or calibration')
     kinematics.add_argument('--config',type=Path)
     kinematics.add_argument('--output',required=True,type=Path)
+    trical=sub.add_parser('trical-mock',help='K2 dual-arm indicator Mock, collision-gated autocentering and static measurements')
+    trical.add_argument('--config',type=Path);trical.add_argument('--output',required=True,type=Path)
+    trical.add_argument('--first-only',action='store_true')
+    trical.add_argument('--fault',choices=('disconnected','frozen','out_of_range','no_contact'))
+    trical_suite=sub.add_parser('trical-suite',help='K2 dual-arm baseline, instrument failures, collision rejection and truth isolation')
+    trical_suite.add_argument('--config',type=Path);trical_suite.add_argument('--output',required=True,type=Path)
+    trical_analysis=sub.add_parser('trical-analyse',help='Recheck K2 raw measurements and collision gates without evaluation truth')
+    trical_analysis.add_argument('folder',type=Path);trical_analysis.add_argument('--output',required=True,type=Path)
+    kin_plan=sub.add_parser('plan-kinematics',help='K3 collision-gated posture pools and training-only observability design')
+    kin_plan.add_argument('--config',type=Path);kin_plan.add_argument('--output',required=True,type=Path)
+    kin_collect=sub.add_parser('kinematic-calibrate',help='Collect independent K3 batches from a frozen plan and identify geometry')
+    kin_collect.add_argument('--plan',required=True,type=Path);kin_collect.add_argument('--output',required=True,type=Path)
+    kin_identify=sub.add_parser('kinematic-identify',help='Identify MDH/Hayati geometry from raw measured sessions without truth')
+    kin_identify.add_argument('--train',required=True,type=Path);kin_identify.add_argument('--validation',required=True,type=Path)
+    kin_identify.add_argument('--output',required=True,type=Path)
+    kin_suite=sub.add_parser('kinematic-suite',help='K3 planning, Mock acquisition, truth-isolated identification and report')
+    kin_suite.add_argument('--config',type=Path);kin_suite.add_argument('--output',required=True,type=Path)
     run=sub.add_parser("run",help="Run one independent A-F protocol")
     run.add_argument("config",type=Path);run.add_argument("--output",required=True,type=Path)
     suite=sub.add_parser("suite",help="Run all protocols and acceptance checks")
@@ -76,6 +93,40 @@ def main(argv=None):
     view.add_argument("--mapping",type=Path);view.add_argument("--scene",type=Path)
     view.add_argument("--follow",action="store_true",help="Follow an externally appended JSONL file")
     args=parser.parse_args(argv)
+    if args.command=='plan-kinematics':
+        from .kinematic_design import plan,k3_config
+        result=plan(args.output,k3_config(args.config));print(f"K3姿态规划：{'通过' if result['passed'] else '拒绝'} -> {args.output}")
+        return 0 if result['passed'] else 1
+    if args.command=='kinematic-calibrate':
+        from .kinematic_workflow import collect_and_identify
+        result=collect_and_identify(args.plan,args.output);print(f"K3几何标定：{'通过' if result['passed'] else '拒绝'} -> {args.output}")
+        return 0 if result['passed'] else 1
+    if args.command=='kinematic-identify':
+        from .kinematic_identification import identify as identify_geometry
+        result=identify_geometry(args.train,args.validation,args.output);print(f"K3观测辨识：{'通过' if result['passed'] else '拒绝'} -> {args.output}")
+        return 0 if result['passed'] else 1
+    if args.command=='kinematic-suite':
+        from .kinematic_design import k3_config
+        from .kinematic_workflow import run_suite
+        result=run_suite(args.output,k3_config(args.config));print(f"K3综合实验：{'通过' if result['passed'] else '拒绝'} -> {args.output}")
+        return 0 if result['passed'] else 1
+    if args.command=='trical-suite':
+        from .kinematics import workflow_config
+        from .trical_suite import run_suite
+        result=run_suite(args.output,workflow_config(args.config))
+        print(f"K2综合验证：{'通过' if result['passed'] else '失败'} -> {args.output}")
+        return 0 if result['passed'] else 1
+    if args.command=='trical-mock':
+        from .kinematics import workflow_config
+        from .trical_workflow import run_mock
+        result=run_mock(args.output,workflow_config(args.config),fault=args.fault,first_only=args.first_only)
+        print(f"K2测量闭环：{'通过' if result['passed'] else '拒绝'} -> {args.output}")
+        return 0 if result['passed'] else 1
+    if args.command=='trical-analyse':
+        from .trical_analysis import analyse
+        result=analyse(args.folder,args.output)
+        print(f"K2无真值复核：{'通过' if result['passed'] else '拒绝'} -> {args.output}")
+        return 0 if result['passed'] else 1
     if args.command=='kinematics-check':
         from .kinematics import default_config
         from .kinematics_checks import run_checks

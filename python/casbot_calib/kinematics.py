@@ -33,8 +33,10 @@ def default_config(path=None):
     config = json.loads(files('casbot_calib').joinpath('assets/trical_nominal_v1.json').read_text(encoding='utf-8'))
     if path is not None:
         settings = yaml.safe_load(Path(path).read_text(encoding='utf-8'))
-        if not isinstance(settings, dict) or set(settings) - {'profile', 'control_period_ns'} or settings.get('profile') != 'trical_nominal_v1':
-            raise ValueError('K1 YAML requires profile=trical_nominal_v1; unknown overrides rejected')
+        if not isinstance(settings, dict) or set(settings) - {'profile', 'control_period_ns'} or settings.get('profile') not in {'trical_nominal_v1','trical_workflow_v1'}:
+            raise ValueError('Unknown TriCal profile/overrides')
+        if settings['profile']=='trical_workflow_v1':
+            config=json.loads(files('casbot_calib').joinpath('assets/trical_workflow_v1.json').read_text(encoding='utf-8'))
         config['control_period_ns'] = settings.get('control_period_ns', config['control_period_ns'])
     validate_config(config)
     return config
@@ -48,14 +50,32 @@ def calibration(config):
     return result
 
 
+def workflow_config(path=None):
+    config=default_config(path) if path is not None else json.loads(files('casbot_calib').joinpath('assets/trical_workflow_v1.json').read_text(encoding='utf-8'))
+    validate_config(config)
+    if 'workflow' not in config or 'sensor' not in config or 'drive' not in config:
+        raise ValueError('K2 requires a workflow profile')
+    settings=config['workflow'];period=config['control_period_ns']
+    if 20_000_000%period:raise ValueError('Control period must divide the 20ms batch interval')
+    for key in ('transition_s','insertion_s','correction_s','settle_s','stable_window_s','measurement_timeout_s',
+                'centering_tolerance_m','geometry_allowance_rad','clearance_m','allowed_tip_stroke_m'):
+        if not np.isfinite(settings[key]) or settings[key]<=0:raise ValueError('Invalid K2 setting: '+key)
+    if not settings['visits'] or len({v['id'] for v in settings['visits']})!=len(settings['visits']):raise ValueError('Invalid K2 visit IDs')
+    for visit in settings['visits']:
+        vector(visit['nominal_q_rad'],14);ball_world(config,visit['ball_id'])
+        if visit['frame'] not in {t['name'] for t in config['tools']}:raise ValueError('Unknown visit tool')
+    return config
+
+
 def validate_config(config):
     if config['schema_version'] != 1 or config['synthetic_only'] is not True or config['hardware_executable'] is not False:
         raise ValueError('K1 supports synthetic, non-executable profiles only')
     period = config['control_period_ns']
     if type(period) is not int or period <= 0:
         raise ValueError('control_period_ns must be a positive integer')
-    if config['parameter_policy']['fit_enabled'] is not False:
-        raise ValueError('K1 does not implement identification')
+    fit_enabled=config['parameter_policy']['fit_enabled']
+    if fit_enabled is not False and not (fit_enabled is True and config.get('profile_id')=='nominal_dual_arm_trical_k3_v1' and isinstance(config.get('k3'),dict)):
+        raise ValueError('Only the K3 geometry workflow enables identification; K1 remains candidate-only')
     tools = config['tools']
     if len(tools) != 2 or {t['name'] for t in tools} != {'left_trical_tcp', 'right_trical_tcp'}:
         raise ValueError('Expected two named dual-arm measurement tools')

@@ -206,6 +206,7 @@ std::vector<std::string> ArmDynamics::frame_names() const {
 }
 Eigen::Matrix4d ArmDynamics::frame_pose(const Eigen::VectorXd& q,const std::string& name) const {return workspace().frame_pose(q,name);}
 Eigen::MatrixXd ArmDynamics::frame_jacobian(const Eigen::VectorXd& q,const std::string& name) const {return workspace().frame_jacobian(q,name);}
+ArmPointGeometry ArmDynamics::point_geometry(const Eigen::VectorXd& q,const std::string& name,const Eigen::Vector3d& offset) const {return workspace().point_geometry(q,name,offset);}
 
 Eigen::VectorXd ArmDynamics::rotor_torque(const Eigen::VectorXd& ddq) const {
   check_vector(ddq,"ddq");return backend_->model.armature.cwiseProduct(ddq);
@@ -314,5 +315,23 @@ Eigen::MatrixXd ArmWorkspace::frame_jacobian(const Eigen::VectorXd& q,const std:
   require(name!="universe" && model.existFrame(name),"Unknown observation frame: "+name);
   pinocchio::computeJointJacobians(model,impl_->data,q);
   return pinocchio::getFrameJacobian(model,impl_->data,model.getFrameId(name),pinocchio::LOCAL_WORLD_ALIGNED);
+}
+ArmPointGeometry ArmWorkspace::point_geometry(const Eigen::VectorXd& q,const std::string& name,const Eigen::Vector3d& offset) {
+  engine_.check_vector(q,"q");require(offset.allFinite(),"Non-finite measured point offset");
+  const auto& model=engine_.backend_->model;auto& data=impl_->data;
+  require(name!="universe" && model.existFrame(name),"Unknown observation frame: "+name);
+  const auto& frame=model.frames[model.getFrameId(name)];
+  const pinocchio::SE3 placement=frame.placement*pinocchio::SE3(Eigen::Matrix3d::Identity(),offset);
+  pinocchio::computeJointJacobians(model,data,q);
+  ArmPointGeometry result;
+  result.position=(data.oMi[frame.parentJoint]*placement).translation();
+  result.placements=Eigen::MatrixXd::Zero(3,6*(model.njoints-1));
+  if(frame.parentJoint>0) {
+    const Eigen::MatrixXd regressor=pinocchio::computeJointKinematicRegressor(model,data,frame.parentJoint,pinocchio::LOCAL_WORLD_ALIGNED,placement);
+    result.placements=regressor.topRows(3);
+  }
+  const Eigen::MatrixXd jacobian=pinocchio::getFrameJacobian(model,data,frame.parentJoint,placement,pinocchio::LOCAL_WORLD_ALIGNED);
+  result.joints=jacobian.topRows(3);
+  return result;
 }
 }  // namespace casbot

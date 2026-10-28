@@ -20,6 +20,12 @@ int main() {
   Eigen::Matrix<double,6,2> jac=Eigen::Matrix<double,6,2>::Zero();
   jac(0,0)=-expected[1];jac(1,0)=expected[0];jac(0,1)=-.45*std::sin(q.sum());jac(1,1)=.45*std::cos(q.sum());jac.row(5).setOnes();
   check((engine.frame_jacobian(q,"tcp")-jac).norm()<1e-13,"analytic named frame Jacobian");
+  const Eigen::Vector3d local_offset(.02,.01,0.);const auto geometry=engine.point_geometry(q,"tcp",local_offset);
+  const Eigen::Vector3d point=expected+Eigen::AngleAxisd(q.sum(),Eigen::Vector3d::UnitZ())*local_offset;
+  check((geometry.position-point).norm()<1e-13,"analytic nonzero measured point");
+  check(geometry.placements.rows()==3 && geometry.placements.cols()==12,"joint-placement regressor schema");
+  check((geometry.placements.col(5)-geometry.joints.col(0)).norm()<1e-13,"root local Z placement rotation equals planar zero derivative");
+  check(engine.point_geometry(q,"root",local_offset).placements.norm()==0.,"fixed root has no joint-placement derivatives");
   check(engine.frame_jacobian(q,"root").norm()==0.,"root frame has zero joint Jacobian");
   auto runtime=engine.workspace();runtime.mass_matrix(q);runtime.frame_pose(-q,"root");
   check((runtime.frame_jacobian(q,"tcp")-jac).norm()<1e-13,"interleaved frame Data");

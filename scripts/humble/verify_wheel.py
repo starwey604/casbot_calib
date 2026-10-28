@@ -26,7 +26,10 @@ import numpy as np
 import casbot_calib
 from casbot_calib import _core
 from casbot_calib.dual_model import nominal_dual_arm
-from casbot_calib.kinematics import nominal_kinematics,default_config,calibration
+from casbot_calib.kinematics import nominal_kinematics,default_config,calibration,workflow_config
+from casbot_calib.trical_fixture import fixture_profile
+from casbot_calib.kinematic_parameters import KinematicParameters
+from casbot_calib.kinematic_design import k3_config
 assert Path(casbot_calib.__file__).is_relative_to(sys.argv[1])
 assert Path(_core.__file__).is_relative_to(sys.argv[1])
 engine,source=nominal_dual_arm();q=np.zeros(14)
@@ -35,6 +38,22 @@ assert "left_trical_tcp" in kinematics.frame_names() and "right_trical_tcp" in k
 assert kinematics.frame_batch(np.zeros((2,14)),"left_trical_tcp")["jacobians"].shape==(2,6,14)
 sensor=_core.ArmPose();delta=np.array([.001,-.002,.003]);cal=calibration(default_config())
 assert np.max(np.abs(_core.trical_readings(sensor,delta,cal)-delta))<1e-14
+workflow=workflow_config();measurement,_=nominal_kinematics(workflow)
+scene=fixture_profile(measurement,workflow)
+assert "ball_1_stem" in scene.names
+geometry=measurement.point_geometry_batch(q[None,:],"left_trical_tcp",np.zeros((1,3)))
+assert geometry["placement_jacobians"].shape==(1,3,84)
+parameters=KinematicParameters(measurement);assert parameters.size==60
+assert np.max(np.abs(parameters.build(np.zeros(60)).frame_pose(q,"left_trical_tcp")-measurement.frame_pose(q,"left_trical_tcp")))<1e-12
+geometric_profile=k3_config();assert len(geometric_profile["fixture"]["balls"])==6
+assert geometric_profile["parameter_policy"]["fit_enabled"] is True
+geometric_engine,_=nominal_kinematics(geometric_profile)
+assert np.max(np.abs(geometric_engine.frame_pose(q,"left_trical_tcp")-measurement.frame_pose(q,"left_trical_tcp")))<1e-12
+indicator=_core.TricalMockConfig();indicator.noise_std=0.;indicator.quantum=0.
+drive=_core.ArmSimulationConfig();drive.gain=np.full(14,2.)
+virtual=_core.TricalMockSession(measurement,drive,indicator,q,q)
+virtual.select_target("left_trical_tcp","ball_1",measurement.frame_pose(q,"left_trical_tcp")[:3,3])
+assert len(virtual.advance_to(10_000_000)[1])==3
 config=_core.ArmSimulationConfig();config.gain=np.full(14,2.)
 config.current_tau=0.;config.command_delay_ns=0;config.position_noise=0.;config.current_noise=0.
 commands=np.zeros((1,14,5));commands[0,:,2]=engine.gravity(q)
