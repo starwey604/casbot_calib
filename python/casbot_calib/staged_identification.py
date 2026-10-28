@@ -12,34 +12,55 @@ from .staged_collection import load_trial
 
 def session_config(root):
     config=json.loads((Path(root)/'session.json').read_text())['config']
+    if config.get('schema_version') not in (1,2):raise ValueError('Unsupported staged session schema')
+    if config.get('schema_version')==1 and 'p0' in config:raise ValueError('P0 requires session schema 2')
     if 'mock' in config:raise ValueError('Plant truth must not be present in observable session inputs')
     if config['drive']['gain_status'] not in ('synthetic_declared','independently_validated'):raise ValueError('Absolute torque scale is not anchored')
     return config
 
 
-def recordings(root,stage):
-    root=Path(root);plan=json.loads((root/'plan_report.json').read_text())
+def read_record(root,name,meta,names):
+    """Shared raw integrity checks for legacy and explicitly scoped P0 readers."""
+    root=Path(root)
+    target=root/'runs'/name;record=json.loads((target/'metadata.json').read_text());payload=target/'observations.npz'
+    if not record['passed'] or record['schema_version']!=3:raise ValueError('Invalid/rejected acquisition')
+    if record['joint_names']!=names or any(record['units'].get(k)!=v for k,v in dict(q='rad',dq='rad/s',current='A',time='int64 ns').items()):
+        raise ValueError('Observation joint order/units mismatch')
+    if hashlib.sha256(payload.read_bytes()).hexdigest()!=record['raw_sha256']:raise ValueError('Raw observations changed')
+    if hashlib.sha256((target/'commands.npz').read_bytes()).hexdigest()!=record['command_sha256']:raise ValueError('Executed command recording changed')
+    if 'feedforward_sha256' in record and hashlib.sha256((target/'feedforward.json').read_bytes()).hexdigest()!=record['feedforward_sha256']:
+        raise ValueError('Frozen feedforward model changed')
+    with np.load(payload,allow_pickle=False) as data:obs={k:data[k] for k in data.files}
+    if obs['sample_ns'].dtype!=np.dtype('int64') or any(obs[k].shape!=(len(obs['sample_ns']),14) for k in ('q','dq','current','status')):
+        raise ValueError('Observation array schema mismatch')
+    if len(obs['sample_ns'])<5 or np.any(np.diff(obs['sample_ns'])<=0) or np.any(np.diff(obs['sequence'])!=1):
+        raise ValueError('Missing/repeated samples: segment before differentiation')
+    if np.any(np.diff(obs['sample_ns'])!=record['sample_period_ns']):raise ValueError('Nonuniform acquisition times: resample contiguous blocks before uniform-time differentiation')
+    if np.any(obs['status']) or any(not np.isfinite(obs[k]).all() for k in ('q','dq','current')):raise ValueError('Invalid/saturated observations')
+    if record['stage']!=meta['stage'] or record['conditions']!=meta['conditions']:
+        raise ValueError('Raw stage/conditions changed from the planned trial')
+    return record,obs
+
+
+def recordings(root,stage,*,split=None,purpose=None):
+    root=Path(root)
+    config=session_config(root)
+    if config.get('schema_version')==2:
+        from .staged_protocol import role_recordings
+        if split is None or purpose is None:
+            raise ValueError('P0 requires explicit split and purpose; legacy all-record iteration is forbidden')
+        yield from role_recordings(root,stage,split=split,purpose=purpose)
+        return
+    if split is not None or purpose is not None:
+        raise ValueError('Legacy records do not provide P0 train/selection/test evidence')
+    plan=json.loads((root/'plan_report.json').read_text())
     if not plan['passed']:raise ValueError('Complete plan has not passed')
     nominal,_=nominal_dual_arm();names=[j.name for j in nominal.model.joints]
     if json.loads((root/'session.json').read_text())['joint_names']!=names:raise ValueError('Session joint order mismatch')
     for name in plan['selected_trials']:
         meta,_=load_trial(root,name)
         if meta['stage']!=stage:continue
-        target=root/'runs'/name;record=json.loads((target/'metadata.json').read_text());payload=target/'observations.npz'
-        if not record['passed'] or record['schema_version']!=3:raise ValueError('Invalid/rejected acquisition')
-        if record['joint_names']!=names or any(record['units'].get(k)!=v for k,v in dict(q='rad',dq='rad/s',current='A',time='int64 ns').items()):
-            raise ValueError('Observation joint order/units mismatch')
-        if hashlib.sha256(payload.read_bytes()).hexdigest()!=record['raw_sha256']:raise ValueError('Raw observations changed')
-        if hashlib.sha256((target/'commands.npz').read_bytes()).hexdigest()!=record['command_sha256']:raise ValueError('Executed command recording changed')
-        if 'feedforward_sha256' in record and hashlib.sha256((target/'feedforward.json').read_bytes()).hexdigest()!=record['feedforward_sha256']:
-            raise ValueError('Frozen feedforward model changed')
-        with np.load(payload,allow_pickle=False) as data:obs={k:data[k] for k in data.files}
-        if obs['sample_ns'].dtype!=np.dtype('int64') or any(obs[k].shape!=(len(obs['sample_ns']),14) for k in ('q','dq','current','status')):
-            raise ValueError('Observation array schema mismatch')
-        if len(obs['sample_ns'])<5 or np.any(np.diff(obs['sample_ns'])<=0) or np.any(np.diff(obs['sequence'])!=1):
-            raise ValueError('Missing/repeated samples: segment before differentiation')
-        if np.any(np.diff(obs['sample_ns'])!=record['sample_period_ns']):raise ValueError('Nonuniform acquisition times: resample contiguous blocks before uniform-time differentiation')
-        if np.any(obs['status']) or any(not np.isfinite(obs[k]).all() for k in ('q','dq','current')):raise ValueError('Invalid/saturated observations')
+        _,obs=read_record(root,name,meta,names)
         yield name,meta,obs
 
 
@@ -96,7 +117,14 @@ def friction_pairs(obs,meta,gravity,gain,control_period_ns=2000000):
     stride=round(control_period_ns*1e-9/dt)
     if stride<1 or not np.isclose(stride*dt,control_period_ns*1e-9,rtol=0,atol=1e-9):raise ValueError('Uniform integer-ratio control-cycle averaging required')
     gravity_torque=gravity.gravity_batch(obs['q'])[:,j]
-    residual=obs['current'][:,j]*gain-gravity_torque
+    return friction_pair_projection(obs,meta,obs['current'][:,j]*gain-gravity_torque,control_period_ns)
+
+
+def friction_pair_projection(obs,meta,residual,control_period_ns=2000000):
+    """Same linear time/position projection for scalar torque or regressor columns."""
+    j=meta['conditions']['joint'];speed=meta['conditions']['speed'];t=obs['sample_ns']*1e-9;dt=float(np.median(np.diff(t)))
+    stride=round(control_period_ns*1e-9/dt)
+    if stride<1 or not np.isclose(stride*dt,control_period_ns*1e-9,rtol=0,atol=1e-9):raise ValueError('Uniform integer-ratio control-cycle averaging required')
     count=len(t)//stride
     average=lambda value:value[:count*stride].reshape((count,stride)+value.shape[1:]).mean(axis=1)
     t=average(t);q=average(obs['q']);velocity=average(obs['dq']);residual=average(residual);dt*=stride
@@ -105,7 +133,7 @@ def friction_pairs(obs,meta,gravity,gain,control_period_ns=2000000):
     # turn a phase-dependent ripple into a systematic viscous coefficient bias.
     window=2*round(.025/dt)+1
     q=savgol_filter(q,window,3,axis=0);velocity=savgol_filter(velocity,window,3,axis=0)
-    residual=savgol_filter(residual,window,3)
+    residual=savgol_filter(residual,window,3,axis=0)
     # Differentiate only this verified contiguous trial, then exclude ramp/turn
     # boundaries and samples with appreciable acceleration.
     acceleration=savgol_filter(average(obs['dq']),window,3,deriv=1,delta=dt,axis=0)
@@ -116,7 +144,7 @@ def friction_pairs(obs,meta,gravity,gain,control_period_ns=2000000):
         position=q[mask,j];order=np.argsort(position);parts.append((position[order],velocity[mask,j][order],residual[mask][order]))
     low=max(p[0].min() for p in parts);high=min(p[0].max() for p in parts)
     if high-low<.02:raise ValueError('Forward/reverse positions do not overlap sufficiently')
-    grid=np.linspace(low,high,48);interpolated=[(np.interp(grid,p[0],p[1]),np.interp(grid,p[0],p[2])) for p in parts]
+    grid=np.linspace(low,high,48);interpolated=[(np.interp(grid,p[0],p[1]),(np.interp(grid,p[0],p[2]) if p[2].ndim==1 else np.column_stack([np.interp(grid,p[0],column) for column in p[2].T]))) for p in parts]
     vp,tp=interpolated[0];vm,tm=interpolated[1]
     features=np.column_stack([(vp-vm)/2,(np.tanh(vp/.001)-np.tanh(vm/.001))/2]);target=(tp-tm)/2
     return features,target,dict(joint=j,requested_speed_rad_s=speed,matched_position_range_rad=[float(low),float(high)],

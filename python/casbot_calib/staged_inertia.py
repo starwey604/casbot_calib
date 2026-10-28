@@ -83,6 +83,22 @@ def _metrics(problem,theta,friction,static,floor):
         stationary_convention='rigid predicted effort +/- frozen operational static-friction bound; no false unique hold prediction')
 
 
+def probe_metrics(p,candidate,theta,friction):
+    """Independent single-axis inertia balance, shared by legacy and P0."""
+    error=p['regression']@theta+p['extra']@friction-p['target']
+    j=p['joint'];time=p['time_s']-np.mean(p['time_s']);gravity_torque=candidate.gravity_batch(p['q'])[:,j]
+    design=np.column_stack([p['ddq'][:,j],p['dq'][:,j],np.ones(len(time)),time,time*time])
+    scale=np.maximum(np.linalg.norm(design,axis=0),1e-12)
+    observed=np.linalg.lstsq(design/scale,(p['target']-gravity_torque),rcond=1e-9)[0]/scale
+    predicted_inertia=float(np.mean([candidate.mass_matrix(q)[j,j] for q in p['q'][::32]]))
+    relative=abs(predicted_inertia-observed[0])/max(abs(observed[0]),1e-8)
+    rmse=float(np.sqrt(np.mean(error**2)))
+    return dict(rmse_nm=rmse,mean_residual_nm=float(np.mean(error)),joint=j,independently_regressed_joint_inertia_kg_m2=float(observed[0]),
+        model_joint_inertia_kg_m2=predicted_inertia,relative_inertia_disagreement=float(relative),
+        method='single-axis actual torque balance: acceleration + velocity + constant/slow drift nuisance; no model inertia used in regression',
+        passed=bool(observed[0]>0 and relative<=.1 and rmse<=.002),preprocessing=p['preprocessing'])
+
+
 def _preserve_prior_stages(root,candidate,friction,static,original_gravity,acceptance):
     gravity_rows=[]
     for name,meta,obs in recordings(root,'gravity'):
@@ -146,18 +162,7 @@ def identify_inertia(root,output,gravity_report,friction_report,breakaway_report
     probe_validation={}
     for name,(meta,p) in probes.items():
         if meta['conditions']['batch']!='validation':continue
-        error=p['regression']@theta+p['extra']@friction-p['target']
-        j=p['joint'];time=p['time_s']-np.mean(p['time_s']);gravity_torque=candidate.gravity_batch(p['q'])[:,j]
-        design=np.column_stack([p['ddq'][:,j],p['dq'][:,j],np.ones(len(time)),time,time*time])
-        scale=np.maximum(np.linalg.norm(design,axis=0),1e-12)
-        observed=np.linalg.lstsq(design/scale,(p['target']-gravity_torque),rcond=1e-9)[0]/scale
-        predicted_inertia=float(np.mean([candidate.mass_matrix(q)[j,j] for q in p['q'][::32]]))
-        relative=abs(predicted_inertia-observed[0])/max(abs(observed[0]),1e-8)
-        probe_validation[name]=dict(rmse_nm=float(np.sqrt(np.mean(error**2))),joint=p['joint'],
-            independently_regressed_joint_inertia_kg_m2=float(observed[0]),model_joint_inertia_kg_m2=predicted_inertia,
-            relative_inertia_disagreement=float(relative),
-            method='single-axis actual torque balance: acceleration + velocity + constant/slow drift nuisance; no model inertia used in regression',
-            passed=bool(observed[0]>0 and relative<=.1 and np.sqrt(np.mean(error**2))<=.002),preprocessing=p['preprocessing'])
+        probe_validation[name]=probe_metrics(p,candidate,theta,friction)
     initial_validation={name:_metrics(p,np.asarray(initial['parameters']),frozen_friction,fs,config['acceptance']['torque_floor_nm']) for name,p in problems.items() if name!='inertia_train'}
     acceptance={**config['acceptance'],**dict(gain_nm_a=config['drive']['gain_nm_a'],control_period_ns=config['control_period_ns'])}
     original_gravity=model_from_parameters(nominal,theta_g)

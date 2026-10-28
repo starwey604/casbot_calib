@@ -67,6 +67,10 @@ def _story(root):
 
 
 def render_staged(folder,output=None,fps=12,video=True,ros_report=None):
+    if (Path(folder)/'final_protocol.json').exists():
+        if ros_report is not None:raise ValueError('R4 playback labels reused virtual preflight; ROS benchmarks remain separate evidence')
+        from .staged_final_presentation import render_final
+        return render_final(folder,output,fps=fps,video=video)
     from PIL import Image,ImageDraw
     from .presentation import _font
     from .viewer import JointView

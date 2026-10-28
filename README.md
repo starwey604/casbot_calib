@@ -185,6 +185,7 @@ bash scripts/humble/validate.sh
 * [单臂 (Arm R1) 几何与标定文档](docs/arm_r1.md)
 * [整臂标定计划](docs/whole_arm_calibration_plan.md) & [双臂动力学标定计划](docs/dual_arm_dynamics_plan.md)
 * [碰撞检测与分阶段工作流](docs/collision_staged_workflow.md)
+* [动力学P0数据契约](docs/staged_dynamics_p0_r0.md)、[R1多构型开发](docs/staged_dynamics_p0_r1.md)、[R2算子稳定性](docs/staged_dynamics_p0_r2.md)、[R3频段归因/选参](docs/staged_dynamics_p0_r3.md)及[R4正式验收](docs/staged_dynamics_p0_r4.md)：已通过本机合成测试、独立控制对照和中文回放；不代表实机或全频带性能。
 * [ROS 2 传输层设计文档](docs/ros_transport.md) & [Humble 环境说明](docs/humble_environment.md)
 * [可视化工具演示指南](docs/viewer_demo.md)
 * [开发者指南](docs/development.md)

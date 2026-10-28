@@ -135,7 +135,7 @@ def build_recipes(config):
         m.add(.05,home,label='initial_hold').add(.25,home,label='torque_probe')
         result.append(m.add(config['transition_s'],home,label='recovery').add(config['settle_s'],home,label='final_hold'))
     # Train and validation trajectories have disjoint deterministic configurations.
-    for batch,count,seed in [('train',config['gravity_train_poses'],71),('validation',config['gravity_validation_poses'],171)]:
+    for batch,count,seed in [('train',config['gravity_train_poses'],config.get('gravity_train_seed',71)),('validation',config['gravity_validation_poses'],config.get('gravity_validation_seed',171))]:
         rng=np.random.default_rng(seed)
         for p in range(count*config.get('gravity_candidate_multiplier',2)):
             pose=home+rng.uniform(-1,1,14)*amplitude
@@ -144,7 +144,7 @@ def build_recipes(config):
                 m=_trial(f'gravity_{batch}_{p:02}_{approach:+}','gravity',home,near,config,dict(batch=batch,pose=p,approach=approach))
                 m.add(.8,pose,label='paired_approach').add(config['gravity_hold_s'],pose,label='static_measure')
                 result.append(_finish(m,config))
-    for batch,seed in [('train',92),('validation',192),('sampling',192)]:
+    for batch,seed in [('train',config.get('friction_train_seed',92)),('validation',config.get('friction_validation_seed',192)),('sampling',config.get('friction_validation_seed',192))]:
         rng=np.random.default_rng(seed)
         for p in range(1 if batch=='sampling' else config['friction_poses']):
             pose=home+rng.uniform(-.35,.35,14)*amplitude
@@ -164,8 +164,11 @@ def build_recipes(config):
                         m.add(distance/speed,q,v,label='constant_velocity')
                         q=q.copy();q[j]+=sign*speed*ramp/2;m.add(ramp,q,label='brake').add(.15,q,label='reverse_hold')
                     result.append(_finish(m,config))
-    for p,offset in enumerate((-0.25,0.25)):
-        pose=home+offset*amplitude
+    breakaway_poses=[home+offset*amplitude for offset in (-0.25,0.25)]
+    if 'breakaway_pose_seed' in config:
+        rng=np.random.default_rng(config['breakaway_pose_seed'])
+        breakaway_poses=[home+offset*amplitude for offset in rng.uniform(-.25,.25,(2,14))]
+    for p,pose in enumerate(breakaway_poses):
         for j in range(14):
             for sign in (-1,1):
                 for dwell in config['breakaway_dwell_s']:
@@ -187,51 +190,14 @@ def build_recipes(config):
         pose=home.copy();pose[[5,6,12,13]]=offset
         for joint in (4,11):
             for sign in (-1,1):
-                frequency=probe['frequency_hz'];omega=2*np.pi*frequency;probe_amplitude=probe['amplitude_rad'];bias=probe['bias_speed_rad_s'];duration=probe['duration_s'];ramp=1.
-                start=pose.copy();start[joint]-=sign*bias*duration/2
-                entry=start.copy();entry[joint]-=sign*bias*ramp/2
-                m=_trial(f'wrist_probe_{p}_{joint:02}_{sign:+}','inertia_probe',home,entry,config,
-                    dict(pose=p,joint=joint,direction=sign,frequency_hz=frequency,sample_period_ns=config.get('inertia_sample_period_ns',250000),
-                         batch='validation' if p==1 else 'train',
-                         protocol='sustained signed speed plus small sinusoid; no zero crossing in identification window'))
-                def smooth(u):
-                    return (35*u**4-84*u**5+70*u**6-20*u**7,140*u**3-420*u**4+420*u**5-140*u**6,
-                        420*u**2-1680*u**3+2100*u**4-840*u**5,840*u-5040*u**2+8400*u**3-4200*u**4,
-                        7*u**5-14*u**6+10*u**7-2.5*u**8)
-                def add_state(qj,vj,aj,jj,span,label):
-                    q=pose.copy();v=np.zeros(14);a=np.zeros(14);jerk=np.zeros(14)
-                    q[joint]=qj;v[joint]=vj;a[joint]=aj;jerk[joint]=jj
-                    m.add(span,q,v,label=label);m.states[-1]=np.stack([q,v,a,jerk])
-                step=1/128
-                for mode,length in [('entry',ramp),('probe',duration),('exit',ramp)]:
-                    count=round(length/step);span=length/count
-                    for index in range(1,count+1):
-                        t=index*span
-                        if mode=='probe':
-                            angle=omega*t;qj=start[joint]+sign*(bias*t+probe_amplitude*np.sin(angle));vj=sign*(bias+probe_amplitude*omega*np.cos(angle));aj=-sign*probe_amplitude*omega**2*np.sin(angle);jj=-sign*probe_amplitude*omega**3*np.cos(angle)
-                        else:
-                            u=t/ramp;s,d,dd,ddd,integral=smooth(u)
-                            if mode=='entry':
-                                phase=t-ramp;base=entry[joint]+sign*bias*ramp*integral;vb=sign*bias*s;ab=sign*bias*d/ramp;jb=sign*bias*dd/ramp**2
-                            else:
-                                phase=duration+t;base=start[joint]+sign*bias*duration+sign*bias*ramp*(u-integral);vb=sign*bias*(1-s);ab=-sign*bias*d/ramp;jb=-sign*bias*dd/ramp**2
-                                s,d,dd,ddd=1-s,-d,-dd,-ddd
-                            f=probe_amplitude*np.sin(omega*phase);v=probe_amplitude*omega*np.cos(omega*phase);a=-omega**2*f;j=-omega**2*v
-                            qj=base+sign*s*f;vj=vb+sign*(s*v+d/ramp*f);aj=ab+sign*(s*a+2*d/ramp*v+dd/ramp**2*f)
-                            jj=jb+sign*(s*j+3*d/ramp*a+3*dd/ramp**2*v+ddd/ramp**3*f)
-                        add_state(qj,vj,aj,jj,span,'probe_measure' if mode=='probe' else 'probe_'+mode)
-                result.append(_finish(m,config))
+                result.append(wrist_probe_motion(f'wrist_probe_{p}_{joint:02}_{sign:+}',home,pose,config,joint,sign,
+                    dict(pose=p,batch='validation' if p==1 else 'train')))
     dynamic=[('train',seed,'both') for seed in config.get('dynamic_candidate_seeds',[27])]
     dynamic += [('validation',127,'both'),('left_validation',128,'left'),('right_validation',129,'right')]
     dynamic += [(f'tuning_{k}',227,'both') for k in range(5)]
     dynamic += [(f'control_{model}_{gain}',327,'both') for model in ('nominal','identified') for gain in ('original','tuned')]
     for batch,seed,active in dynamic:
-        # Hermite interpolation of an analytic multisine. Derivatives, including
-        # the entry/exit, belong to this polynomial, not the seed waveform.
-        from .dual_excitation import periodic_reference
-        period=config['dynamic_period_s'];periods=config['dynamic_periods'];step=period/64
-        t=np.arange(periods*64+1)*step
-        q,v,a,jrk=periodic_reference(t,home,period,amplitude,seed,validation=batch!='train',active=active)
+        period=config['dynamic_period_s'];periods=config['dynamic_periods']
         stage='inertia';name='inertia_'+batch;conditions=dict(batch=batch,period_s=period,periods=periods,seed=seed,active=active,
             sample_period_ns=config.get('inertia_sample_period_ns',250000))
         if batch=='train':name=f'inertia_train_candidate_{seed}'
@@ -239,12 +205,64 @@ def build_recipes(config):
             stage='control_tuning';name='control_'+batch;k=int(batch.rsplit('_',1)[1]);conditions.update(kp_factor=[.5,.75,1.,1.25,1.5][k],feedforward='nominal')
         elif batch.startswith('control_'):
             stage='control_validation';name=batch;_,ff,gain=batch.split('_');conditions.update(feedforward=ff,gain_strategy=gain)
-        m=Motion(name,stage,home,conditions)
-        m.add(config['settle_s'],home,label='initial_hold')
-        transition=config.get('dynamic_transition_s',2.)
-        m.add(transition,q[0],v[0],label='enter_periodic')
-        m.states[-1]=np.stack([q[0],v[0],a[0],jrk[0]])
-        for k in range(1,len(t)):
-            m.add(step,q[k],v[k],label='periodic');m.states[-1]=np.stack([q[k],v[k],a[k],jrk[k]])
-        result.append(_finish(m,{**config,'transition_s':transition}))
+        result.append(periodic_motion(name,stage,home,home,config,seed,batch!='train',active,conditions))
     return result
+
+
+def wrist_probe_motion(name,home,pose,config,joint,sign,conditions=None):
+    """Shared non-reversing acceleration probe; native mechanics remain unchanged."""
+    home=np.asarray(home,dtype=float);pose=np.asarray(pose,dtype=float)
+    probe=config.get('wrist_probe',dict(frequency_hz=5.,amplitude_rad=.004,bias_speed_rad_s=.18,duration_s=2.))
+    frequency=probe['frequency_hz'];omega=2*np.pi*frequency;probe_amplitude=probe['amplitude_rad'];bias=probe['bias_speed_rad_s'];duration=probe['duration_s'];ramp=1.
+    start=pose.copy();start[joint]-=sign*bias*duration/2
+    entry=start.copy();entry[joint]-=sign*bias*ramp/2
+    conditions={**(conditions or {}), 'joint':joint, 'direction':sign, 'frequency_hz':frequency,
+        'sample_period_ns':config.get('inertia_sample_period_ns',250000),
+        'protocol':'sustained signed speed plus small sinusoid; no zero crossing in identification window'}
+    m=_trial(name,'inertia_probe',home,entry,config,conditions)
+    def smooth(u):
+        return (35*u**4-84*u**5+70*u**6-20*u**7,140*u**3-420*u**4+420*u**5-140*u**6,
+            420*u**2-1680*u**3+2100*u**4-840*u**5,840*u-5040*u**2+8400*u**3-4200*u**4,
+            7*u**5-14*u**6+10*u**7-2.5*u**8)
+    def add_state(qj,vj,aj,jj,span,label):
+        q=pose.copy();v=np.zeros(14);a=np.zeros(14);jerk=np.zeros(14)
+        q[joint]=qj;v[joint]=vj;a[joint]=aj;jerk[joint]=jj
+        m.add(span,q,v,label=label);m.states[-1]=np.stack([q,v,a,jerk])
+    step=1/128
+    for mode,length in [('entry',ramp),('probe',duration),('exit',ramp)]:
+        count=round(length/step);span=length/count
+        for index in range(1,count+1):
+            t=index*span
+            if mode=='probe':
+                angle=omega*t;qj=start[joint]+sign*(bias*t+probe_amplitude*np.sin(angle));vj=sign*(bias+probe_amplitude*omega*np.cos(angle));aj=-sign*probe_amplitude*omega**2*np.sin(angle);jj=-sign*probe_amplitude*omega**3*np.cos(angle)
+            else:
+                u=t/ramp;s,d,dd,ddd,integral=smooth(u)
+                if mode=='entry':
+                    phase=t-ramp;base=entry[joint]+sign*bias*ramp*integral;vb=sign*bias*s;ab=sign*bias*d/ramp;jb=sign*bias*dd/ramp**2
+                else:
+                    phase=duration+t;base=start[joint]+sign*bias*duration+sign*bias*ramp*(u-integral);vb=sign*bias*(1-s);ab=-sign*bias*d/ramp;jb=-sign*bias*dd/ramp**2
+                    s,d,dd,ddd=1-s,-d,-dd,-ddd
+                f=probe_amplitude*np.sin(omega*phase);v=probe_amplitude*omega*np.cos(omega*phase);a=-omega**2*f;j=-omega**2*v
+                qj=base+sign*s*f;vj=vb+sign*(s*v+d/ramp*f);aj=ab+sign*(s*a+2*d/ramp*v+dd/ramp**2*f)
+                jj=jb+sign*(s*j+3*d/ramp*a+3*dd/ramp**2*v+ddd/ramp**3*f)
+            add_state(qj,vj,aj,jj,span,'probe_measure' if mode=='probe' else 'probe_'+mode)
+    return _finish(m,config)
+
+
+def periodic_motion(name,stage,home,center,config,seed,validation=False,active='both',conditions=None):
+    """Shared analytic multisine and complete C3 entry/braking/return path."""
+    from .dual_excitation import periodic_reference
+    home=np.asarray(home,dtype=float);center=np.asarray(center,dtype=float)
+    period=config['dynamic_period_s'];periods=config['dynamic_periods'];step=period/64
+    t=np.arange(periods*64+1)*step
+    q,v,a,jrk=periodic_reference(t,center,period,np.asarray(config['pose_amplitude_rad']),seed,validation,active)
+    conditions={**(conditions or {}), 'period_s':period,'periods':periods,'seed':seed,'active':active,
+        'sample_period_ns':config.get('inertia_sample_period_ns',250000)}
+    m=Motion(name,stage,home,conditions)
+    m.add(config['settle_s'],home,label='initial_hold')
+    transition=config.get('dynamic_transition_s',2.)
+    m.add(transition,q[0],v[0],label='enter_periodic')
+    m.states[-1]=np.stack([q[0],v[0],a[0],jrk[0]])
+    for k in range(1,len(t)):
+        m.add(step,q[k],v[k],label='periodic');m.states[-1]=np.stack([q[k],v[k],a[k],jrk[k]])
+    return _finish(m,{**config,'transition_s':transition})

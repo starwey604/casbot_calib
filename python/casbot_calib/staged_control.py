@@ -56,9 +56,28 @@ def _verify_reused_controller(root,name,model,config,factor):
 
 
 def run_control(root,plant,config,profile,inertia_folder,resume=False):
+    from .staged_protocol import require_legacy_execution
+    require_legacy_execution(config)
     root=Path(root);inertia_folder=Path(inertia_folder);inertia=json.loads((inertia_folder/'report.json').read_text())
     if not inertia['passed']:raise ValueError('Control validation requires accepted inertia and previous stages')
     candidate=load_candidate(inertia_folder/'candidate.json');nominal,_=nominal_dual_arm()
+    return _run_control(root,plant,config,profile,candidate,nominal,resume)
+
+
+def run_frozen_control(root,plant,config,profile,parent,acceptance,resume=False):
+    """R4 adapter; reuse the same control experiment after frozen test acceptance."""
+    from .staged_protocol import load_frozen_candidate,file_hash,_read
+    from .staged_final import load_final_protocol
+    acceptance=Path(acceptance);analysis=acceptance.parent.parent;protocol,_=load_final_protocol(parent,analysis)
+    frozen=load_frozen_candidate(parent);report=_read(acceptance)
+    if not report['model_acceptance_passed'] or report['candidate_sha256']!=file_hash(Path(parent)/frozen['candidate']) or report['final_protocol_sha256']!=file_hash(analysis/'final_protocol.json'):
+        raise ValueError('Control requires the accepted frozen final-test model')
+    candidate=load_candidate(Path(parent)/frozen['candidate']);nominal,_=nominal_dual_arm()
+    return _run_control(Path(root),plant,config,profile,candidate,nominal,resume)
+
+
+def _run_control(root,plant,config,profile,candidate,nominal,resume):
+    root=Path(root)
     selected=json.loads((root/'plan_report.json').read_text())['selected_trials'];grid=[]
     for name in selected:
         meta,_=load_trial(root,name)

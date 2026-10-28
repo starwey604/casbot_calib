@@ -30,32 +30,8 @@ def collect_breakaway(root,name,plant,gravity_friction,config,profile):
 def identify_breakaway(root,output,gravity):
     root=Path(root);output=Path(output);output.mkdir(parents=True,exist_ok=False);config=session_config(root);gain=config['drive']['gain_nm_a'];rows=[]
     for name,meta,obs in recordings(root,'breakaway'):
-        conditions=meta['conditions'];j=conditions['joint'];direction=conditions['direction'];begin,end=_windows(meta,'torque_ramp')[0]
-        policy=json.loads((root/'runs'/name/'guard_events.json').read_text());event=policy['events'][0]
-        if event['fault'] or event['reason']!='breakaway_confirmed':raise ValueError('Feedback guard failed: '+name)
-        t=obs['sample_ns']*1e-9;pre=(t>begin-.15)&(t<begin-.02)
-        if not np.any(pre) or np.max(abs(obs['dq'][pre,j]))>1e-5:raise ValueError('Joint was not stationary before ramp: '+name)
-        initial_q=float(np.median(obs['q'][pre,j]));mask=(t>=begin)&(obs['sample_ns']<=event['confirmed_sample_ns'])
-        indices=np.flatnonzero(mask);velocity=direction*obs['dq'][indices,j]
-        # The controller confirms with displacement + sustained velocity. Once
-        # confirmed, backtrack to the last resolvably stationary acquisition,
-        # without equating the later confirmation torque to static friction.
-        moving=np.flatnonzero(velocity>1e-7)
-        if not len(moving) or moving[0]==0:raise ValueError('No resolvable still-to-moving bracket: '+name)
-        first=indices[moving[0]];last=first-1
-        confirmation=np.searchsorted(obs['sample_ns'],event['confirmed_sample_ns'])
-        if direction*(obs['q'][confirmation,j]-initial_q)<policy['displacement_threshold_rad']*.8:
-            raise ValueError('Displacement evidence inconsistent with guard confirmation')
-        q=obs['q'][[last,first,confirmation]];g=gravity.gravity_batch(q)[:,j]
-        efforts=direction*(obs['current'][[last,first,confirmation],j]*gain-g)
-        uncertainty=3*config['drive']['current_noise_a']*gain
-        low=float(min(efforts[:2])-uncertainty);high=float(max(efforts[:2])+uncertainty)
-        rows.append(dict(trial=name,**conditions,last_still_ns=int(obs['sample_ns'][last]),first_moving_ns=int(obs['sample_ns'][first]),
-            confirmed_sample_ns=event['confirmed_sample_ns'],decision_ns=event['decision_ns'],
-            onset_interval_nm=[low,high],estimate_nm=float(np.mean(efforts[:2])),operational_confirmation_nm=float(efforts[2]),
-            motion_confirmation_delay_s=float((event['confirmed_sample_ns']-obs['sample_ns'][first])*1e-9),
-            passed=bool(low>0 and high-low<.01),
-            interpretation='operational onset at stated velocity resolution, with current-noise interval; gravity uncertainty reported separately'))
+        policy=json.loads((root/'runs'/name/'guard_events.json').read_text())
+        rows.append(onset_record(name,meta,obs,policy,gravity,config))
     axes=[]
     for j in range(14):
         directions={}
@@ -86,6 +62,34 @@ def identify_breakaway(root,output,gravity):
         writer.writerows([r['trial'],r['joint'],r['direction'],r['pose'],r['dwell_s'],r['slope_nm_s'],r['repeat'],r['estimate_nm'],*r['onset_interval_nm'],r['operational_confirmation_nm']] for r in rows)
     _plot(output,report)
     return report
+
+
+def onset_record(name,meta,obs,policy,gravity,config):
+    """Observation-only operational bracket, shared by fitting and frozen tests."""
+    conditions=meta['conditions'];j=conditions['joint'];direction=conditions['direction'];begin,end=_windows(meta,'torque_ramp')[0]
+    if len(policy['events'])!=1:raise ValueError('Exactly one feedback confirmation required')
+    event=policy['events'][0]
+    if event['fault'] or event['reason']!='breakaway_confirmed':raise ValueError('Feedback guard failed: '+name)
+    t=obs['sample_ns']*1e-9;pre=(t>begin-.15)&(t<begin-.02)
+    if not np.any(pre) or np.max(abs(obs['dq'][pre,j]))>1e-5:raise ValueError('Joint was not stationary before ramp: '+name)
+    initial_q=float(np.median(obs['q'][pre,j]));mask=(t>=begin)&(obs['sample_ns']<=event['confirmed_sample_ns'])
+    indices=np.flatnonzero(mask);velocity=direction*obs['dq'][indices,j]
+    moving=np.flatnonzero(velocity>1e-7)
+    if not len(moving) or moving[0]==0:raise ValueError('No resolvable still-to-moving bracket: '+name)
+    first=indices[moving[0]];last=first-1
+    confirmation=np.searchsorted(obs['sample_ns'],event['confirmed_sample_ns'])
+    if direction*(obs['q'][confirmation,j]-initial_q)<policy['displacement_threshold_rad']*.8:
+        raise ValueError('Displacement evidence inconsistent with guard confirmation')
+    q=obs['q'][[last,first,confirmation]];g=gravity.gravity_batch(q)[:,j]
+    efforts=direction*(obs['current'][[last,first,confirmation],j]*config['drive']['gain_nm_a']-g)
+    uncertainty=3*config['drive']['current_noise_a']*config['drive']['gain_nm_a']
+    low=float(min(efforts[:2])-uncertainty);high=float(max(efforts[:2])+uncertainty)
+    return dict(trial=name,**conditions,last_still_ns=int(obs['sample_ns'][last]),first_moving_ns=int(obs['sample_ns'][first]),
+        confirmed_sample_ns=event['confirmed_sample_ns'],decision_ns=event['decision_ns'],
+        onset_interval_nm=[low,high],estimate_nm=float(np.mean(efforts[:2])),operational_confirmation_nm=float(efforts[2]),
+        motion_confirmation_delay_s=float((event['confirmed_sample_ns']-obs['sample_ns'][first])*1e-9),
+        passed=bool(low>0 and high-low<.01),
+        interpretation='operational onset at stated velocity resolution, with current-noise interval; gravity uncertainty reported separately')
 
 
 def _plot(output,report):

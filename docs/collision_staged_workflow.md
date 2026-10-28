@@ -78,4 +78,4 @@ bash scripts/humble/container.sh casbot-calib render-staged artifacts/my_staged 
 
 ## 后续三个P0
 
-[双臂动力学三个P0实施计划](staged_dynamics_p0_plan.md)规定多构型与独立批次验证、参数与动力学算子稳定性验收、频段与模型分量收益归因。三项目前待实现，将使用新的合成配置和会话；现有M1–M6交付不代表已通过这些新增验收。
+[双臂动力学三个P0实施计划](staged_dynamics_p0_plan.md)规定多构型/批次验证、算子稳定性与频段/分量归因。[R0契约](staged_dynamics_p0_r0.md)及[R1开发流程](staged_dynamics_p0_r1.md)已实现：新配置默认规划R1七中心完整参考，并采集train/selection；`--contract-only`仅冻结R0身份。[R2算子稳定性](staged_dynamics_p0_r2.md)、[R3频段归因/选参](staged_dynamics_p0_r3.md)及[R4正式验收](staged_dynamics_p0_r4.md)已实现，本机新正式test、四组控制和中文回放通过；结论只适用于声明的合成范围。

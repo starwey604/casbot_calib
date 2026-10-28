@@ -51,16 +51,29 @@ def main(argv=None):
     run.add_argument("config",type=Path);run.add_argument("--output",required=True,type=Path)
     suite=sub.add_parser("suite",help="Run all protocols and acceptance checks")
     suite.add_argument("--configs",type=Path,default=Path("configs"));suite.add_argument("--output",required=True,type=Path)
-    staged=sub.add_parser('plan-staged',help='Plan and collision-gate all staged dual-arm trials (no collection)')
+    staged=sub.add_parser('plan-staged',help='Legacy collision plan, P0 R1 split references, or --contract-only R0 identities')
     staged.add_argument('--config',type=Path,default=Path('configs/staged_dual_arm.yaml'));staged.add_argument('--output',type=Path,required=True)
+    staged.add_argument('--development-reference',type=Path,help='P0 R1: pin an existing legacy session as development predecessor observations')
+    staged.add_argument('--contract-only',action='store_true',help='P0: only freeze the R0 identity contract, without R1 references')
     staged_run=sub.add_parser('staged-calibrate',help='Acquire staged Mock calibration and independently validate four control groups')
     staged_run.add_argument('--config',type=Path,default=Path('configs/staged_dual_arm.yaml'));staged_run.add_argument('--output',type=Path,required=True)
+    staged_run.add_argument('--development-reference',type=Path,help='P0 R1: explicit legacy predecessor development session')
+    staged_run.add_argument('--final-test',type=Path,help='R4: parent P0 session containing an R3 candidate freeze')
+    staged_run.add_argument('--attribution-analysis',type=Path,help='R4: immutable R3 analysis matching the frozen selection proof')
+    staged_run.add_argument('--fps',type=int,default=12,help='R4 Chinese recording playback frame rate')
     staged_run.add_argument('--through',choices=('gravity','friction','breakaway','inertia','all'),default='all');staged_run.add_argument('--resume',action='store_true')
     staged_analysis=sub.add_parser('staged-identify',help='Reanalyse staged raw observations without plant configuration or evaluation truth')
     staged_analysis.add_argument('folder',type=Path);staged_analysis.add_argument('--output',type=Path,required=True)
-    staged_analysis.add_argument('--through',choices=('gravity','friction','breakaway','inertia'),default='inertia')
+    staged_analysis.add_argument('--through',choices=('gravity','friction','breakaway','inertia','stability','attribution','final'),default='inertia')
+    staged_analysis.add_argument('--final-protocol',type=Path,help='R4: preregistered final analysis directory; no fits or device access')
+    staged_analysis.add_argument('--stability-verification',type=Path,help='R3: independently verified R2 directory')
+    staged_analysis.add_argument('--resume',action='store_true',help='Continue only an unchanged R2 stability analysis')
     staged_verify=sub.add_parser('staged-verify',help='Recheck all collision gates, numerical convergence and truth-isolated inference')
     staged_verify.add_argument('folder',type=Path);staged_verify.add_argument('--output',type=Path,required=True)
+    staged_verify.add_argument('--stability-analysis',type=Path,help='R2: verify sealed sensitivity fits and compare the regularization path')
+    staged_verify.add_argument('--attribution-analysis',type=Path,help='R3: verify matched-band component/selection evidence')
+    staged_verify.add_argument('--final-analysis',type=Path,help='R4: accepted frozen test analysis for comprehensive verification')
+    staged_verify.add_argument('--freeze-candidate',action='store_true',help='R3: freeze the qualified selection winner after verification')
     staged_render=sub.add_parser('render-staged',help='Chinese geometry-only playback of accepted staged records')
     staged_render.add_argument('folder',type=Path);staged_render.add_argument('--output',type=Path)
     staged_render.add_argument('--fps',type=int,default=12);staged_render.add_argument('--snapshots-only',action='store_true')
@@ -170,7 +183,7 @@ def main(argv=None):
         return 0 if result['passed'] else 1
     if args.command=='staged-verify':
         from .staged_validation import verify_staged
-        result=verify_staged(args.folder,args.output)
+        result=verify_staged(args.folder,args.output,args.stability_analysis,args.attribution_analysis,args.freeze_candidate,args.final_analysis)
         print(f"Comprehensive staged verification: {'PASS' if result['passed'] else 'FAIL'} -> {args.output}",flush=True)
         return 0 if result['passed'] else 1
     if args.command=='staged-suite':
@@ -180,17 +193,27 @@ def main(argv=None):
         return 0 if result['passed'] else 1
     if args.command=='staged-identify':
         from .staged_analysis import identify_staged
-        result=identify_staged(args.folder,args.output,args.through)
+        result=identify_staged(args.folder,args.output,args.through,args.resume,args.stability_verification,args.final_protocol)
         print(f"Staged analysis: {'PASS' if result['passed'] else 'FAIL'} -> {args.output}",flush=True)
         return 0 if result['passed'] else 1
     if args.command=='staged-calibrate':
+        if args.final_test is not None:
+            if args.attribution_analysis is None or args.development_reference is not None or args.through!='all':raise ValueError('R4 requires --attribution-analysis, --through all and an existing frozen parent')
+            from .staged_final import run_final
+            result=run_final(args.final_test,args.attribution_analysis,args.output,yaml.safe_load(args.config.read_text(encoding='utf-8')),resume=args.resume,fps=args.fps)
+            print(f"R4 final delivery: {'PASS' if result['passed'] else 'FAIL'} -> {args.output}",flush=True)
+            return 0 if result['passed'] else 1
+        if args.attribution_analysis is not None:raise ValueError('--attribution-analysis requires --final-test')
         from .staged_workflow import run_staged
-        result=run_staged(args.output,yaml.safe_load(args.config.read_text(encoding='utf-8')),args.through,args.resume)
+        result=run_staged(args.output,yaml.safe_load(args.config.read_text(encoding='utf-8')),args.through,args.resume,args.development_reference)
         print(f"Staged checkpoint: {'PASS' if result['checkpoint_passed'] else 'FAIL'} through {result['completed_through']} -> {args.output}",flush=True)
         return 0 if result['checkpoint_passed'] else 1
     if args.command=='plan-staged':
         from .staged_plan import plan_session
-        result=plan_session(args.output,yaml.safe_load(args.config.read_text(encoding='utf-8')))
+        result=plan_session(args.output,yaml.safe_load(args.config.read_text(encoding='utf-8')),args.development_reference,args.contract_only)
+        if result.get('completed_round')=='R0':
+            print(f"P0 R0 数据契约：{'通过' if result['contract_passed'] else '失败'}；未规划碰撞轨迹、未采集、未完成P0验收 -> {args.output}",flush=True)
+            return 0 if result['contract_passed'] else 1
         print(f"Staged plan: {'PASS' if result['passed'] else 'REJECT'} -> {args.output}",flush=True)
         return 0 if result['passed'] else 1
     if args.command=="dual-calibrate":

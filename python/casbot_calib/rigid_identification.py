@@ -50,7 +50,7 @@ def parameter_scales(prior):
     return np.maximum(np.abs(rows),typical).ravel()
 
 
-def fit_rigid(regressor,target,prior,*,equalities=None,auxiliary=None,torque_scale=.2,rank_rtol=1e-7,robust_scale=.02,ridge=1e-12,physical_length_scale=1.,lift_residuals=False):
+def fit_rigid(regressor,target,prior,*,equalities=None,auxiliary=None,torque_scale=.2,rank_rtol=1e-7,robust_scale=.02,ridge=1e-12,physical_length_scale=1.,lift_residuals=False,fixed_scales=None,regularization_metric=None):
     import clarabel
     prior=np.asarray(prior,dtype=float);y=np.asarray(regressor,dtype=float).reshape(-1,len(prior));target=np.asarray(target,dtype=float).ravel()
     if prior.ndim!=1 or len(prior)==0 or len(prior)%10 or y.shape[0]!=len(target) or len(target)==0 or not np.isfinite(y).all() or not np.isfinite(target).all() or not np.isfinite(prior).all() or torque_scale<=0 or rank_rtol<=0 or (robust_scale is not None and robust_scale<=0) or ridge<=0 or not np.isfinite(ridge) or physical_length_scale<=0 or not np.isfinite(physical_length_scale):
@@ -63,6 +63,16 @@ def fit_rigid(regressor,target,prior,*,equalities=None,auxiliary=None,torque_sca
         if extra_prior.ndim!=1 or extra.shape[1]!=len(extra_prior) or extra_lower.shape!=extra_prior.shape or extra_upper.shape!=extra_prior.shape or not all(np.isfinite(x).all() for x in (extra,extra_prior,extra_lower,extra_upper)) or np.any(extra_lower>extra_prior) or np.any(extra_upper<extra_prior) or np.any(extra_lower>=extra_upper):
             raise ValueError('Invalid bounded auxiliary parameter block')
         y=np.column_stack([y,extra]);prior=np.r_[prior,extra_prior];scale=np.r_[scale,np.maximum(abs(extra_prior),.001)]
+    if fixed_scales is not None:
+        scale=np.asarray(fixed_scales,dtype=float).copy()
+        if scale.shape!=prior.shape or not np.isfinite(scale).all() or np.any(scale<=0):
+            raise ValueError('Expected fixed positive scales for the complete rigid/auxiliary block')
+    metric=None
+    if regularization_metric is not None:
+        metric=np.asarray(regularization_metric,dtype=float).copy()
+        if metric.shape!=(len(prior),len(prior)) or not np.isfinite(metric).all() or not np.allclose(metric,metric.T,rtol=0,atol=1e-12):
+            raise ValueError('Expected a finite symmetric regularization metric')
+        if np.linalg.eigvalsh(metric).min()<=0:raise ValueError('Regularization metric must be positive definite')
     if np.any(scale<=0):raise ValueError('Positive physical prior required')
     a=y*scale/torque_scale;rhs=(target-y@prior)/torque_scale
     _,singular,vh=np.linalg.svd(a,full_matrices=False);rank=int(np.count_nonzero(singular>max(singular[0]*rank_rtol,1e-12)))
@@ -89,7 +99,9 @@ def fit_rigid(regressor,target,prior,*,equalities=None,auxiliary=None,torque_sca
     settings.tol_gap_abs=1e-9;settings.tol_feas=1e-9;settings.tol_gap_rel=1e-9
     weights=np.ones(len(rhs));start=perf_counter();history=[]
     for _ in range(4):
-        regularizer=1e-6*projector+ridge*np.eye(len(prior))
+        # An explicit metric is the complete quadratic in the caller's frozen
+        # coordinates. Do not change it using a subset-dependent nullspace.
+        regularizer=(1e-6*projector+ridge*np.eye(len(prior))) if metric is None else ridge*metric
         if lift_residuals:
             # QR preserves the weighted squared residual up to an irrelevant
             # constant. Explicit residual variables avoid forming A.T@A, which
@@ -118,6 +130,8 @@ def fit_rigid(regressor,target,prior,*,equalities=None,auxiliary=None,torque_sca
         minimum_pseudo_inertia_eigenvalues=eigen,rmse_nm=float(np.sqrt(np.mean((y@theta-target)**2))),
         wall_s=perf_counter()-start,unobservable_dimension=len(prior)-rank,
         scaled_prior_ridge=ridge,physical_congruence_length_m=physical_length_scale,
+        coordinate_scale_source='prior_dependent_legacy' if fixed_scales is None else 'explicit_frozen',
+        regularization_metric_source='legacy_identity_plus_data_nullspace' if metric is None else 'explicit_complete_quadratic',
         data_modes_above_ridge=int(np.count_nonzero(singular>np.sqrt(ridge))),
         least_squares_formulation='QR compressed lifted residuals' if lift_residuals else 'normal-equation quadratic',
         identifiability='observable combinations fitted; nullspace representative selected by physical constraints and nominal prior',

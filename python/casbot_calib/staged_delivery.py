@@ -40,7 +40,9 @@ def evaluate_synthetic(folder):
 
 
 def finalize(folder,verification,presentation):
+    from .staged_protocol import require_legacy_execution,p0_status
     root=Path(folder);verification=Path(verification);presentation=Path(presentation)
+    config=json.loads((root/'session.json').read_text())['config'];require_legacy_execution(config)
     workflow=json.loads((root/'workflow.json').read_text());checked=json.loads((verification/'verification.json').read_text());view=json.loads((presentation/'presentation.json').read_text())
     video=presentation/'staged_calibration_zh.mp4'
     passed=bool(workflow['passed'] and checked['passed'] and view['passed'] and video.is_file() and video.stat().st_size>0)
@@ -55,7 +57,7 @@ def finalize(folder,verification,presentation):
     passed=passed and (not evaluation['available'] or evaluation['passed'])
     control=json.loads((root/'control_comparison.json').read_text())
     stages={name:json.loads((root/row['report']).read_text()) for name,row in workflow['stages'].items()}
-    result=dict(passed=passed,full_plan_complete=passed,synthetic_only=True,hardware_executable=False,
+    result=dict(passed=passed,full_plan_complete=passed,synthetic_only=True,hardware_executable=False,p0=p0_status(config),
         scope='M3-M6 staged synthetic workflow; M1 regression and M2 local ROS evidence are separately versioned',
         verification=str(verification.relative_to(root)),presentation=str(presentation.relative_to(root)),
         video_sha256=hashlib.sha256(video.read_bytes()).hexdigest(),evaluation=evaluation,
@@ -87,6 +89,8 @@ def _fresh(root,name):
 
 
 def run_suite(folder,config,resume=False,fps=12,ros_report=None):
+    from .staged_protocol import require_legacy_execution
+    require_legacy_execution(config)
     from .staged_workflow import run_staged
     from .staged_validation import verify_staged
     from .staged_presentation import render_staged

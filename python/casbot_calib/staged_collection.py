@@ -39,6 +39,10 @@ def load_trial(folder,name):
     root=Path(folder);plan=json.loads((root/'plan_report.json').read_text());target=root/'plans'/name
     if (root/'plan_rejected.json').exists():raise ValueError('Plan was rejected by a later audit; collection blocked')
     if not plan['passed'] or name not in plan['selected_trials']:raise ValueError('Trial is not in an accepted complete plan')
+    if plan.get('completed_round')=='R1':
+        from .staged_protocol import load_protocol
+        from .staged_multiconfiguration import verify_motion_file
+        protocol,_,_=load_protocol(root);verify_motion_file(root,name,protocol)
     manifest=json.loads((target/'manifest.json').read_text());metadata=json.loads((target/'motion.json').read_text())
     for filename,key in [('motion.json','motion_sha256'),('reference.npz','reference_sha256')]:
         if hashlib.sha256((target/filename).read_bytes()).hexdigest()!=manifest[key]:raise ValueError('Planned trajectory digest mismatch')
@@ -55,6 +59,24 @@ def collect_trial(folder,name,plant,feedforward,config,profile,*,command_transfo
     root=Path(folder);metadata,curve=load_trial(root,name);duration=metadata['duration_s'];n=14;drive=config['drive']
     session=json.loads((root/'session.json').read_text());planned=session['config']
     if planned!={k:v for k,v in config.items() if k!='mock'}:raise ValueError('Acquisition config changed after planning; create a new plan')
+    p0_identity={}
+    if config.get('schema_version')==2:
+        from .staged_protocol import load_protocol,load_frozen_candidate,file_hash,IDENTITY
+        _,_,split_manifest=load_protocol(root)
+        from .staged_multiconfiguration import planned_slot
+        slot=planned_slot(root,name,split_manifest)
+        if slot is None or any(metadata['conditions'].get(k)!=slot[k] for k in IDENTITY):
+            raise ValueError('P0 collection identity differs from frozen role manifest')
+        p0_identity['protocol_sha256']=file_hash(root/'protocol.json')
+        if slot['split']=='test':
+            load_frozen_candidate(root)
+            p0_identity['candidate_freeze_sha256']=file_hash(root/'candidate_freeze.json')
+            if (root/'final_test_protocol.json').exists():
+                from .staged_protocol import _unseal
+                final=_unseal(root,'final_test_protocol.json')
+                if final['candidate_freeze_sha256']!=p0_identity['candidate_freeze_sha256'] or file_hash(Path(final['analysis'])/'final_protocol.json')!=final['final_protocol_sha256']:
+                    raise ValueError('Final collection protocol changed')
+                p0_identity['final_protocol_sha256']=final['final_protocol_sha256']
     if profile.metadata['geometry_sha256']!=session['collision']['geometry_sha256'] or profile.metadata['scene']!=session['collision']['scene']:
         raise ValueError('Collision geometry/scene changed after planning')
     command_period=metadata['conditions'].get('command_period_ns',config['control_period_ns'])
@@ -86,6 +108,7 @@ def collect_trial(folder,name,plant,feedforward,config,profile,*,command_transfo
     actual=certify_polyline(profile,obs['q'],obs['sample_ns']*1e-9,clearance_m=profile.metadata['scene']['clearance_m'],max_gap_s=1.5*native.sample_period_ns*1e-9)
     write_json(target/'collision_actual.json',actual)
     report=dict(schema_version=3,stage=metadata['stage'],conditions=metadata['conditions'],synthetic_only=True,hardware_executable=False,
+        **p0_identity,
         raw_sha256=hashlib.sha256((target/'observations.npz').read_bytes()).hexdigest(),command_sha256=hashlib.sha256((target/'commands.npz').read_bytes()).hexdigest(),
         sample_clock='synthetic acquisition integer nanoseconds; receive timestamp separately retained',joint_names=[j.name for j in plant.model.joints],
         units=dict(q='rad',dq='rad/s',current='A',time='int64 ns',effort='Nm'),torque_source='output current times declared gain; not independent torque measurement',

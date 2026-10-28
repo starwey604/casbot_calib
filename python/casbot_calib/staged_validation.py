@@ -80,8 +80,30 @@ def truth_isolation(root,output,reference_candidate):
         protocol='entire evaluation directory physically moved outside session; new Python process; restored in finally; no latent plant passed to inference')
 
 
-def verify_staged(folder,output):
-    root=Path(folder);output=Path(output);output.mkdir(parents=True,exist_ok=False);workflow=json.loads((root/'workflow.json').read_text())
+def verify_staged(folder,output,stability_analysis=None,attribution_analysis=None,freeze=False,final_analysis=None):
+    from .staged_protocol import require_legacy_execution,p0_status
+    root=Path(folder);config=json.loads((root/'session.json').read_text())['config']
+    if final_analysis is not None:
+        if stability_analysis is not None or attribution_analysis is not None or freeze or config.get('schema_version')!=2:raise ValueError('R4 verification requires exclusive final analysis and P0 parent')
+        from .staged_final_validation import verify_final
+        return verify_final(root,final_analysis,output)
+    if attribution_analysis is not None:
+        if stability_analysis is not None or config.get('schema_version')!=2:raise ValueError('R3 verification requires P0 parent and exclusive analysis input')
+        from .staged_attribution_validation import verify_attribution
+        return verify_attribution(root,attribution_analysis,output,freeze=freeze)
+    if freeze:raise ValueError('Candidate freeze requires R3 attribution verification')
+    if stability_analysis is not None:
+        if config.get('schema_version')!=2:raise ValueError('R2 verification requires P0 parent records')
+        from .staged_stability_validation import verify_stability
+        return verify_stability(root,stability_analysis,output)
+    if config.get('schema_version')==2:
+        from .staged_protocol import load_protocol
+        protocol,_,_=load_protocol(root)
+        if protocol['schema_version']==2:
+            from .staged_development_validation import verify_development
+            return verify_development(root,output)
+    require_legacy_execution(config)
+    output=Path(output);output.mkdir(parents=True,exist_ok=False);workflow=json.loads((root/'workflow.json').read_text())
     if not workflow['passed']:raise ValueError('Calibration/control workflow has not passed')
     session=json.loads((root/'session.json').read_text());config=session['config'];profile=nominal_profile(scene=session['collision']['scene'])
     plan=json.loads((root/'plan_report.json').read_text());rows=[]
@@ -105,7 +127,7 @@ def verify_staged(folder,output):
     inputs=[root/name for name in ('session.json','plan_report.json','workflow.json','control_comparison.json','controller_selection.json')]
     inputs += [root/workflow['inertia_folder']/'candidate.json']+[root/value['report'] for value in workflow['stages'].values()]
     inputs += [p for directory in ('runs','plans') for p in (root/directory).rglob('*') if p.is_file()]
-    report=dict(passed=all(checks.values()),checks=checks,collision=rows,numerical_replays=replay,energy=energy,components=components,truth_isolation=isolated,
+    report=dict(passed=all(checks.values()),p0=p0_status(config),checks=checks,collision=rows,numerical_replays=replay,energy=energy,components=components,truth_isolation=isolated,
         input_sha256={str(p.relative_to(root)):hashlib.sha256(p.read_bytes()).hexdigest() for p in inputs},
         synthetic_only=True,hardware_executable=False,limitations=['Unmeasured fixture proxy and nominal geometry','Recorded interpolation is conditional, not unobserved hardware motion certification','Physical Ethernet and real SDK not tested'])
     write_json(output/'verification.json',report);return report

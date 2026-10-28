@@ -18,7 +18,13 @@ from .staged_inertia import identify_inertia
 from .staged_control import run_control
 
 
-def run_staged(folder,config,through='all',resume=False):
+def run_staged(folder,config,through='all',resume=False,development_reference=None):
+    if config.get('schema_version')==2 and config.get('p0',{}).get('planning_round')=='R1':
+        if through not in ('inertia','all'):raise ValueError('P0 R1 runs the complete development checkpoint through inertia')
+        from .staged_development import run_development
+        return run_development(folder,config,resume=resume,development_reference=development_reference)
+    from .staged_protocol import require_legacy_execution
+    require_legacy_execution(config)
     if through not in ('gravity','friction','breakaway','inertia','all'):raise ValueError('Unknown staged checkpoint')
     root=Path(folder)
     if not root.exists():

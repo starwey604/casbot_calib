@@ -10,7 +10,16 @@ from .staged_motion import build_recipes,gate_motion,derivative_bounds
 from .rigid_identification import parameter_scales
 
 
-def plan_session(folder,config):
+def plan_session(folder,config,development_reference=None,contract_only=False):
+    if config.get('schema_version')==2:
+        from .staged_protocol import prepare_protocol
+        if contract_only and development_reference is not None:raise ValueError('Contract-only planning does not bind predecessor observations')
+        if config['p0'].get('planning_round')=='R1' and not contract_only:
+            from .staged_multiconfiguration import plan_references
+            return prepare_protocol(folder,config,planner=lambda *args:plan_references(*args,development_reference=development_reference))
+        return prepare_protocol(folder,config)
+    if development_reference is not None:raise ValueError('Development reference is only supported by P0 R1')
+    if 'p0' in config:raise ValueError('P0 requires schema 2; legacy planning cannot qualify P0')
     if config.get('schema_version')!=1 or config.get('mode')!='mock_only':raise ValueError('Only versioned mock plans are supported')
     folder=Path(folder);folder.mkdir(parents=True,exist_ok=False)
     scene=yaml.safe_load(Path(config['collision_scene']).read_text(encoding='utf-8'))
