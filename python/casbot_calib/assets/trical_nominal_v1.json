@@ -1,0 +1,47 @@
+{
+  "schema_version": 1,
+  "profile_id": "nominal_dual_arm_trical_k1",
+  "robot_model_id": "casbot_dual_arm_benchmark_nominal",
+  "geometry_version": "nominal_trical_synthetic_v1",
+  "urdf_sha256": "3a707a8ed703504922478481758ddf22ac97c9f2d03558580644ec86d927d955",
+  "control_period_ns": 2000000,
+  "synthetic_only": true,
+  "hardware_executable": false,
+  "root_frame": "base_link",
+  "tools": [
+    {"name": "left_trical_tcp", "parent_frame": "left_palm_base_link", "translation_m": [0, 0, -0.1], "rotation_vector_rad": [0, 0, 0]},
+    {"name": "right_trical_tcp", "parent_frame": "right_palm_base_link", "translation_m": [0, 0, -0.1], "rotation_vector_rad": [0, 0, 0]}
+  ],
+  "fixture": {
+    "id": "synthetic_four_ball_v1",
+    "frame": "trical_artifact",
+    "world_translation_m": [0.35, 0, 0.25],
+    "world_rotation_vector_rad": [0, 0, 0],
+    "ball_radius_m": 0.0127,
+    "balls": [
+      {"id": "ball_1", "center_m": [0, -0.15, 0]},
+      {"id": "ball_2", "center_m": [0, 0.15, 0]},
+      {"id": "ball_3", "center_m": [0, 0, 0.15]},
+      {"id": "ball_4", "center_m": [0.08, 0, 0.07]}
+    ],
+    "provenance": "Synthetic metric artifact and installation; not CMM surveyed, reachable or collision certified."
+  },
+  "indicators": {
+    "channel_names": ["x", "y", "z"],
+    "axes_sensor": [[1, 0, 0], [0, 1, 0], [0, 0, 1]],
+    "centered_readings_m": [0, 0, 0],
+    "minimum_readings_m": [-0.005, -0.005, -0.005],
+    "maximum_readings_m": [0.005, 0.005, 0.005],
+    "provenance": "Mastered flat-tip geometry; synthetic range, not device specifications."
+  },
+  "parameter_policy": {
+    "root_transform": "fixed_gauge",
+    "indicator_axes_and_zero": "fixed_from_separate_mastering",
+    "joint_offsets": "candidate_only_not_all_observable",
+    "origin_translation": "parent_axes_additive_metres",
+    "origin_tilt": "local_rotation_vector_perpendicular_to_joint_axis",
+    "tool_orientation": "fixed_in_centered_position_only_experiment",
+    "fit_enabled": false,
+    "mdh_hayati": "mapping_not_implemented"
+  }
+}

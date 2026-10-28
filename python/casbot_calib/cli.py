@@ -14,6 +14,9 @@ from .experiments import run_stage
 def main(argv=None):
     parser=argparse.ArgumentParser(description="Synthetic joint calibration experiments (no hardware)")
     sub=parser.add_subparsers(dest="command",required=True)
+    kinematics=sub.add_parser('kinematics-check',help='K1 named dual-arm TCP and TriCal schema checks; no motion or calibration')
+    kinematics.add_argument('--config',type=Path)
+    kinematics.add_argument('--output',required=True,type=Path)
     run=sub.add_parser("run",help="Run one independent A-F protocol")
     run.add_argument("config",type=Path);run.add_argument("--output",required=True,type=Path)
     suite=sub.add_parser("suite",help="Run all protocols and acceptance checks")
@@ -73,6 +76,12 @@ def main(argv=None):
     view.add_argument("--mapping",type=Path);view.add_argument("--scene",type=Path)
     view.add_argument("--follow",action="store_true",help="Follow an externally appended JSONL file")
     args=parser.parse_args(argv)
+    if args.command=='kinematics-check':
+        from .kinematics import default_config
+        from .kinematics_checks import run_checks
+        result=run_checks(args.output,default_config(args.config))
+        print(f"K1运动学基础检查：{'通过' if result['passed'] else '失败'} -> {args.output}")
+        return 0 if result['passed'] else 1
     if args.command=='render-staged':
         from .staged_presentation import render_staged
         result=render_staged(args.folder,args.output,fps=args.fps,video=not args.snapshots_only,ros_report=args.ros_report)

@@ -26,9 +26,15 @@ import numpy as np
 import casbot_calib
 from casbot_calib import _core
 from casbot_calib.dual_model import nominal_dual_arm
+from casbot_calib.kinematics import nominal_kinematics,default_config,calibration
 assert Path(casbot_calib.__file__).is_relative_to(sys.argv[1])
 assert Path(_core.__file__).is_relative_to(sys.argv[1])
 engine,source=nominal_dual_arm();q=np.zeros(14)
+kinematics,manifest=nominal_kinematics()
+assert "left_trical_tcp" in kinematics.frame_names() and "right_trical_tcp" in kinematics.frame_names()
+assert kinematics.frame_batch(np.zeros((2,14)),"left_trical_tcp")["jacobians"].shape==(2,6,14)
+sensor=_core.ArmPose();delta=np.array([.001,-.002,.003]);cal=calibration(default_config())
+assert np.max(np.abs(_core.trical_readings(sensor,delta,cal)-delta))<1e-14
 config=_core.ArmSimulationConfig();config.gain=np.full(14,2.)
 config.current_tau=0.;config.command_delay_ns=0;config.position_noise=0.;config.current_noise=0.
 commands=np.zeros((1,14,5));commands[0,:,2]=engine.gravity(q)

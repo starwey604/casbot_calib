@@ -31,6 +31,12 @@ struct ArmJoint {
   double lower = -3.141592653589793, upper = 3.141592653589793;
   double velocity_limit = 10., effort_limit = 20.;
 };
+// Massless observation frame. parent=-1 means model base, otherwise joint index.
+struct ArmFrame {
+  std::string name;
+  int parent = -1;
+  ArmPose placement;  // Frame coordinates -> parent coordinates.
+};
 struct ArmModel {
   std::string model_id, model_version = "serial_rigid_v1";
   ArmPose base, tool;
@@ -40,6 +46,7 @@ struct ArmModel {
   ArmBody payload;  // In tool coordinates, merged once into the last body.
   // tree_rigid_v1 only: -1 is fixed root, otherwise an earlier joint index.
   std::vector<int> parents;
+  std::vector<ArmFrame> frames;
 };
 struct ArmTerms {
   Eigen::MatrixXd mass_matrix;
@@ -79,6 +86,10 @@ class ArmDynamics {
   ArmForwardDerivatives forward_derivatives(const Eigen::VectorXd& q,const Eigen::VectorXd& dq,const Eigen::VectorXd& torque) const;
   // World-aligned TCP velocity Jacobian: rows [linear m/s, angular rad/s].
   Eigen::MatrixXd tool_jacobian(const Eigen::VectorXd& q) const;
+  std::vector<std::string> frame_names() const;
+  Eigen::Matrix4d frame_pose(const Eigen::VectorXd& q,const std::string& name) const;
+  // LOCAL_WORLD_ALIGNED, rows [linear, angular], columns in model joint order.
+  Eigen::MatrixXd frame_jacobian(const Eigen::VectorXd& q,const std::string& name) const;
  private:
   friend class ArmWorkspace;
   std::shared_ptr<const ArmModel> model_;
@@ -111,6 +122,8 @@ class ArmWorkspace {
   ArmInverseDerivatives inverse_derivatives(const Eigen::VectorXd& q,const Eigen::VectorXd& dq,const Eigen::VectorXd& ddq);
   ArmForwardDerivatives forward_derivatives(const Eigen::VectorXd& q,const Eigen::VectorXd& dq,const Eigen::VectorXd& torque);
   Eigen::MatrixXd tool_jacobian(const Eigen::VectorXd& q);
+  Eigen::Matrix4d frame_pose(const Eigen::VectorXd& q,const std::string& name);
+  Eigen::MatrixXd frame_jacobian(const Eigen::VectorXd& q,const std::string& name);
  private:
   friend class ArmDynamics;
   explicit ArmWorkspace(const ArmDynamics& engine);

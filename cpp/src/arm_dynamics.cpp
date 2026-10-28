@@ -77,6 +77,11 @@ struct ArmDynamics::Backend {
     }
     // Pinocchio performs the rigid transform, parallel-axis shift and merge.
     if(source.payload_enabled) model.appendBodyToJoint(parent,to_pin(source.payload),to_pin(source.tool));
+    for(const auto& frame:source.frames) {
+      const auto joint=static_cast<pinocchio::JointIndex>(frame.parent+1);
+      const auto placement=frame.parent<0 ? to_pin(source.base)*to_pin(frame.placement) : to_pin(frame.placement);
+      model.addFrame(pinocchio::Frame(frame.name,joint,0,placement,pinocchio::OP_FRAME),false);
+    }
   }
 };
 
@@ -115,6 +120,13 @@ ArmDynamics::ArmDynamics(ArmModel model):model_(std::make_shared<const ArmModel>
   if(model_->payload_enabled) {
     validate_body(model_->payload);
   }
+  std::set<std::string> frames;
+  for(const auto& frame:model_->frames) {
+    require(!frame.name.empty() && frame.name!="universe" && frames.insert(frame.name).second,
+            "Frame names must be nonempty and unique; universe is reserved");
+    require(frame.parent>=-1 && frame.parent<static_cast<int>(model_->joints.size()),"Invalid frame parent");
+    validate_pose(frame.placement);
+  }
 
   backend_=std::make_shared<const Backend>(*model_);
 }
@@ -137,6 +149,14 @@ ArmDynamics ArmDynamics::from_urdf(const std::string& path) {
     joint.rotor_inertia=source.armature[index];joint.lower=source.lowerPositionLimit[index];joint.upper=source.upperPositionLimit[index];
     joint.velocity_limit=source.velocityLimit[index];joint.effort_limit=source.effortLimit[index];
     converted.parents.push_back(static_cast<int>(source.parents[id])-1);converted.joints.push_back(joint);
+  }
+  // Preserve fixed-link and joint observation frames after inertias are aggregated.
+  // No frame inertia is added to the compact model a second time.
+  for(pinocchio::FrameIndex id=1;id<source.frames.size();++id) {
+    const auto& frame=source.frames[id];ArmFrame result;result.name=frame.name;
+    result.parent=static_cast<int>(frame.parentJoint)-1;
+    result.placement.rotation=frame.placement.rotation();result.placement.translation=frame.placement.translation();
+    converted.frames.push_back(result);
   }
   return ArmDynamics(std::move(converted));
 }
@@ -181,6 +201,11 @@ Eigen::MatrixXd ArmDynamics::torque_regressor(const Eigen::VectorXd& q,const Eig
 ArmInverseDerivatives ArmDynamics::inverse_derivatives(const Eigen::VectorXd& q,const Eigen::VectorXd& dq,const Eigen::VectorXd& ddq) const {return workspace().inverse_derivatives(q,dq,ddq);}
 ArmForwardDerivatives ArmDynamics::forward_derivatives(const Eigen::VectorXd& q,const Eigen::VectorXd& dq,const Eigen::VectorXd& torque) const {return workspace().forward_derivatives(q,dq,torque);}
 Eigen::MatrixXd ArmDynamics::tool_jacobian(const Eigen::VectorXd& q) const {return workspace().tool_jacobian(q);}
+std::vector<std::string> ArmDynamics::frame_names() const {
+  std::vector<std::string> result;for(const auto& frame:model_->frames)result.push_back(frame.name);return result;
+}
+Eigen::Matrix4d ArmDynamics::frame_pose(const Eigen::VectorXd& q,const std::string& name) const {return workspace().frame_pose(q,name);}
+Eigen::MatrixXd ArmDynamics::frame_jacobian(const Eigen::VectorXd& q,const std::string& name) const {return workspace().frame_jacobian(q,name);}
 
 Eigen::VectorXd ArmDynamics::rotor_torque(const Eigen::VectorXd& ddq) const {
   check_vector(ddq,"ddq");return backend_->model.armature.cwiseProduct(ddq);
@@ -277,5 +302,17 @@ Eigen::MatrixXd ArmWorkspace::tool_jacobian(const Eigen::VectorXd& q) {
   engine_.check_vector(q,"q");auto& data=impl_->data;const auto& model=engine_.backend_->model;
   pinocchio::computeJointJacobians(model,data,q);
   return pinocchio::getFrameJacobian(model,data,model.njoints-1,to_pin(engine_.model_->tool),pinocchio::LOCAL_WORLD_ALIGNED);
+}
+Eigen::Matrix4d ArmWorkspace::frame_pose(const Eigen::VectorXd& q,const std::string& name) {
+  engine_.check_vector(q,"q");const auto& model=engine_.backend_->model;
+  require(name!="universe" && model.existFrame(name),"Unknown observation frame: "+name);
+  pinocchio::forwardKinematics(model,impl_->data,q);
+  return pinocchio::updateFramePlacement(model,impl_->data,model.getFrameId(name)).toHomogeneousMatrix();
+}
+Eigen::MatrixXd ArmWorkspace::frame_jacobian(const Eigen::VectorXd& q,const std::string& name) {
+  engine_.check_vector(q,"q");const auto& model=engine_.backend_->model;
+  require(name!="universe" && model.existFrame(name),"Unknown observation frame: "+name);
+  pinocchio::computeJointJacobians(model,impl_->data,q);
+  return pinocchio::getFrameJacobian(model,impl_->data,model.getFrameId(name),pinocchio::LOCAL_WORLD_ALIGNED);
 }
 }  // namespace casbot

@@ -1,8 +1,10 @@
 #include "casbot_calib/arm_dynamics.hpp"
+#include "casbot_calib/trical.hpp"
 #include <pybind11/eigen.h>
 #include <pybind11/numpy.h>
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
+#include <algorithm>
 namespace py=pybind11;
 using namespace casbot;
 namespace {
@@ -22,7 +24,9 @@ void bind_computations(py::class_<T>& cls,const Guards&... guards) {
     .def("torque_regressor",&T::torque_regressor,guards...)
     .def("inverse_derivatives",&T::inverse_derivatives,guards...)
     .def("forward_derivatives",&T::forward_derivatives,guards...)
-    .def("tool_jacobian",&T::tool_jacobian,guards...);
+    .def("tool_jacobian",&T::tool_jacobian,guards...)
+    .def("frame_pose",&T::frame_pose,guards...)
+    .def("frame_jacobian",&T::frame_jacobian,guards...);
 }
 using BatchArray=py::array_t<double,py::array::c_style|py::array::forcecast>;
 using RowMatrix=Eigen::Matrix<double,Eigen::Dynamic,Eigen::Dynamic,Eigen::RowMajor>;
@@ -48,6 +52,10 @@ void bind_arm(py::module_& m) {
   py::class_<ArmPose>(m,"ArmPose").def(py::init<>())
     .def_readwrite("rotation",&ArmPose::rotation).def_readwrite("translation",&ArmPose::translation)
     .def("matrix",&ArmPose::matrix);
+  py::class_<TricalCalibration>(m,"TricalCalibration").def(py::init<>())
+    .def_readwrite("axes",&TricalCalibration::axes).def_readwrite("zero",&TricalCalibration::zero);
+  m.def("trical_readings",&trical_readings,py::arg("sensor_world"),py::arg("ball_world"),py::arg("calibration"));
+  m.def("trical_offset",&trical_offset,py::arg("readings"),py::arg("calibration"));
   py::class_<ArmBody>(m,"ArmBody").def(py::init<>())
     .def_readwrite("mass",&ArmBody::mass).def_readwrite("com",&ArmBody::com).def_readwrite("inertia_com",&ArmBody::inertia_com);
   py::class_<ArmFriction>(m,"ArmFriction").def(py::init<>())
@@ -62,12 +70,15 @@ void bind_arm(py::module_& m) {
     .def_readwrite("rotor_inertia",&ArmJoint::rotor_inertia)
     .def_readwrite("lower",&ArmJoint::lower).def_readwrite("upper",&ArmJoint::upper)
     .def_readwrite("velocity_limit",&ArmJoint::velocity_limit).def_readwrite("effort_limit",&ArmJoint::effort_limit);
+  py::class_<ArmFrame>(m,"ArmFrame").def(py::init<>())
+    .def_readwrite("name",&ArmFrame::name).def_readwrite("parent",&ArmFrame::parent)
+    .def_readwrite("placement",&ArmFrame::placement);
   py::class_<ArmModel>(m,"ArmModel").def(py::init<>())
     .def_readwrite("model_id",&ArmModel::model_id).def_readwrite("model_version",&ArmModel::model_version)
     .def_readwrite("base",&ArmModel::base).def_readwrite("tool",&ArmModel::tool)
     .def_readwrite("gravity_world",&ArmModel::gravity_world).def_readwrite("joints",&ArmModel::joints)
     .def_readwrite("payload_enabled",&ArmModel::payload_enabled).def_readwrite("payload",&ArmModel::payload)
-    .def_readwrite("parents",&ArmModel::parents);
+    .def_readwrite("parents",&ArmModel::parents).def_readwrite("frames",&ArmModel::frames);
   py::class_<ArmTerms>(m,"ArmTerms")
     .def_readonly("mass_matrix",&ArmTerms::mass_matrix).def_readonly("inertia",&ArmTerms::inertia)
     .def_readonly("velocity",&ArmTerms::velocity).def_readonly("gravity",&ArmTerms::gravity)
@@ -90,6 +101,24 @@ void bind_arm(py::module_& m) {
     .def("workspace",&ArmDynamics::workspace)
     .def("rigid_parameters",&ArmDynamics::rigid_parameters)
     .def("rigid_parameter_names",&ArmDynamics::rigid_parameter_names)
+    .def("frame_names",&ArmDynamics::frame_names)
+    .def("frame_batch",[](const ArmDynamics& engine,const Eigen::MatrixXd& positions,const std::string& frame) {
+      const Eigen::MatrixXd owned=positions;const py::ssize_t n=engine.model().joints.size();
+      if(owned.cols()!=n || !owned.allFinite())throw std::invalid_argument("Expected finite frame positions[N,J]");
+      const auto names=engine.frame_names();
+      if(std::find(names.begin(),names.end(),frame)==names.end())throw std::invalid_argument("Unknown observation frame: "+frame);
+      const py::ssize_t count=owned.rows();py::array_t<double> poses({count,py::ssize_t(4),py::ssize_t(4)}),jacobians({count,py::ssize_t(6),n});
+      auto pp=poses.mutable_unchecked<3>();auto jj=jacobians.mutable_unchecked<3>();
+      {py::gil_scoped_release release;auto workspace=engine.workspace();
+        for(py::ssize_t row=0;row<count;++row) {
+          const Eigen::VectorXd q=owned.row(row).transpose();const auto pose=workspace.frame_pose(q,frame);
+          const auto jacobian=workspace.frame_jacobian(q,frame);
+          for(int i=0;i<4;++i)for(int k=0;k<4;++k)pp(row,i,k)=pose(i,k);
+          for(int i=0;i<6;++i)for(py::ssize_t k=0;k<n;++k)jj(row,i,k)=jacobian(i,k);
+        }
+      }
+      py::dict result;result["poses"]=poses;result["jacobians"]=jacobians;return result;
+    },py::arg("positions"),py::arg("frame"))
     .def("gravity_batch",[](const ArmDynamics& engine,const Eigen::MatrixXd& positions) {
       const Eigen::MatrixXd owned=positions;const py::ssize_t n=engine.model().joints.size();
       if(owned.cols()!=n || !owned.allFinite())throw std::invalid_argument("Expected finite gravity positions[N,J]");

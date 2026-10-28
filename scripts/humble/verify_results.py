@@ -16,7 +16,10 @@ def summarize(output):
         assert rows and all(int(row.get('failures', 0)) == int(row.get('errors', 0)) == int(row.get('skipped', 0)) == 0 for row in rows)
         return sum(int(row.get('tests', 0)) for row in rows)
     counts = dict(pytest=tests('pytest.xml'), ctest=tests('ctest.xml'))
-    assert counts['pytest'] >= 87 and counts['ctest'] == 3
+    required_cpp = {'boost_integration', 'virtual_device', 'arm_rigid_dynamics', 'kinematics_foundation'}
+    cpp_suites = ET.parse(output / 'ctest.xml').getroot()
+    cpp_names = {case.get('name') for case in cpp_suites.iter('testcase')}
+    assert counts['pytest'] >= 87 and required_cpp <= cpp_names
     environment = read('environment.json'); wheel = read('wheel/verification.json')
     assert environment['passed'] and environment['conda_paths_absent'] and wheel['passed']
     native = (output / 'native-consumer.txt').read_text()
