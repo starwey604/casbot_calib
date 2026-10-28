@@ -34,6 +34,19 @@ def main(argv=None):
     kin_identify.add_argument('--output',required=True,type=Path)
     kin_suite=sub.add_parser('kinematic-suite',help='K3 planning, Mock acquisition, truth-isolated identification and report')
     kin_suite.add_argument('--config',type=Path);kin_suite.add_argument('--output',required=True,type=Path)
+    kin_accept=sub.add_parser('kinematic-acceptance',help='K4 three independent calibrations, repeatability and Chinese viewer playback')
+    kin_accept.add_argument('--reference',type=Path,required=True);kin_accept.add_argument('--output',type=Path,required=True)
+    kin_accept.add_argument('--fps',type=int,default=12);kin_accept.add_argument('--snapshots-only',action='store_true')
+    kin_accept.add_argument('--external-meter',type=Path)
+    kin_repeat=sub.add_parser('kinematic-repeat',help='Collect one preregistered K4 repeat batch')
+    kin_repeat.add_argument('folder',type=Path);kin_repeat.add_argument('--index',type=int,choices=(1,2),required=True)
+    kin_gates=sub.add_parser('kinematic-reference-gates',help='Recheck reference raw stability/motion under K4')
+    kin_gates.add_argument('folder',type=Path)
+    kin_verify=sub.add_parser('kinematic-verify',help='Observation-only K4 repeated calibration acceptance')
+    kin_verify.add_argument('folder',type=Path);kin_verify.add_argument('--output',type=Path,required=True);kin_verify.add_argument('--external-meter',type=Path)
+    kin_render=sub.add_parser('render-kinematics',help='Chinese read-only TriCal acquisition and calibration playback')
+    kin_render.add_argument('folder',type=Path);kin_render.add_argument('--analysis',type=Path);kin_render.add_argument('--output',type=Path,required=True)
+    kin_render.add_argument('--fps',type=int,default=12);kin_render.add_argument('--snapshots-only',action='store_true')
     run=sub.add_parser("run",help="Run one independent A-F protocol")
     run.add_argument("config",type=Path);run.add_argument("--output",required=True,type=Path)
     suite=sub.add_parser("suite",help="Run all protocols and acceptance checks")
@@ -93,6 +106,24 @@ def main(argv=None):
     view.add_argument("--mapping",type=Path);view.add_argument("--scene",type=Path)
     view.add_argument("--follow",action="store_true",help="Follow an externally appended JSONL file")
     args=parser.parse_args(argv)
+    if args.command=='kinematic-acceptance':
+        from .kinematic_acceptance import run_acceptance
+        result=run_acceptance(args.reference,args.output,video=not args.snapshots_only,fps=args.fps,external_meter=args.external_meter)
+        print(f"K4合成验收：{'通过' if result['passed'] else '拒绝'} -> {args.output}");return 0 if result['passed'] else 1
+    if args.command=='kinematic-repeat':
+        from .kinematic_acceptance import capture_repeat
+        result=capture_repeat(args.folder,args.index);return 0 if result['passed'] else 1
+    if args.command=='kinematic-reference-gates':
+        from .kinematic_acceptance import check_reference_gates
+        result=check_reference_gates(args.folder);return 0 if all(r['passed'] for r in result.values()) else 1
+    if args.command=='kinematic-verify':
+        from .kinematic_acceptance import analyse_acceptance
+        result=analyse_acceptance(args.folder,args.output,args.external_meter)
+        print(f"K4观测复核：{'通过' if result['passed'] else '拒绝'} -> {args.output}");return 0 if result['passed'] else 1
+    if args.command=='render-kinematics':
+        from .kinematic_presentation import render_kinematic
+        result=render_kinematic(args.folder,args.analysis or args.folder/'analysis',args.output,fps=args.fps,video=not args.snapshots_only)
+        return 0 if result['passed'] else 1
     if args.command=='plan-kinematics':
         from .kinematic_design import plan,k3_config
         result=plan(args.output,k3_config(args.config));print(f"K3姿态规划：{'通过' if result['passed'] else '拒绝'} -> {args.output}")

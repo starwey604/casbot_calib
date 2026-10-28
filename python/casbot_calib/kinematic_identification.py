@@ -17,6 +17,9 @@ from .data import write_json
 def load_batch(folder, split):
     root=Path(folder);report=json.loads((root/'report.json').read_text());manifest=json.loads((root/'manifest.json').read_text())
     if not report['passed']:raise ValueError('A rejected measurement session cannot be used for identification')
+    required={'profile.json','geometry.json','measurements.json','motions.json','events.json','observations/manifest.json',
+        'observations/metadata.json','observations/observations.npz','raw/commands.npz','raw/indicator_packets.npz','raw/joint_packets.npz','raw/row_decision_times.npz'}
+    if not required<=set(manifest['files']):raise ValueError('Measurement manifest does not seal all required sources')
     for name,expected in manifest['files'].items():
         path=Path(name)
         if path.is_absolute() or '..' in path.parts or 'evaluation' in path.parts:raise ValueError('Invalid measurement manifest path')
@@ -72,15 +75,23 @@ def residual_metrics(values):
     return dict(position_rmse_m=float(np.sqrt(np.mean(norms**2))),mean_m=float(norms.mean()),max_m=float(norms.max()),p95_m=float(np.percentile(norms,95)))
 
 
-def solve(parameters, train, validation, *, sigma_m=2e-6, maximum_condition=200., validation_limit_m=20e-6):
+def solve(parameters, train, validation, *, sigma_m=2e-6, maximum_condition=200., validation_limit_m=20e-6, selected_parameters=None):
     started=perf_counter();size=parameters.size;zero=np.zeros(size)
     if not np.isfinite(sigma_m) or sigma_m<=0:raise ValueError('Positive declared measurement uncertainty required')
     before,jacobian=parameters.evaluate(zero,train['q'],train['frames'],train['offsets'])
     matrix=jacobian.reshape(-1,size)/sigma_m;selected,zero_info=select_parameters(jacobian,parameters.definitions,maximum_condition)
     full_info=observability(matrix,maximum_condition)
+    selection_source='current_training_data'
+    if selected_parameters is not None:
+        requested=list(selected_parameters);zero_indices=[i for i,d in enumerate(parameters.definitions) if d['zero_stage']]
+        if not requested or any(type(i) is not int or i<0 or i>=size for i in requested) or len(set(requested))!=len(requested) or not set(zero_indices)<=set(requested):
+            raise ValueError('Invalid frozen geometric parameter subset')
+        info=observability(matrix[:,requested],maximum_condition)
+        selected=requested if info['rank']==len(requested) and info['condition_number']<=maximum_condition else []
+        selection_source='frozen_reference_training_subset'
     result=dict(schema_version=1,identifiable=bool(selected),passed=False,truth_read=False,
         standard_parameter_count=size,full_candidate_observability=full_info,zero_stage_observability=zero_info,
-        gauge=parameters.chart['gauge'],anchors=parameters.description()['anchors'])
+        gauge=parameters.chart['gauge'],anchors=parameters.description()['anchors'],selection_source=selection_source)
     anchor_geometry={}
     for frame in np.unique(train['frames']):
         points=np.unique(train['targets'][train['frames']==frame],axis=0)
@@ -90,7 +101,7 @@ def solve(parameters, train, validation, *, sigma_m=2e-6, maximum_condition=200.
         result.update(identifiable=False,reason='insufficient_noncollinear_metrology_targets',selected_parameters=[],solve_wall_s=perf_counter()-started)
         return result,None,None
     if not selected:
-        result.update(reason='insufficient_excitation_for_zero_layer',selected_parameters=[],solve_wall_s=perf_counter()-started)
+        result.update(reason='frozen_subset_unobservable_or_ill_conditioned' if selected_parameters is not None else 'insufficient_excitation_for_zero_layer',selected_parameters=[],solve_wall_s=perf_counter()-started)
         return result,None,None
     if len(selected)>=len(matrix):
         result.update(identifiable=False,reason='no_residual_degrees_of_freedom');return result,None,None
@@ -138,7 +149,7 @@ def solve(parameters, train, validation, *, sigma_m=2e-6, maximum_condition=200.
     return result,fitted,arrays
 
 
-def identify(train_folder, validation_folder, output):
+def identify(train_folder, validation_folder, output, *, selected_parameters=None):
     output=Path(output)
     if output.exists():raise FileExistsError(output)
     if Path(train_folder).resolve()==Path(validation_folder).resolve():raise ValueError('Independent validation session required')
@@ -157,7 +168,7 @@ def identify(train_folder, validation_folder, output):
     if closest<.01:raise ValueError('Validation posture duplicates or nearly duplicates a training posture')
     if not np.isfinite(closest):raise ValueError('Training and validation must cover the same tool frames')
     engine,_=nominal_kinematics(train['config']);parameters=KinematicParameters(engine);settings=train['config'].get('k3',{})
-    report,fitted,arrays=solve(parameters,train,validation,sigma_m=settings.get('sigma_m',2e-6),maximum_condition=settings.get('maximum_condition',200.),validation_limit_m=settings.get('validation_limit_m',20e-6))
+    report,fitted,arrays=solve(parameters,train,validation,sigma_m=settings.get('sigma_m',2e-6),maximum_condition=settings.get('maximum_condition',200.),validation_limit_m=settings.get('validation_limit_m',20e-6),selected_parameters=selected_parameters)
     report.update(train_batch=train['batch_id'],validation_batch=validation['batch_id'],train_samples=len(train['q']),validation_samples=len(validation['q']),
         nearest_validation_posture_distance_rad=closest,train_manifest_sha256=train['source_manifest_sha256'],validation_manifest_sha256=validation['source_manifest_sha256'],
         source_geometry_sha256=train['geometry']['geometry_sha256'],synthetic_only=True,hardware_executable=False)

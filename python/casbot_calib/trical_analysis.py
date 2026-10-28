@@ -61,6 +61,7 @@ def analyse(folder, output):
         gates.append(dict(label=motion['label'],reference=reference['passed'],observed=actual['passed']))
     passed=not failed and bool(windows) and all(g['reference'] and g['observed'] for g in gates)
     result=dict(schema_version=1,passed=passed,rejected_session=failed,measurements=windows,gates=gates,truth_read=False,
+        source_manifest_sha256=sha256((folder/'manifest.json').read_bytes()).hexdigest(),
         original_native_sha256=manifest['native_sha256'],analysis_native_sha256=sha256(Path(_core.__file__).read_bytes()).hexdigest(),
         configured_command_hz=1e9/config['control_period_ns'],measured_command_hz=float(1e9/np.median(np.diff(command_times))) if len(command_times)>1 else None,
         scope='K2 stable observations and collision interpolants; not geometry identification or absolute robot accuracy')

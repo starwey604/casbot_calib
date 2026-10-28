@@ -8,7 +8,7 @@
 - 截至2026-10-28，M1–M6本机合成流程已完成：Humble迁移及原实验回归、真实ROS双端Mock、频率/延迟实验、碰撞门禁、重力→运动摩擦→起动摩擦→惯量分阶段辨识、独立验证和中文视频。
 - 该次验收记录为111项Python测试、3项C++测试、114项冻结数值对照、13组ROS实验和764条分阶段轨迹。数字属于历史版本记录，后续结果以实际运行报告为准，不能据此直接宣称新改动通过。
 - **尚未接实机、甲方SDK或ros2_control硬件插件，尚未验证物理以太网或硬实时能力。** 当前ROS端点使用wall timer；同机回环通过不能作为跨机性能承诺。
-- 用户现已启动千分计/TriCal运动学工作包：K1基础已提交`c2d2e6e`，K2已接入合成三表设备、碰撞门禁、自动对中、稳定采样和故障退出；K3增加六球训练选点、Pinocchio几何导数、MDH/Hayati等价映射和有界分层辨识。后续按[K1–K5计划](docs/kinematics_trical_plan.md)推进，边界见[K2](docs/kinematics_trical_k2.md)/[K3说明](docs/kinematics_trical_k3.md)；完整计量验收、视频与实机仍待K4/K5。不要把软件编码器零位检查或闭环对中误差写成机械零位/几何标定已完成。
+- 用户现已启动千分计/TriCal运动学工作包：K1基础已提交`c2d2e6e`，K2/K3已提交`cedac82`，包含合成三表设备、碰撞门禁、自动对中、稳定采样，以及六球选点、Pinocchio几何导数、MDH/Hayati和有界辨识。K4接入同工装三批复测、独立位置计量数据契约和中文只读回放；状态与边界见[K1–K5计划](docs/kinematics_trical_plan.md)、[K3](docs/kinematics_trical_k3.md)/[K4说明](docs/kinematics_trical_k4.md)。实物外测、间隔/拆装/热漂与实机仍未验收。不要把软件编码器零位检查或闭环对中误差写成机械零位/几何标定已完成。
 
 优先阅读：
 
@@ -26,6 +26,7 @@
 - `staged_analysis.py`是无真值重分析入口；`staged_validation.py`负责综合验证；`staged_delivery.py`汇总交付及独立合成真值评估；`staged_presentation.py`只读回放。
 - `kinematics.py`负责共享几何身份、具名工具和候选修正，`trical_data.py`负责三表记录，`kinematics_checks.py`仅作K1数值检查。C++ `trical.*`提供理想读数，`trical_mock.*`包装同一持久化ArmSimulationSession产生实际状态读表。`trical_workflow.py`只消费已送达观测，`trical_fixture.py`审计三对测头/目标球接触，`trical_analysis.py`独立复核，`trical_evaluation.py`单独评分。K2不做参数辨识、不模拟表杆接触载荷；实例单一所有者。
 - `kinematic_parameters.py`将MDH/Hayati常数参数映射至原生模型，FK与几何回归量仍走Pinocchio；`kinematic_design.py`仅按公开训练设计选点，`kinematic_identification.py`只读观测/计量输入，`kinematic_workflow.py`复用K2采集并隔离真值，`kinematic_export.py`导出候选几何/URDF，`kinematic_evaluation.py`单独评分。参数已写入origin后不能再次加零位到q。
+- `kinematic_acceptance.py`负责K4预登记、独立采集与无真值新进程验收，冻结同一训练选参后比较重复性；`kinematic_metrology.py`消费独立配准的静态外部位置记录，未知时间/配准不能推断通过；`kinematic_presentation.py`仅按接收时间回放已送达数据。K4三个训练批次共用K3留出验证会话，不等于新空间外测或间隔漂移验收，产品通过标志保持false。
 - `ros/casbot_calib_core`为ament薄封装，`ros/casbot_calib_interfaces`定义协议，`ros/casbot_calib_transport`为C++通信实验端点。
 - `tests/`、`cpp/tests/`、`tests/installation/`分别覆盖Python、C++和安装后消费者。`configs/`存实验条件，`scripts/humble/`存目标环境自动化。
 - `artifacts/`、`build/`、`install/`、`log/`及虚拟环境为生成物，不提交Git。
@@ -107,7 +108,7 @@ bash scripts/humble/container.sh python scripts/humble/verify_release.py \
 2. **实现薄适配并复用现有管线**：优先接甲方已有控制器/hardware_interface，避免另起重复硬件控制循环。保留本机ROS Mock；未知能力显式声明，不填成已知时间/独立力矩。实机连接与下发按用户任务授权范围执行，离线实现和验证可先推进。
 3. **做物理网络与设备预检**：独立测物理方向/机械零位、输出增益尺度、时钟映射及频率/延迟；多批次、随机化顺序测试，冻结模型验证，不能逐频重拟合掩盖差异。确认高带宽原始记录或有效替代观测。
 4. **替换真实模型/夹具条件后开展分阶段实机实验**：实际几何、安装重力方向、工具与设备限制到位后重做碰撞/过渡/停止门禁，再按重力→匀速摩擦→重力补偿起动→前序验收→惯量激励→独立验证→控制对照推进。真实试验开始前观测并确认起始姿态，不能照搬Mock初始化。
-5. **推进运动学K4/K5**：K3合成几何求解之后补完整独立计量/重复性验收、演示与实机薄适配。K2默认四球左右各两个仅验测量闭环；K3每臂三非共线基准点消除两球连线转动歧义，仍须SVD检查。固定球架世界变换/工具是合成计量锚点，实机未知时不能套用。10mm非接触余量和三对有界行程接触分开审计；几何误差族另加刚体位移预算。三个表与关节不默认同步，球心位置约束不代表姿态精度。更新共享几何/版本后重验碰撞和动力学；实际千分计工具负载单独建模。其他控制/载荷扩展按观测条件分轮推进。
+5. **推进运动学K5与实测验收**：K4合成复测/回放之后接实际球架/工具计量、独立外测、间隔复标和实机薄适配。K2默认四球左右各两个仅验测量闭环；K3每臂三非共线基准点消除两球连线转动歧义，仍须SVD检查。固定球架世界变换/工具是合成计量锚点，实机未知时不能套用。10mm非接触余量和三对有界行程接触分开审计；几何误差族另加刚体位移预算。三个表与关节不默认同步，球心位置约束不代表姿态精度。更新共享几何/版本后重验碰撞和动力学；实际千分计工具负载单独建模。其他控制/载荷扩展按观测条件分轮推进。
 
 ## 代码风格、Git与交付
 

@@ -30,6 +30,9 @@ from casbot_calib.kinematics import nominal_kinematics,default_config,calibratio
 from casbot_calib.trical_fixture import fixture_profile
 from casbot_calib.kinematic_parameters import KinematicParameters
 from casbot_calib.kinematic_design import k3_config
+from casbot_calib.kinematic_acceptance import repeatability
+from casbot_calib.kinematic_metrology import UNITS
+from casbot_calib.kinematic_presentation import scene as write_trical_scene
 assert Path(casbot_calib.__file__).is_relative_to(sys.argv[1])
 assert Path(_core.__file__).is_relative_to(sys.argv[1])
 engine,source=nominal_dual_arm();q=np.zeros(14)
@@ -49,6 +52,8 @@ geometric_profile=k3_config();assert len(geometric_profile["fixture"]["balls"])=
 assert geometric_profile["parameter_policy"]["fit_enabled"] is True
 geometric_engine,_=nominal_kinematics(geometric_profile)
 assert np.max(np.abs(geometric_engine.frame_pose(q,"left_trical_tcp")-measurement.frame_pose(q,"left_trical_tcp")))<1e-12
+assert repeatability(parameters,np.zeros((3,60)),np.zeros((2,14)),np.array(["left_trical_tcp","right_trical_tcp"]))["passed"]
+assert UNITS["position_meter_m"]=="m" and callable(write_trical_scene)
 indicator=_core.TricalMockConfig();indicator.noise_std=0.;indicator.quantum=0.
 drive=_core.ArmSimulationConfig();drive.gain=np.full(14,2.)
 virtual=_core.TricalMockSession(measurement,drive,indicator,q,q)
