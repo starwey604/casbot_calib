@@ -197,9 +197,12 @@ def analyse_staged(folder,output,through='inertia'):
     from .staged_inertia import identify_inertia
     if through not in STAGES:raise ValueError('Unknown S4 stage')
     reader=StagedObservations(folder);output=Path(output);output.mkdir(parents=True,exist_ok=False)
+    from .dual_model import nominal_dual_arm
+    _,model_source=nominal_dual_arm()
     completed={};report=dict(schema_version='casbot_vendor_s4_analysis_v1',passed=False,completed_through=None,
         stages=completed,scope=reader.protocol['scope'],hardware_executable=False,physical_semantics_verified_by_software=False,
-        independent_final_test_passed=False,control_validated=False,protocol_sha256=sha256(Path(folder)/'protocol.json'))
+        independent_final_test_passed=False,control_validated=False,protocol_sha256=sha256(Path(folder)/'protocol.json'),
+        source_model_sha256=model_source['sha256'])
     try:
         if not all(reader.preflight.get(k,{}).get('passed') for k in ('mapping','timing')):
             raise ValueError('Qualified mapping and timing preflight evidence required before staged analysis')

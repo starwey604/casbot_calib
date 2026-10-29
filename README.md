@@ -194,5 +194,6 @@ bash scripts/humble/validate.sh
 * [S2位置流程与频率／响应](docs/vendor_s2.md)：整双臂实测起点、Coal参考门禁、C++ SDK位置流与故障停止；本机100/250/500Hz记录和316项Python测试通过，早期反馈空窗及原始失败也保留，未确认稳定500Hz或实机执行资格。
 * [S3动力学观测资格](docs/vendor_s3.md)：S1/主机CSV/NPZ只读导入，来源与输出力矩尺度、采样时钟、状态和原始带宽逐阶段检查；合格周期记录生成Pinocchio回归问题。当前SDK未知反馈仍阻断，500Hz发布不代替4kHz原始采样，实机执行及S4现场闭环未开放。
 * [S4离线分阶段闭环](docs/vendor_s4.md)：冻结观测角色，复用原求解器按重力→运动摩擦→起动摩擦→惯量拟合并复核前序；新增4kHz双臂起动观测和已冻结候选的Mock控制对照。SDK实机执行仍关闭；旧开发验证不冒充新的正式留出。
+* [动力学候选URDF导出与重加载](docs/dynamic_urdf_export.md)：重力/惯量候选导出、固定手部惯性只聚合一次、Pinocchio刚体与完整运行时模型一致性验证；保留源URDF及原SDK配置，不开放实机。
 * [可视化工具演示指南](docs/viewer_demo.md)
 * [开发者指南](docs/development.md)

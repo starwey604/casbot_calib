@@ -41,6 +41,7 @@
 - `ros/casbot_calib_vendor`是可选SDK适配包，包含独立只读`state_recorder`、本机受限`position_executor`及复用原生物理端的`mock_sdk_bridge`；默认`build_ros.sh`忽略它，`build_vendor.sh`单独构建到`install/vendor`。`vendor_identity.py`核对接口和版本，`vendor_capture.py`启动只读进程，`vendor_data.py`保留未知字段并规范化；`vendor_position.py`负责S2快照／完整门禁与封存执行，`vendor_position_analysis.py`独立报告原始频率／响应／故障。`ros_state.py`适配ROS来源，`vendor_viewer.py`复用同一几何renderer处理ROS、文件流和回放。姿态帧允许缺失dq/current/status，不给实机填零或伪造采样序号。
 - `dynamics_data.py`负责S3不可变观测和来源/尺度/时钟证据，`dynamics_qualification.py`输出各阶段数据资格（从不授予执行权限），`dynamics_problem.py`将合格周期输出力矩投影为既有Pinocchio刚体求解入口。S1未知配置保持保守，不把SDK effort重命名为电流；高频原始记录/经验证替代观测及S4分阶段验收仍是独立门禁。
 - `vendor_staged.py`负责S4角色冻结、观测reader与阶段编排；原`staged_*`数值函数通过显式records/config回调复用，默认旧入口保持原政策。`torque_observations.py`只选择一个总输出力矩通道；S4不伪造current或设备seq。非周期处理要求全记录连续/均匀/同步，腕部30Hz处理不超资格频带；惯量按明确角色分train/validation，不按名字猜。Mock采集脚本可读取合成plant，分析与复核不得读取evaluation；控制对照另存绑定，不能回写已经封存的analysis。
+- `dynamic_export.py`提供[动力学候选URDF导出/重加载](docs/dynamic_urdf_export.md)：消费已接受且封存的S4 gravity/inertia，Pinocchio转换空间惯性，每运动关节写一个等效体；固定手部后代保留几何/帧但不重复添加惯性，固定根部属性不标为已标定。摩擦/转子/世界重力留在配套JSON，重加载不能用JSON刚体值覆盖URDF结果。源模型摘要必须匹配；独立输出、新进程校验，不修改nominal或旧分析。静态候选的惯量不可观测部分仍是先验选择，序列化通过不等于实机/参数唯一性通过。本机375项Python测试（含16项新增）通过，两种候选各32构型验证及禁止访问原分析/evaluation的新进程复核通过，证据为`artifacts/dynamic_urdf_release_v1/delivery.json`。新S4分析记录源模型摘要；旧gravity-only缺绑定时拒绝，旧完整S4可使用封存的inertia候选绑定。
 - `tests/`、`cpp/tests/`、`tests/installation/`分别覆盖Python、C++和安装后消费者。`configs/`存实验条件，`scripts/humble/`存目标环境自动化。
 - `artifacts/`、`build/`、`install/`、`log/`及虚拟环境为生成物，不提交Git。
 

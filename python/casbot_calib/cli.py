@@ -14,6 +14,11 @@ from .experiments import run_stage
 def main(argv=None):
     parser=argparse.ArgumentParser(description="CASBOT calibration: synthetic experiments and explicit read-only vendor capture")
     sub=parser.add_subparsers(dest="command",required=True)
+    dynamics_export=sub.add_parser('export-dynamics-urdf',help='Export an accepted S4 gravity/inertia candidate and verify a Pinocchio URDF reload')
+    dynamics_export.add_argument('analysis',type=Path);dynamics_export.add_argument('--stage',choices=('gravity','inertia'),default='inertia')
+    dynamics_export.add_argument('--output',type=Path,required=True)
+    dynamics_verify=sub.add_parser('verify-dynamics-urdf',help='Recheck an exported inertial URDF and runtime sidecar without fitting or truth')
+    dynamics_verify.add_argument('folder',type=Path);dynamics_verify.add_argument('--output',type=Path,required=True)
     vendor_capture=sub.add_parser('vendor-capture',help='S1 subscription-only SDK state recording; no motion or mode changes')
     vendor_capture.add_argument('--config',type=Path,default=Path('configs/vendor_s1.yaml'))
     vendor_capture.add_argument('--output',type=Path,required=True);vendor_capture.add_argument('--duration',type=float,default=10.)
@@ -159,6 +164,11 @@ def main(argv=None):
     view.add_argument("--mapping",type=Path);view.add_argument("--scene",type=Path)
     view.add_argument("--follow",action="store_true",help="Follow an externally appended JSONL file")
     args=parser.parse_args(argv)
+    if args.command in ('export-dynamics-urdf','verify-dynamics-urdf'):
+        from .dynamic_export import export_dynamics_urdf,verify_dynamics_export
+        result=export_dynamics_urdf(args.analysis,args.output,args.stage) if args.command=='export-dynamics-urdf' else verify_dynamics_export(args.folder,args.output)
+        print(f"动力学URDF重加载{'通过' if result['passed'] else '失败'}；仅验证模型序列化一致性，实机执行未开放 -> {args.output}")
+        return 0 if result['passed'] else 1
     if args.command in ('vendor-plan-staged','vendor-inspect-staged','vendor-identify-staged'):
         from .vendor_staged import freeze_staged,inspect_staged,analyse_staged
         if args.command=='vendor-plan-staged':result=freeze_staged(args.spec,args.output)
