@@ -47,6 +47,13 @@ def main(argv=None):
     dynamics_qualify.add_argument('folder',type=Path);dynamics_qualify.add_argument('--output',type=Path,required=True)
     dynamics_problem=sub.add_parser('vendor-dynamics-problem',help='S3 qualified periodic output-torque to Pinocchio rigid-regression boundary; no fitting')
     dynamics_problem.add_argument('qualification',type=Path);dynamics_problem.add_argument('--output',type=Path,required=True)
+    staged_vendor_plan=sub.add_parser('vendor-plan-staged',help='S4 freeze qualified observation roles; offline, no motion')
+    staged_vendor_plan.add_argument('--spec',type=Path,default=Path('configs/vendor_s4_unknown.yaml'));staged_vendor_plan.add_argument('--output',type=Path,required=True)
+    staged_vendor_inspect=sub.add_parser('vendor-inspect-staged',help='S4 inspect frozen data readiness and explicit execution blockers')
+    staged_vendor_inspect.add_argument('folder',type=Path);staged_vendor_inspect.add_argument('--output',type=Path,required=True)
+    staged_vendor_identify=sub.add_parser('vendor-identify-staged',help='S4 sequential qualified torque fits and validation; no device I/O')
+    staged_vendor_identify.add_argument('folder',type=Path);staged_vendor_identify.add_argument('--output',type=Path,required=True)
+    staged_vendor_identify.add_argument('--through',choices=('gravity','friction','breakaway','inertia'),default='inertia')
     kinematics=sub.add_parser('kinematics-check',help='K1 named dual-arm TCP and TriCal schema checks; no motion or calibration')
     kinematics.add_argument('--config',type=Path)
     kinematics.add_argument('--output',required=True,type=Path)
@@ -152,6 +159,13 @@ def main(argv=None):
     view.add_argument("--mapping",type=Path);view.add_argument("--scene",type=Path)
     view.add_argument("--follow",action="store_true",help="Follow an externally appended JSONL file")
     args=parser.parse_args(argv)
+    if args.command in ('vendor-plan-staged','vendor-inspect-staged','vendor-identify-staged'):
+        from .vendor_staged import freeze_staged,inspect_staged,analyse_staged
+        if args.command=='vendor-plan-staged':result=freeze_staged(args.spec,args.output)
+        elif args.command=='vendor-inspect-staged':result=inspect_staged(args.folder,args.output)
+        else:result=analyse_staged(args.folder,args.output,args.through)
+        print(f"S4 {'通过' if result['passed'] else '阻断'}；离线数据流程，实机执行未开放 -> {args.output}")
+        return 0 if result['passed'] else 1
     if args.command=='vendor-import-dynamics':
         from .dynamics_data import import_dynamics
         import_dynamics(args.source,args.profile,args.output,source_type=args.source_type)

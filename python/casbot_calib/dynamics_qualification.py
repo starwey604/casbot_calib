@@ -6,10 +6,10 @@ import numpy as np
 from .dynamics_data import load_dynamics,read_json
 from .vendor_identity import sha256
 
-POLICY=dict(version='s3_raw_observations_v1',minimum_dynamic_raw_hz=4000.,maximum_time_error_ns=100000,
+POLICY=dict(version='s3_raw_observations_v2',minimum_dynamic_raw_hz=4000.,maximum_time_error_ns=100000,
             maximum_scale_relative_error=.05,maximum_zero_error_nm=.01,minimum_scale_reference_nm=.2,
             maximum_gap_factor=1.5,static_velocity_rad_s=.002,static_position_range_rad=.0005,
-            minimum_seconds=dict(gravity=.5,friction=1.,breakaway=.5,inertia=12.))
+            minimum_seconds=dict(gravity=.5,friction=1.,breakaway=.5,inertia=12.,inertia_probe=1.))
 
 
 def scale_check(meta):
@@ -137,7 +137,7 @@ def qualify_dynamics(folder,output):
             if duration>=POLICY['minimum_seconds']['gravity'] and np.max(np.ptp(data['q'][a+lo:a+hi],axis=0))<=POLICY['static_position_range_rad']:
                 stable.append(dict(begin=a+lo,end=a+hi,duration_s=duration))
     band=meta['profile']['requested_band_hz'];stages={}
-    for stage in ('gravity','friction','breakaway','inertia'):
+    for stage in ('gravity','friction','breakaway','inertia','inertia_probe'):
         stage_reasons=list(reasons)
         candidates=[row for row in rows if row['duration_s']>=POLICY['minimum_seconds'][stage]]
         if not candidates:stage_reasons.append('no_long_enough_contiguous_valid_segment')

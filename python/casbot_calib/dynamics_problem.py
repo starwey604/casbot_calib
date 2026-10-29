@@ -35,9 +35,9 @@ def _project(values,harmonics):
     return np.fft.irfft(spectrum,n=len(values),axis=0)
 
 
-def build_periodic_problem(qualification,output):
+def periodic_observation_problem(meta,data,report):
     from .dual_model import nominal_dual_arm
-    meta,data,report=qualified_observations(qualification,'inertia');contract=meta['contract']
+    contract=meta['contract']
     experiment=contract.get('experiment',{})
     if experiment.get('kind')!='periodic':raise ValueError('A declared periodic experiment window is required')
     period=float(experiment['period_s']);harmonics=int(experiment['harmonics']);points=int(experiment.get('phase_points',1024))
@@ -67,7 +67,7 @@ def build_periodic_problem(qualification,output):
     columns=regression.reshape(-1,140);norm=np.linalg.norm(columns,axis=0);safe=np.maximum(norm,1e-12)
     singular=np.linalg.svd(columns/safe,compute_uv=False);rank=int(np.count_nonzero(singular>singular[0]*1e-8))
     result=dict(schema_version='casbot_qualified_rigid_problem_v1',passed=True,kind='periodic_inertia_observations',
-                source_qualification_sha256=sha256(Path(qualification)/'manifest.json'),model_source=source,
+                model_source=source,
                 samples=len(active),phase_points=points,period_s=period,harmonics=harmonics,fit_band_hz=harmonics/period,
                 raw_position_time_known=True,raw_torque_time_known=True,torque_source=report['signal_origin'],
                 mechanical_parameters_fitted=False,hardware_executable=False,regressor_backend='Pinocchio',
@@ -77,9 +77,16 @@ def build_periodic_problem(qualification,output):
                 solver_boundary='regression and target feed existing rigid_identification.fit_rigid; staged priors/validation remain S4 gates',
                 temporal_fit_rank=temporal['rank'],limitations=['Only an observation equation, not an accepted calibration or motion permission',
                     'Static-friction feature is not a unique zero-speed torque law; S4 must use frozen operational bounds'])
+    return dict(regression=regression,friction_basis=auxiliary,rotor=rotor,
+                target=torque[0]-rotor,torque_nm=torque[0],q=q,dq=dq,ddq=ddq,phase_s=temporal['phase_s']),result
+
+
+def build_periodic_problem(qualification,output):
+    meta,data,report=qualified_observations(qualification,'inertia')
+    arrays,result=periodic_observation_problem(meta,data,report)
+    result['source_qualification_sha256']=sha256(Path(qualification)/'manifest.json')
     output=Path(output);output.mkdir(parents=True,exist_ok=False)
-    np.savez_compressed(output/'problem.npz',regression=regression,friction_basis=auxiliary,rotor=rotor,
-                        target=torque[0]-rotor,torque_nm=torque[0],q=q,dq=dq,ddq=ddq,phase_s=temporal['phase_s'])
+    np.savez_compressed(output/'problem.npz',**arrays)
     (output/'report.json').write_text(json.dumps(result,indent=2)+'\n')
     (output/'manifest.json').write_text(json.dumps({name:sha256(output/name) for name in ('problem.npz','report.json')},indent=2)+'\n')
     return result

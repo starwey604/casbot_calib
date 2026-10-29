@@ -6,6 +6,7 @@ from . import _core
 from .data import write_json
 from .staged_collection import load_trial,collect_trial
 from .staged_identification import recordings,session_config,_windows
+from .torque_observations import output_torque
 
 
 def ramp_policy(meta,curve,gravity,config):
@@ -27,10 +28,11 @@ def collect_breakaway(root,name,plant,gravity_friction,config,profile):
     return collect_trial(root,name,plant,gravity_friction,config,profile,command_transform=transform,guard=guard)
 
 
-def identify_breakaway(root,output,gravity):
-    root=Path(root);output=Path(output);output.mkdir(parents=True,exist_ok=False);config=session_config(root);gain=config['drive']['gain_nm_a'];rows=[]
-    for name,meta,obs in recordings(root,'breakaway'):
-        policy=json.loads((root/'runs'/name/'guard_events.json').read_text())
+def identify_breakaway(root,output,gravity,*,records=None,config=None,guard_reader=None):
+    root=Path(root);output=Path(output);output.mkdir(parents=True,exist_ok=False);config=session_config(root) if config is None else config;rows=[]
+    source=(lambda stage:recordings(root,stage)) if records is None else records
+    for name,meta,obs in source('breakaway'):
+        policy=json.loads((root/'runs'/name/'guard_events.json').read_text()) if guard_reader is None else guard_reader(name)
         rows.append(onset_record(name,meta,obs,policy,gravity,config))
     axes=[]
     for j in range(14):
@@ -51,7 +53,7 @@ def identify_breakaway(root,output,gravity):
     report=dict(stage='breakaway',passed=all(r['passed'] for r in axes),axes=axes,ramps=rows,
         static_friction=[r['equivalent_symmetric_static_nm'] for r in axes],
         onset_velocity_resolution_rad_s=1e-7,controller_confirmation=dict(displacement_rad=.0002,speed_rad_s=.005,sustain_ns=3000000),
-        torque_source='measured current times declared output gain minus frozen gravity at actual sampled posture',
+        torque_source='total output torque observation minus frozen gravity at actual sampled posture; legacy current uses declared output gain',
         gravity_uncertainty_source='earlier independent paired gravity residual and approach spread; not eliminated by a fast ramp',
         limitations=['Operational threshold at this velocity/current resolution, not a material maximum static-friction constant',
             'No dwell- or posture-dependent friction law fitted; group effects are reported',
@@ -81,8 +83,8 @@ def onset_record(name,meta,obs,policy,gravity,config):
     if direction*(obs['q'][confirmation,j]-initial_q)<policy['displacement_threshold_rad']*.8:
         raise ValueError('Displacement evidence inconsistent with guard confirmation')
     q=obs['q'][[last,first,confirmation]];g=gravity.gravity_batch(q)[:,j]
-    efforts=direction*(obs['current'][[last,first,confirmation],j]*config['drive']['gain_nm_a']-g)
-    uncertainty=3*config['drive']['current_noise_a']*config['drive']['gain_nm_a']
+    efforts=direction*(output_torque(obs,config['drive'].get('gain_nm_a'))[[last,first,confirmation],j]-g)
+    uncertainty=3*(config['drive']['torque_noise_nm'] if 'torque_noise_nm' in config['drive'] else config['drive']['current_noise_a']*config['drive']['gain_nm_a'])
     low=float(min(efforts[:2])-uncertainty);high=float(max(efforts[:2])+uncertainty)
     return dict(trial=name,**conditions,last_still_ns=int(obs['sample_ns'][last]),first_moving_ns=int(obs['sample_ns'][first]),
         confirmed_sample_ns=event['confirmed_sample_ns'],decision_ns=event['decision_ns'],

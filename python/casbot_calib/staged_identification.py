@@ -8,6 +8,7 @@ from .data import write_json
 from .dual_model import nominal_dual_arm
 from .rigid_identification import fit_rigid,model_from_parameters
 from .staged_collection import load_trial
+from .torque_observations import output_torque
 
 
 def session_config(root):
@@ -73,14 +74,15 @@ def _residual(prediction,target,floor=.2):
         maximum_absolute_rmse_nm=float(max(rmse)),maximum_normalized_rmse=float(max(rmse/np.maximum(rms,floor))))
 
 
-def identify_gravity(root,output):
+def identify_gravity(root,output,*,records=None,config=None):
     root=Path(root);output=Path(output);output.mkdir(parents=True,exist_ok=False)
-    config=session_config(root);nominal,_=nominal_dual_arm();gain=config['drive']['gain_nm_a'];batches=dict(train=[],validation=[])
-    for name,meta,obs in recordings(root,'gravity'):
+    config=session_config(root) if config is None else config;nominal,_=nominal_dual_arm();gain=config['drive'].get('gain_nm_a');batches=dict(train=[],validation=[])
+    source=(lambda stage:recordings(root,stage)) if records is None else records
+    for name,meta,obs in source('gravity'):
         a,b=_windows(meta,'static_measure')[0];t=obs['sample_ns']*1e-9
         mask=(t>b-.5)&(t<b-.05)&(np.max(abs(obs['dq']),axis=1)<.002)
         if mask.sum()<100:raise ValueError('Insufficient settled gravity observations: '+name)
-        q=obs['q'][mask].mean(axis=0);torque=obs['current'][mask].mean(axis=0)*gain
+        q=obs['q'][mask].mean(axis=0);torque=output_torque(obs,gain)[mask].mean(axis=0)
         batches[meta['conditions']['batch']].append(dict(name=name,q=q,torque=torque,approach=meta['conditions']['approach'],pose=meta['conditions']['pose']))
     def problem(rows):
         q=np.array([x['q'] for x in rows]);z=np.zeros_like(q)
@@ -117,7 +119,7 @@ def friction_pairs(obs,meta,gravity,gain,control_period_ns=2000000):
     stride=round(control_period_ns*1e-9/dt)
     if stride<1 or not np.isclose(stride*dt,control_period_ns*1e-9,rtol=0,atol=1e-9):raise ValueError('Uniform integer-ratio control-cycle averaging required')
     gravity_torque=gravity.gravity_batch(obs['q'])[:,j]
-    return friction_pair_projection(obs,meta,obs['current'][:,j]*gain-gravity_torque,control_period_ns)
+    return friction_pair_projection(obs,meta,output_torque(obs,gain)[:,j]-gravity_torque,control_period_ns)
 
 
 def friction_pair_projection(obs,meta,residual,control_period_ns=2000000):
@@ -151,10 +153,11 @@ def friction_pair_projection(obs,meta,residual,control_period_ns=2000000):
         maximum_accepted_acceleration_rad_s2=.03,paired_points=len(grid),gravity_error_cancellation='position-matched forward/reverse half difference')
 
 
-def identify_friction(root,output,gravity,driver_report=None):
-    root=Path(root);output=Path(output);output.mkdir(parents=True,exist_ok=False);config=session_config(root)
+def identify_friction(root,output,gravity,driver_report=None,*,records=None,config=None,sampling_policy='legacy'):
+    root=Path(root);output=Path(output);output.mkdir(parents=True,exist_ok=False);config=session_config(root) if config is None else config
+    source=(lambda stage:recordings(root,stage)) if records is None else records
     rows={b:[[] for _ in range(14)] for b in ('train','validation','sampling')};evidence=[];sample_periods=[];convergence_base=[[] for _ in range(14)]
-    for name,meta,obs in recordings(root,'friction'):
+    for name,meta,obs in source('friction'):
         x,y,info=friction_pairs(obs,meta,gravity,config['drive']['gain_nm_a'],config['control_period_ns']);j=meta['conditions']['joint']
         rows[meta['conditions']['batch']][j].append((x,y));evidence.append(dict(trial=name,**info))
         sample_periods.append(int(np.median(np.diff(obs['sample_ns']))))
@@ -184,19 +187,21 @@ def identify_friction(root,output,gravity,driver_report=None):
             convergence.append(dict(joint=j,primary_rate_parameters=fitted[0].tolist(),denser_rate_parameters=fitted[1].tolist(),
                 relative_difference=relative.tolist(),passed=bool(np.all(relative<=.05))))
         else:convergence.append(dict(joint=j,passed=False,reason='denser independent acquisition missing'))
-    driver=driver_report if driver_report is not None else json.loads((root/'driver_timing.json').read_text());tau=min(r['fit']['current_tau_s'] for r in driver['axes'])
+    if sampling_policy not in ('legacy','s3_raw_with_independent_rate_convergence'):raise ValueError('Unknown sampling qualification policy')
+    driver=driver_report if driver_report is not None else (json.loads((root/'driver_timing.json').read_text()) if sampling_policy=='legacy' else None)
+    tau=min(r['fit']['current_tau_s'] for r in driver['axes']) if driver is not None else None
     # This criterion is specific to the Mock's unfiltered instantaneous current.
     # At 500-Hz held position commands, 1-kHz point samples alias the intra-cycle
     # acceleration/current ripple into a plausible viscous bias. A low prediction
     # residual at the same sampling phase does not establish parameter validity.
-    sampling=bool(driver['passed'] and tau/(max(sample_periods)*1e-9)>=3.8 and all(r['passed'] for r in convergence))
+    sampling=bool(driver['passed'] and tau/(max(sample_periods)*1e-9)>=3.8 and all(r['passed'] for r in convergence)) if sampling_policy=='legacy' else bool(max(sample_periods)<=250000 and all(r['passed'] for r in convergence))
     report=dict(stage='moving_friction',passed=all(r['passed'] for r in axis) and sampling,prediction_passed=all(r['passed'] for r in axis),viscous=viscous,coulomb=coulomb,
         axes=axis,preprocessing=evidence,training_batch='train',validation_batch='validation',
         model='b*dq + fc*tanh(dq/0.001); fit outside the Stribeck band',
         sampling_qualification=dict(passed=sampling,maximum_sample_period_ns=max(sample_periods),minimum_fitted_current_tau_s=tau,
             rate_convergence=convergence,
-            samples_per_current_tau=tau/(max(sample_periods)*1e-9),minimum_ratio_with_estimation_tolerance=3.8,
-            scope='synthetic instantaneous-current/ZOH protocol only; additionally requires a sampling-rate convergence experiment',
+            samples_per_current_tau=tau/(max(sample_periods)*1e-9) if tau is not None else None,minimum_ratio_with_estimation_tolerance=3.8 if sampling_policy=='legacy' else None,
+            policy=sampling_policy,scope='synthetic instantaneous-current/ZOH protocol only' if sampling_policy=='legacy' else 'S3 qualified raw total output torque, plus independent denser acquisition convergence; no driver time constant inferred',
             real_device_requirement='independently validate effort bandwidth, filtering, clock alignment and sampling phase; this rule is not a manufacturer requirement'),
         filtering=dict(control_cycle_average_ns=config['control_period_ns'],savgol_support_s=.05,polynomial_order=3,
             order='synchronous current/gravity residual and kinematics filtering before position pairing'),

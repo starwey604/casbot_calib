@@ -1,0 +1,12 @@
+schema_version: casbot_vendor_s4_spec_v1
+scope: hardware_observations
+settings:
+  mode: qualified_observations_only
+  control_period_ns: 2000000  # 500Hz publish/control, separate from acquisition
+  drive: {}
+preflight: {}
+records: []
+notes:
+  - Await qualified S3 observations, mapped device identity and timing evidence.
+  - No default gain, noise, actuator torque capability or physical stop qualification.
+  - This is an offline data protocol; S2 remains localhost-only.

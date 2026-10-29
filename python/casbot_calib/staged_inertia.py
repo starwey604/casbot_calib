@@ -9,6 +9,7 @@ from .dual_model import nominal_dual_arm
 from .dual_identification import periodic_observations
 from .rigid_identification import fit_rigid,model_from_parameters
 from .staged_identification import recordings,session_config,_windows,_residual,friction_pairs
+from .torque_observations import output_torque
 
 
 def _project(values,harmonics):
@@ -21,7 +22,7 @@ def probe_problem(nominal,obs,meta,gain):
     t=obs['sample_ns']*1e-9;step=float(np.median(np.diff(t)));j=meta['conditions']['joint'];sign=meta['conditions']['direction']
     sos=butter(6,30.,fs=1/step,output='sos')
     q=sosfiltfilt(sos,obs['q'],axis=0);v=sosfiltfilt(sos,obs['dq'],axis=0)
-    current=sosfiltfilt(sos,obs['current']*gain,axis=0)
+    current=sosfiltfilt(sos,output_torque(obs,gain),axis=0)
     acceleration=CubicSpline(t,v,axis=0).derivative()(t)
     windows=_windows(meta,'probe_measure');begin=windows[0][0]+.2;end=windows[-1][1]-.2
     active=np.flatnonzero((t>=begin)&(t<end))[::4]
@@ -63,9 +64,13 @@ def periodic_problem(nominal,obs,meta,gain,static,harmonics=40,phase_points=1024
             moving_velocity_threshold_rad_s=.015))
 
 
+def problem_torque(problem):
+    return problem['observed_torque_nm'] if 'observed_torque_nm' in problem else problem['current_torque']
+
+
 def _metrics(problem,theta,friction,static,floor):
     predicted=problem['regression']@theta+problem['extra']@friction+problem['fixed_friction']+problem['rotor']
-    observed=problem['current_torque'];mask=problem['moving'];rmse=[];normalized=[];counts=[]
+    observed=problem_torque(problem);mask=problem['moving'];rmse=[];normalized=[];counts=[]
     rigid=problem['regression']@theta+problem['rotor'];held_excess=[]
     for j in range(14):
         active=mask[:,j];counts.append(int(active.sum()))
@@ -99,23 +104,24 @@ def probe_metrics(p,candidate,theta,friction):
         passed=bool(observed[0]>0 and relative<=.1 and rmse<=.002),preprocessing=p['preprocessing'])
 
 
-def _preserve_prior_stages(root,candidate,friction,static,original_gravity,acceptance):
+def _preserve_prior_stages(root,candidate,friction,static,original_gravity,acceptance,*,records=None):
+    source=(lambda stage:recordings(root,stage)) if records is None else records
     gravity_rows=[]
-    for name,meta,obs in recordings(root,'gravity'):
+    for name,meta,obs in source('gravity'):
         if meta['conditions']['batch']!='validation':continue
         _,end=_windows(meta,'static_measure')[0];t=obs['sample_ns']*1e-9;mask=(t>end-.5)&(t<end-.05)&(np.max(abs(obs['dq']),axis=1)<.002)
-        q=obs['q'][mask].mean(axis=0);torque=obs['current'][mask].mean(axis=0)*acceptance['gain_nm_a']
+        q=obs['q'][mask].mean(axis=0);torque=output_torque(obs,acceptance.get('gain_nm_a'))[mask].mean(axis=0)
         gravity_rows.append((candidate.gravity(q),torque))
     predicted=np.array([r[0] for r in gravity_rows]);target=np.array([r[1] for r in gravity_rows])
     gravity=_residual((predicted[::2]+predicted[1::2])/2,(target[::2]+target[1::2])/2)
     errors=[[] for _ in range(14)]
-    for name,meta,obs in recordings(root,'friction'):
+    for name,meta,obs in source('friction'):
         if meta['conditions']['batch']!='validation':continue
         x,y,_=friction_pairs(obs,meta,candidate,acceptance['gain_nm_a'],acceptance['control_period_ns']);j=meta['conditions']['joint']
         errors[j].extend(x@np.array([friction[j],friction[14+j]])-y)
     moving_rmse=[float(np.sqrt(np.mean(np.square(e)))) for e in errors]
     onset_change=[]
-    for _,meta,obs in recordings(root,'breakaway'):
+    for _,meta,obs in source('breakaway'):
         begin,end=_windows(meta,'torque_ramp')[0];t=obs['sample_ns']*1e-9;mask=(t>=begin)&(t<=end)
         q=obs['q'][mask][::25]
         difference=candidate.gravity_batch(q)-original_gravity.gravity_batch(q)
@@ -126,20 +132,23 @@ def _preserve_prior_stages(root,candidate,friction,static,original_gravity,accep
             max(moving_rmse)<=acceptance['friction_absolute_rmse_nm'] and max(onset_change,default=float('inf'))<=1e-5))
 
 
-def identify_inertia(root,output,gravity_report,friction_report,breakaway_report,gravity_constraints):
-    root=Path(root);output=Path(output);output.mkdir(parents=True,exist_ok=False);config=session_config(root);nominal,source=nominal_dual_arm()
+def identify_inertia(root,output,gravity_report,friction_report,breakaway_report,gravity_constraints,*,records=None,config=None,periodic_builder=None):
+    root=Path(root);output=Path(output);output.mkdir(parents=True,exist_ok=False);config=session_config(root) if config is None else config;nominal,source=nominal_dual_arm()
+    reader=(lambda stage:recordings(root,stage)) if records is None else records
     if not all(r['passed'] for r in (gravity_report,friction_report,breakaway_report)):raise ValueError('Earlier independent stage acceptance failed')
     theta_g=np.asarray(gravity_report['fit']['parameters']);b=np.asarray(friction_report['viscous']);fc=np.asarray(friction_report['coulomb']);fs=np.asarray(breakaway_report['static_friction'])
-    frozen_friction=np.r_[b,fc];problems={};training=None
-    for name,meta,obs in recordings(root,'inertia'):
-        problem=periodic_problem(nominal,obs,meta,config['drive']['gain_nm_a'],fs)
+    frozen_friction=np.r_[b,fc];problems={};training=None;training_names=[];validation_names=[]
+    for name,meta,obs in reader('inertia'):
+        problem=periodic_problem(nominal,obs,meta,config['drive']['gain_nm_a'],fs) if periodic_builder is None else periodic_builder(name,fs)
         problems[name]=problem
-        if meta['conditions']['batch']=='train':training=problem
-    if training is None or len(problems)!=4:raise ValueError('Need one complete training and three independent validation trajectories')
+        if meta['conditions']['batch']=='train':training=problem;training_names.append(name)
+        elif meta['conditions']['batch'] in ('validation','left_validation','right_validation'):validation_names.append(name)
+        else:raise ValueError('Inertia requires explicit train/validation roles')
+    if len(training_names)!=1 or len(validation_names)!=3:raise ValueError('Need one complete training and three independent validation trajectories')
     with np.load(gravity_constraints,allow_pickle=False) as data:equality=(data['regressor'],data['prediction'])
     active=training['moving'];y=training['regression'][active];x=training['extra'][active];target=training['target'][active]
     probes={};probe_y=[];probe_x=[];probe_target=[]
-    for name,meta,obs in recordings(root,'inertia_probe'):
+    for name,meta,obs in reader('inertia_probe'):
         problem=probe_problem(nominal,obs,meta,config['drive']['gain_nm_a']);probes[name]=(meta,problem)
         if meta['conditions']['batch']=='train':probe_y.append(problem['regression']);probe_x.append(problem['extra']);probe_target.append(problem['target'])
     if not probe_y:raise ValueError('Dedicated wrist-inertia probes are required, not inferred from small total torque residuals')
@@ -158,15 +167,15 @@ def identify_inertia(root,output,gravity_report,friction_report,breakaway_report
         auxiliary=(x,frozen_friction,lower,upper))
     theta=np.asarray(refined['parameters']);friction=np.asarray(refined['auxiliary_parameters'])
     candidate=model_from_parameters(nominal,theta,friction[:14],friction[14:],fs)
-    validation={name:_metrics(p,theta,friction,fs,config['acceptance']['torque_floor_nm']) for name,p in problems.items() if name!='inertia_train'}
+    validation={name:_metrics(problems[name],theta,friction,fs,config['acceptance']['torque_floor_nm']) for name in validation_names}
     probe_validation={}
     for name,(meta,p) in probes.items():
         if meta['conditions']['batch']!='validation':continue
         probe_validation[name]=probe_metrics(p,candidate,theta,friction)
-    initial_validation={name:_metrics(p,np.asarray(initial['parameters']),frozen_friction,fs,config['acceptance']['torque_floor_nm']) for name,p in problems.items() if name!='inertia_train'}
+    initial_validation={name:_metrics(problems[name],np.asarray(initial['parameters']),frozen_friction,fs,config['acceptance']['torque_floor_nm']) for name in validation_names}
     acceptance={**config['acceptance'],**dict(gain_nm_a=config['drive']['gain_nm_a'],control_period_ns=config['control_period_ns'])}
     original_gravity=model_from_parameters(nominal,theta_g)
-    preserved=_preserve_prior_stages(root,candidate,friction,fs,original_gravity,acceptance)
+    preserved=_preserve_prior_stages(root,candidate,friction,fs,original_gravity,acceptance,records=records)
     minimum_speed=np.sqrt(np.mean(training['dq']**2,axis=0));minimum_acceleration=np.sqrt(np.mean(training['ddq']**2,axis=0))
     checks=dict(physical_candidate=True,gravity_and_friction_preserved=preserved['passed'],
         all_axes_excited=bool(np.all(minimum_speed>.01) and np.all(minimum_acceleration>.02)),
@@ -178,7 +187,7 @@ def identify_inertia(root,output,gravity_report,friction_report,breakaway_report
         probe_validation=probe_validation,primary_wrist_row_sqrt_weight=.1,
         preprocessing=training['preprocessing'],velocity_rms_rad_s=minimum_speed.tolist(),acceleration_rms_rad_s2=minimum_acceleration.tolist(),
         model_version='tree_full_physical_inertia_v1',source=source,
-        training_trials=['inertia_train']+[name for name,(meta,_) in probes.items() if meta['conditions']['batch']=='train'],
+        training_trials=training_names+[name for name,(meta,_) in probes.items() if meta['conditions']['batch']=='train'],
         validation_trials=list(validation)+list(probe_validation),
         limitations=['Only observable parameter combinations identified; physical nullspace representative selected by nominal prior',
             'Fixed waist: no floating-base/waist compliance or fixed torso inertial recovery',
@@ -197,14 +206,14 @@ def identify_inertia(root,output,gravity_report,friction_report,breakaway_report
     predictions={}
     for name,p in problems.items():
         predicted=p['regression']@theta+p['extra']@friction+p['fixed_friction']+p['rotor']
-        predictions[name]=(p['current_torque'],predicted)
+        predictions[name]=(problem_torque(p),predicted)
         np.savez_compressed(output/(name+'_prediction.npz'),q=p['q'],dq=p['dq'],ddq=p['ddq'],
-            observed_current_torque=p['current_torque'],predicted_current_torque=predicted,moving_mask=p['moving'])
+            observed_current_torque=problem_torque(p),predicted_current_torque=predicted,moving_mask=p['moving'])
     with (output/'parameters.csv').open('w',encoding='utf-8-sig',newline='') as stream:
         writer=csv.writer(stream);writer.writerow(['parameter','physical_representative','status'])
         writer.writerows((name,value,'not individually identifiable; observable-combination fit') for name,value in zip(nominal.rigid_parameter_names(),theta))
     _plot(output,report)
-    _plot_prediction(output,*predictions['inertia_validation'])
+    _plot_prediction(output,*predictions[validation_names[0]])
     return report,candidate
 
 
