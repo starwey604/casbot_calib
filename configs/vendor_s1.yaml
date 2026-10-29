@@ -1,0 +1,36 @@
+schema_version: casbot_vendor_s1_v1
+scope: read_only
+model_id: casbot_20251015_dual_nominal_unverified
+model_mapping_verified: false
+position_unit: rad
+velocity_unit: rad/s
+effort_source: unknown
+effort_unit: unknown
+robot_software_version: unknown
+firmware_version: unknown
+sample_timestamp_semantics: unknown
+joint_topic: /joint_states
+joint_type: sensor_msgs/msg/JointState
+# Optional: only enable if that mode already publishes it. Never switch modes in S1.
+debug_topic: ''
+mode_topic: /motion/status
+robot_state_topic: /motion/robot_state
+reliable: true
+depth: 10
+expected_receive_hz: 500
+stale_after_ns: 250000000
+joint_names:
+  - left_shoulder_pitch_joint
+  - left_shoulder_roll_joint
+  - left_shoulder_yaw_joint
+  - left_elbow_pitch_joint
+  - left_wrist_yaw_joint
+  - left_wrist_pitch_joint
+  - left_wrist_roll_joint
+  - right_shoulder_pitch_joint
+  - right_shoulder_roll_joint
+  - right_shoulder_yaw_joint
+  - right_elbow_pitch_joint
+  - right_wrist_yaw_joint
+  - right_wrist_pitch_joint
+  - right_wrist_roll_joint

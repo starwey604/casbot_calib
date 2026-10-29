@@ -12,8 +12,27 @@ from .identification import Prior, identify
 from .experiments import run_stage
 
 def main(argv=None):
-    parser=argparse.ArgumentParser(description="Synthetic joint calibration experiments (no hardware)")
+    parser=argparse.ArgumentParser(description="CASBOT calibration: synthetic experiments and explicit read-only vendor capture")
     sub=parser.add_subparsers(dest="command",required=True)
+    vendor_capture=sub.add_parser('vendor-capture',help='S1 subscription-only SDK state recording; no motion or mode changes')
+    vendor_capture.add_argument('--config',type=Path,default=Path('configs/vendor_s1.yaml'))
+    vendor_capture.add_argument('--output',type=Path,required=True);vendor_capture.add_argument('--duration',type=float,default=10.)
+    vendor_capture.add_argument('--domain-id',type=int,required=True)
+    vendor_capture.add_argument('--scope',choices=('localhost_contract_mock','hardware_read_only'),required=True)
+    vendor_normalize=sub.add_parser('vendor-normalize',help='S1 offline normalization preserving unavailable fields and unknown clocks')
+    vendor_normalize.add_argument('folder',type=Path);vendor_normalize.add_argument('--output',type=Path,required=True)
+    vendor_view=sub.add_parser('vendor-view',help='S1 read-only recorded or live file-tail poses; no device I/O')
+    vendor_view.add_argument('folder',type=Path);vendor_view.add_argument('--output',type=Path,required=True)
+    vendor_view.add_argument('--live',action='store_true');vendor_view.add_argument('--window',action='store_true')
+    vendor_view.add_argument('--fps',type=int,default=12)
+    ros_view=sub.add_parser('ros-view',help='Unified subscription-only viewer for native ROS Mock or vendor feedback')
+    ros_view.add_argument('--config',type=Path,default=Path('configs/vendor_s1.yaml'))
+    ros_view.add_argument('--output',type=Path,required=True);ros_view.add_argument('--topic',required=True)
+    ros_view.add_argument('--message-type',choices=('sensor_msgs/msg/JointState','crb_ros_msg/msg/JointStateData','casbot_calib_interfaces/msg/JointObservation'),required=True)
+    ros_view.add_argument('--source-model-id');ros_view.add_argument('--domain-id',type=int,required=True)
+    ros_view.add_argument('--scope',choices=('localhost_ros_mock','hardware_read_only'),required=True)
+    ros_view.add_argument('--window',action='store_true');ros_view.add_argument('--duration',type=float,default=5.)
+    ros_view.add_argument('--fps',type=int,default=12)
     kinematics=sub.add_parser('kinematics-check',help='K1 named dual-arm TCP and TriCal schema checks; no motion or calibration')
     kinematics.add_argument('--config',type=Path)
     kinematics.add_argument('--output',required=True,type=Path)
@@ -119,6 +138,25 @@ def main(argv=None):
     view.add_argument("--mapping",type=Path);view.add_argument("--scene",type=Path)
     view.add_argument("--follow",action="store_true",help="Follow an externally appended JSONL file")
     args=parser.parse_args(argv)
+    if args.command=='ros-view':
+        from .ros_state import view_ros
+        result=view_ros(args.config,args.output,topic=args.topic,message_type=args.message_type,domain_id=args.domain_id,
+                        scope=args.scope,source_model_id=args.source_model_id,window=args.window,duration_s=args.duration,fps=args.fps)
+        return 0 if result.get('passed',True) else 1
+    if args.command=='vendor-capture':
+        from .vendor_capture import capture
+        result=capture(args.config,args.output,duration_s=args.duration,domain_id=args.domain_id,scope=args.scope)
+        print(f"SDK只读采集：{'完成' if result['completed'] else '中断或失败，原始记录保留'} -> {args.output}")
+        return 0 if result['completed'] else 1
+    if args.command=='vendor-normalize':
+        from .vendor_data import normalize_session
+        result=normalize_session(args.folder,args.output)
+        print(f"SDK只读规范化：{result['valid_position_packets']}/{result['packets']}条有效位置；动力学资格未开放 -> {args.output}")
+        return 0 if result['position_observations_available'] else 1
+    if args.command=='vendor-view':
+        from .vendor_viewer import view_vendor
+        result=view_vendor(args.folder,args.output,live=args.live,window=args.window,fps=args.fps)
+        return 0 if result.get('passed',True) else 1
     if args.command=='kinematic-acceptance':
         from .kinematic_acceptance import run_acceptance
         result=run_acceptance(args.reference,args.output,video=not args.snapshots_only,fps=args.fps,external_meter=args.external_meter)

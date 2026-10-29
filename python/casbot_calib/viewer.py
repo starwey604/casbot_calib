@@ -152,7 +152,8 @@ def show(source,adapter=None,scene=None,*,duration_s=None,loop=True):
                     m=view.adapter.mappings[selected];axis=view.model.jnt_axis[view.joint_ids[selected]]
                     status=f"{'STALE' if stale else frame.source} | seq {frame.sequence} | {m.name}\n"
                     raw="unavailable" if frame.raw_position is None else f"{frame.raw_position[selected]:+.3f}"
-                    status+=f"raw {raw} | q {frame.q[selected]:+.5f} rad | i {frame.current[selected]:+.3f} A\n"
+                    amps="unavailable" if frame.current is None else f"{frame.current[selected]:+.3f} A"
+                    status+=f"raw {raw} | q {frame.q[selected]:+.5f} rad | i {amps}\n"
                     status+=f"map sign {m.direction:+} | scale {m.scale_rad_per_unit:g} rad/unit | zero {m.zero_raw:g} | local axis {axis}"
                 mj.mjr_overlay(mj.mjtFontScale.mjFONTSCALE_150,mj.mjtGridPos.mjGRID_TOPLEFT,rect,
                     "READ ONLY | no physics / no motor writes\n"+status,

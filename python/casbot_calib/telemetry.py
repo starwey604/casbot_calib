@@ -45,11 +45,11 @@ class StateFrame:
     receive_ns: int
     joint_names: tuple[str, ...]
     q: np.ndarray
-    dq: np.ndarray
-    current: np.ndarray
+    dq: np.ndarray | None
+    current: np.ndarray | None
     raw_position: np.ndarray | None
     target_q: np.ndarray | None = None
-    status: int = 0
+    status: int | None = 0
     clock_domain: str = "recorded_device_clock"
 
     def __post_init__(self):
@@ -63,7 +63,7 @@ class StateFrame:
             raise ValueError("Invalid sequence/timestamp")
         for name in ("q","dq","current","raw_position","target_q"):
             original=getattr(self,name)
-            if original is None and name in ("target_q","raw_position"):
+            if original is None and name in ("target_q","raw_position","dq","current"):
                 continue
             array=np.array(original,dtype=float,copy=True)
             if array.shape!=(n,) or not np.all(np.isfinite(array)):
