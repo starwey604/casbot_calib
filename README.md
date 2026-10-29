@@ -4,6 +4,8 @@
 
 本项目采用 **C++ 高性能底层计算 + Python 灵活工作流编排 + ROS 2 Humble 实时通信** 的混合架构，支持从离线激励轨迹生成、安全边界与自碰撞预检（Preflight Check）、真机/仿真数据采集，到摩擦、重力与惯量参数分步辨识及可视化报告生成的完整闭环。
 
+**实机接入前必须逐项弄清[SDK待确认能力与前置条件](docs/sdk_hardware_prerequisites.md)**，尤其是反馈/指令effort语义、输出侧尺度、PD与内部补偿、采样/时钟/500Hz采用能力、停止行为，以及真实模型和腰部固定条件。当前S1–S4通过的是只读接口或本机/离线流程，未开放实机执行。未确认或不支持的能力必须阻断依赖它的阶段；只读采集保留未知信息，不能作为运动或标定资格。
+
 ---
 
 ## 🎯 核心目标与功能特性
@@ -179,6 +181,7 @@ bash scripts/humble/validate.sh
 ## 📚 更多文档
 
 关于算法细节、硬件参数与各阶段验证报告，请参阅 `docs/` 目录下的详细文档：
+* **[SDK实机接入前必须确认的能力](docs/sdk_hardware_prerequisites.md)**：甲方待确认清单、所需证据、阶段开放条件和结论记录要求；实机接入前必读。
 * [双臂千分计运动学K1–K5计划](docs/kinematics_trical_plan.md)、[K2测量闭环](docs/kinematics_trical_k2.md)及[K3几何辨识](docs/kinematics_trical_k3.md)：三表Mock、碰撞门禁、自动对中/稳定采样、六球选点、MDH/Hayati分层求解与候选URDF导出；实机和完整计量验收仍待后续。
 * [K4重复性与中文回放](docs/kinematics_trical_k4.md)：同工装三批独立采集/辨识、冻结选参、公共留出位置约束、独立外测数据契约和MuJoCo只读演示；实物外测/间隔漂移/产品AP-RP仍待验收。
 * [机器人建模与参数说明](docs/model_and_parameters.md)

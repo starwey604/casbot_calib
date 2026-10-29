@@ -2,6 +2,8 @@
 
 适用于本仓库全部目录。面向用户的说明、报告和演示默认使用中文，代码标识符沿用英文。开始修改前查看工作区状态，保留用户已有改动。
 
+**实机接入前必须阅读并逐项弄清[SDK待确认能力与前置条件](docs/sdk_hardware_prerequisites.md)**。反馈/指令effort含义、输出尺度、PD和内部补偿、采样/时钟/实际采用频率、停止与设备限制、真实模型和腰部固定条件须有对应设备/版本的证据与结论。未确认或明确不支持时，阻断依赖它的阶段；不得以字段存在、配置布尔值、SDK编译或Mock验收替代。只读采集可保留未知字段，不授予运动/标定资格；不要直接改S1 unknown或移除S2 localhost限制来接实机。
+
 ## 当前目标与已完成范围
 
 - 当前优先级是**整机完整装配、腰部刚性固定的14轴双臂动力学标定**。腰部抱紧位置为前腹部圆形开口附近；实际夹具尺寸、安装变换与重力方向尚需测量，当前盒体仅为合成代理。
@@ -18,6 +20,7 @@
 
 优先阅读：
 
+0. 实机相关工作先读[SDK实机接入前置条件](docs/sdk_hardware_prerequisites.md)，按阶段核对能力、证据和未决项。
 1. [实施计划与进度](docs/humble_migration_plan.md)、[当前完整交付](docs/staged_release_validation.md)。
 2. [分阶段流程与碰撞门禁](docs/collision_staged_workflow.md)、[ROS协议与时钟](docs/ros_transport.md)。
 3. [Humble环境](docs/humble_environment.md)、[需求对应表](docs/requirements_matrix.md)、[论文落实](docs/references.md)。
