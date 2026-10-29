@@ -18,7 +18,7 @@ bash scripts/humble/container.sh env CASBOT_SDK_ROOT=/path/to/sdk \
   bash scripts/humble/build_vendor.sh
 ```
 
-输出为`build/vendor`、`install/vendor`、`log/vendor`，不覆盖原`humble-ros` overlay。`build_vendor.sh`核对SDK清单中的23个接口SHA和两个扩展导出，保存实际25个接口摘要、SDK提交及已审阅运控基准。运行时再次核对已安装接口文件，并记录实际只读可执行文件和消息共享库SHA。这个证明只针对本地构建，不证明机器人端版本相同。
+输出为`build/vendor`、`install/vendor`、`log/vendor`，不覆盖原`humble-ros` overlay。S2扩展后，该可选构建还包括公共消息和原生核心ament库，供Mock侧合成位置伺服复用；S1节点仍独立只读。`build_vendor.sh`核对SDK清单中的23个接口SHA和两个扩展导出，保存实际25个接口摘要、SDK提交及已审阅运控基准。运行时再次核对已安装接口文件，并记录实际只读可执行文件和消息共享库SHA。这个证明只针对本地构建，不证明机器人端版本相同。
 
 `build_ros.sh`显式忽略可选`casbot_calib_vendor`，原Mock构建无须SDK。S1只增加ROS节点，没有修改或替换力学内核与已安装的pybind11扩展。
 
@@ -35,7 +35,7 @@ bash scripts/humble/container.sh bash scripts/humble/vendor.sh \
   --domain-id 72 --scope hardware_read_only
 ```
 
-输出目录必须不存在。`--domain-id`和`--scope`均为必填；硬件只读scope显式设置`ROS_LOCALHOST_ONLY=0`，本机契约scope设1，并要求所有topic使用私有`/casbot_calib_s1_*`前缀。实际RMW在记录器元数据中保存，网卡／DDS仍由现场配置；本轮容器内本机通信通过不保证跨机发现已配置好。
+输出目录必须不存在。`--domain-id`和`--scope`均为必填；硬件只读scope显式设置`ROS_LOCALHOST_ONLY=0`，本机契约scope设1，并要求所有topic使用私有`/casbot_calib_s1_*`或`/casbot_calib_s2_*`前缀。实际RMW在记录器元数据中保存，网卡／DDS仍由现场配置；本轮容器内本机通信通过不保证跨机发现已配置好。
 
 记录包括：
 

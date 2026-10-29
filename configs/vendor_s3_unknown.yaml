@@ -1,0 +1,11 @@
+schema_version: casbot_vendor_s3_profile_v1
+scope: hardware_observations
+# Unknown means no checked semantics. A reference must bind a contract to the
+# exact input digest; a boolean or a nonzero ROS header is never evidence.
+contract: null
+scale_validation: null
+clock_mapping: null
+requested_band_hz: 6.666666666666667
+notes:
+  - No effort/current/scale/sampling/bandwidth assumptions are supplied for the real SDK.
+  - S3 qualifies offline observations only and never enables hardware commands.

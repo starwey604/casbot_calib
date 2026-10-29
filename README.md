@@ -188,5 +188,7 @@ bash scripts/humble/validate.sh
 * [动力学P0数据契约](docs/staged_dynamics_p0_r0.md)、[R1多构型开发](docs/staged_dynamics_p0_r1.md)、[R2算子稳定性](docs/staged_dynamics_p0_r2.md)、[R3频段归因/选参](docs/staged_dynamics_p0_r3.md)及[R4正式验收](docs/staged_dynamics_p0_r4.md)：已通过本机合成测试、独立控制对照和中文回放；不代表实机或全频带性能。
 * [ROS 2 传输层设计文档](docs/ros_transport.md) & [Humble 环境说明](docs/humble_environment.md)
 * [CASBOT2 SDK源码接入评估](docs/casbot02_sdk_source_intake.md)与[S1只读接入](docs/vendor_s1.md)：可选SDK构建、原始CDR记录、字段规范化，以及厂商反馈/原生ROS Mock共用的只读显示；实机控制、力矩/采样能力和物理网络仍待验证。
+* [S2位置流程与频率／响应](docs/vendor_s2.md)：整双臂实测起点、Coal参考门禁、C++ SDK位置流与故障停止；本机100/250/500Hz记录和316项Python测试通过，早期反馈空窗及原始失败也保留，未确认稳定500Hz或实机执行资格。
+* [S3动力学观测资格](docs/vendor_s3.md)：S1/主机CSV/NPZ只读导入，来源与输出力矩尺度、采样时钟、状态和原始带宽逐阶段检查；合格周期记录生成Pinocchio回归问题。当前SDK未知反馈仍阻断，500Hz发布不代替4kHz原始采样，实机执行及S4闭环未开放。
 * [可视化工具演示指南](docs/viewer_demo.md)
 * [开发者指南](docs/development.md)

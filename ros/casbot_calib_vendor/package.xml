@@ -1,10 +1,12 @@
 <?xml version="1.0"?>
 <package format="3">
   <name>casbot_calib_vendor</name><version>0.1.0</version>
-  <description>Optional read-only CASBOT2 SDK state recorder.</description>
+  <description>Optional CASBOT2 SDK recording and locally gated position experiments.</description>
   <maintainer email="moonbite233@gmail.com">WindWeaver</maintainer><license>TODO</license>
   <buildtool_depend>ament_cmake</buildtool_depend>
   <depend>rclcpp</depend><depend>sensor_msgs</depend><depend>std_msgs</depend>
   <depend>crb_ros_msg</depend><depend>rmw</depend>
+  <depend>std_srvs</depend><depend>casbot_calib_interfaces</depend>
+  <depend>casbot_calib_core</depend>
   <export><build_type>ament_cmake</build_type></export>
 </package>

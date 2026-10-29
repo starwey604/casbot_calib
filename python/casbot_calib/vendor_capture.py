@@ -15,9 +15,9 @@ def capture(config_path, output, *, duration_s, domain_id, scope):
     if scope not in ('localhost_contract_mock', 'hardware_read_only'):
         raise ValueError('Explicit connection scope is required')
     if scope == 'localhost_contract_mock' and any(
-            config[key] and not config[key].startswith('/casbot_calib_s1_')
+            config[key] and not config[key].startswith(('/casbot_calib_s1_', '/casbot_calib_s2_'))
             for key in ('joint_topic', 'debug_topic', 'mode_topic', 'robot_state_topic')):
-        raise ValueError('Local contract tests require private /casbot_calib_s1_* topics')
+        raise ValueError('Local contract tests require private calibration S1/S2 topics')
     prefix = Path(os.environ.get('CASBOT_VENDOR_INSTALL', 'install/vendor')).resolve()
     binary = prefix/'casbot_calib_vendor/lib/casbot_calib_vendor/state_recorder'
     source = json.loads((prefix/'vendor-source.json').read_text())

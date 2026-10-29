@@ -167,7 +167,7 @@ def present_pose_source(source, output, *, live=False, window=False, fps=12, dur
                     for line, start in enumerate(range(0,len(value),15)):
                         draw.text((930,145+j*78+line*22), value[start:start+15], font=_font(16), fill=(228,237,245))
                 scope = getattr(source,'scope','hardware_read_only')
-                origin = {'localhost_contract_mock':'本机合成协议样本，未模拟机械',
+                origin = {'localhost_contract_mock':'本机ROS Mock反馈，具体来源见session',
                           'localhost_ros_mock':'原生Mock经ROS发布，显示端不计算物理'}.get(scope,'硬件域只读反馈，设备身份待核验')
                 draw.text((24,680), 'MuJoCo只更新几何 / '+origin+' / 不代表动力学或实机验收',
                           font=_font(14), fill=(245,194,91))
