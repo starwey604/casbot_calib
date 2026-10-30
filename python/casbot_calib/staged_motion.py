@@ -51,6 +51,15 @@ class Motion:
             interpolation='septic Hermite / Bernstein; q,dq,ddq,jerk continuous at segment boundaries')
 
 
+def restricted_coefficients(curve,order=0,subdivisions=8):
+    """Exact Bernstein coefficients on a fixed subdivision, without sampling."""
+    power=PPoly.from_bernstein_basis(curve.derivative(order));degree=len(power.c)-1
+    knots=np.r_[(power.x[:-1,None]+np.diff(power.x)[:,None]*np.arange(subdivisions)/subdivisions).ravel(),power.x[-1]]
+    coefficients=np.stack([power.derivative(k)(knots[:-1])/factorial(k) for k in range(degree,-1,-1)])
+    restricted=BPoly.from_power_basis(PPoly(coefficients,knots))
+    return restricted.c.reshape(degree+1,len(power.x)-1,subdivisions,-1)
+
+
 def derivative_bounds(curve,order=1,subdivisions=8):
     """Bernstein convex bounds after exact polynomial restriction to subcells.
 
@@ -58,11 +67,7 @@ def derivative_bounds(curve,order=1,subdivisions=8):
     same polynomial on smaller intervals. This tightens the often very loose
     original control-point bound without substituting a sampled maximum.
     """
-    power=PPoly.from_bernstein_basis(curve.derivative(order));degree=len(power.c)-1
-    knots=np.r_[(power.x[:-1,None]+np.diff(power.x)[:,None]*np.arange(subdivisions)/subdivisions).ravel(),power.x[-1]]
-    coefficients=np.stack([power.derivative(k)(knots[:-1])/factorial(k) for k in range(degree,-1,-1)])
-    restricted=BPoly.from_power_basis(PPoly(coefficients,knots))
-    bound=np.max(abs(restricted.c).reshape(degree+1,len(power.x)-1,subdivisions,-1),axis=(0,2))
+    bound=np.max(abs(restricted_coefficients(curve,order,subdivisions)),axis=(0,2))
     return bound*(1+1e-10)+1e-12
 
 
@@ -70,6 +75,10 @@ def gate_motion(profile,motion,clearance_m=.01):
     curve=motion.polynomial();bounds=derivative_bounds(curve)
     allowance_labels=motion.conditions.get('allowance_labels',('static_dwell','torque_ramp'))
     lower=np.min(curve.c,axis=(0,1));upper=np.max(curve.c,axis=(0,1))
+    if motion.conditions.get('refine_position_bounds',False):
+        coefficients=restricted_coefficients(curve)
+        padding=1e-10*(1+np.max(abs(coefficients),axis=(0,1,2)))
+        lower=coefficients.min(axis=(0,1,2))-padding;upper=coefficients.max(axis=(0,1,2))+padding
     if 'position_allowance_rad' in motion.conditions:
         allowance=np.asarray(motion.conditions['position_allowance_rad'])
         for i,label in enumerate(motion.labels):
@@ -262,6 +271,8 @@ def wrist_probe_motion(name,home,pose,config,joint,sign,conditions=None):
 
 def periodic_motion(name,stage,home,center,config,seed,validation=False,active='both',conditions=None):
     """Shared analytic multisine and complete C3 entry/braking/return path."""
+    if config.get('smooth_periodic_envelope',False):
+        return enveloped_periodic_motion(name,stage,home,center,config,seed,validation,active,conditions)
     from .dual_excitation import periodic_reference
     home=np.asarray(home,dtype=float);center=np.asarray(center,dtype=float)
     period=config['dynamic_period_s'];periods=config['dynamic_periods'];step=period/64
@@ -277,3 +288,34 @@ def periodic_motion(name,stage,home,center,config,seed,validation=False,active='
     for k in range(1,len(t)):
         m.add(step,q[k],v[k],label='periodic');m.states[-1]=np.stack([q[k],v[k],a[k],jrk[k]])
     return _finish(m,{**config,'transition_s':transition})
+
+
+def enveloped_periodic_motion(name,stage,home,center,config,seed,validation=False,active='both',conditions=None):
+    """C3 amplitude envelope; entry/braking cannot amplify the multisine span.
+
+    Unlike matching nonzero high derivatives across a long rest-to-motion
+    segment, multiplying by a bounded envelope preserves the reference range.
+    SciPy supplies the envelope polynomial and its analytic derivatives.
+    """
+    from .dual_excitation import periodic_reference
+    home=np.asarray(home,dtype=float);center=np.asarray(center,dtype=float)
+    period=config['dynamic_period_s'];periods=config['dynamic_periods'];ramp=config['dynamic_ramp_s'];transition=config['dynamic_transition_s']
+    conditions={**(conditions or {}),'period_s':period,'periods':periods,'seed':seed,'active':active,
+        'entry_braking':'C3 bounded amplitude envelope; static center transitions',
+        'sample_period_ns':config.get('inertia_sample_period_ns',250000)}
+    m=Motion(name,stage,home,conditions);m.add(config['settle_s'],home,label='initial_hold').add(transition,center,label='to_excitation_center')
+    envelope=BPoly.from_derivatives([0.,ramp],[[0.,0.,0.,0.],[1.,0.,0.,0.]])
+    for mode,duration in [('entry',ramp),('periodic',periods*period),('exit',ramp)]:
+        count=int(np.ceil(duration/(period/64)));span=duration/count;t=np.arange(1,count+1)*span
+        phase=t-ramp if mode=='entry' else t if mode=='periodic' else periods*period+t
+        q,v,a,j=periodic_reference(phase,center,period,np.asarray(config['pose_amplitude_rad']),seed,validation,active)
+        delta=q-center
+        if mode=='periodic':weights=[np.ones((count,1)),*[np.zeros((count,1)) for _ in range(3)]]
+        else:
+            weights=[np.asarray(envelope(t,nu=d))[:,None] for d in range(4)]
+            if mode=='exit':weights=[1-weights[0],*[-w for w in weights[1:]]]
+        w,d,dd,ddd=weights
+        states=np.stack([center+w*delta,w*v+d*delta,w*a+2*d*v+dd*delta,w*j+3*d*a+3*dd*v+ddd*delta],axis=1)
+        for state in states:
+            m.add(span,state[0],state[1],label='periodic' if mode=='periodic' else 'excitation_'+mode);m.states[-1]=state
+    return m.add(transition,home,label='return_home').add(config['settle_s'],home,label='final_hold')

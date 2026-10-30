@@ -7,11 +7,13 @@ from .dynamics_qualification import qualified_observations
 from .vendor_identity import sha256
 
 
-def fourier_projection(time_ns,values,origin_ns,period_s,harmonics,phase_points,derivatives=False):
-    """Least squares at actual acquisition times, then analytic derivatives.
+def fourier_projection(time_ns,values,origin_ns,period_s,harmonics,phase_points,derivatives=False,*,weights=None,phase_offset_s=0.,diagnostics=False):
+    """Least squares on supplied event times, then analytic derivatives.
 
     Integer origins are subtracted before float conversion. Caller supplies one
     contiguous segment; this helper never concatenates across a missing interval.
+    S3 callers supply qualified acquisition times; the H4 adapter explicitly uses
+    unqualified callback availability. This numerical helper grants no timing qualification.
     """
     t=(np.asarray(time_ns,dtype=np.int64)-int(origin_ns))*1e-9
     if len(t)<4*(2*harmonics+1) or np.ptp(t)<1.8*period_s or np.any(np.diff(t)<=0):
@@ -23,11 +25,21 @@ def fourier_projection(time_ns,values,origin_ns,period_s,harmonics,phase_points,
             w=2*np.pi*k/period_s
             columns.extend([w**order*np.sin(w*times+order*np.pi/2),w**order*np.cos(w*times+order*np.pi/2)])
         return np.column_stack(columns)
-    basis=design(t);coef,_,rank,singular=lstsq(basis,np.asarray(values),cond=1e-10,lapack_driver='gelsd')
+    basis=design(t);target=np.asarray(values)
+    if weights is not None:
+        weights=np.asarray(weights,dtype=float)
+        if weights.shape!=t.shape or not np.isfinite(weights).all() or np.any(weights<=0):raise ValueError('Positive Fourier row weights required')
+        factor=np.sqrt(weights);basis=basis*factor[:,None];target=target*factor[:,None] if target.ndim==2 else target*factor
+    if not np.isfinite(phase_offset_s):raise ValueError('Finite phase evaluation offset required')
+    coef,_,rank,singular=lstsq(basis,target,cond=1e-10,lapack_driver='gelsd')
     if rank!=basis.shape[1]:raise ValueError('Rank deficient Fourier observation fit')
     phase=np.arange(phase_points)*period_s/phase_points
-    projected=[design(phase,k)@coef for k in range(3 if derivatives else 1)]
-    return projected,dict(rank=int(rank),singular_values=singular.tolist(),phase_s=phase)
+    projected=[design(phase+phase_offset_s,k)@coef for k in range(3 if derivatives else 1)]
+    metadata=dict(rank=int(rank),singular_values=singular.tolist(),phase_s=phase)
+    if diagnostics:
+        residual=design(t)@coef-np.asarray(values)
+        metadata['unmodelled_event_signal_rmse']=np.sqrt(np.average(residual**2,axis=0,weights=weights)).tolist()
+    return projected,metadata
 
 
 def _project(values,harmonics):

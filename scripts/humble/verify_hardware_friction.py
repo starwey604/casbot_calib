@@ -43,7 +43,7 @@ def verify_step_convergence(root):
     from time import perf_counter
     root=Path(root).resolve();folder=root/'step_convergence';folder.mkdir(exist_ok=False)
     _,protocol=batch.load_batch(root/'batch');history,_=batch.outcomes(root/'batch',protocol)
-    job=next(j for j in protocol['jobs'] if j['kind']=='moving_friction');source=batch.accepted(history[job['id']])
+    job=next(j for j in protocol['jobs'] if j['kind'] in ('moving_friction','inertia'));source=batch.accepted(history[job['id']])
     trial=root/'batch'/source['attempt'];metadata=read(trial/'plan/plan.json')
     import csv
     with (trial/'capture/execution/commands.csv').open() as stream:rows=list(csv.DictReader(stream))
@@ -54,6 +54,7 @@ def verify_step_convergence(root):
     mock=yaml.safe_load((root/'mock.yaml').read_text());settings=mock['plant']
     nominal,_=nominal_dual_arm();model=nominal.model;joints=model.joints
     for j,joint in enumerate(joints):
+        body=joint.body;body.inertia_com=body.inertia_com*settings.get('inertia_scales',[1.]*14)[j];joint.body=body
         f=joint.friction;f.viscous=settings['friction_viscous'][j];f.coulomb=settings['friction_coulomb'][j]
         f.static_friction=settings['friction_static'][j];f.stribeck_velocity=.005;joint.friction=f
     model.joints=joints;plant=_core.ArmDynamics(model);outputs=[];cost=[]

@@ -90,7 +90,7 @@ def params(config, names):
             gravity_model_path=str(files('casbot_calib').joinpath('assets/casbot_dual_arm_benchmark_nominal.urdf')),
             gravity_world=config['gravity_world'])
     extra=config.get('breakaway_parameters',{})
-    allowed=('gravity_feedforward_enabled','gravity_model_path','gravity_world','command_kp','command_kd')
+    allowed=('gravity_feedforward_enabled','gravity_model_path','gravity_world','command_kp','command_kd','feedforward_plan_file','feedforward_limit_nm')
     if any(not name.startswith('breakaway_') and name not in allowed for name in extra):raise ValueError('Only explicit SDK experiment parameters may extend the executor')
     experiment.update(extra)
     return dict(execution_scope=config['execution_scope'], joint_names=names,

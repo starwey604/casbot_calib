@@ -108,3 +108,5 @@ artifacts/sdk_mock_ros_v5/verification.json的21项本机ROS检查通过，覆�
 同目录truth_isolation.json另记录两项新进程复核：禁止打开任何evaluation路径后仍能重新分析，重力参数与原结果最大差0。中文视频已实际解码检查，位置来自SDK观测，MuJoCo不推进物理。内部初始保持需实际稳定后才宣告就绪；静态测试留出稳定时间，未放宽原稳定判据。早期v1–v4的环境/闭环稳定性/等待不足失败保留。
 
 完整Python回归431项通过（含14项新增连接/配置/隔离反例），报告为artifacts/sdk_mock_tests_v2/full.xml。旧S2的500Hz位置回归见artifacts/sdk_mock_legacy_s2_regression_v1，仍按其原合成协议解释。原生四项CTest及新增SDK线性插值策略测试通过；本轮未重跑历史114项冻结数值交付。本机artifacts不随Git交付，最终源码/测试/证据摘要见artifacts/sdk_mock_delivery_v1/delivery.json。
+
+H4可在plant中显式设置14项inertia_scales，缩放各等效体质心惯性，质量/质心保持。它只改变合成plant，用于检查惯量恢复；该数组封存在Mock行为/evaluation边界，不能作为辨识先验读取。省略时全为1，历史条件不变。H4使用相同SDK客户端发送预计算前馈，见[H4指南](hardware_inertia_h4.md)。

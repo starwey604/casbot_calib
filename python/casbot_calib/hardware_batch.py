@@ -80,7 +80,7 @@ def implementation():
     binary, sdk = field.executor_binary()
     base = Path(__file__).parent
     names = ['hardware_batch.py', 'hardware_field.py', 'sdk_connection.py', 'control_gains.py','hardware_friction.py','hardware_breakaway.py','staged_identification.py','staged_motion.py', 'collision.py',
-             'rigid_identification.py', 'dynamic_export.py']
+             'rigid_identification.py', 'dynamic_export.py','hardware_inertia.py','hardware_periodic.py','hardware_control.py','dynamics_problem.py']
     return dict(sources={name: sha256(base / name) for name in names},
                 executor_sha256=sha256(binary), sdk=sdk, core_sha256=sha256(_core.__file__),
                 numpy_version=np.__version__)
@@ -302,6 +302,9 @@ class SDKBatchBackend:
         return field.execute_field(plan, output, domain_id, local_remaps=self.local_remaps)
 
     def inspect(self, plan, capture, output, *, static=False):
+        if read(Path(plan)/'plan.json').get('h4'):
+            from .hardware_inertia import inspect_trial
+            return inspect_trial(plan,capture,output)
         if read(Path(plan)/'plan.json').get('stage') in ('moving_friction','breakaway'):
             from .hardware_friction import inspect_trial
             return inspect_trial(plan,capture,output)
@@ -388,6 +391,12 @@ def run_batch(root, *, resume=False, max_jobs=None, backend=None):
         for job in protocol['jobs']:
             rows = history[job['id']]
             if accepted(rows) or any(r['status'] == 'rejected_frequency' for r in rows): continue
+            if job['kind'] in ('control_tuning','control_validation'):
+                from .hardware_inertia import freeze_inertia
+                if not freeze_inertia(root,protocol,history):return summarize(root,'inertia_rejected')
+                if job['kind']=='control_validation':
+                    from .hardware_control import freeze_selection
+                    if not freeze_selection(root,protocol,history):return summarize(root,'controller_rejected')
             if job['kind']=='breakaway':
                 from .hardware_friction import require_friction_gate
                 if not require_friction_gate(root,protocol,history):return summarize(root,'friction_rejected')
@@ -410,7 +419,10 @@ def run_batch(root, *, resume=False, max_jobs=None, backend=None):
                         status = 'interrupted' if snapshot.get('supervisor_interruption') == 'user_interrupt' else 'fault'
                         reason = 'snapshot_failed'
                     else:
-                        if protocol.get('workflow')=='h3_friction':
+                        if protocol.get('workflow')=='h4_inertia':
+                            from .hardware_inertia import prepare_trial
+                            prepare_trial(root,protocol,job,profile,folder/'snapshot',folder/'plan')
+                        elif protocol.get('workflow')=='h3_friction':
                             from .hardware_friction import prepare_trial
                             prepare_trial(root,protocol,job,profile,folder/'snapshot',folder/'plan')
                         elif job['kind'] == 'static':
@@ -530,6 +542,9 @@ def summarize(root, state, *, output=None):
     if protocol.get('workflow')=='h3_friction':
         from .hardware_friction import summarise_h3
         summarise_h3(root,protocol,history,destination,report)
+    if protocol.get('workflow')=='h4_inertia':
+        from .hardware_inertia import summarize_h4
+        summarize_h4(root,protocol,history,destination,report)
     write_json(destination / 'report.json', report)
     with (destination / 'jobs.csv').open('w', newline='', encoding='utf-8') as stream:
         writer = csv.DictWriter(stream, fieldnames=['id', 'kind', 'joint', 'hz', 'repeat', 'candidate_id', 'split', 'arm', 'status', 'attempts', 'source_attempt'], extrasaction='ignore')

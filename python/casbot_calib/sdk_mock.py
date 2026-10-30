@@ -46,6 +46,9 @@ def mock_config(path):
         if type(plant[key]) is not int or not 0 <= plant[key] <= 100000000: raise ValueError('Invalid native delay')
     if 'stiction_enabled' in plant and type(plant['stiction_enabled']) is not bool: raise ValueError('Boolean synthetic stiction required')
     if type(plant.get('device_pd')) is not bool: raise ValueError('Explicit Mock PD backend required')
+    if 'inertia_scales' in plant:
+        values=np.asarray(plant['inertia_scales'],dtype=float)
+        if values.shape!=(14,) or not np.isfinite(values).all() or np.any(values<.1) or np.any(values>5.):raise ValueError('14 bounded synthetic inertia scales required')
     if 'sample_period_ns' in plant and (type(plant['sample_period_ns']) is not int or plant['sample_period_ns']<50000): raise ValueError('Invalid private raw sample period')
     if 'integration_ns' in plant and (type(plant['integration_ns']) is not int or not 25000<=plant['integration_ns']<=200000):raise ValueError('Bounded Mock integration step required')
     for key in ('friction_viscous','friction_coulomb','friction_static'):

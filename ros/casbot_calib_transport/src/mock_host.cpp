@@ -113,6 +113,12 @@ class MockHost : public rclcpp::Node {
     if(inject_every_<0 || inject_delay_<0 || inject_delay_>500'000'000)throw std::invalid_argument("Invalid injection");
     auto native=casbot::ArmDynamics::from_urdf(path).model();
     if(native.joints.size()!=14)throw std::invalid_argument("Mock requires the declared nominal 14-axis model");
+    const auto inertia_scales=declare_parameter<std::vector<double>>("inertia_scales",std::vector<double>(14,1.));
+    if(inertia_scales.size()!=14)throw std::invalid_argument("14 synthetic inertia scales required");
+    for(int j=0;j<14;++j) {
+      if(!std::isfinite(inertia_scales[j])||inertia_scales[j]<.1||inertia_scales[j]>5.)throw std::invalid_argument("Bounded synthetic inertia scale required");
+      native.joints[j].body.inertia_com*=inertia_scales[j];
+    }
     if(declare_parameter<bool>("zero_gravity",true))native.gravity_world.setZero();
     // Opt-in SDK/H3 plant parameters; frozen historical defaults remain unchanged.
     const auto viscous=declare_parameter<std::vector<double>>("friction_viscous",std::vector<double>(14,0.));

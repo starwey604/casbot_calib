@@ -82,7 +82,7 @@ bash scripts/humble/container.sh casbot-calib hardware-render-batch \
 
 批次仍采用protocol、events、attempts、reports及不可变摘要。报告包含moving_friction.json、breakaway.json、friction_parameters.csv、onset_thresholds.csv及runtime_friction.json、独立验证、全部来源及频率/控制配置；运行时候选列出未辨识轴，auto_deploy=false，不自动部署。回放仅显示SDK接收位置，MuJoCo不参与机械计算。
 
-H3输出是现场候选，formal_hardware_calibration_accepted始终false。该SDK窗口协议不降低旧S3/S4的4kHz/独立更密采样要求，也不把未知缓存变成已知采样。后续H4接入惯量激励与前序复核，H5再闭合真实尺度、模型/限制和独立设备验收。
+H3输出是现场候选，formal_hardware_calibration_accepted始终false。该SDK窗口协议不降低旧S3/S4的4kHz/独立更密采样要求，也不把未知缓存变成已知采样。[H4](hardware_inertia_h4.md)已接入惯量激励与前序复核，H5再闭合真实尺度、模型/限制和独立设备验收。
 
 ## 🔬 六、本机演练结果与边界
 

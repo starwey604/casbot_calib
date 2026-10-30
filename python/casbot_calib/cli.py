@@ -24,6 +24,11 @@ def main(argv=None):
     friction_plan.add_argument('--profile',type=Path,default=Path('configs/hardware_field.yaml'))
     friction_plan.add_argument('--gravity',type=Path,required=True);friction_plan.add_argument('--domain-id',type=int,required=True)
     friction_plan.add_argument('--output',type=Path,required=True)
+    inertia_plan=sub.add_parser('hardware-plan-inertia',help='Freeze H4 SDK inertia excitation, H3 priors and independent control roles; no device I/O')
+    inertia_plan.add_argument('--config',type=Path,default=Path('configs/hardware_inertia.yaml'))
+    inertia_plan.add_argument('--profile',type=Path,default=Path('configs/hardware_field.yaml'))
+    inertia_plan.add_argument('--prior',type=Path,required=True);inertia_plan.add_argument('--domain-id',type=int,required=True)
+    inertia_plan.add_argument('--output',type=Path,required=True)
     batch_plan=sub.add_parser('hardware-plan-batch',help='Freeze H2 direction/frequency/static jobs without device I/O')
     batch_plan.add_argument('--config',type=Path,default=Path('configs/hardware_batch.yaml'))
     batch_plan.add_argument('--profile',type=Path,default=Path('configs/hardware_field.yaml'));batch_plan.add_argument('--preset',type=Path)
@@ -215,6 +220,11 @@ def main(argv=None):
         from .sdk_mock import serve_mock
         result=serve_mock(args.config,args.output,args.domain_id,profile=args.profile,duration=args.duration)
         return 0 if result['passed'] else 1
+    if args.command=='hardware-plan-inertia':
+        from .hardware_inertia import plan_inertia
+        result=plan_inertia(args.config,args.profile,args.prior,args.output,domain_id=args.domain_id)
+        print('H4惯量与控制批次已封存；规划不连接设备或下发命令')
+        return 0
     if args.command=='hardware-plan-friction':
         from .hardware_friction import plan_friction
         result=plan_friction(args.config,args.profile,args.gravity,args.output,domain_id=args.domain_id)

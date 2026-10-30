@@ -23,7 +23,9 @@ class PositionExecutor final : public rclcpp::Node {
     snapshot_=declare_parameter<bool>("snapshot_only",false);
     const bool ramp_enabled=declare_parameter<bool>("breakaway_enabled",false);
     const bool gravity_enabled=declare_parameter<bool>("gravity_feedforward_enabled",false);
-    experiment_commands_=ramp_enabled||gravity_enabled;
+    const auto feedforward_path=declare_parameter<std::string>("feedforward_plan_file","");
+    const double feedforward_limit=declare_parameter<double>("feedforward_limit_nm",100.);
+    experiment_commands_=ramp_enabled||gravity_enabled||!feedforward_path.empty();
     const auto joint=declare_parameter<std::string>("joint_topic"),mode=declare_parameter<std::string>("mode_topic");
     const auto command=declare_parameter<std::string>("command_topic"),service=declare_parameter<std::string>("mode_service"),stop=declare_parameter<std::string>("stop_service");
     command_topic_=command;
@@ -85,6 +87,17 @@ class PositionExecutor final : public rclcpp::Node {
       }
       if(plan_.size()<2) throw std::runtime_error("Missing plan");
       for(int j=0;j<14;++j) if(std::abs(plan_.back()[j+1]-plan_[0][j+1])>1e-12) throw std::runtime_error("Plan must return to observed start");
+      if(!feedforward_path.empty()) {
+        if(!hardware_||gravity_enabled||ramp_enabled||!std::isfinite(feedforward_limit)||feedforward_limit<=0||feedforward_limit>100.)throw std::runtime_error("Exclusive bounded H4 feedforward schedule required");
+        std::ifstream feedforward(feedforward_path);std::getline(feedforward,line);
+        while(std::getline(feedforward,line)) {
+          auto row=vendor::csv(line);
+          if(row.size()!=15||row[0]!=static_cast<double>(feedforward_plan_.size())*period_)throw std::runtime_error("Invalid uniform feedforward schedule");
+          for(int j=0;j<14;++j)if(!std::isfinite(row[j+1])||std::abs(row[j+1])>feedforward_limit)throw std::runtime_error("Feedforward effort limit");
+          feedforward_plan_.push_back(row);
+        }
+        if(feedforward_plan_.size()!=plan_.size())throw std::runtime_error("Feedforward/position schedule length mismatch");
+      }
       if(ramp_enabled) {
         if(!hardware_)throw std::runtime_error("SDK ramp uses the shared field path only");
         SdkBreakawayConfig c;c.joint=declare_parameter<int>("breakaway_joint");c.direction=declare_parameter<int>("breakaway_direction");
@@ -98,7 +111,7 @@ class PositionExecutor final : public rclcpp::Node {
         if(c.return_end>plan_.back()[0])throw std::runtime_error("Ramp recovery exceeds the frozen plan");
       }
       hold_kp_=declare_parameter<std::vector<double>>("command_kp",std::vector<double>{});hold_kd_=declare_parameter<std::vector<double>>("command_kd",std::vector<double>{});
-      if((!hold_kp_.empty()||!hold_kd_.empty()||ramp_)&&(hold_kp_.size()!=14||hold_kd_.size()!=14))throw std::runtime_error("14 explicit holding gains required");
+      if((!hold_kp_.empty()||!hold_kd_.empty()||ramp_||!feedforward_plan_.empty())&&(hold_kp_.size()!=14||hold_kd_.size()!=14))throw std::runtime_error("14 explicit holding gains required");
       for(std::size_t j=0;j<hold_kp_.size();++j)if(!std::isfinite(hold_kp_[j])||!std::isfinite(hold_kd_[j])||hold_kp_[j]<=0||hold_kp_[j]>1000||hold_kd_[j]<=0||hold_kd_[j]>100)throw std::runtime_error("Invalid holding gains");
       if(gravity_enabled) {
         auto model=casbot::ArmDynamics::from_urdf(declare_parameter<std::string>("gravity_model_path")).model();
@@ -252,6 +265,7 @@ class PositionExecutor final : public rclcpp::Node {
       Eigen::Map<const Eigen::VectorXd> observed(state_.q.data(),14);auto g=gravity_workspace_->gravity(observed);
       msg.effort.assign(g.data(),g.data()+14);
     }
+    if(!feedforward_plan_.empty())msg.effort.assign(feedforward_plan_[index].begin()+1,feedforward_plan_[index].end());
     double increment=0.;
     if(ramp_) {
       SdkBreakaway::Values q{},v{};std::copy(msg.position.begin(),msg.position.end(),q.begin());std::copy(msg.velocity.begin(),msg.velocity.end(),v.begin());bool zero=false;
@@ -283,6 +297,7 @@ class PositionExecutor final : public rclcpp::Node {
   Client::SharedFuture mode_future_,stop_future_;
   int ramp_joint_=0;std::unique_ptr<SdkBreakaway> ramp_;std::vector<double> hold_kp_,hold_kd_;
   bool experiment_commands_=false;
+  std::vector<std::vector<double>> feedforward_plan_;
   std::unique_ptr<casbot::ArmDynamics> gravity_engine_;std::unique_ptr<casbot::ArmWorkspace> gravity_workspace_;
 };
 int main(int argc,char** argv) {

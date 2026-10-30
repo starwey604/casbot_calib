@@ -1,0 +1,49 @@
+schema_version: casbot_hardware_inertia_v1
+joints: all
+home_rad: [0, 0.85, 0, -0.9, 0, 0, 0, 0, -0.85, 0, -0.9, 0, 0, 0]
+pose_offsets_rad:
+  train: [-0.04, 0.04]
+  validation: [0.0]
+train_seeds: [401, 402]
+validation_seeds: [501, 502]
+period_s: 8.0
+periods: 4
+discard_periods: 2
+amplitude_rad: [0.12, 0.06, 0.12, 0.12, 0.15, 0.12, 0.15, 0.12, 0.06, 0.12, 0.12, 0.15, 0.12, 0.15]
+transition_s: 4.0
+excitation_ramp_s: 2.0
+settle_s: 3.0
+inter_job_pause_s: 0.25
+maximum_acceleration_rad_s2: 1.5
+maximum_jerk_rad_s3: 8.0
+maximum_gap_s: 0.05
+harmonics: 16
+phase_points: 256
+effort_relative_offset_s: 0.0
+offset_diagnostic_grid_s: [-0.005, 0.0, 0.005]
+moving_speed_rad_s: 0.015
+minimum_velocity_rms_rad_s: 0.01
+minimum_acceleration_rms_rad_s2: 0.02
+maximum_velocity_consistency_rad_s: 0.02
+validation_absolute_rmse_nm: 0.10
+validation_normalized_rmse: 0.20
+torque_floor_nm: 0.20
+gravity_preservation_nm: 0.00001
+ridge: 0.0001
+holding:
+  hold_natural_frequency_rad_s: 15.0
+  hold_damping_ratio: 0.8
+  hold_minimum_kp: 2.0
+  hold_minimum_kd: 0.12
+control:
+  enabled: true
+  tuning_seed: 601
+  validation_seed: 701
+  kp_factors: [0.5, 0.75, 1.0, 1.25, 1.5]
+  maximum_effort_nm: 100.0
+  maximum_speed_rad_s: 0.75
+notes:
+  - SDK callback-time periodic candidates only; acquisition/relative channel timing and filtering remain unqualified.
+  - Freeze H3 gravity and friction. Pinocchio supplies all rigid regressors and forward predictions.
+  - Low-frequency data does not replace the original dedicated high-bandwidth wrist probes or S3/S4 gates.
+  - Five tuning runs precede four independent model/gain groups; never select on validation.
