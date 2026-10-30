@@ -8,6 +8,8 @@
 
 需要自动组织现场方向、频率和静态批次时，使用[H2整批采集](hardware_batch_h2.md)。受控中断可续采，SDK故障只log并终止整批，当前不恢复故障会话。
 
+需要提前演练实际SDK路径时，按[统一SDK Mock指南](sdk_mock_unification.md)启动sdk-mock；H1/H2只切换连接profile，继续共用同一执行、采集和分析入口。原有虚拟时间Mock适合数值回归，SDK Mock用于验证实际接口与时序条件。
+
 ---
 
 ## 🧭 一、先了解本次要标定什么

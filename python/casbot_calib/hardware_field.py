@@ -51,6 +51,9 @@ def load_profile(path):
     if gravity.shape != (3,) or not np.isfinite(gravity).all() or np.linalg.norm(gravity) <= 0:
         raise ValueError('Finite nonzero installation gravity vector required')
     config['scene'] = yaml.safe_load((path.parent / config['collision_scene']).read_text(encoding='utf-8'))
+    if 'connection' in config:
+        from .sdk_connection import validate_connection
+        validate_connection(config['connection'])
     return config
 
 
@@ -90,6 +93,8 @@ def params(config, names):
 def run_executor(config, output, domain_id, *, snapshot=False, plan=None, timeout_s=30, local_remaps=None):
     if not 0 <= domain_id <= 232:
         raise ValueError('Explicit ROS domain 0..232 required')
+    from .sdk_connection import connection_remaps
+    local_remaps = connection_remaps(config, domain_id, local_remaps)
     engine, _ = nominal_dual_arm(); binary, identity = executor_binary()
     values = params(config, [j.name for j in engine.model.joints]); values['snapshot_only'] = snapshot
     root = Path(output).resolve(); root.mkdir(parents=True, exist_ok=False)
@@ -179,15 +184,20 @@ def _read_snapshot(root):
     return q
 
 
-def snapshot_binding(snapshot):
+def snapshot_binding(snapshot, config=None):
     root = Path(snapshot); request = root / 'request.json'
+    source = json.loads(request.read_text()) if request.exists() else {}
+    observed_connection = source.get('config', {}).get('connection')
+    if config is not None and observed_connection != config.get('connection'):
+        raise ValueError('Snapshot and plan use different SDK connections')
     return dict(snapshot_manifest_sha256=sha256(root / 'manifest.json'),
-        source_domain_id=json.loads(request.read_text())['domain_id'] if request.exists() else None)
+        source_domain_id=source.get('domain_id'))
 
 
 def prepare_field(profile, static_plan, snapshot, output, *, max_poses_per_split=None, candidate_ids=None, settle_extra_s=0.):
     config = load_profile(profile); static_plan = Path(static_plan).resolve(); snapshot = Path(snapshot).resolve()
     check_seal(static_plan); start = _read_snapshot(snapshot)
+    binding = snapshot_binding(snapshot, config)
     source_report = json.loads((static_plan / 'report.json').read_text())
     if not source_report['passed']:
         raise ValueError('Accepted static reference preset required')
@@ -233,11 +243,12 @@ def prepare_field(profile, static_plan, snapshot, output, *, max_poses_per_split
     motion.add(config['final_hold_s'], start, label='observed_start_final_hold')
     return finish_plan(root, config, motion, trials, dict(pose_cap_per_arm_split=max_poses_per_split,
         selected_candidate_ids=list(selected), settle_extra_s=settle_extra_s,
-        **snapshot_binding(snapshot), preset_manifest_sha256=sha256(static_plan / 'manifest.json')))
+        **binding, preset_manifest_sha256=sha256(static_plan / 'manifest.json')))
 
 
 def prepare_jog(profile, snapshot, output, joint_name, amplitude_deg=1., *, anchor_rad=None):
     config = load_profile(profile); start = _read_snapshot(snapshot); engine, _ = nominal_dual_arm()
+    binding = snapshot_binding(snapshot, config)
     names = [j.name for j in engine.model.joints]
     if joint_name not in names or not np.isfinite(amplitude_deg) or not 0 < amplitude_deg <= 5:
         raise ValueError('Named arm joint and commissioning amplitude in (0,5] degrees required')
@@ -267,7 +278,7 @@ def prepare_jog(profile, snapshot, output, joint_name, amplitude_deg=1., *, anch
     motion.conditions.update(comparison_window_s=[comparison_begin, comparison_end],
         comparison_reference_sha256=hashlib.sha256(json.dumps(definition, sort_keys=True).encode()).hexdigest(),
         comparison_anchor_rad=anchor.tolist())
-    return finish_plan(root, config, motion, [], snapshot_binding(snapshot))
+    return finish_plan(root, config, motion, [], binding)
 
 
 def finish_plan(root, config, motion, trials, bindings):

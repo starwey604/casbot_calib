@@ -52,6 +52,7 @@
 - `static_field.py`提供[静态现场预设](docs/static_field_preset.md)：`plan-static-field`/`verify-static-field`仅规划/复核，复用Motion、Pinocchio静态回归与Coal完整路径门禁；配置为`configs/static_field_nominal.yaml`。每臂具名7轴扫描+五轴组合，角度是相对配置基准的偏移；保留正反单轴诊断及成对接近，参考信息选24训练+8验证，不能把组合验证遗漏腕部roll的秩13当作完整覆盖。每臂训练/验证需分别覆盖候选池静态方向；不得宣称140参数或各连杆质量/质心唯一。输出为独立参考规划包，不是可直接运行的staged会话或S4观测协议；1s窗口不是测量，保留缓存/采样资格与S2 localhost限制。nominal肩部外展基准不是实机home，现场到基准的路径、实际插值/跟踪包络、限制和停止仍须另验。失败v1/覆盖不足v2保留，最终离线参考为`artifacts/static_field_nominal_v3`及其review。
 - `hardware_field.py`与`configs/hardware_field.yaml`实现H1：实际起姿、单轴小幅、从实测起姿到静态预设再返回的完整序列、原始CDR/整数ns回调/发布stamp/effort记录、探索重力与URDF重加载。`position_executor`共享显式hardware scope（默认S2仍本机），只发位置、velocity和零effort/空PD；异常停止发布，绝不伪造服务回执。现场fit使用回调窗口，独立采样数未知，不是S3采样资格，正式接受/自动部署保持false。reference与命令插值及观测插值检查不等于真实跟踪/制动包络已获证。快照只读，执行前复核起姿；计划绑定模型/SDK/二进制/ROS domain，分析绑定实际执行CSV摘要。硬件摩擦/起动/惯量未完成，不能宣称H1等于完整硬件标定；H2已补整批编排与受控续采，故障恢复按用户要求暂不实现。
 - `hardware_batch.py`、`configs/hardware_batch.yaml`及[H2说明](docs/hardware_batch_h2.md)组织冻结批次：方向观测与具名人工结论绑定、同一测得锚点/连续参考下的100/250/500Hz随机重复、静态正反姿态对的原子尝试与有限稳定等待重采。协议/模型/SDK/关键代码不变才续采；事件原子提交并串联摘要，已封存attempt不改写，未知不完整attempt终止。clear_fault默认仅日志占位，调用后整批终止且不能resume。H1的static_means/write_gravity_candidate由H1/H2共用，不复制求解器、不跨记录造采样序列。`hardware_batch_viewer.py`复用统一几何renderer，按单次回调时间回放，试次间不插值、只压缩时间、不放大角度。H2不等于H3/H4硬件摩擦/惯量或正式实机验收。
+- **SDK Mock收敛约定**：新增[统一入口](docs/sdk_mock_unification.md)，`sdk_mock.py`/`configs/sdk_mock.yaml`启动`sdk_mock_server`和现有`mock_host`；后者独占ArmSimulationSession。H1/H2及后续H3共用SDK客户端、厂商消息和记录，只切换生成profile中的`sdk_connection.py`连接配置，不再另写直接修改q的集成夹具。新服务器仅position插值到配置参考频率，velocity/effort/PD保持；公开反馈不提供内部采样时间/序号/电流，`evaluation/`内部诊断只给独立测试。用户要求先按简单线性插值处理，默认当前参考到新目标2ms明确为合成假设，time_ref=0不解释成已确认时长。新入口无专用stop RPC；旧mock_sdk_bridge仅保留冻结S2回归，不扩成第二条现场开发路径。Mock非零effort/自定义PD默认关闭，显式开启仅是假设能力，不能解锁实机。
 - `tests/`、`cpp/tests/`、`tests/installation/`分别覆盖Python、C++和安装后消费者。`configs/`存实验条件，`scripts/humble/`存目标环境自动化。
 - `artifacts/`、`build/`、`install/`、`log/`及虚拟环境为生成物，不提交Git。
 
@@ -91,7 +92,7 @@ bash scripts/humble/container.sh env PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 CASBOT_TES
 
 首次安装见环境文档。Python分析使用系统Python3.10建立的`.venv-humble`，不启用system-site-packages；ROS underlay/overlay由脚本显式接入。原生库用apt/rosdep，Python额外依赖按`scripts/humble/requirements.lock`安装，不用pip再装另一套Pinocchio/Coal。当前验证版本为Pinocchio4.0.0、Coal3.0.3、Boost1.74，旧conda环境只留作对照；不混用PATH、ABI或构建缓存。Windows离线入口及CI保留，本机Linux通过不等于Windows已验收。
 
-**C++变更后必须更新实际加载的绑定**，单独CMake build不会刷新已安装的扩展：
+**cpp/核心C++变更后必须更新实际加载的绑定**，单独CMake build不会刷新已安装的扩展。仅ros/内的适配节点变化时构建对应colcon包即可，不重编未变化的Python绑定：
 
 ```bash
 bash scripts/humble/container.sh python -m pip install -e . --no-deps --no-build-isolation \

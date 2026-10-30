@@ -131,6 +131,6 @@ bash scripts/humble/container.sh casbot-calib hardware-analyse \
 
 ## 本机验证范围
 
-可选Humble/SDK四包构建通过。verify_hardware_field.py在私有domain、localhost端点调用同一硬件执行器，覆盖只读快照、发送路径、位置缓存重复、静态拟合/URDF重加载、反馈中断后的停止发送和无伪造停止回执。它是ROS协议夹具，不是另一套机械仿真或厂商插值算法认证。
+当前verify_hardware_field.py转入[统一SDK Mock](sdk_mock_unification.md)验证：私有domain和localhost内，同一硬件客户端连接SDK服务端及原有机械内核，覆盖H1/H2、两种反馈类型和故障处理。早期直接给位置赋值的Python协议夹具已移除；下列H1历史证据仍按其当时的协议夹具范围解释，不升格为新的机械Mock或实机验收。
 
 原S2的Pinocchio/Boost物理Mock 500Hz往返回归另跑，仍保持本机scope和原停止服务逻辑。最终协议证据为artifacts/hardware_field_ros_v4（包含小幅jog、静态及中断）与artifacts/hardware_field_s2_regression_v1。本轮完整Python回归401项通过，后续更新的28项相关专项通过；具体为hardware_field_tests_v3/full.xml与hardware_field_tests_v6/focused.xml。旧数值物理内核/采样资格未修改，未重跑历史114项数值交付。汇总见artifacts/hardware_field_delivery_v1/delivery.json。

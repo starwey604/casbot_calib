@@ -4,6 +4,8 @@ H2 将 [H1 实机入口](hardware_execution_path.md) 组织成一份冻结的现
 
 H2 负责采集编排，继续使用同一个C++ SDK位置发送器、Pinocchio回归、Coal碰撞和已有物理一致求解器。它不增加真实力矩斜坡或惯量硬件标定，也不将缓存反馈转换成已知采样时刻。
 
+无实机时可按[统一SDK Mock指南](sdk_mock_unification.md)启动完整机械Mock，用生成的client_profile.yaml代替硬件profile；H2自动冻结本机连接，执行入口不变。
+
 **按用户最新要求：执行、通信或模式故障发生后，默认clear_fault只记录日志，然后结束整个采集流程。该故障会话不能通过--resume继续。现在不尝试清故障、不请求恢复、不自动重新申请控制。**
 
 ## 🧭 一、默认批次做什么

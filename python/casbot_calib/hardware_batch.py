@@ -79,7 +79,7 @@ def implementation():
     from . import _core
     binary, sdk = field.executor_binary()
     base = Path(__file__).parent
-    names = ['hardware_batch.py', 'hardware_field.py', 'staged_motion.py', 'collision.py',
+    names = ['hardware_batch.py', 'hardware_field.py', 'sdk_connection.py', 'staged_motion.py', 'collision.py',
              'rigid_identification.py', 'dynamic_export.py']
     return dict(sources={name: sha256(base / name) for name in names},
                 executor_sha256=sha256(binary), sdk=sdk, core_sha256=sha256(_core.__file__),
@@ -125,11 +125,17 @@ def settings(path, joint_names):
     return config
 
 
-def plan_batch(config_path, profile_path, output, *, preset=None, domain_id, connection_scope='hardware'):
+def plan_batch(config_path, profile_path, output, *, preset=None, domain_id, connection_scope=None):
     if type(domain_id) is not int or not 0 <= domain_id <= 232: raise ValueError('Explicit ROS domain required')
-    if connection_scope not in ('hardware', 'localhost_contract_mock'): raise ValueError('Unknown batch connection scope')
     engine, source = nominal_dual_arm(); names = [j.name for j in engine.model.joints]
     config = settings(config_path, names); profile = field.load_profile(profile_path); jobs = []
+    inferred = profile.get('connection', {}).get('scope', 'hardware')
+    if connection_scope is None: connection_scope = inferred
+    if connection_scope not in ('hardware', 'localhost_contract_mock'): raise ValueError('Unknown batch connection scope')
+    if 'connection' in profile:
+        from .sdk_connection import connection_remaps
+        connection_remaps(profile, domain_id)
+        if connection_scope != inferred: raise ValueError('Batch scope differs from its frozen SDK connection')
     if config['frequency']['enabled'] and config['static']['enabled'] and profile['command_hz'] not in config['frequency']['rates_hz']:
         raise ValueError('Static default frequency must be included in the frequency experiment')
     if config['direction']['enabled']:
@@ -348,7 +354,9 @@ def frequency_anchor(root, snapshot):
 def run_batch(root, *, resume=False, max_jobs=None, backend=None):
     root, protocol = load_batch(root, for_run=True)
     if max_jobs is not None and (type(max_jobs) is not int or max_jobs < 1): raise ValueError('Positive checkpoint job count required')
-    backend = backend or SDKBatchBackend()
+    if backend is None:
+        from .sdk_connection import connection_remaps
+        backend = SDKBatchBackend(connection_remaps(protocol['profile'], protocol['domain_id']))
     if protocol['connection_scope'] == 'hardware' and getattr(backend, 'local_remaps', None):
         raise ValueError('Hardware protocol cannot consume local remapped test data')
     if protocol['connection_scope'] == 'localhost_contract_mock' and not getattr(backend, 'local_remaps', None):

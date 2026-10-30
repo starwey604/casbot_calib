@@ -14,6 +14,11 @@ from .experiments import run_stage
 def main(argv=None):
     parser=argparse.ArgumentParser(description="CASBOT calibration: synthetic experiments and explicit read-only vendor capture")
     sub=parser.add_subparsers(dest="command",required=True)
+    sdk_mock=sub.add_parser('sdk-mock',help='Start local SDK-shaped Mock over the existing physical core; prints a shared H1/H2 profile')
+    sdk_mock.add_argument('--config',type=Path,default=Path('configs/sdk_mock.yaml'))
+    sdk_mock.add_argument('--profile',type=Path,default=Path('configs/hardware_field.yaml'))
+    sdk_mock.add_argument('--output',type=Path,required=True);sdk_mock.add_argument('--domain-id',type=int,required=True)
+    sdk_mock.add_argument('--duration',type=float)
     batch_plan=sub.add_parser('hardware-plan-batch',help='Freeze H2 direction/frequency/static jobs without device I/O')
     batch_plan.add_argument('--config',type=Path,default=Path('configs/hardware_batch.yaml'))
     batch_plan.add_argument('--profile',type=Path,default=Path('configs/hardware_field.yaml'));batch_plan.add_argument('--preset',type=Path)
@@ -201,6 +206,10 @@ def main(argv=None):
     view.add_argument("--mapping",type=Path);view.add_argument("--scene",type=Path)
     view.add_argument("--follow",action="store_true",help="Follow an externally appended JSONL file")
     args=parser.parse_args(argv)
+    if args.command=='sdk-mock':
+        from .sdk_mock import serve_mock
+        result=serve_mock(args.config,args.output,args.domain_id,profile=args.profile,duration=args.duration)
+        return 0 if result['passed'] else 1
     if args.command in ('hardware-plan-batch','hardware-run-batch','hardware-direction-template','hardware-direction-review','hardware-analyse-batch','hardware-render-batch'):
         from .hardware_batch import plan_batch,run_batch,write_direction_template,import_direction_review,analyse_batch
         if args.command=='hardware-plan-batch':result=plan_batch(args.config,args.profile,args.output,preset=args.preset,domain_id=args.domain_id)
