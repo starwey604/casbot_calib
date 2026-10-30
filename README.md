@@ -4,6 +4,8 @@
 
 本项目采用 **C++ 高性能底层计算 + Python 灵活工作流编排 + ROS 2 Humble 实时通信** 的混合架构，支持从离线激励轨迹生成、安全边界与自碰撞预检（Preflight Check）、真机/仿真数据采集，到摩擦、重力与惯量参数分步辨识及可视化报告生成的完整闭环。
 
+**首次使用请从 [🚀 动力学标定启动指南](docs/dynamics_getting_started.md) 开始**：环境安装、第一次 Mock 标定、逐阶段推进、静态现场预设、SDK 只读采集和候选 URDF 导出，附可执行命令与报告位置。
+
 **实机接入前必须逐项弄清[SDK待确认能力与前置条件](docs/sdk_hardware_prerequisites.md)**，尤其是反馈/指令effort语义、输出侧尺度、PD与内部补偿、采样/时钟/500Hz采用能力、停止行为，以及真实模型和腰部固定条件。当前S1–S4通过的是只读接口或本机/离线流程，未开放实机执行。未确认或不支持的能力必须阻断依赖它的阶段；只读采集保留未知信息，不能作为运动或标定资格。
 
 2026-10-30同步的厂家答复：反馈effort为模组驱动估算Nm、无独立扭矩传感器；主机仅将position线性插值到1000Hz；debug反馈据称1000Hz发布但可能重复最新缓存，反馈stamp为发布时间，当前无可用高频日志。这些是**已说明待验证**，尚未绑定设备/版本或完成实测；不代表1000Hz新采样或同步动态观测。默认客户端发送仍为500Hz，采样时刻保持未知，现有S3/S4门禁及Mock政策不变。静态重力可优先准备，缓存替代观测尚需另行实现/验证。详见[厂家答复与阶段影响](docs/sdk_hardware_prerequisites.md#厂家答复记录2026-10-30同步)。
@@ -52,17 +54,17 @@ casbot_calib/
 ├── tests/                  # Python 端完整单元测试集 (pytest)
 ├── CMakeLists.txt          # 顶层 CMake 构建配置
 ├── pyproject.toml          # Python 包构建与依赖声明
-├── environment.yml         # 核心开发与标定计算的 Conda 环境配置
-└── environment-viewer.yml  # 独立的可视化工具 (Viewer) Conda 环境配置
+├── environment.yml         # 保留作历史对照的 Conda 环境配置
+└── environment-viewer.yml  # 历史 Conda Viewer 配置；Humble 主环境不混用
 ```
 
 ---
 
 ## 🛠️ 环境配置与安装指南
 
-本项目支持两种主要的环境配置方式：**基于 Conda 的本地开发/仿真环境**（推荐用于算法开发、离线标定与可视化）和 **基于 Ubuntu 22.04 + ROS 2 Humble 的系统/容器环境**（推荐用于实时通信与真机部署）。
+当前主环境统一为 **Ubuntu 22.04 + ROS 2 Humble + `.venv-humble`**，用于离线标定、可视化和 ROS 通信；首次安装见 [启动指南](docs/dynamics_getting_started.md)。Conda 配置保留作历史对照，不与 Humble 的 PATH、ABI 或构建缓存混用。
 
-### 方式一：使用 Conda 配置环境（推荐本地开发）
+### 方式一：历史 Conda 环境（保留作对照）
 
 仓库提供了标准环境配置文件以及锁文件（`conda-lock.yml`），以确保跨平台依赖的一致性。
 
@@ -83,7 +85,7 @@ conda activate casbot_calib
 # 以可编辑模式安装 Python 包（会自动触发底层 C++ 绑定编译）
 pip install -e . --no-build-isolation
 ```
-*(注：如果需要单独使用 CMake 编译 C++ 核心库与测试，可使用预设：`cmake --preset default && cmake --build build`)*
+*(注：旧 Conda 对照使用 `cmake --preset conda` 与 `cmake --build --preset conda`；Humble 使用独立的 `humble` 预设。)*
 
 #### 3. 配置可视化环境（可选）
 为避免 3D 渲染库与核心数值计算库产生依赖冲突，项目提供了独立的 Viewer 环境配置：
@@ -94,66 +96,74 @@ conda env create -f environment-viewer.yml
 
 ---
 
-### 方式二：ROS 2 Humble 与容器化环境配置
+### 方式二：ROS 2 Humble 与容器化环境配置（当前主环境）
 
 针对需要运行 ROS 2 实时传输节点（`casbot_calib_transport`）或进行完整里程碑验证的场景，仓库在 `scripts/humble/` 目录下提供了一键式配置脚本。
 
 #### 1. 原生 Ubuntu 22.04 (ROS 2 Humble) 配置
-在已安装基础 Ubuntu 22.04 的系统上，按顺序执行以下脚本：
+在已安装 ROS 2 Humble、配置好 ROS 软件源的 Ubuntu 22.04 系统上，按顺序执行以下脚本；从空白系统准备及已有容器的安装方式见 [启动指南](docs/dynamics_getting_started.md)：
 ```bash
-# 1. 安装系统级依赖与 ROS 2 Humble 相关组件
+# 1. 安装项目系统级依赖
 bash scripts/humble/install_system.sh
 
 # 2. 配置 Python 虚拟环境并安装锁定的依赖 (requirements.lock)
 bash scripts/humble/setup_python.sh
 
-# 3. 编译 ROS 2 工作空间 (casbot_calib_core, interfaces, transport)
-bash scripts/humble/build_ros.sh
+# 3. 安装 C++/Python 绑定
+bash scripts/humble/run.sh python -m pip install -e . --no-deps --no-build-isolation \
+  --config-settings=build-dir=build/humble --config-settings=cmake.define.CALIB_BUILD_PYTHON=ON
+
+# 4. 编译 ROS 2 工作空间 (casbot_calib_core, interfaces, transport)
+bash scripts/humble/run.sh bash scripts/humble/build_ros.sh
 ```
 
-#### 2. 使用容器环境（Docker / Podman）
-如果希望在隔离容器中运行构建与测试，可直接调用容器脚本：
+#### 2. 使用已有 Docker/distrobox 环境
+
+当前包装脚本使用已有容器 `ros2-humble`，要求与宿主共享仓库绝对路径；不自动创建容器或安装基础环境，也不提供交互式终端。首次安装后，调用形式为：
 ```bash
-bash scripts/humble/container.sh
+bash scripts/humble/container.sh casbot-calib --help
 ```
 
 ---
 
 ## 🚀 快速开始与常用工作流
 
-安装完成后，您可以通过 `casbot_calib` 命令行工具（CLI）或脚本运行标定与验证任务。
+安装完成后，您可以通过 `casbot-calib` 命令行工具（CLI）或 `python -m casbot_calib` 运行标定与验证任务。下面在宿主仓库根目录使用 Humble 容器入口；输出目录必须不存在。
 
 ### 1. 运行命令行工具 (CLI)
 ```bash
 # 查看 CLI 支持的子命令与参数说明
-python -m casbot_calib --help
+bash scripts/humble/container.sh python -m casbot_calib --help
 ```
 
 ### 2. 运行标定与工作流演示
 使用 `configs/` 目录下的配置文件启动标准标定或分阶段双臂标定流程：
 ```bash
 # 运行基础工作流演示
-python -m casbot_calib --config configs/workflow_demo.yaml
+bash scripts/humble/container.sh casbot-calib demo \
+  --config configs/workflow_demo.yaml --output artifacts/my_demo
 
 # 运行双臂分阶段标定工作流
-python -m casbot_calib --config configs/staged_dual_arm.yaml
+bash scripts/humble/container.sh casbot-calib staged-suite \
+  --config configs/staged_dual_arm.yaml --output artifacts/my_staged
 ```
 
 ### 3. 启动三维可视化与遥测回放
 ```bash
-# 回放已采集的遥测数据
-python scripts/replay_telemetry.py
+# 回放上一步的双臂观测，不重新运行力学计算
+bash scripts/humble/container.sh casbot-calib render-staged \
+  artifacts/my_staged --output artifacts/my_staged_video
 
-# 启动工作空间基准测试
-python scripts/benchmark_arm_workspace.py
+# 查看统一 ROS 只读显示的参数
+bash scripts/humble/container.sh casbot-calib ros-view --help
 ```
 
 ### 4. ROS 2 传输层测试
 在编译好 ROS 2 工作空间后，可以通过脚本加载环境并测试模拟主机与流客户端：
 ```bash
-source scripts/humble/ros.sh
-# 启动验证或运行传输基准测试
-bash scripts/humble/run.sh
+bash scripts/humble/container.sh bash scripts/humble/build_ros.sh
+bash scripts/humble/container.sh bash scripts/humble/ros.sh \
+  casbot-calib ros-benchmark --output artifacts/my_ros_stream
 ```
 
 ---
@@ -164,25 +174,29 @@ bash scripts/humble/run.sh
 
 ### 运行 Python 单元测试
 ```bash
-pytest tests/
+bash scripts/humble/container.sh env PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 CASBOT_TEST_RENDER=1 python -m pytest -q
 ```
 
 ### 运行 C++ 核心测试
 ```bash
-ctest --test-dir build --output-on-failure
+bash scripts/humble/container.sh ctest --preset humble
 ```
 
 ### 运行全流程自动化验证 (Humble 里程碑验证)
 ```bash
 # 执行完整的环境检查、编译验证与结果比对
-bash scripts/humble/validate.sh
+bash scripts/humble/container.sh bash scripts/humble/validate.sh artifacts/my_regression
 ```
+
+若需历史数值对照，还须提供真实存在的冻结基线目录作为第二个参数；未提供时不能宣称完成历史对照。完整分阶段交付使用上面的 `staged-suite`，不是仅运行旧回归脚本。
 
 ---
 
 ## 📚 更多文档
 
 关于算法细节、硬件参数与各阶段验证报告，请参阅 `docs/` 目录下的详细文档：
+
+* **[动力学标定启动指南](docs/dynamics_getting_started.md)**：从安装、Mock 分阶段标定、报告和回放，到静态现场规划、SDK 只读接入及 S4 候选导出。
 * **[SDK实机接入前必须确认的能力](docs/sdk_hardware_prerequisites.md)**：甲方待确认清单、所需证据、阶段开放条件和结论记录要求；实机接入前必读。
 * [双臂千分计运动学K1–K5计划](docs/kinematics_trical_plan.md)、[K2测量闭环](docs/kinematics_trical_k2.md)及[K3几何辨识](docs/kinematics_trical_k3.md)：三表Mock、碰撞门禁、自动对中/稳定采样、六球选点、MDH/Hayati分层求解与候选URDF导出；实机和完整计量验收仍待后续。
 * [K4重复性与中文回放](docs/kinematics_trical_k4.md)：同工装三批独立采集/辨识、冻结选参、公共留出位置约束、独立外测数据契约和MuJoCo只读演示；实物外测/间隔漂移/产品AP-RP仍待验收。

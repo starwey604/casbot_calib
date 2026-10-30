@@ -23,6 +23,7 @@
 优先阅读：
 
 0. 实机相关工作先读[SDK实机接入前置条件](docs/sdk_hardware_prerequisites.md)，按阶段核对能力、证据和未决项。
+   新用户操作入口为[动力学标定启动指南](docs/dynamics_getting_started.md)：Humble 安装、schema 1 Mock、静态参考、SDK 只读及可选 S4 导出；不把教学/回归命令写成 P0 正式或实机执行。更新 CLI/安装入口时同步该文档与 README 示例。
 1. [实施计划与进度](docs/humble_migration_plan.md)、[当前完整交付](docs/staged_release_validation.md)。
 2. [分阶段流程与碰撞门禁](docs/collision_staged_workflow.md)、[ROS协议与时钟](docs/ros_transport.md)。
 3. [Humble环境](docs/humble_environment.md)、[需求对应表](docs/requirements_matrix.md)、[论文落实](docs/references.md)。
