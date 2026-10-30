@@ -34,11 +34,11 @@ def test_wrong_domain_and_conflicting_remaps_fail_before_io(tmp_path):
         connection_remaps(profile,222,{'/joint_states':'/other'})
 
 
-def test_mock_defaults_hide_device_time_and_do_not_enable_torque():
+def test_mock_defaults_follow_confirmed_command_semantics_without_internal_gravity():
     config=mock_config(ROOT/'configs/sdk_mock.yaml')
     assert config['control_hz']==config['publish_hz']==1000
     assert config['interpolation_ns']==2000000 and config['cache_period_ns']>1000000
-    assert not config['allow_effort'] and not config['allow_custom_pd']
+    assert config['allow_effort'] and config['allow_custom_pd'] and not config['internal_gravity']
     assert not config['plant']['zero_gravity']
 
 

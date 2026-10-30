@@ -4,11 +4,13 @@
 
 默认对象为 **完整装配、腰部刚性固定的 14 轴双臂机器人**。动力学由 Pinocchio 计算，碰撞由 Coal 检查，模拟积分使用 Boost.Odeint；MuJoCo 只负责显示。先跑通本地模拟，再根据设备能力接入真实观测，可以逐步确认安装、数据和求解流程。
 
-**本指南的完整示例运行 Mock 标定与离线分析。** 已新增真实SDK位置/静态探索的[实机联调路径](hardware_execution_path.md)，其hardware-execute会真实发送位置命令；完整硬件摩擦/起动/惯量及正式验收尚未完成。下文S1仍只读，S3/S4正式资格遵循[SDK前置条件](sdk_hardware_prerequisites.md)。首次Mock练习不依赖本机历史artifacts，也不复用已消耗的正式测试数据。
+**本指南的完整示例运行 Mock 标定与离线分析。** 已新增真实SDK位置/静态探索的[实机联调路径](hardware_execution_path.md)，其hardware-execute会真实发送位置命令；已补H3运动摩擦/起动候选；H4惯量及正式实机验收尚未完成。下文S1仍只读，S3/S4正式资格遵循[SDK前置条件](sdk_hardware_prerequisites.md)。首次Mock练习不依赖本机历史artifacts，也不复用已消耗的正式测试数据。
 
 需要自动组织现场方向、频率和静态批次时，使用[H2整批采集](hardware_batch_h2.md)。受控中断可续采，SDK故障只log并终止整批，当前不恢复故障会话。
 
-需要提前演练实际SDK路径时，按[统一SDK Mock指南](sdk_mock_unification.md)启动sdk-mock；H1/H2只切换连接profile，继续共用同一执行、采集和分析入口。原有虚拟时间Mock适合数值回归，SDK Mock用于验证实际接口与时序条件。
+H2重力候选通过联调验证后，按[H3指南](hardware_friction_h3.md)继续多速度运动摩擦和零PD起动实验；前序验证失败会阻断后续。
+
+需要提前演练实际SDK路径时，按[统一SDK Mock指南](sdk_mock_unification.md)启动sdk-mock；H1/H2/H3只切换连接profile，继续共用同一执行、采集和分析入口。原有虚拟时间Mock适合数值回归，SDK Mock用于验证实际接口与时序条件。
 
 ---
 

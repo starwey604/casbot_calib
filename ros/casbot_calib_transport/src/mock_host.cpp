@@ -20,6 +20,7 @@ class MockHost : public rclcpp::Node {
   std::int64_t inject_delay_=0,inject_every_=0;
   std::uint64_t event_sequence_=0,publish_sequence_=0,accepted_=0,adopted_=0,rejected_=0;
   bool watchdog_=true;
+  bool device_pd_=false;
   std::ofstream receives_,writes_,samples_;
   rclcpp::Publisher<bench::Observation>::SharedPtr observations_;
   rclcpp::Publisher<bench::Event>::SharedPtr events_;
@@ -82,6 +83,12 @@ class MockHost : public rclcpp::Node {
     effort=effort.cwiseMax(-100.).cwiseMin(100.);
     const auto write=bench::now_ns();
     casbot::ArmCommand command{write-epoch_,hold_,Eigen::VectorXd::Zero(14),effort,Eigen::VectorXd::Zero(14),Eigen::VectorXd::Zero(14)};
+    if(device_pd_&&fresh&&latest_->command.mode==bench::Command::POSITION_PD) {
+      // Device-local feedback uses the existing core's PD/current response,
+      // rather than closing a second controller through ROS state feedback.
+      const auto& c=latest_->command;
+      for(int j=0;j<14;++j){command.q[j]=c.position[j];command.dq[j]=c.velocity[j];command.torque[j]=c.effort[j];command.kp[j]=c.kp[j];command.kd[j]=c.kd[j];}
+    }
     plant_->submit(command);
     writes_<<tick<<','<<write<<','<<(fresh?adopted_sequence_:-1)<<','<<watchdog_;bench::columns(writes_,effort);writes_<<'\n';
   }
@@ -107,9 +114,23 @@ class MockHost : public rclcpp::Node {
     auto native=casbot::ArmDynamics::from_urdf(path).model();
     if(native.joints.size()!=14)throw std::invalid_argument("Mock requires the declared nominal 14-axis model");
     if(declare_parameter<bool>("zero_gravity",true))native.gravity_world.setZero();
+    // Opt-in SDK/H3 plant parameters; frozen historical defaults remain unchanged.
+    const auto viscous=declare_parameter<std::vector<double>>("friction_viscous",std::vector<double>(14,0.));
+    const auto coulomb=declare_parameter<std::vector<double>>("friction_coulomb",std::vector<double>(14,0.));
+    const auto static_friction=declare_parameter<std::vector<double>>("friction_static",std::vector<double>(14,0.));
+    if(viscous.size()!=14||coulomb.size()!=14||static_friction.size()!=14)throw std::invalid_argument("14 friction parameters required");
+    for(int j=0;j<14;++j) {
+      if(!std::isfinite(viscous[j])||!std::isfinite(coulomb[j])||!std::isfinite(static_friction[j])||viscous[j]<0||coulomb[j]<0||static_friction[j]<coulomb[j])throw std::invalid_argument("Invalid synthetic friction");
+      native.joints[j].friction.viscous=viscous[j];native.joints[j].friction.coulomb=coulomb[j];native.joints[j].friction.static_friction=static_friction[j];
+      native.joints[j].friction.stribeck_velocity=.005;
+    }
     model_=std::make_unique<casbot::ArmDynamics>(native);
     for(int j=0;j<14;++j)names_[j]=native.joints[j].name;
     casbot::ArmSimulationConfig config;config.gain=Eigen::VectorXd::Constant(14,2.);
+    config.stiction_enabled=declare_parameter<bool>("stiction_enabled",false);
+    device_pd_=declare_parameter<bool>("device_pd",false);
+    config.sample_period_ns=declare_parameter<std::int64_t>("sample_period_ns",1000000);
+    config.integration_ns=declare_parameter<std::int64_t>("integration_ns",50000);
     config.current_tau=declare_parameter<double>("current_tau",.001);config.command_delay_ns=declare_parameter<std::int64_t>("drive_delay_ns",1'350'000);
     config.feedback_delay_ns=declare_parameter<std::int64_t>("feedback_delay_ns",700'000);
     const auto initial=declare_parameter<std::vector<double>>("initial_q",std::vector<double>(14,0.));

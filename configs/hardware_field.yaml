@@ -5,6 +5,7 @@ device:
   firmware_version: unknown
   robot_software_version: unknown
 command_hz: 500
+gravity_feedforward: nominal
 joint_topic: /joint_states
 feedback_type: sensor_msgs/msg/JointState
 mode_topic: /motion/status
@@ -40,7 +41,12 @@ assumptions:
   feedback_stamp: vendor_declared_publication_time_not_acquisition
   feedback_cache: may_repeat_latest_sample
   limits_and_geometry: nominal_assumed_pending_site_check
-  pd: assumed_host_default_kp_kd
+  pd: user_confirmed_module_local_pd_host_forwards_five_fields
+  pd_gain_defaults: sdk_default_values_pending_site_readback
+  pd_loop_hz: unknown
+  command_effort: user_confirmed_additive_nm_and_zero_pd_applied
+  internal_compensation: user_confirmed_no_host_gravity_or_friction
+  mode_first_frame: user_confirmed_hold_prior_target_output_until_first_valid_command
   time_ref: zero_as_sdk_example
   mode_exit: sdk_service_disable_after_return_rest_assumed_then_observe_rest_again
 notes:

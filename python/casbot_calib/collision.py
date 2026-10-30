@@ -29,6 +29,40 @@ def box_geometry(name,center,half_extents,attached_to_base=True):
     return geometry
 
 
+def certify_reference_box(profile,evaluate,duration,bounds,allowance,clearance_m=.01,max_queries=30000):
+    """Certify time × joint-uncertainty boxes using Coal and existing motion radii.
+
+    Subdividing time alone cannot resolve a loose constant tracking allowance.
+    This refines that uncertainty as well; all children cover the parent box.
+    """
+    started=perf_counter();bounds=np.asarray(bounds);allowance=np.asarray(allowance)
+    if not np.isfinite(duration) or duration<=0 or bounds.shape!=allowance.shape or np.any(bounds<0) or np.any(allowance<0) or not np.isfinite(np.r_[bounds,allowance]).all():raise ValueError('Finite bounded joint tube required')
+    thresholds=np.asarray(getattr(profile,'pair_clearance_m',np.full(len(profile.radii),clearance_m)))
+    if thresholds.shape!=(len(profile.radii),) or not np.isfinite(thresholds).all() or np.any(thresholds<0):raise ValueError('Invalid audited pair clearances')
+    pending=[(0.,float(duration),np.zeros_like(allowance),allowance.copy(),0,0)];queries=0;minimum=np.inf;certified=np.inf
+    while pending:
+        group=pending[-128:];del pending[-128:]
+        mids=np.array([(a+b)/2 for a,b,_,_,_,_ in group]);offsets=np.array([r[2] for r in group])
+        distances=profile.check(evaluate(mids)+offsets)['distances'];queries+=len(group);minimum=min(minimum,float(distances.min()))
+        if np.any(distances<=thresholds):return dict(passed=False,reason='joint_box_collision_or_clearance',minimum_sampled_distance_m=minimum,queries=queries,wall_s=perf_counter()-started)
+        for row,d in zip(group,distances):
+            a,b,offset,half,td,qd=row;temporal=bounds*(b-a)/2;lower=d-profile.radii@(temporal+half)
+            if np.all(lower>=thresholds):certified=min(certified,float(lower.min()));continue
+            if queries+len(pending)>=max_queries:return dict(passed=False,reason='joint_box_query_budget',minimum_sampled_distance_m=minimum,queries=queries,wall_s=perf_counter()-started)
+            pair=int(np.argmin(lower-thresholds));influence=profile.radii[pair]*half;axis=int(np.argmax(influence))
+            split_box=qd<20 and influence[axis]>0 and (influence.sum()>=np.sum(profile.radii[pair]*temporal) or td>=20)
+            if split_box:
+                child=half.copy();child[axis]/=2
+                for sign in (-1,1):
+                    center=offset.copy();center[axis]+=sign*child[axis];pending.append((a,b,center,child.copy(),td,qd+1))
+            elif td<20:
+                mid=(a+b)/2;pending.extend([(a,mid,offset,half,td+1,qd),(mid,b,offset,half,td+1,qd)])
+            else:return dict(passed=False,reason='joint_box_unresolved',minimum_sampled_distance_m=minimum,queries=queries,wall_s=perf_counter()-started)
+    return dict(passed=True,reason='time_and_joint_boxes_certified',minimum_sampled_distance_m=minimum,
+        certified_lower_bound_m=certified,queries=queries,wall_s=perf_counter()-started,position_allowance_rad=allowance.tolist(),
+        scope='Declared reference and joint box only; not a physical stopping certificate')
+
+
 class CollisionProfile:
     def __init__(self,engine,geometry,excluded_pairs,metadata):
         self.engine=engine;self.geometry=geometry;self.metadata=metadata

@@ -68,11 +68,12 @@ def derivative_bounds(curve,order=1,subdivisions=8):
 
 def gate_motion(profile,motion,clearance_m=.01):
     curve=motion.polynomial();bounds=derivative_bounds(curve)
+    allowance_labels=motion.conditions.get('allowance_labels',('static_dwell','torque_ramp'))
     lower=np.min(curve.c,axis=(0,1));upper=np.max(curve.c,axis=(0,1))
     if 'position_allowance_rad' in motion.conditions:
         allowance=np.asarray(motion.conditions['position_allowance_rad'])
         for i,label in enumerate(motion.labels):
-            if label in ('static_dwell','torque_ramp'):
+            if label in allowance_labels:
                 lower=np.minimum(lower,curve.c[:,i].min(axis=0)-allowance);upper=np.maximum(upper,curve.c[:,i].max(axis=0)+allowance)
     joints=profile.engine.model.joints;limits=np.array([[j.lower,j.upper] for j in joints])
     limits_passed=bool(np.all(lower>=limits[:,0]) and np.all(upper<=limits[:,1]))
@@ -91,8 +92,11 @@ def gate_motion(profile,motion,clearance_m=.01):
                 minimum_distance_m=float(profile.check([motion.home])['distances'].min()),queries=1,wall_s=0.,motion=motion.name)
     rows=[]
     for i,(a,b) in enumerate(zip(motion.knots[:-1],motion.knots[1:])):
-        allowance=motion.conditions.get('position_allowance_rad') if motion.labels[i] in ('static_dwell','torque_ramp') else None
-        report=certify_reference(profile,lambda t,a=a:curve(t+a),b-a,bounds[i],clearance_m=clearance_m,initial_step_s=b-a,position_allowance=allowance)
+        allowance=motion.conditions.get('position_allowance_rad') if motion.labels[i] in allowance_labels else None
+        if allowance is not None and motion.conditions.get('joint_box_refinement',False):
+            from .collision import certify_reference_box
+            report=certify_reference_box(profile,lambda t,a=a:curve(t+a),b-a,bounds[i],allowance,clearance_m)
+        else:report=certify_reference(profile,lambda t,a=a:curve(t+a),b-a,bounds[i],clearance_m=clearance_m,initial_step_s=b-a,position_allowance=allowance)
         report.update(segment=i,label=motion.labels[i],start_s=a,end_s=b)
         rows.append(report)
         if not report['passed']:break
@@ -111,6 +115,20 @@ def _trial(name,stage,home,pose,config,conditions=None):
 
 def _finish(motion,config):
     return motion.add(config['transition_s'],motion.home,label='return_home').add(config['settle_s'],motion.home,label='final_hold')
+
+
+def add_friction_sweep(motion,joint,extent,speed,ramp=.25,reverse_hold=.15):
+    """Shared C3 speed ramps, exact uniform plateaus and braking in both directions."""
+    for sign in (1,-1):
+        v=np.zeros_like(motion.home);v[joint]=sign*speed
+        q=motion.states[-1][0].copy();q[joint]+=sign*speed*ramp/2
+        motion.add(ramp,q,v,label='speed_ramp')
+        q=q.copy();distance=2*extent-speed*ramp;q[joint]+=sign*distance
+        if distance<=0:raise ValueError('Friction scan too short for configured speed')
+        motion.add(distance/speed,q,v,label='constant_velocity')
+        q=q.copy();q[joint]+=sign*speed*ramp/2
+        motion.add(ramp,q,label='brake').add(reverse_hold,q,label='reverse_hold')
+    return motion
 
 
 def build_recipes(config):
@@ -155,14 +173,7 @@ def build_recipes(config):
                         sample_period_ns=config.get('friction_convergence_sample_period_ns',125000) if batch=='sampling' else config.get('friction_sample_period_ns',config['sample_period_ns'])))
                     # Ramp to speed on each side; exact constant velocity central
                     # segment uses matching Hermite derivatives at both ends.
-                    for sign in (1,-1):
-                        ramp=.25;v=np.zeros(14);v[j]=sign*speed
-                        q=m.states[-1][0].copy();q[j]+=sign*speed*ramp/2
-                        m.add(ramp,q,v,label='speed_ramp')
-                        q=q.copy();distance=2*extent-speed*ramp;q[j]+=sign*distance
-                        if distance<=0:raise ValueError('Friction scan too short for configured speed')
-                        m.add(distance/speed,q,v,label='constant_velocity')
-                        q=q.copy();q[j]+=sign*speed*ramp/2;m.add(ramp,q,label='brake').add(.15,q,label='reverse_hold')
+                    add_friction_sweep(m,j,extent,speed)
                     result.append(_finish(m,config))
     breakaway_poses=[home+offset*amplitude for offset in (-0.25,0.25)]
     if 'breakaway_pose_seed' in config:

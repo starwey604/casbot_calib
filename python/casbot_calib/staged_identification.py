@@ -144,13 +144,32 @@ def friction_pair_projection(obs,meta,residual,control_period_ns=2000000):
         mask=(t>a+.2)&(t<b-.2)&(abs(abs(velocity[:,j])-speed)<speed*.1)&(abs(acceleration[:,j])<.03)
         if mask.sum()<40:raise ValueError('Insufficient constant-speed plateau')
         position=q[mask,j];order=np.argsort(position);parts.append((position[order],velocity[mask,j][order],residual[mask][order]))
+    features,target,overlap=pair_friction_parts(parts)
+    return features,target,dict(joint=j,requested_speed_rad_s=speed,**overlap,
+        maximum_accepted_acceleration_rad_s2=.03,gravity_error_cancellation='position-matched forward/reverse half difference')
+
+
+def pair_friction_parts(parts,minimum_overlap=.02,points=48):
+    """Shared spatial half-difference; upstream decides what each point observes."""
     low=max(p[0].min() for p in parts);high=min(p[0].max() for p in parts)
-    if high-low<.02:raise ValueError('Forward/reverse positions do not overlap sufficiently')
-    grid=np.linspace(low,high,48);interpolated=[(np.interp(grid,p[0],p[1]),(np.interp(grid,p[0],p[2]) if p[2].ndim==1 else np.column_stack([np.interp(grid,p[0],column) for column in p[2].T]))) for p in parts]
+    if high-low<minimum_overlap:raise ValueError('Forward/reverse positions do not overlap sufficiently')
+    grid=np.linspace(low,high,points);interpolated=[(np.interp(grid,p[0],p[1]),(np.interp(grid,p[0],p[2]) if p[2].ndim==1 else np.column_stack([np.interp(grid,p[0],column) for column in p[2].T]))) for p in parts]
     vp,tp=interpolated[0];vm,tm=interpolated[1]
     features=np.column_stack([(vp-vm)/2,(np.tanh(vp/.001)-np.tanh(vm/.001))/2]);target=(tp-tm)/2
-    return features,target,dict(joint=j,requested_speed_rad_s=speed,matched_position_range_rad=[float(low),float(high)],
-        maximum_accepted_acceleration_rad_s2=.03,paired_points=len(grid),gravity_error_cancellation='position-matched forward/reverse half difference')
+    return features,target,dict(matched_position_range_rad=[float(low),float(high)],paired_points=len(grid))
+
+
+def fit_friction_features(x,y,vx,vy,maximum_rmse):
+    """Shared nonnegative Coulomb/viscous solve; observation qualification is external."""
+    x=np.asarray(x);y=np.asarray(y);vx=np.asarray(vx);vy=np.asarray(vy)
+    scale=np.maximum(np.linalg.norm(x,axis=0),1e-12);s=np.linalg.svd(x/scale,compute_uv=False)
+    rank=int(np.count_nonzero(s>s[0]*1e-7))
+    if rank<2:raise ValueError('Multiple distinct speeds are required to separate viscous and Coulomb friction')
+    result=least_squares(lambda p:x@p-y,[.02,.03],bounds=(0,np.inf),loss='soft_l1',f_scale=.01,
+        jac=lambda p:x.copy(),xtol=1e-12,ftol=1e-12,gtol=1e-12)
+    rmse=float(np.sqrt(np.mean((vx@result.x-vy)**2)))
+    return result.x,dict(rank=rank,singular_values=s.tolist(),validation_rmse_nm=rmse,success=result.success,
+        passed=bool(result.success and rmse<=maximum_rmse))
 
 
 def identify_friction(root,output,gravity,driver_report=None,*,records=None,config=None,sampling_policy='legacy'):
@@ -165,15 +184,9 @@ def identify_friction(root,output,gravity,driver_report=None,*,records=None,conf
     viscous=[];coulomb=[];axis=[]
     for j in range(14):
         x=np.vstack([a for a,_ in rows['train'][j]]);y=np.concatenate([b for _,b in rows['train'][j]])
-        scale=np.maximum(np.linalg.norm(x,axis=0),1e-12);s=np.linalg.svd(x/scale,compute_uv=False)
-        rank=int(np.count_nonzero(s>s[0]*1e-7))
-        if rank<2:raise ValueError('Multiple distinct speeds are required to separate viscous and Coulomb friction')
-        result=least_squares(lambda p:x@p-y,[.02,.03],bounds=(0,np.inf),loss='soft_l1',f_scale=.01,
-            jac=lambda p:x.copy(),xtol=1e-12,ftol=1e-12,gtol=1e-12)
         vx=np.vstack([a for a,_ in rows['validation'][j]]);vy=np.concatenate([b for _,b in rows['validation'][j]])
-        rmse=float(np.sqrt(np.mean((vx@result.x-vy)**2)));viscous.append(result.x[0]);coulomb.append(result.x[1])
-        axis.append(dict(joint=j,rank=rank,singular_values=s.tolist(),validation_rmse_nm=rmse,success=result.success,
-            passed=bool(result.success and rmse<=config['acceptance']['friction_absolute_rmse_nm'])))
+        parameters,report=fit_friction_features(x,y,vx,vy,config['acceptance']['friction_absolute_rmse_nm'])
+        viscous.append(parameters[0]);coulomb.append(parameters[1]);axis.append(dict(joint=j,**report))
     convergence=[]
     for j in range(14):
         fitted=[]

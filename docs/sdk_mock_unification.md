@@ -26,9 +26,11 @@ Mock端点在私有namespace、localhost和显式ROS domain内。生成profile�
 - SDK Mock主机参考更新1000Hz、反馈发布1000Hz，客户端仍默认500Hz，可用100/250/500Hz分档。
 - 仅position插值：收到新目标，从当前连续参考线性过渡到新目标；默认时长2ms，可配置。velocity、effort及PD保持最新值，不由位置差分生成。
 - 缓存默认约3ms刷新，1ms发布可能重复同一缓存。发布频率不等于真实刷新率；3ms并非厂家规格。
-- 默认普通输出侧PD，加可配置的内部名义重力补偿；不使用计算力矩加速度伺服。增益按初始名义质量矩阵的对角项一次性生成，所有发送频率共用。
-- 默认拒绝非零命令effort和自定义PD。可显式开启Mock假设能力，为后续H3开发提供接口；这不解锁实机能力。假设方程为重力补偿+effort+PD，并统一限幅。
+- H3用户确认主机不自动加重力/摩擦，因此当前默认普通输出侧PD+command effort，不添加内部重力/摩擦；外部发送器负责重力前馈。不使用计算力矩加速度伺服，固定增益按初始名义质量矩阵对角项一次性生成，所有发送频率共用。
+- H3用户确认effort按Nm叠加PD且零PD生效，当前Mock默认接受非零effort和自定义PD；接口约定不等于已完成实机能力验收。旧sdk_mock_ros_v5证据仍按当时内部重力开启、非零effort关闭的合成条件解释，不回写旧证据。
+- 默认device_pd=true，把五字段参考传给原生ArmSimulationSession，由本地状态计算PD，复用同一驱动/积分内核。不是用ROS回传反馈闭合PD；用户已确认CASBOT主机直接转发五项并由模组本地计算PD，此执行位置固定为接口约定，具体PD环频率仍未知；确认记录与ENCOS模式资料见[本地PD能力证据](sdk_hardware_prerequisites.md#因克斯模组本地pd能力证据)。保持增益带Kp=2、Kd=0.12的合成下限，不把默认值当实机整定值。
 - 默认断流100ms后模拟重力和PD保持；这是合成保护行为，不能证明实机停止或允许恢复。新服务端没有Mock专用stop RPC。
+- 切模式到首帧之间暂保持原保护输出，收到第一条有效命令后才切到用户命令；用户已确认该保持行为，具体设备/固件仍需验证。
 
 用户要求先采用简单线性插值。当前实现不推测厂商缓冲、迟到或插值窗口；后续获知真实规则后修改行为profile/实现，旧采集不回写。time_ref=0取自[SDK上身示例第50行](../../casbot2-ros2-sdk/examples/casbot2_cpp_tests/src/upper_body_debug_test.cpp)，字段定义在[UpperJointData.msg](../../casbot2-ros2-sdk/crb_ros_msg/msg/UpperJointData.msg)。本轮只支持零值，不把它解释为2ms或任意已确认的时间单位。vel_scale只检查范围，其真实速度作用仍待确认。
 

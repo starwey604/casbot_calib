@@ -70,7 +70,8 @@ class BatchReplaySource:
 
     def presentation_labels(self, presentation_ns, frame):
         segment = self._segment or self.segments[0]; job = segment['job']; outcome = segment['outcome']
-        stage = {'direction':'单轴方向检查','frequency':'频率分档','static':'静态正反接近'}[job['kind']]
+        stage = {'direction':'单轴方向检查','frequency':'频率分档','static':'静态正反接近',
+                 'moving_friction':'多姿态匀速摩擦','breakaway':'零PD起动力矩斜坡'}[job['kind']]
         return [('当前阶段',stage), ('试次/尝试',job['id']+'/'+outcome['attempt'].split('/')[-1]),
                 ('记录状态',outcome['status']), ('请求频率',str(job['hz'])+' Hz，非采样率'),
                 ('时间倍率',f"{segment['time_scale']:.2f}x，角度不放大"),

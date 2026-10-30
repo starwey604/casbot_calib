@@ -5,16 +5,19 @@ publish_hz: 1000
 cache_period_ns: 3000000
 interpolation_ns: 2000000
 watchdog_ns: 100000000
-internal_gravity: true
-allow_effort: false
-allow_custom_pd: false
+internal_gravity: false
+allow_effort: true
+allow_custom_pd: true
 effort_limit_nm: 100.0
 # Ordinary output PD gains derived once from nominal diagonal inertia at initial_q.
 # No computed-torque acceleration servo and no per-frequency gain fitting.
 servo_natural_frequency_rad_s: 10.0
 servo_damping_ratio: 0.25
+servo_minimum_kp: 2.0
+servo_minimum_kd: 0.12
 initial_q: [0, 0.85, 0, -0.9, 0, 0, 0, 0, -0.85, 0, -0.9, 0, 0, 0]
 plant:
+  device_pd: true
   control_hz: 1000
   feedback_hz: 1000
   zero_gravity: false
@@ -23,10 +26,15 @@ plant:
   feedback_delay_ns: 700000
 assumptions:
   interpolation: current_reference_to_latest_target_fixed_horizon
-  velocity_effort_pd: hold_latest_without_interpolation
+  velocity_effort_pd: hold_latest_without_interpolation_user_confirmed_additive_nm_and_zero_pd
+  active_compensation: user_confirmed_no_host_gravity_or_friction
+  pd_location: user_confirmed_device_local_feedback_host_forwards_five_fields
+  command_forwarding: user_confirmed_position_velocity_kp_kd_effort_to_module
+  pd_loop_hz: unknown
   time_ref: only_zero_supported_as_sdk_example_no_duration_inference
   vel_scale: accepted_range_only_not_a_verified_speed_multiplier
   watchdog: synthetic_gravity_and_pd_hold_not_a_vendor_stop_guarantee
+  mode_first_frame: user_confirmed_preserve_prior_target_output_until_first_valid_command
   cache: synthetic_3ms_refresh_not_a_measured_device_rate
   effort: synthetic_total_output_estimate_from_plant_current
   debug: published_in_upper_body_mock_mode_actual_device_availability_unknown

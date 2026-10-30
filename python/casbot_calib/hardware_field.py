@@ -43,6 +43,7 @@ def load_profile(path):
             raise ValueError('Positive finite field limit required: ' + key)
     if config['vel_scale'] > 1 or config['position_allowance_rad'] < config['tracking_limit_rad']:
         raise ValueError('Invalid field speed scale or tracking envelope')
+    if config.get('gravity_feedforward','none') not in ('none','nominal'):raise ValueError('Explicit nominal/none bootstrap gravity policy required')
     for key in ('effort_gain', 'effort_zero_nm'):
         value = np.broadcast_to(np.asarray(config[key], dtype=float), (14,))
         if not np.isfinite(value).all() or (key == 'effort_gain' and np.any(value == 0)):
@@ -83,11 +84,20 @@ def check_seal(root):
 
 
 def params(config, names):
+    experiment={}
+    if config.get('gravity_feedforward')=='nominal':
+        experiment=dict(gravity_feedforward_enabled=True,
+            gravity_model_path=str(files('casbot_calib').joinpath('assets/casbot_dual_arm_benchmark_nominal.urdf')),
+            gravity_world=config['gravity_world'])
+    extra=config.get('breakaway_parameters',{})
+    allowed=('gravity_feedforward_enabled','gravity_model_path','gravity_world','command_kp','command_kd')
+    if any(not name.startswith('breakaway_') and name not in allowed for name in extra):raise ValueError('Only explicit SDK experiment parameters may extend the executor')
+    experiment.update(extra)
     return dict(execution_scope=config['execution_scope'], joint_names=names,
         **{k: config[k] for k in ('joint_topic', 'feedback_type', 'mode_topic', 'command_topic', 'mode_service', 'stop_service',
             'max_feedback_age_ns', 'max_mode_age_ns', 'transition_timeout_ns', 'start_tolerance_rad',
             'tracking_limit_rad', 'position_allowance_rad', 'maximum_velocity_rad_s', 'vel_scale')},
-        command_period_ns=1_000_000_000 // config['command_hz'])
+        command_period_ns=1_000_000_000 // config['command_hz'], **experiment)
 
 
 def run_executor(config, output, domain_id, *, snapshot=False, plan=None, timeout_s=30, local_remaps=None):
@@ -366,9 +376,9 @@ def static_means(metadata, obs, elapsed, config):
     return means
 
 
-def analyse_field(plan, capture, output, *, windows_only=False):
+def field_observations(plan, capture):
+    """Shared immutable SDK capture checks; time remains callback availability."""
     root = Path(plan).resolve(); capture = Path(capture).resolve(); check_seal(root); check_seal(capture)
-    output_outside(output, root, capture)
     metadata = json.loads((root / 'plan.json').read_text()); result = json.loads((capture / 'result.json').read_text())
     if not result['passed']: raise ValueError('Completed field sequence required; failed captures remain diagnostic only')
     request = json.loads((capture / 'request.json').read_text())
@@ -383,12 +393,19 @@ def analyse_field(plan, capture, output, *, windows_only=False):
         raise ValueError('Field command clock origin changed')
     obs = read_feedback(capture / 'execution/feedback.csv', require_effort=metadata.get('stage') != 'position'); config = metadata['config']
     elapsed = (obs['receive_ns'] - np.int64(origin)) * 1e-9
-    means = []; engine, _ = nominal_dual_arm()
+    engine, _ = nominal_dual_arm()
     model = engine.model; model.gravity_world = np.asarray(config.get('gravity_world', model.gravity_world)); engine = type(engine)(model)
     actual_collision = certify_polyline(nominal_profile(engine, config['scene']), obs['q'],
         (obs['receive_ns'] - obs['receive_ns'][0]) * 1e-9, clearance_m=config['scene']['clearance_m'],
         max_gap_s=config['static_max_gap_s'])
     if not actual_collision['passed']: raise ValueError('Received field path interpolant failed collision gate')
+    return metadata,commands,origin,obs,elapsed,actual_collision
+
+
+def analyse_field(plan, capture, output, *, windows_only=False):
+    root = Path(plan).resolve(); capture = Path(capture).resolve(); output_outside(output,root,capture)
+    metadata,commands,origin,obs,elapsed,actual_collision=field_observations(root,capture)
+    config=metadata['config']
     if metadata.get('stage') == 'position':
         from .vendor_position_analysis import rates
         from scipy.interpolate import BPoly

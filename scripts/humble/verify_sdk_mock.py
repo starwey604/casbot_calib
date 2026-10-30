@@ -155,7 +155,7 @@ def main():
     # The client's raw/normal records still carry no acquisition-time claim.
     write_json(root/'verification.json',dict(passed=all(checks.values()),checks=checks,domain=domain,
         local_only=True,physical_device_tested=False,hardware_commands_on_public_network=False,
-        fixture='SDK server + existing ArmSimulationSession host; ordinary PD + configured internal gravity; position-only linear ramp',
+        fixture='SDK server + existing ArmSimulationSession host; declared local PD and configured compensation; position-only linear ramp',
         native_truth_used_by_client=False,public_stamp_is_acquisition=False,
         reference_tick_hz=1e9/np.mean(np.diff(references['tick_ns']))))
     return 0 if all(checks.values()) else 1

@@ -1,10 +1,13 @@
 // Shared S2/field position stream. Default S2 remains private/localhost only.
 #include "vendor_common.hpp"
+#include "sdk_breakaway.hpp"
+#include <casbot_calib/arm_dynamics.hpp>
 #include <crb_ros_msg/msg/upper_joint_data.hpp>
 #include <crb_ros_msg/msg/joint_state_data.hpp>
 #include <std_msgs/msg/string.hpp>
 #include <std_srvs/srv/set_bool.hpp>
 #include <csignal>
+#include <limits>
 #ifdef __linux__
 #include <sys/prctl.h>
 #include <unistd.h>
@@ -18,6 +21,9 @@ class PositionExecutor final : public rclcpp::Node {
     const auto output=declare_parameter<std::string>("output");
     names_=declare_parameter<std::vector<std::string>>("joint_names");
     snapshot_=declare_parameter<bool>("snapshot_only",false);
+    const bool ramp_enabled=declare_parameter<bool>("breakaway_enabled",false);
+    const bool gravity_enabled=declare_parameter<bool>("gravity_feedforward_enabled",false);
+    experiment_commands_=ramp_enabled||gravity_enabled;
     const auto joint=declare_parameter<std::string>("joint_topic"),mode=declare_parameter<std::string>("mode_topic");
     const auto command=declare_parameter<std::string>("command_topic"),service=declare_parameter<std::string>("mode_service"),stop=declare_parameter<std::string>("stop_service");
     command_topic_=command;
@@ -44,7 +50,8 @@ class PositionExecutor final : public rclcpp::Node {
     root_=root; events_=vendor::log(root/"events.csv","receive_ns,state,reason");
     received_=vendor::log(root/"feedback.csv","receive_ns"+vendor::columns("q")+vendor::columns("v")+
       (hardware_?",publish_stamp_ns"+vendor::columns("effort_raw"):""));
-    commands_=vendor::log(root/"commands.csv","planned_index,planned_ns,publish_ns,phase"+vendor::columns("q")+vendor::columns("v"));
+    commands_=vendor::log(root/"commands.csv","planned_index,planned_ns,publish_ns,phase"+vendor::columns("q")+vendor::columns("v")+
+      (experiment_commands_?vendor::columns("effort")+vendor::columns("kp")+vendor::columns("kd")+",ramp_increment_nm":""));
     max_age_=declare_parameter<std::int64_t>("max_feedback_age_ns",60000000);
     mode_age_=declare_parameter<std::int64_t>("max_mode_age_ns",300000000);
     timeout_=declare_parameter<std::int64_t>("transition_timeout_ns",1000000000);
@@ -78,6 +85,29 @@ class PositionExecutor final : public rclcpp::Node {
       }
       if(plan_.size()<2) throw std::runtime_error("Missing plan");
       for(int j=0;j<14;++j) if(std::abs(plan_.back()[j+1]-plan_[0][j+1])>1e-12) throw std::runtime_error("Plan must return to observed start");
+      if(ramp_enabled) {
+        if(!hardware_)throw std::runtime_error("SDK ramp uses the shared field path only");
+        SdkBreakawayConfig c;c.joint=declare_parameter<int>("breakaway_joint");c.direction=declare_parameter<int>("breakaway_direction");
+        c.free_begin=declare_parameter<std::int64_t>("breakaway_free_begin_ns");c.ramp_begin=declare_parameter<std::int64_t>("breakaway_ramp_begin_ns");
+        c.ramp_end=declare_parameter<std::int64_t>("breakaway_ramp_end_ns");c.return_begin=declare_parameter<std::int64_t>("breakaway_return_begin_ns");c.return_end=declare_parameter<std::int64_t>("breakaway_return_end_ns");
+        c.sustain=declare_parameter<std::int64_t>("breakaway_sustain_ns");c.slope=declare_parameter<double>("breakaway_slope_nm_s");
+        c.maximum_increment=declare_parameter<double>("breakaway_maximum_increment_nm");c.displacement=declare_parameter<double>("breakaway_displacement_rad");
+        c.speed=declare_parameter<double>("breakaway_speed_rad_s");c.maximum_departure=declare_parameter<double>("breakaway_maximum_departure_rad");
+        c.maximum_speed=declare_parameter<double>("breakaway_maximum_speed_rad_s");c.still_speed=declare_parameter<double>("breakaway_still_speed_rad_s");
+        c.other_allowance=declare_parameter<double>("breakaway_other_allowance_rad");ramp_joint_=c.joint;ramp_=std::make_unique<SdkBreakaway>(c);
+        if(c.return_end>plan_.back()[0])throw std::runtime_error("Ramp recovery exceeds the frozen plan");
+      }
+      hold_kp_=declare_parameter<std::vector<double>>("command_kp",std::vector<double>{});hold_kd_=declare_parameter<std::vector<double>>("command_kd",std::vector<double>{});
+      if((!hold_kp_.empty()||!hold_kd_.empty()||ramp_)&&(hold_kp_.size()!=14||hold_kd_.size()!=14))throw std::runtime_error("14 explicit holding gains required");
+      for(std::size_t j=0;j<hold_kp_.size();++j)if(!std::isfinite(hold_kp_[j])||!std::isfinite(hold_kd_[j])||hold_kp_[j]<=0||hold_kp_[j]>1000||hold_kd_[j]<=0||hold_kd_[j]>100)throw std::runtime_error("Invalid holding gains");
+      if(gravity_enabled) {
+        auto model=casbot::ArmDynamics::from_urdf(declare_parameter<std::string>("gravity_model_path")).model();
+        const auto g=declare_parameter<std::vector<double>>("gravity_world");
+        if(g.size()!=3)throw std::runtime_error("3 gravity components required");
+        model.gravity_world=Eigen::Map<const Eigen::Vector3d>(g.data());
+        for(int j=0;j<14;++j)if(model.joints.size()!=14||model.joints[j].name!=names_[j])throw std::runtime_error("Gravity joint order mismatch");
+        gravity_engine_=std::make_unique<casbot::ArmDynamics>(model);gravity_workspace_=std::make_unique<casbot::ArmWorkspace>(gravity_engine_->workspace());
+      }
       // Publisher and service clients are created only after local scope / plan validation.
       pub_=create_publisher<crb_ros_msg::msg::UpperJointData>(command,rclcpp::QoS(1).reliable());
       mode_client_=create_client<std_srvs::srv::SetBool>(service);
@@ -159,6 +189,7 @@ class PositionExecutor final : public rclcpp::Node {
       // Late cycles skip planned slots. Never replay a burst of old commands.
       if(index>last_index_+1) skips_+=index-last_index_-1;
       publish(row,index,"stream");last_index_=index;
+      if(phase_=="STOPPING"||done_)return;
       if(index==static_cast<std::int64_t>(plan_.size()-1)) event("SETTLING","final_hold");
     } else if(phase_=="SETTLING") {
       if(now-last_publish_>=period_) publish(plan_.back(),index,"settle");
@@ -169,6 +200,7 @@ class PositionExecutor final : public rclcpp::Node {
     }
   }
   void finish(bool ok,const std::string& reason) {
+    if(ramp_)ramp_->write((root_/"guard.json").string());
     success_=ok;done_=true;event(ok?"COMPLETE":"FAILED",reason);commands_.flush();received_.flush();events_.flush();
     std::ofstream out(root_/"result.json");out<<"{\"passed\":"<<(ok?"true":"false")<<",\"reason\":"<<std::quoted(reason)
       <<",\"last_feedback_receive_ns\":"<<state_.receive<<",\"last_mode_receive_ns\":"<<mode_at_<<",\"last_mode\":"<<std::quoted(mode_)
@@ -193,6 +225,10 @@ class PositionExecutor final : public rclcpp::Node {
       }
     }
     received_<<'\n';
+    if(ramp_&&start_>0&&active()) {
+      ramp_->observe(value.q,value.v,value.receive-start_,vendor::now()-start_);
+      if(!ramp_->fault().empty())fault(ramp_->fault());
+    }
   }
   using Client=rclcpp::Client<std_srvs::srv::SetBool>;
   Client::SharedFuture request(const Client::SharedPtr& cli,bool value) {auto r=std::make_shared<std_srvs::srv::SetBool::Request>();r->data=value;return cli->async_send_request(r).share();}
@@ -211,8 +247,25 @@ class PositionExecutor final : public rclcpp::Node {
     crb_ros_msg::msg::UpperJointData msg;msg.header.stamp=this->now();msg.name=names_;msg.time_ref=0;msg.vel_scale=vel_scale_;
     if(hardware_)msg.header.frame_id="base_link";
     msg.position.assign(row.begin()+1,row.begin()+15);msg.velocity.assign(row.begin()+15,row.end());msg.effort.assign(14,0.);
+    msg.kp=hold_kp_;msg.kd=hold_kd_;
+    if(gravity_workspace_) {
+      Eigen::Map<const Eigen::VectorXd> observed(state_.q.data(),14);auto g=gravity_workspace_->gravity(observed);
+      msg.effort.assign(g.data(),g.data()+14);
+    }
+    double increment=0.;
+    if(ramp_) {
+      SdkBreakaway::Values q{},v{};std::copy(msg.position.begin(),msg.position.end(),q.begin());std::copy(msg.velocity.begin(),msg.velocity.end(),v.begin());bool zero=false;
+      if(!ramp_->command(q,v,state_.q,vendor::now()-start_,increment,zero)){fault(ramp_->fault());return;}
+      msg.position.assign(q.begin(),q.end());msg.velocity.assign(v.begin(),v.end());msg.kp=hold_kp_;msg.kd=hold_kd_;
+      if(zero){msg.kp[ramp_joint_]=0.;msg.kd[ramp_joint_]=0.;}
+      msg.effort[ramp_joint_]+=increment;
+    }
     last_publish_=vendor::now();pub_->publish(msg);commands_<<index<<','<<start_+index*period_<<','<<last_publish_<<','<<phase;
-    vendor::values(commands_,msg.position);vendor::values(commands_,msg.velocity);commands_<<'\n';
+    vendor::values(commands_,msg.position);vendor::values(commands_,msg.velocity);
+    if(experiment_commands_){vendor::values(commands_,msg.effort);
+      if(msg.kp.empty()){std::array<double,14> unknown;unknown.fill(std::numeric_limits<double>::quiet_NaN());vendor::values(commands_,unknown);vendor::values(commands_,unknown);}
+      else {vendor::values(commands_,msg.kp);vendor::values(commands_,msg.kd);}commands_<<','<<increment;}
+    commands_<<'\n';
   }
   void save_snapshot() {
     auto out=vendor::log(root_/"snapshot.csv","receive_ns"+vendor::columns("q")+vendor::columns("v"));
@@ -228,6 +281,9 @@ class PositionExecutor final : public rclcpp::Node {
   rclcpp::Subscription<crb_ros_msg::msg::JointStateData>::SharedPtr debug_sub_;
   rclcpp::Publisher<crb_ros_msg::msg::UpperJointData>::SharedPtr pub_;Client::SharedPtr mode_client_,stop_client_;
   Client::SharedFuture mode_future_,stop_future_;
+  int ramp_joint_=0;std::unique_ptr<SdkBreakaway> ramp_;std::vector<double> hold_kp_,hold_kd_;
+  bool experiment_commands_=false;
+  std::unique_ptr<casbot::ArmDynamics> gravity_engine_;std::unique_ptr<casbot::ArmWorkspace> gravity_workspace_;
 };
 int main(int argc,char** argv) {
   rclcpp::init(argc,argv,rclcpp::InitOptions(),rclcpp::SignalHandlerOptions::None);std::signal(SIGINT,on_signal);std::signal(SIGTERM,on_signal);

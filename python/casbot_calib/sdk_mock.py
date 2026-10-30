@@ -35,7 +35,7 @@ def mock_config(path):
     from .collision import nominal_profile
     scene = nominal_profile()
     if np.min(scene.check(q[None, :])['distances']) <= .01: raise ValueError('Initial SDK Mock pose collides or lacks10mm clearance')
-    for key in ('servo_natural_frequency_rad_s', 'servo_damping_ratio'):
+    for key in ('servo_natural_frequency_rad_s', 'servo_damping_ratio','servo_minimum_kp','servo_minimum_kd'):
         if not np.isfinite(config[key]) or config[key] <= 0: raise ValueError('Positive synthetic servo parameter required')
     plant = config['plant']
     for key in ('control_hz', 'feedback_hz'):
@@ -44,6 +44,15 @@ def mock_config(path):
     if not np.isfinite(plant['current_tau']) or plant['current_tau'] < 0: raise ValueError('Invalid drive response')
     for key in ('drive_delay_ns', 'feedback_delay_ns'):
         if type(plant[key]) is not int or not 0 <= plant[key] <= 100000000: raise ValueError('Invalid native delay')
+    if 'stiction_enabled' in plant and type(plant['stiction_enabled']) is not bool: raise ValueError('Boolean synthetic stiction required')
+    if type(plant.get('device_pd')) is not bool: raise ValueError('Explicit Mock PD backend required')
+    if 'sample_period_ns' in plant and (type(plant['sample_period_ns']) is not int or plant['sample_period_ns']<50000): raise ValueError('Invalid private raw sample period')
+    if 'integration_ns' in plant and (type(plant['integration_ns']) is not int or not 25000<=plant['integration_ns']<=200000):raise ValueError('Bounded Mock integration step required')
+    for key in ('friction_viscous','friction_coulomb','friction_static'):
+        if key in plant:
+            values=np.asarray(plant[key])
+            if values.shape!=(14,) or not np.isfinite(values).all() or np.any(values<0): raise ValueError('14 nonnegative synthetic friction parameters required')
+    if np.any(np.asarray(plant.get('friction_static',[0]*14))<plant.get('friction_coulomb',[0]*14)): raise ValueError('Static friction must exceed Coulomb friction')
     return config
 
 
@@ -70,9 +79,10 @@ class SDKMockSession(AbstractContextManager):
     def __enter__(self):
         self.root.mkdir(parents=True, exist_ok=False)
         engine, source = nominal_dual_arm(); model = engine.model
-        q = np.asarray(self.config['initial_q']); diagonal = np.diag(engine.mass_matrix(q))
+        q = np.asarray(self.config['initial_q'])
         omega = self.config['servo_natural_frequency_rad_s']; damping = self.config['servo_damping_ratio']
-        kp = diagonal * omega**2; kd = 2*damping*omega*diagonal
+        from .control_gains import nominal_pd_gains
+        kp,kd=nominal_pd_gains(engine,q,omega,damping,self.config['servo_minimum_kp'],self.config['servo_minimum_kd'])
         if np.max(kp)>1000 or np.max(kd)>100: raise ValueError('Derived synthetic gains exceed declared range')
         native = Path('install/humble-ros/casbot_calib_transport/lib/casbot_calib_transport/mock_host').resolve()
         server = Path(os.environ.get('CASBOT_VENDOR_INSTALL', 'install/vendor')).resolve()/'casbot_calib_vendor/lib/casbot_calib_vendor/sdk_mock_server'

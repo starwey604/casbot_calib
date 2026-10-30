@@ -27,7 +27,7 @@ class SdkMockServer final:public rclcpp::Node {
     cache_period_=declare_parameter<std::int64_t>("cache_period_ns",3000000);
     watchdog_=declare_parameter<std::int64_t>("watchdog_ns",100000000);
     const auto horizon=declare_parameter<std::int64_t>("interpolation_ns",2000000);
-    gravity_=declare_parameter<bool>("internal_gravity",true);
+    gravity_=declare_parameter<bool>("internal_gravity",false);
     allow_effort_=declare_parameter<bool>("allow_effort",false);allow_pd_=declare_parameter<bool>("allow_custom_pd",false);
     effort_limit_=declare_parameter<double>("effort_limit_nm",100.);
     if(control_hz<100||control_hz>2000||publish_hz<10||publish_hz>2000||cache_period_<1000000||watchdog_<10000000||
@@ -60,7 +60,7 @@ class SdkMockServer final:public rclcpp::Node {
         if(req->data&&(!have_state_||active_||get_parameter("reject_mode").as_bool())){resp->success=false;record("mode_rejected");return;}
         if(!req->data&&inject_pair_) {auto left=get_parameter("unstable_static_pairs").as_int();
           set_parameter(rclcpp::Parameter("unstable_static_pairs",std::max<std::int64_t>(0,left-1)));}
-        active_=req->data;inject_pair_=active_&&get_parameter("unstable_static_pairs").as_int()>0;
+        active_=req->data;awaiting_first_command_=active_;inject_pair_=active_&&get_parameter("unstable_static_pairs").as_int()>0;
         ramp_->reset(q_,vendor::now());target_v_.fill(0);feedforward_.fill(0);custom_pd_=false;
         last_command_=vendor::now();record(active_?"enter_requested":"exit_after_hold");resp->success=true;
       });
@@ -93,6 +93,7 @@ class SdkMockServer final:public rclcpp::Node {
       record("rejected_command_value");return;}
     SdkPositionRamp::Values target{};std::copy(msg.position.begin(),msg.position.end(),target.begin());
     const auto now=vendor::now();ramp_->target(target,now);last_command_=now;
+    awaiting_first_command_=false;
     std::copy(msg.velocity.begin(),msg.velocity.end(),target_v_.begin());std::copy(msg.effort.begin(),msg.effort.end(),feedforward_.begin());
     custom_pd_=!msg.kp.empty();if(custom_pd_){custom_kp_=msg.kp;custom_kd_=msg.kd;}
     commands_<<now;vendor::values(commands_,target);vendor::values(commands_,target_v_);vendor::values(commands_,feedforward_);commands_<<'\n';
@@ -112,13 +113,15 @@ class SdkMockServer final:public rclcpp::Node {
     }
     const auto reference=ramp_->at(now);
     casbot_calib_interfaces::msg::JointCommand cmd;cmd.experiment_id=experiment_;cmd.model_id=model_id_;cmd.clock_id=clock_;
-    cmd.sequence=++sequence_;cmd.send_ns=now;cmd.valid_for_ns=100000000;cmd.mode=cmd.TORQUE;
+    cmd.sequence=++sequence_;cmd.send_ns=now;cmd.valid_for_ns=100000000;cmd.mode=cmd.POSITION_PD;
     Eigen::Map<const Eigen::VectorXd> q(q_.data(),14);
-    const Eigen::VectorXd g=gravity_?workspace_->gravity(q):Eigen::VectorXd::Zero(14);
+    // Inactive protection hold is synthetic, distinct from active SDK commands.
+    const Eigen::VectorXd g=(!active_||awaiting_first_command_||gravity_)?workspace_->gravity(q):Eigen::VectorXd::Zero(14);
     for(int j=0;j<14;++j) {
       const auto p=custom_pd_?custom_kp_[j]:kp_[j],d=custom_pd_?custom_kd_[j]:kd_[j];
       cmd.joint_names[j]=names_[j];
-      cmd.effort[j]=std::clamp(g[j]+feedforward_[j]+p*(reference[j]-q_[j])+d*(target_v_[j]-v_[j]),-effort_limit_,effort_limit_);
+      cmd.position[j]=reference[j];cmd.velocity[j]=target_v_[j];cmd.kp[j]=p;cmd.kd[j]=d;
+      cmd.effort[j]=std::clamp(g[j]+feedforward_[j],-effort_limit_,effort_limit_);
     }
     native_->publish(cmd);
     references_<<now<<','<<active_;vendor::values(references_,reference);vendor::values(references_,target_v_);vendor::values(references_,feedforward_);references_<<'\n';
@@ -142,7 +145,7 @@ class SdkMockServer final:public rclcpp::Node {
   std::vector<double> kp_,kd_,custom_kp_,custom_kd_;std::array<double,14> q_{},v_{},target_v_{},feedforward_{};
   std::int64_t state_at_=0,cache_at_=0,last_command_=0,cache_period_=0,watchdog_=0,initial_stable_at_=0;
   std::uint64_t sequence_=0,previous_cache_=std::numeric_limits<std::uint64_t>::max();
-  bool have_state_=false,have_cache_=false,active_=false,inject_pair_=false,custom_pd_=false,gravity_=true,allow_effort_=false,allow_pd_=false,initial_ready_=false;
+  bool have_state_=false,have_cache_=false,active_=false,inject_pair_=false,custom_pd_=false,gravity_=false,allow_effort_=false,allow_pd_=false,initial_ready_=false,awaiting_first_command_=false;
   double effort_limit_=100.;
   casbot_calib_interfaces::msg::JointObservation latest_,cache_;
   std::unique_ptr<SdkPositionRamp> ramp_;std::unique_ptr<casbot::ArmDynamics> engine_;std::unique_ptr<casbot::ArmWorkspace> workspace_;
