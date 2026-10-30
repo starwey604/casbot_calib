@@ -6,6 +6,8 @@
 
 **用户2026-10-30本轮进一步授权：现在补齐真实SDK执行路径，不确定行为先询问或配置假设，到场联调再修正，不让正式观测资格阻断其余代码开发。** 用户确认只发双臂14轴时腰/头/手保持；断流由机体自保护是用户要求采用的假设，尚未实测。新增[硬件联调H1–H5路径](docs/hardware_execution_path.md)和显式`hardware-*`入口支持真实位置发送、静态探索；原S1未知配置、S2私有scope与S3/S4/P0资格保持独立。不要再把“原S2未开放”等同于“仓库没有硬件执行命令”，也不要把探索拟合通过写成正式标定通过。硬件命令只在用户调用相应入口时执行，开发/测试不得连接物理机器人。未知项记入profile/报告，不编造采样时间、独立扭矩传感器、stop RPC或物理停止证明。
 
+**H2最新恢复约定：用户要求API中的解除故障默认先留空、只log，随后结束整个采集流程；后续再探索恢复。** SDK执行/通信/模式故障必须终止整批并禁止该会话resume，不因占位方法返回而继续；当前不清故障、不重新申请控制、不尝试自恢复。受控主动中断或正常检查点可以新尝试续采；正常回位后的静态窗口质量不合格可按冻结预算重采，这不属于故障恢复。硬杀/未封存且状态不明的中断当前也终止，不静默当作已恢复。
+
 2026-10-30厂家答复由用户转述，记为**已说明待验证**：反馈effort是模组驱动估算Nm，无独立扭矩传感器；电流乘转矩常数只是推测，输出侧/尺度/滤波/补偿仍未闭合。仅position线性插值到1000Hz；debug的`/motion/joint_state`和`/motion/debug/joint_state`据称1000Hz发布、可能重复最新缓存，其header.stamp为发布时刻，当前无可用高频日志。不能把发布时刻当采样时刻、把相同数值当旧帧去重或将velocity/effort视为同样插值。设备/版本、上身模式可用性、字段/逐轴同步、新帧更新率/缓存年龄和实际命令消费规则仍待核验；详情及阶段影响见[答复记录](docs/sdk_hardware_prerequisites.md#厂家答复记录2026-10-30同步)。本次文档同步未修改运行配置或资格政策。
 
 ## 当前目标与已完成范围
@@ -48,7 +50,8 @@
 - `vendor_staged.py`负责S4角色冻结、观测reader与阶段编排；原`staged_*`数值函数通过显式records/config回调复用，默认旧入口保持原政策。`torque_observations.py`只选择一个总输出力矩通道；S4不伪造current或设备seq。非周期处理要求全记录连续/均匀/同步，腕部30Hz处理不超资格频带；惯量按明确角色分train/validation，不按名字猜。Mock采集脚本可读取合成plant，分析与复核不得读取evaluation；控制对照另存绑定，不能回写已经封存的analysis。
 - `dynamic_export.py`提供[动力学候选URDF导出/重加载](docs/dynamic_urdf_export.md)：消费已接受且封存的S4 gravity/inertia，Pinocchio转换空间惯性，每运动关节写一个等效体；固定手部后代保留几何/帧但不重复添加惯性，固定根部属性不标为已标定。摩擦/转子/世界重力留在配套JSON，重加载不能用JSON刚体值覆盖URDF结果。源模型摘要必须匹配；独立输出、新进程校验，不修改nominal或旧分析。静态候选的惯量不可观测部分仍是先验选择，序列化通过不等于实机/参数唯一性通过。本机375项Python测试（含16项新增）通过，两种候选各32构型验证及禁止访问原分析/evaluation的新进程复核通过，证据为`artifacts/dynamic_urdf_release_v1/delivery.json`。新S4分析记录源模型摘要；旧gravity-only缺绑定时拒绝，旧完整S4可使用封存的inertia候选绑定。
 - `static_field.py`提供[静态现场预设](docs/static_field_preset.md)：`plan-static-field`/`verify-static-field`仅规划/复核，复用Motion、Pinocchio静态回归与Coal完整路径门禁；配置为`configs/static_field_nominal.yaml`。每臂具名7轴扫描+五轴组合，角度是相对配置基准的偏移；保留正反单轴诊断及成对接近，参考信息选24训练+8验证，不能把组合验证遗漏腕部roll的秩13当作完整覆盖。每臂训练/验证需分别覆盖候选池静态方向；不得宣称140参数或各连杆质量/质心唯一。输出为独立参考规划包，不是可直接运行的staged会话或S4观测协议；1s窗口不是测量，保留缓存/采样资格与S2 localhost限制。nominal肩部外展基准不是实机home，现场到基准的路径、实际插值/跟踪包络、限制和停止仍须另验。失败v1/覆盖不足v2保留，最终离线参考为`artifacts/static_field_nominal_v3`及其review。
-- `hardware_field.py`与`configs/hardware_field.yaml`实现H1：实际起姿、单轴小幅、从实测起姿到静态预设再返回的完整序列、原始CDR/整数ns回调/发布stamp/effort记录、探索重力与URDF重加载。`position_executor`共享显式hardware scope（默认S2仍本机），只发位置、velocity和零effort/空PD；异常停止发布，绝不伪造服务回执。现场fit使用回调窗口，独立采样数未知，不是S3采样资格，正式接受/自动部署保持false。reference与命令插值及观测插值检查不等于真实跟踪/制动包络已获证。快照只读，执行前复核起姿；计划绑定模型/SDK/二进制/ROS domain，分析绑定实际执行CSV摘要。硬件摩擦/起动/惯量与整批恢复未完成，不能宣称H1等于完整硬件标定。
+- `hardware_field.py`与`configs/hardware_field.yaml`实现H1：实际起姿、单轴小幅、从实测起姿到静态预设再返回的完整序列、原始CDR/整数ns回调/发布stamp/effort记录、探索重力与URDF重加载。`position_executor`共享显式hardware scope（默认S2仍本机），只发位置、velocity和零effort/空PD；异常停止发布，绝不伪造服务回执。现场fit使用回调窗口，独立采样数未知，不是S3采样资格，正式接受/自动部署保持false。reference与命令插值及观测插值检查不等于真实跟踪/制动包络已获证。快照只读，执行前复核起姿；计划绑定模型/SDK/二进制/ROS domain，分析绑定实际执行CSV摘要。硬件摩擦/起动/惯量未完成，不能宣称H1等于完整硬件标定；H2已补整批编排与受控续采，故障恢复按用户要求暂不实现。
+- `hardware_batch.py`、`configs/hardware_batch.yaml`及[H2说明](docs/hardware_batch_h2.md)组织冻结批次：方向观测与具名人工结论绑定、同一测得锚点/连续参考下的100/250/500Hz随机重复、静态正反姿态对的原子尝试与有限稳定等待重采。协议/模型/SDK/关键代码不变才续采；事件原子提交并串联摘要，已封存attempt不改写，未知不完整attempt终止。clear_fault默认仅日志占位，调用后整批终止且不能resume。H1的static_means/write_gravity_candidate由H1/H2共用，不复制求解器、不跨记录造采样序列。`hardware_batch_viewer.py`复用统一几何renderer，按单次回调时间回放，试次间不插值、只压缩时间、不放大角度。H2不等于H3/H4硬件摩擦/惯量或正式实机验收。
 - `tests/`、`cpp/tests/`、`tests/installation/`分别覆盖Python、C++和安装后消费者。`configs/`存实验条件，`scripts/humble/`存目标环境自动化。
 - `artifacts/`、`build/`、`install/`、`log/`及虚拟环境为生成物，不提交Git。
 

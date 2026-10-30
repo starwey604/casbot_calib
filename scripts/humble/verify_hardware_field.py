@@ -12,10 +12,12 @@ import yaml
 
 def main():
     parser=argparse.ArgumentParser(description=__doc__);parser.add_argument('--output',type=Path,required=True)
+    parser.add_argument('--h2',action='store_true',help='Also run the H2 batch/review/retry/interruption/terminal-fault protocol')
     args=parser.parse_args();root=args.output.resolve();root.mkdir(parents=True,exist_ok=False)
     domain=220+int(uuid.uuid4().hex[:2],16)%10
     os.environ['ROS_DOMAIN_ID']=str(domain);os.environ['ROS_LOCALHOST_ONLY']='1'
     import rclpy
+    from rclpy.signals import SignalHandlerOptions
     from rclpy.executors import SingleThreadedExecutor
     from sensor_msgs.msg import JointState
     from std_msgs.msg import String
@@ -51,7 +53,11 @@ def main():
     prefix='/casbot_calib_s2_field_'+uuid.uuid4().hex[:8]
     remaps={'/joint_states':prefix+'/joint_states','/motion/status':prefix+'/status',
             '/upper_body_debug/joint_cmd':prefix+'/upper_cmd','/motion/upper_body_debug':prefix+'/upper_debug'}
-    rclpy.init();node=rclpy.create_node('field_protocol_fixture',enable_rosout=False,start_parameter_services=False)
+    # SIGINT targets the batch supervisor, not this in-process robot fixture.
+    # Keep Python's KeyboardInterrupt handler; rclpy's default would also shut
+    # down the fixture context and falsely turn controlled resume into a fault.
+    rclpy.init(signal_handler_options=SignalHandlerOptions.NO)
+    node=rclpy.create_node('field_protocol_fixture',enable_rosout=False,start_parameter_services=False)
     feedback=node.create_publisher(JointState,remaps['/joint_states'],10)
     status=node.create_publisher(String,remaps['/motion/status'],10)
     state=dict(q=home.copy(),v=np.zeros(14),target=home.copy(),previous=home.copy(),begin=time.monotonic(),
@@ -80,7 +86,10 @@ def main():
             state['v']=(state['q']-old)/dt
         if state['fail_after'] and state['received']>=state['fail_after']:return
         msg=JointState();msg.header.stamp=node.get_clock().now().to_msg();msg.name=names+['waist_yaw_joint']
-        msg.position=[*state['q'],.17];msg.velocity=[*state['v'],0.]
+        reported_velocity=state['v'].copy()
+        if state.get('unstable_static') and abs(state['q'][0]-.006)<.0005 and abs(reported_velocity[0])<.01:
+            reported_velocity[0]=.02
+        msg.position=[*state['q'],.17];msg.velocity=[*reported_velocity,0.]
         msg.effort=[*e.gravity(state['q']),0.]
         feedback.publish(msg)
         if state['last_q'] is not None and np.array_equal(state['last_q'],state['q']):state['duplicates']+=1
@@ -114,6 +123,8 @@ def main():
         count=state['received'];time.sleep(.15)
         checks['feedback_gap_stops_commands']=not failed['passed'] and state['received']==count and state['watchdog']
         checks['no_fabricated_stop_ack']=not failed.get('stop_ack',True) and not failed.get('physical_stop_verified',True)
+        if args.h2:
+            checks.update(verify_h2(root,state,config_path,ref,domain,remaps,names))
         write_json(root/'verification.json',dict(passed=all(checks.values()),checks=checks,domain=domain,
             local_only=True,physical_device_tested=False,hardware_commands_on_public_network=False,
             fixture='position-only causal ramp toward latest command; cached state refresh about3ms; publication stamps; no mechanical simulation or vendor behavior certification',
@@ -121,5 +132,78 @@ def main():
         return 0 if all(checks.values()) else 1
     finally:
         running=False;thread.join(timeout=2);executor.shutdown();node.destroy_node();rclpy.shutdown()
+
+def verify_h2(root,state,profile,preset,domain,remaps,names):
+    from threading import Thread
+    import signal
+    from casbot_calib import hardware_batch as batch
+    from casbot_calib import hardware_field as field
+    from casbot_calib.data import write_json
+    checks={};state['fail_after']=None;state['unstable_static']=False
+    config=yaml.safe_load(Path('configs/hardware_batch.yaml').read_text())
+    config['direction'].update(joints=[names[0]],amplitude_deg=.2)
+    config['frequency'].update(joints=[names[0]],repeats=1,amplitude_deg=.2)
+    config['inter_job_pause_s']=.1
+    path=root/'h2_config.yaml';path.write_text(yaml.safe_dump(config))
+    folder=root/'h2_batch';batch.plan_batch(path,profile,folder,preset=preset,domain_id=domain,connection_scope='localhost_contract_mock')
+    class FixtureBackend(batch.SDKBatchBackend):
+        def __init__(self):super().__init__(remaps);self.inject_quality=True
+        def execute(self,plan,output,domain_id):
+            metadata=batch.read(Path(plan)/'plan.json')
+            inject=self.inject_quality and metadata['stage']=='gravity'
+            state['unstable_static']=inject
+            try:return super().execute(plan,output,domain_id)
+            finally:
+                state['unstable_static']=False
+                if inject:self.inject_quality=False
+    backend=FixtureBackend()
+    first=batch.run_batch(folder,backend=backend)
+    checks['h2_waits_for_bound_human_review']=first['state']=='awaiting_direction_review'
+    review=root/'h2_direction_review.yaml';batch.write_direction_template(folder,review)
+    data=yaml.safe_load(review.read_text());data['observer']='isolated ROS protocol fixture; not physical direction evidence'
+    for row in data['joints']:row['observed_same_direction']=True
+    review.write_text(yaml.safe_dump(data));batch.import_direction_review(folder,review)
+    final=batch.run_batch(folder,resume=True,backend=backend)
+    checks['h2_complete']=final['passed'] and final['gravity']['available']
+    history,_=batch.outcomes(folder,batch.load_batch(folder)[1])
+    checks['h2_quality_retry_retained']=any(any(r['status']=='quality_retry' for r in rows) and batch.accepted(rows) for rows in history.values())
+    checks['h2_same_reference_across_tiers']=final['frequency_references_consistent'] and len({r['comparison_reference_sha256'] for r in final['frequency']})==1
+    from casbot_calib.hardware_batch_viewer import render_batch
+    view=render_batch(folder,root/'h2_replay',fps=4,max_seconds_per_attempt=.4)
+    checks['h2_geometry_only_replay']=view['passed'] and view['device_writes']==0
+    interrupted_config=json.loads(json.dumps(config));interrupted_config['direction']['require_review']=False
+    interrupted_config['frequency']['enabled']=False;interrupted_config['static']['enabled']=False
+    path2=root/'h2_interrupt.yaml';path2.write_text(yaml.safe_dump(interrupted_config))
+    paused=root/'h2_interrupted';batch.plan_batch(path2,profile,paused,domain_id=domain,connection_scope='localhost_contract_mock')
+    class InterruptBackend(batch.SDKBatchBackend):
+        def __init__(self):super().__init__(remaps);self.once=True
+        def execute(self,plan,output,domain_id):
+            if not self.once:return super().execute(plan,output,domain_id)
+            self.once=False;cancel=[False]
+            def interrupt_when_streaming():
+                deadline=time.monotonic()+20
+                while not cancel[0] and time.monotonic()<deadline:
+                    events=Path(output)/'execution/events.csv'
+                    if events.exists() and 'STREAMING' in events.read_text():
+                        time.sleep(.06);os.kill(os.getpid(),signal.SIGINT);return
+                    time.sleep(.02)
+            worker=Thread(target=interrupt_when_streaming);worker.start()
+            try:return super().execute(plan,output,domain_id)
+            finally:cancel[0]=True;worker.join(timeout=1)
+    interrupted_backend=InterruptBackend();before=batch.run_batch(paused,backend=interrupted_backend)
+    after=batch.run_batch(paused,resume=True,backend=interrupted_backend)
+    checks['h2_controlled_interrupt_resume']=before['state']=='interrupted' and after['passed']
+    state['fail_after']=state['received']+130
+    failed=root/'h2_terminal';batch.plan_batch(path2,profile,failed,domain_id=domain,connection_scope='localhost_contract_mock')
+    bad=batch.run_batch(failed,backend=batch.SDKBatchBackend(remaps));count=state['received']
+    refused=False
+    try:batch.run_batch(failed,resume=True,backend=batch.SDKBatchBackend(remaps))
+    except RuntimeError:refused=True
+    checks['h2_terminal_fault_no_recovery_or_resume']=bad['state']=='faulted' and refused and state['received']==count
+    fault=list((failed/'faults').glob('*/clear_fault.json'))
+    checks['h2_clear_fault_is_log_only']=len(fault)==1 and batch.read(fault[0])['performed'] is False
+    write_json(root/'h2_verification.json',dict(passed=all(checks.values()),checks=checks,local_only=True,physical_device_tested=False))
+    return checks
+
 
 if __name__=='__main__':raise SystemExit(main())

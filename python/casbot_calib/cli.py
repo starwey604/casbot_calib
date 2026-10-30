@@ -14,6 +14,21 @@ from .experiments import run_stage
 def main(argv=None):
     parser=argparse.ArgumentParser(description="CASBOT calibration: synthetic experiments and explicit read-only vendor capture")
     sub=parser.add_subparsers(dest="command",required=True)
+    batch_plan=sub.add_parser('hardware-plan-batch',help='Freeze H2 direction/frequency/static jobs without device I/O')
+    batch_plan.add_argument('--config',type=Path,default=Path('configs/hardware_batch.yaml'))
+    batch_plan.add_argument('--profile',type=Path,default=Path('configs/hardware_field.yaml'));batch_plan.add_argument('--preset',type=Path)
+    batch_plan.add_argument('--domain-id',type=int,required=True);batch_plan.add_argument('--output',type=Path,required=True)
+    batch_run=sub.add_parser('hardware-run-batch',help='ACTUAL SDK batch execution; terminal faults never resume')
+    batch_run.add_argument('folder',type=Path);batch_run.add_argument('--resume',action='store_true');batch_run.add_argument('--max-jobs',type=int)
+    direction_template=sub.add_parser('hardware-direction-template',help='Export human physical-direction review template bound to observations')
+    direction_template.add_argument('folder',type=Path);direction_template.add_argument('--output',type=Path,required=True)
+    direction_review=sub.add_parser('hardware-direction-review',help='Import human direction observations; no device writes')
+    direction_review.add_argument('folder',type=Path);direction_review.add_argument('--file',type=Path,required=True)
+    batch_analyse=sub.add_parser('hardware-analyse-batch',help='Read-only H2 reports and accepted static-pair gravity fitting')
+    batch_analyse.add_argument('folder',type=Path);batch_analyse.add_argument('--output',type=Path,required=True)
+    batch_render=sub.add_parser('hardware-render-batch',help='Read-only geometry replay of sealed batch attempts')
+    batch_render.add_argument('folder',type=Path);batch_render.add_argument('--output',type=Path,required=True)
+    batch_render.add_argument('--fps',type=int,default=12);batch_render.add_argument('--max-seconds-per-attempt',type=float,default=4.)
     field_snapshot=sub.add_parser('hardware-snapshot',help='Read actual SDK start; no command publisher or mode request')
     field_snapshot.add_argument('--config',type=Path,default=Path('configs/hardware_field.yaml'))
     field_snapshot.add_argument('--output',type=Path,required=True);field_snapshot.add_argument('--domain-id',type=int,required=True)
@@ -186,6 +201,18 @@ def main(argv=None):
     view.add_argument("--mapping",type=Path);view.add_argument("--scene",type=Path)
     view.add_argument("--follow",action="store_true",help="Follow an externally appended JSONL file")
     args=parser.parse_args(argv)
+    if args.command in ('hardware-plan-batch','hardware-run-batch','hardware-direction-template','hardware-direction-review','hardware-analyse-batch','hardware-render-batch'):
+        from .hardware_batch import plan_batch,run_batch,write_direction_template,import_direction_review,analyse_batch
+        if args.command=='hardware-plan-batch':result=plan_batch(args.config,args.profile,args.output,preset=args.preset,domain_id=args.domain_id)
+        elif args.command=='hardware-run-batch':result=run_batch(args.folder,resume=args.resume,max_jobs=args.max_jobs)
+        elif args.command=='hardware-direction-template':result=write_direction_template(args.folder,args.output)
+        elif args.command=='hardware-direction-review':result=import_direction_review(args.folder,args.file)
+        elif args.command=='hardware-render-batch':
+            from .hardware_batch_viewer import render_batch
+            result=render_batch(args.folder,args.output,fps=args.fps,max_seconds_per_attempt=args.max_seconds_per_attempt)
+        else:result=analyse_batch(args.folder,args.output)
+        print(f"现场批次状态：{result.get('state','完成')}；正式标定资格不由采集状态替代")
+        return 0 if result.get('passed') or result.get('state') in ('planned','checkpoint','awaiting_direction_review','direction_review_recorded','interrupted_at_checkpoint','interrupted') else 1
     if args.command.startswith('hardware-'):
         from .hardware_field import snapshot_field,prepare_jog,prepare_field,execute_field,analyse_field
         if args.command=='hardware-snapshot':result=snapshot_field(args.config,args.output,args.domain_id)

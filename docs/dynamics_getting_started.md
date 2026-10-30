@@ -6,6 +6,8 @@
 
 **本指南的完整示例运行 Mock 标定与离线分析。** 已新增真实SDK位置/静态探索的[实机联调路径](hardware_execution_path.md)，其hardware-execute会真实发送位置命令；完整硬件摩擦/起动/惯量及正式验收尚未完成。下文S1仍只读，S3/S4正式资格遵循[SDK前置条件](sdk_hardware_prerequisites.md)。首次Mock练习不依赖本机历史artifacts，也不复用已消耗的正式测试数据。
 
+需要自动组织现场方向、频率和静态批次时，使用[H2整批采集](hardware_batch_h2.md)。受控中断可续采，SDK故障只log并终止整批，当前不恢复故障会话。
+
 ---
 
 ## 🧭 一、先了解本次要标定什么

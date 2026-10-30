@@ -1,0 +1,25 @@
+schema_version: casbot_hardware_batch_v1
+direction:
+  enabled: true
+  joints: all
+  amplitude_deg: 1.0
+  require_review: true
+frequency:
+  enabled: true
+  joints: [left_shoulder_pitch_joint, right_shoulder_pitch_joint]
+  rates_hz: [100, 250, 500]
+  repeats: 2
+  seed: 20261030
+  amplitude_deg: 1.0
+  minimum_publish_ratio: 0.9
+static:
+  enabled: true
+  max_poses_per_split: null
+  quality_retries: 2
+  retry_settle_extra_s: 1.0
+inter_job_pause_s: 0.25
+notes:
+  - Execution/mode/communication faults log the no-op clear-fault hook and terminate the whole session.
+  - Only controlled interruption or normal checkpoints may resume; terminal faults cannot resume.
+  - Static quality retries require normal execution, return and rest confirmation; no SDK fault recovery.
+  - Frequency references share one measured anchor; no mechanical parameter refit per rate.

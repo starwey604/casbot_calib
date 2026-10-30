@@ -87,7 +87,7 @@ class VendorLiveSource:
 def scene_for_vendor(config, output):
     from .staged_presentation import write_scene
     from .collision import nominal_profile
-    profile = nominal_profile()
+    profile = nominal_profile(scene=config.get('viewer_collision_scene'))
     model_names = [j.name for j in profile.engine.model.joints]
     if config['joint_names'] != model_names:
         raise ValueError('Viewer requires explicit nominal joint names/order; it does not guess a model mapping')
@@ -143,7 +143,7 @@ def present_pose_source(source, output, *, live=False, window=False, fps=12, dur
                 frame = source.read(at)
                 canvas = Image.new('RGB', (1280,720), (10,17,27)); draw = ImageDraw.Draw(canvas)
                 draw.text((24,16), 'CASBOT / 统一只读状态显示', font=_font(26), fill=(228,237,245))
-                heading = '独立ROS订阅 / 渲染不参与物理计算' if live else '按本机接收时间回放，采样语义按来源保留'
+                heading = getattr(source,'presentation_heading',None) or ('独立ROS订阅 / 渲染不参与物理计算' if live else '按本机接收时间回放，采样语义按来源保留')
                 draw.text((24,60), heading, font=_font(18), fill=(62,218,189))
                 if frame is not None:
                     canvas.paste(Image.fromarray(view.render(frame)), (20,100))
@@ -161,6 +161,7 @@ def present_pose_source(source, output, *, live=False, window=False, fps=12, dur
                           ('原始电流 / 采样时间', ('有观测' if frame is not None and frame.current is not None else '未知')+' / '+
                            ('来源声明已知' if frame is not None and frame.sample_ns>=0 else '未知')),
                           ('实机控制', '不发命令，不切换模式'), ('消息诊断', source.error or '位置与其他字段独立校验')]
+                if hasattr(source,'presentation_labels'):labels=source.presentation_labels(at,frame)
                 for j, (label, value) in enumerate(labels):
                     draw.text((930,120+j*78), label, font=_font(16), fill=(151,172,192))
                     # Keep Chinese values within the sidebar.

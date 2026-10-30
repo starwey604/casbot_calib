@@ -185,7 +185,7 @@ def snapshot_binding(snapshot):
         source_domain_id=json.loads(request.read_text())['domain_id'] if request.exists() else None)
 
 
-def prepare_field(profile, static_plan, snapshot, output, *, max_poses_per_split=None):
+def prepare_field(profile, static_plan, snapshot, output, *, max_poses_per_split=None, candidate_ids=None, settle_extra_s=0.):
     config = load_profile(profile); static_plan = Path(static_plan).resolve(); snapshot = Path(snapshot).resolve()
     check_seal(static_plan); start = _read_snapshot(snapshot)
     source_report = json.loads((static_plan / 'report.json').read_text())
@@ -199,12 +199,18 @@ def prepare_field(profile, static_plan, snapshot, output, *, max_poses_per_split
         raise ValueError('Field and static collision scenes differ')
     if max_poses_per_split is not None and (type(max_poses_per_split) is not int or max_poses_per_split < 1):
         raise ValueError('Positive commissioning pose cap required')
+    if not np.isfinite(settle_extra_s) or settle_extra_s < 0:
+        raise ValueError('Nonnegative static retry settling extension required')
     candidates = json.loads((static_plan / 'candidates.json').read_text()); selected = {}
     for arm in ('left', 'right'):
         for split in ('train', 'validation'):
             rows = [r for r in candidates if r['status'] == 'selected' and r['arm'] == arm and r['split'] == split]
             if max_poses_per_split is not None: rows = rows[:max_poses_per_split]
             selected.update({r['id']: r for r in rows})
+    if candidate_ids is not None:
+        if not candidate_ids or len(set(candidate_ids)) != len(candidate_ids) or not set(candidate_ids) <= set(selected):
+            raise ValueError('Explicit distinct selected static candidates required')
+        selected = {key: selected[key] for key in candidate_ids}
     root = output_outside(output, static_plan, snapshot); root.mkdir(parents=True, exist_ok=False)
     motion = Motion('hardware_static_sequence', 'gravity', start)
     motion.add(config['initial_hold_s'], start, label='observed_start_hold')
@@ -213,21 +219,24 @@ def prepare_field(profile, static_plan, snapshot, output, *, max_poses_per_split
     for name in source_report['planned_execution_order']:
         metadata = json.loads((static_plan / 'plans' / name / 'motion.json').read_text())
         if metadata['conditions']['candidate_id'] not in selected: continue
-        begin = motion.duration; knots = metadata['knots_s']; labels = metadata['labels']
+        begin = motion.duration; knots = metadata['knots_s']; labels = metadata['labels']; measure = None
         for i, label in enumerate(labels):
             state = np.asarray(metadata['states'][i + 1])
             if np.max(abs(state[1:])) > 1e-12: raise ValueError('Static field expects rest-to-rest preset segments')
-            motion.add(knots[i + 1] - knots[i], state[0], label=label)
-        index = labels.index('static_measure')
+            a = motion.duration
+            motion.add(knots[i + 1] - knots[i] + (settle_extra_s if label == 'settle' else 0), state[0], label=label)
+            if label == 'static_measure': measure = (a, motion.duration)
+        if measure is None: raise ValueError('Missing static measurement window')
         trials.append(dict(name=name, conditions=metadata['conditions'], begin_s=begin, end_s=motion.duration,
-            measure_begin_s=begin + knots[index], measure_end_s=begin + knots[index + 1]))
+            measure_begin_s=measure[0], measure_end_s=measure[1]))
     add_bounded_move(motion, start, config['anchor_transition_s'], preset['planning_envelope'], 'return_observed_start')
     motion.add(config['final_hold_s'], start, label='observed_start_final_hold')
     return finish_plan(root, config, motion, trials, dict(pose_cap_per_arm_split=max_poses_per_split,
+        selected_candidate_ids=list(selected), settle_extra_s=settle_extra_s,
         **snapshot_binding(snapshot), preset_manifest_sha256=sha256(static_plan / 'manifest.json')))
 
 
-def prepare_jog(profile, snapshot, output, joint_name, amplitude_deg=1.):
+def prepare_jog(profile, snapshot, output, joint_name, amplitude_deg=1., *, anchor_rad=None):
     config = load_profile(profile); start = _read_snapshot(snapshot); engine, _ = nominal_dual_arm()
     names = [j.name for j in engine.model.joints]
     if joint_name not in names or not np.isfinite(amplitude_deg) or not 0 < amplitude_deg <= 5:
@@ -236,11 +245,28 @@ def prepare_jog(profile, snapshot, output, joint_name, amplitude_deg=1.):
     motion = Motion('hardware_direction_jog', 'position', start, dict(joint=names.index(joint_name), amplitude_deg=amplitude_deg))
     motion.add(config['initial_hold_s'], start, label='observed_start_hold')
     envelope = dict(speed_rad_s=.05, acceleration_rad_s2=.1, jerk_rad_s3=1.)
+    anchor = start if anchor_rad is None else np.asarray(anchor_rad, dtype=float)
+    if anchor.shape != (14,) or not np.isfinite(anchor).all(): raise ValueError('Finite 14-axis comparison anchor required')
+    if anchor_rad is not None:
+        add_bounded_move(motion, anchor, config['anchor_transition_s'], envelope, 'to_comparison_anchor')
+    comparison_begin = motion.duration
+    comparison = Motion('frequency_reference', 'position', anchor)
     for sign in (1, -1, 0):
-        q = start.copy(); q[names.index(joint_name)] += sign * np.deg2rad(amplitude_deg)
+        q = anchor.copy(); q[names.index(joint_name)] += sign * np.deg2rad(amplitude_deg)
         add_bounded_move(motion, q, config['anchor_transition_s'], envelope, 'direction_jog')
         motion.add(1., q, label='direction_hold')
+        add_bounded_move(comparison, q, config['anchor_transition_s'], envelope, 'direction_jog')
+        comparison.add(1., q, label='direction_hold')
+    comparison_end = motion.duration
+    if anchor_rad is not None:
+        add_bounded_move(motion, start, config['anchor_transition_s'], envelope, 'return_measured_start')
     motion.add(config['final_hold_s'], start, label='observed_start_final_hold')
+    import hashlib
+    definition = dict(joint=joint_name, amplitude_deg=amplitude_deg, anchor_rad=anchor.tolist(),
+        knots_s=comparison.knots, states=np.asarray(comparison.states).tolist(), labels=comparison.labels)
+    motion.conditions.update(comparison_window_s=[comparison_begin, comparison_end],
+        comparison_reference_sha256=hashlib.sha256(json.dumps(definition, sort_keys=True).encode()).hexdigest(),
+        comparison_anchor_rad=anchor.tolist())
     return finish_plan(root, config, motion, [], snapshot_binding(snapshot))
 
 
@@ -307,9 +333,29 @@ def read_feedback(path, *, require_effort=True):
     return dict(receive_ns=receive, publish_stamp_ns=stamps, **arrays)
 
 
-def analyse_field(plan, capture, output):
-    from .rigid_identification import fit_rigid, model_from_parameters
-    from .dynamic_export import write_inertial_urdf, check_reload
+class StaticWindowError(ValueError):
+    """A normally completed capture may be reacquired with more settling."""
+
+
+def static_means(metadata, obs, elapsed, config):
+    means = []
+    for trial in metadata['trials']:
+        use = (elapsed >= trial['measure_begin_s']) & (elapsed < trial['measure_end_s'])
+        count = int(use.sum())
+        if count < 2: raise StaticWindowError('No received static window: ' + trial['name'])
+        times = elapsed[use]; q = obs['q'][use]; v = obs['dq'][use]
+        if (times[-1] - times[0] < .8 * (trial['measure_end_s'] - trial['measure_begin_s']) or
+            np.max(np.diff(times)) > config['static_max_gap_s'] or np.max(abs(v)) > config['static_velocity_rad_s'] or
+            np.max(np.ptp(q, axis=0)) > config['static_position_range_rad']):
+            raise StaticWindowError('Unsettled/incomplete received static window: ' + trial['name'])
+        torque = (obs['effort_raw'][use] - config['effort_zero_nm']) * config['effort_gain']
+        means.append(dict(name=trial['name'], conditions=trial['conditions'], q=q.mean(axis=0),
+            torque=torque.mean(axis=0), received_publications=count, independent_acquisition_count=None,
+            sample_time_known=False, time_basis='local callback windows relative to executed plan; not acquisition time'))
+    return means
+
+
+def analyse_field(plan, capture, output, *, windows_only=False):
     root = Path(plan).resolve(); capture = Path(capture).resolve(); check_seal(root); check_seal(capture)
     output_outside(output, root, capture)
     metadata = json.loads((root / 'plan.json').read_text()); result = json.loads((capture / 'result.json').read_text())
@@ -337,7 +383,9 @@ def analyse_field(plan, capture, output):
         from scipy.interpolate import BPoly
         from scipy.optimize import minimize_scalar
         with np.load(root / 'reference.npz', allow_pickle=False) as data: curve = BPoly(data['coefficients'], data['breakpoints'])
-        active = (elapsed >= 0) & (elapsed <= curve.x[-1]); t = elapsed[active]; q = obs['q'][active]
+        conditions = json.loads((root / 'motion.json').read_text())['conditions']
+        begin, end = conditions.get('comparison_window_s', [0., float(curve.x[-1])])
+        active = (elapsed >= begin) & (elapsed <= end); t = elapsed[active]; q = obs['q'][active]
         error = q - curve(t); moving = np.ptp(curve(t), axis=0) > .001 if len(t) else np.zeros(14, dtype=bool)
         reference_span = np.ptp(curve(t), axis=0) if len(t) else np.zeros(14)
         observed_span = np.ptp(q, axis=0) if len(t) else np.zeros(14)
@@ -350,6 +398,10 @@ def analyse_field(plan, capture, output):
         output = Path(output).resolve(); output.mkdir(parents=True, exist_ok=False)
         report = dict(passed=motion_observed, stage='position', source_assumptions=config['assumptions'],
             motion_observed=motion_observed, commanded_span_rad=reference_span,
+            comparison_window_s=[begin, end], comparison_reference_sha256=conditions.get('comparison_reference_sha256'),
+            comparison_feedback_receive_frequency=rates(obs['receive_ns'][active]),
+            comparison_command_publish_frequency=rates(np.array([int(r['publish_ns']) for r in commands
+                if begin <= int(r['planned_index']) * metadata['command_period_ns'] * 1e-9 <= end], dtype=np.int64)),
             command_publish_frequency=rates(np.array([int(r['publish_ns']) for r in commands], dtype=np.int64)),
             feedback_receive_frequency=rates(obs['receive_ns']), observed_span_rad=observed_span,
             tracking_rmse_rad=np.sqrt(np.mean(error ** 2, axis=0)) if len(t) else None,
@@ -359,19 +411,30 @@ def analyse_field(plan, capture, output):
             source_plan_manifest_sha256=sha256(root / 'manifest.json'), source_capture_manifest_sha256=sha256(capture / 'manifest.json'))
         write_json(output / 'report.json', report); write_json(output / 'collision_received_interpolant.json', actual_collision); seal(output)
         return report
-    for trial in metadata['trials']:
-        use = (elapsed >= trial['measure_begin_s']) & (elapsed < trial['measure_end_s'])
-        count = int(use.sum())
-        if count < 2: raise ValueError('No received static window: ' + trial['name'])
-        times = elapsed[use]; q = obs['q'][use]; v = obs['dq'][use]
-        if (times[-1] - times[0] < .8 * (trial['measure_end_s'] - trial['measure_begin_s']) or
-            np.max(np.diff(times)) > config['static_max_gap_s'] or np.max(abs(v)) > config['static_velocity_rad_s'] or
-            np.max(np.ptp(q, axis=0)) > config['static_position_range_rad']):
-            raise ValueError('Unsettled/incomplete received static window: ' + trial['name'])
-        torque = (obs['effort_raw'][use] - config['effort_zero_nm']) * config['effort_gain']
-        means.append(dict(name=trial['name'], conditions=trial['conditions'], q=q.mean(axis=0),
-            torque=torque.mean(axis=0), received_publications=count, independent_acquisition_count=None,
-            sample_time_known=False, time_basis='local callback windows relative to executed plan; not acquisition time'))
+    means = static_means(metadata, obs, elapsed, config)
+    output = Path(output).resolve(); output.mkdir(parents=True, exist_ok=False)
+    np.savez_compressed(output / 'received_observations.npz', **obs)
+    write_json(output / 'static_windows.json', means)
+    write_json(output / 'collision_received_interpolant.json', actual_collision)
+    bindings = dict(source_plan_manifest_sha256=sha256(root / 'manifest.json'), source_capture_manifest_sha256=sha256(capture / 'manifest.json'))
+    if windows_only:
+        report = dict(passed=True, stage='gravity_windows', windows=len(means), sample_time_known=False,
+            hardware_calibration_accepted=False, **bindings)
+    else:
+        report = write_gravity_candidate(means, config, output, metadata)
+        from .vendor_position_analysis import rates
+        report.update(command_publish_frequency=rates(np.array([int(r['publish_ns']) for r in commands], dtype=np.int64)),
+            feedback_receive_frequency=rates(obs['receive_ns']), **bindings)
+    write_json(output / 'report.json', report); seal(output)
+    return report
+
+
+def write_gravity_candidate(means, config, output, metadata):
+    """Shared H1/H2 PSD fit and export; caller owns output creation/sealing."""
+    from .rigid_identification import fit_rigid, model_from_parameters
+    from .dynamic_export import write_inertial_urdf, check_reload
+    output = Path(output); engine, _ = nominal_dual_arm()
+    model = engine.model; model.gravity_world = np.asarray(config.get('gravity_world', model.gravity_world)); engine = type(engine)(model)
     batches = {'train': [], 'validation': []}; by_pose = {}; spreads = []
     for row in means:
         c = row['conditions']; by_pose.setdefault((c['batch'], c['pose']), []).append(row)
@@ -381,7 +444,7 @@ def analyse_field(plan, capture, output):
         q = np.array([r['q'] for r in rows]); z = np.zeros_like(q)
         y = engine.regressor_batch(q, z, z)['regressor'].mean(axis=0)
         torque = np.mean([r['torque'] for r in rows], axis=0)
-        spreads.append(abs(rows[0]['torque'] - rows[1]['torque']) / 2)
+        spreads.append(abs(np.asarray(rows[0]['torque']) - rows[1]['torque']) / 2)
         batches[split].append((y, torque, pose))
     if not all(batches.values()): raise ValueError('Disjoint training/validation pairs required')
     y = np.array([r[0] for r in batches['train']]); target = np.array([r[1] for r in batches['train']])
@@ -389,10 +452,6 @@ def analyse_field(plan, capture, output):
     vy = np.array([r[0] for r in batches['validation']]); vt = np.array([r[1] for r in batches['validation']])
     prediction = vy @ np.asarray(fit['parameters']); rmse = np.sqrt(np.mean((prediction - vt) ** 2, axis=0))
     nominal_rmse = np.sqrt(np.mean((vy @ engine.rigid_parameters() - vt) ** 2, axis=0))
-    output = Path(output).resolve(); output.mkdir(parents=True, exist_ok=False)
-    np.savez_compressed(output / 'received_observations.npz', **obs)
-    write_json(output / 'static_windows.json', means)
-    write_json(output / 'collision_received_interpolant.json', actual_collision)
     candidate = model_from_parameters(engine, fit['parameters'])
     write_json(output / 'calibration.json', dict(schema_version='casbot_field_gravity_candidate_v1',
         scope='exploratory commissioning representative; not accepted S4 export', parameters=fit['parameters'],
@@ -407,10 +466,7 @@ def analyse_field(plan, capture, output):
     aggregation = write_inertial_urdf(source_path, candidate, output / 'candidate_exploratory.urdf')
     reload_report = check_reload(output / 'candidate_exploratory.urdf', candidate, source_path)
     write_json(output / 'urdf_reload.json', reload_report)
-    from .vendor_position_analysis import rates
-    command_ns = np.array([int(r['publish_ns']) for r in commands], dtype=np.int64)
     report = dict(passed=bool(reload_report['passed']), fit_succeeded=True, stage='gravity', fit=fit,
-        command_publish_frequency=rates(command_ns), feedback_receive_frequency=rates(obs['receive_ns']),
         frequency_scope='local command publication and feedback callback; not motor acquisition or device adoption rate',
         validation_rmse_nm=rmse, nominal_validation_rmse_nm=nominal_rmse,
         paired_approach_half_spread_nm=np.max(spreads, axis=0),
@@ -419,7 +475,5 @@ def analyse_field(plan, capture, output):
         scope='exploratory field gravity under recorded assumptions; not qualified S3/S4/P0 acceptance',
         hardware_calibration_accepted=False, physical_stop_verified=False, sample_time_known=False,
         torque_scale_verified=False, source_assumptions=config['assumptions'], aggregation=aggregation,
-        source_plan_manifest_sha256=sha256(root / 'manifest.json'), source_capture_manifest_sha256=sha256(capture / 'manifest.json'),
         individual_body_parameters_unique=False, inertias_identified=False, auto_deploy=False)
-    write_json(output / 'report.json', report); seal(output)
     return report
