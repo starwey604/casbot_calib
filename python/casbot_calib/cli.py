@@ -14,6 +14,11 @@ from .experiments import run_stage
 def main(argv=None):
     parser=argparse.ArgumentParser(description="CASBOT calibration: synthetic experiments and explicit read-only vendor capture")
     sub=parser.add_subparsers(dest="command",required=True)
+    static_plan=sub.add_parser('plan-static-field',help='Offline static field preset: signed scans, combination poses, collision and gravity information')
+    static_plan.add_argument('--config',type=Path,default=Path('configs/static_field_nominal.yaml'))
+    static_plan.add_argument('--output',type=Path,required=True)
+    static_verify=sub.add_parser('verify-static-field',help='Recheck frozen static field references without device I/O or measurements')
+    static_verify.add_argument('folder',type=Path);static_verify.add_argument('--output',type=Path,required=True)
     dynamics_export=sub.add_parser('export-dynamics-urdf',help='Export an accepted S4 gravity/inertia candidate and verify a Pinocchio URDF reload')
     dynamics_export.add_argument('analysis',type=Path);dynamics_export.add_argument('--stage',choices=('gravity','inertia'),default='inertia')
     dynamics_export.add_argument('--output',type=Path,required=True)
@@ -164,6 +169,11 @@ def main(argv=None):
     view.add_argument("--mapping",type=Path);view.add_argument("--scene",type=Path)
     view.add_argument("--follow",action="store_true",help="Follow an externally appended JSONL file")
     args=parser.parse_args(argv)
+    if args.command in ('plan-static-field','verify-static-field'):
+        from .static_field import plan_static_field,verify_static_field
+        result=plan_static_field(args.config,args.output) if args.command=='plan-static-field' else verify_static_field(args.folder,args.output)
+        print(f"静态参考计划{'通过' if result['passed'] else '未通过'}；实机执行未开放 -> {args.output}")
+        return 0 if result['passed'] else 1
     if args.command in ('export-dynamics-urdf','verify-dynamics-urdf'):
         from .dynamic_export import export_dynamics_urdf,verify_dynamics_export
         result=export_dynamics_urdf(args.analysis,args.output,args.stage) if args.command=='export-dynamics-urdf' else verify_dynamics_export(args.folder,args.output)

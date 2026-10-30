@@ -6,6 +6,8 @@
 
 **验收范围为本机真实ROS双进程、厂商原消息的合成协议样本。未连接实机、未验证物理网络，也没有开放动力学阶段。** 这些样本只是测试消息，不由另一套机械仿真产生，不替代现有Pinocchio/Boost Mock。SDK版本核对及尚缺设备能力见[源码评估](casbot02_sdk_source_intake.md)。
 
+2026-10-30厂家答复（用户转述、待设备版本绑定和实测）：effort为模组驱动估算Nm；debug两反馈topic据称1000Hz发布但可能重复缓存，stamp仅为发布时间，无可用高频日志。见[完整边界](sdk_hardware_prerequisites.md#厂家答复记录2026-10-30同步)。S1保留原始stamp/接收时刻与重复消息，采样时刻、设备序号及实际刷新率仍未知；默认配置不因文档声明自动提升资格，也不为取得debug反馈切换模式。
+
 ## 构建与隔离
 
 SDK默认位于相邻`../casbot2-ros2-sdk`，可通过`CASBOT_SDK_ROOT`指定路径。使用当前Humble容器，不启用conda，不向核心Python包增加ROS强制依赖。
