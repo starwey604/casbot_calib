@@ -8,11 +8,9 @@
 
 需要自动组织现场方向、频率和静态批次时，使用[H2整批采集](hardware_batch_h2.md)。受控中断可续采，SDK故障只log并终止整批，当前不恢复故障会话。
 
-完成H3后，按[H4指南](hardware_inertia_h4.md)继续加速度激励、惯量候选、前序复核及独立控制对照。
+H2重力候选通过联调验证后，按[H3指南](hardware_friction_h3.md)继续多速度运动摩擦和零PD起动实验；完成H3后，再按[H4指南](hardware_inertia_h4.md)继续加速度激励、惯量候选、前序复核及独立控制对照。前序验证失败会阻断后续。
 
-H2重力候选通过联调验证后，按[H3指南](hardware_friction_h3.md)继续多速度运动摩擦和零PD起动实验；前序验证失败会阻断后续。
-
-需要提前演练实际SDK路径时，按[统一SDK Mock指南](sdk_mock_unification.md)启动sdk-mock；H1/H2/H3只切换连接profile，继续共用同一执行、采集和分析入口。原有虚拟时间Mock适合数值回归，SDK Mock用于验证实际接口与时序条件。
+需要提前演练实际SDK路径时，按[统一SDK Mock指南](sdk_mock_unification.md)启动sdk-mock；H1/H2/H3/H4只切换连接profile，继续共用同一执行、采集和分析入口。原有虚拟时间Mock适合数值回归，SDK Mock用于验证实际接口与时序条件。
 
 ---
 

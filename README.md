@@ -16,7 +16,7 @@
 
 **惯量与控制继续看 [H4指南](docs/hardware_inertia_h4.md)**：多姿态加速度激励、Pinocchio物理一致惯量拟合、独立预测及H3前序复核，然后完成五档PD选择和模型×增益四组对照。缓存回调协议只形成现场候选，保留原S3/S4采样和腕部带宽门禁。
 
-**Mock与实机共用SDK入口，见[统一SDK Mock指南](docs/sdk_mock_unification.md)**：sdk-mock启动原生机械模拟器和SDK服务端，生成H1/H2/H3可直接使用的连接profile。仅position按配置线性插值，缓存反馈保留发布stamp；内部采样真值不交给标定流程。后续SDK流程优先在此入口开发，旧S2 bridge仅保留历史回归。
+**Mock与实机共用SDK入口，见[统一SDK Mock指南](docs/sdk_mock_unification.md)**：sdk-mock启动原生机械模拟器和SDK服务端，生成H1/H2/H3/H4可直接使用的连接profile。仅position按配置线性插值，缓存反馈保留发布stamp；内部采样真值不交给标定流程。后续SDK流程优先在此入口开发，旧S2 bridge仅保留历史回归。
 
 **正式实机标定验收前必须逐项弄清[SDK待确认能力与前置条件](docs/sdk_hardware_prerequisites.md)**，尤其是反馈/指令effort语义、输出侧尺度、PD与内部补偿、采样/时钟/500Hz采用能力、停止行为，以及真实模型和腰部固定条件。原S1–S4通过的是只读接口或本机/离线流程，仍不开放硬件执行；新增现场入口可按记录的假设联调，但不因此获得S3/S4或P0正式资格。只读采集、字段存在或配置布尔值不作为标定验收证明。
 

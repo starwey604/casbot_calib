@@ -144,7 +144,7 @@ bash scripts/humble/container.sh casbot-calib hardware-render-batch \
 
 ## ✅ 七、适用范围
 
-H2提供实机批次代码，不代替设备能力确认。position插值、缓存反馈、发布stamp、估算Nm及断流保护的已知边界继续沿用[SDK记录](sdk_hardware_prerequisites.md)。本轮不连接实体机器人；自动化验证使用隔离ROS协议夹具及既有数值测试，H3硬件摩擦、H4惯量/控制和H5现场验收继续后续推进。
+H2提供实机批次代码，不代替设备能力确认。position插值、缓存反馈、发布stamp、估算Nm及断流保护的已知边界继续沿用[SDK记录](sdk_hardware_prerequisites.md)。本轮不连接实体机器人；自动化验证使用隔离ROS协议夹具及既有数值测试，[H3运动摩擦/起动](hardware_friction_h3.md)和[H4惯量/控制](hardware_inertia_h4.md)的软件路径现已接入，完成H2后按顺序继续；H5正式现场验收仍需实机证据。
 
 ### 本机验证记录
 

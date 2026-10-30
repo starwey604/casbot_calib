@@ -2,7 +2,17 @@
 
 本轮目标是补齐能连接真实 SDK 的软件路径，让机器人到场后可以开始联调。**尚未确认的行为采用明确配置的假设，不再让全部代码开发等待设备能力验收。** 联调可以产出候选和残差；正式标定验收仍须区分假设与实测。
 
-已经接入的 H1 路径为：**只读实际起姿 → 单轴小幅往返 → 静态参考连接 → SDK位置流及原始采集 → 探索重力拟合 → 候选URDF与重加载**。这不是完整摩擦/起动/惯量硬件交付。本机验证使用隔离ROS端点，没有连接物理机器人。
+当前H1–H4软件路径已接入：**只读实际起姿 → 单轴小幅联调 → 整批方向/频率检查 → 静态重力候选 → 运动摩擦 → 起动摩擦 → 惯量激励与前序复核 → PD选择/四组控制对照 → 候选URDF与回放**。本机验证使用隔离ROS SDK Mock，没有连接物理机器人；H5的真实模型、尺度、采样与保护验收仍需现场完成。
+
+第一次到场可先按本文H1单次联调，再进入H2整批流程：
+
+| 顺序 | 操作指南 | 本阶段交给下一阶段的输入 |
+| --- | --- | --- |
+| H1 | 本文：起姿、小幅往返及少量静态采集 | 已检查的接口/姿态和单次联调记录 |
+| H2 | [整批采集、频率分档与方向结论](hardware_batch_h2.md) | 完成且联调验证通过的重力候选批次 |
+| H3 | [运动摩擦与起动摩擦](hardware_friction_h3.md) | 完成且通过的重力/运动摩擦/起动候选批次 |
+| H4 | [惯量与控制对照](hardware_inertia_h4.md) | 惯量候选、前序复核、控制对照和候选URDF |
+| H5 | 现场证据与最终验收，见[SDK前置条件](sdk_hardware_prerequisites.md) | 由实际通过范围决定部署内容 |
 
 原S2私有入口继续保留。新增硬件命令使用 hardware-*，不是把S2的false改成true；两条路径共享C++发送器。机械计算、碰撞及优化继续复用Pinocchio、Coal与原有物理一致求解器。
 
@@ -13,7 +23,7 @@
 | 只发双臂14轴 | 用户已确认，腰/头/手保持；消息不填充这些轴 |
 | 断流保护 | 用户要求先假设机器人自行保护；异常时停止发布并记录是否观察到反馈静止，不虚构厂商stop服务 |
 | 插值 | 厂家说明仅position线性插值到1000Hz；客户端默认500Hz |
-| 默认PD及命令字段 | H3用户确认主机转发五项到模组本地PD，effort按Nm叠加、零PD生效，主机不自动补重力/摩擦；H1/H2保留默认PD，effort默认发送nominal重力前馈，time_ref=0、vel_scale=0.1；标定时不加摩擦补偿 |
+| 默认PD及命令字段 | H3用户确认主机转发五项到模组本地PD，effort按Nm叠加、零PD生效，主机不自动补重力/摩擦；H1/H2保留默认PD，effort默认发送nominal重力前馈，time_ref=0、vel_scale=0.1；重力/摩擦辨识期间不加摩擦前馈，H4控制对照使用冻结模型的刚体/摩擦前馈 |
 | effort | 模组估算Nm，无独立扭矩传感器；先假设输出侧、增益1、零偏0，支持逐轴配置 |
 | 模型和安装 | 暂按nominal、代理夹具、默认重力[0,0,-9.81]；不称为已验证实机几何/限位 |
 | 反馈时间和缓存 | 发布stamp/本地接收时刻分别保存，采样时间未知；重复缓存不删除，不计为独立采样 |
@@ -65,7 +75,7 @@ bash scripts/humble/container.sh casbot-calib hardware-analyse \
 
 观察实际方向/回位后再逐轴扩大覆盖。软件不会把一次往返自动标为机械零位或物理方向已验证。位置报告包含实际发送/接收频率、未对齐误差及整体轨迹偏移；偏移包含插值、缓存和机械响应，不是单向网络延迟。
 
-执行开始要求状态为READY或IDLE_MODE/STAND，不自动接管其他控制器已经持有的上身调试。默认使用主机PD；若实际未运动，分析不会仅因跟踪保护阈值较宽或最终回到起点就判通过，应检查主机增益配置与命令消费。规划快照和执行ROS domain必须一致。
+执行开始要求状态为READY或IDLE_MODE/STAND，不自动接管其他控制器已经持有的上身调试。默认使用SDK配置的增益，由模组本地计算PD；若实际未运动，分析不会仅因跟踪保护阈值较宽或最终回到起点就判通过，应检查主机增益配置与命令消费。规划快照和执行ROS domain必须一致。
 
 异常时停止后续发布并保留记录；机体断流保护到场后需实测，客户端退出不是硬件急停。正常结束先回到本次实测起姿并确认反馈静止，再退出上身模式。
 
@@ -101,6 +111,52 @@ bash scripts/humble/container.sh casbot-calib hardware-analyse \
 
 别名hardware-execute-static、hardware-analyse-static也可使用。现场入口连接实际硬件网络，不自动启动模拟机器人。
 
+### 4. 继续整批重力、摩擦与惯量流程
+
+先按[H2指南](hardware_batch_h2.md)规划和完成artifacts/site_batch_v1，绑定实际观察的方向结论并完成频率/静态批次。上面的少量静态联调用于检查链路，不代表完整姿态覆盖或正式采样资格。
+
+H2重力候选通过联调验证后，规划H3：
+
+~~~bash
+bash scripts/humble/container.sh bash scripts/humble/vendor.sh \
+  casbot-calib hardware-plan-friction \
+  --config configs/hardware_friction.yaml --profile configs/hardware_field.yaml \
+  --gravity artifacts/site_batch_v1 --domain-id "$calib_domain_id" \
+  --output artifacts/site_h3_v1
+
+bash scripts/humble/container.sh bash scripts/humble/vendor.sh \
+  casbot-calib hardware-run-batch artifacts/site_h3_v1 --max-jobs 1
+
+bash scripts/humble/container.sh bash scripts/humble/vendor.sh \
+  casbot-calib hardware-run-batch artifacts/site_h3_v1 --resume
+~~~
+
+H3独立验证及起动阶段全部完成、最新报告通过后，再规划H4：
+
+~~~bash
+bash scripts/humble/container.sh bash scripts/humble/vendor.sh \
+  casbot-calib hardware-plan-inertia \
+  --config configs/hardware_inertia.yaml --profile configs/hardware_field.yaml \
+  --prior artifacts/site_h3_v1 --domain-id "$calib_domain_id" \
+  --output artifacts/site_h4_v1
+
+bash scripts/humble/container.sh bash scripts/humble/vendor.sh \
+  casbot-calib hardware-run-batch artifacts/site_h4_v1 --max-jobs 1
+
+bash scripts/humble/container.sh bash scripts/humble/vendor.sh \
+  casbot-calib hardware-run-batch artifacts/site_h4_v1 --resume
+
+bash scripts/humble/container.sh casbot-calib hardware-analyse-batch \
+  artifacts/site_h4_v1 --output artifacts/site_h4_analysis_v1
+
+bash scripts/humble/container.sh casbot-calib hardware-render-batch \
+  artifacts/site_h4_v1 --output artifacts/site_h4_video_v1 --fps 12
+~~~
+
+plan命令不下发指令，run命令会真实控制机器人。--max-jobs 1建立正常检查点，核对单元结果后续采；若发生SDK/通信/模式/运动保护故障，则结束整批，clear_fault只log，故障会话不能resume。模型、实现、SDK或冻结条件变化后新建批次；不要在采集中改配置或二进制。
+
+H3/H4规划时要核对配置的joints、home、动作范围和控制参数。默认H3包含560个单元，H4为15条记录；默认14轴H4要求H3已覆盖这些轴及起动阶段。H4采用C3幅值包络渐入/渐出，惯量通过预测和前序复核后才进入PD选择。具体条件、报告和中断规则分别见H3/H4指南；passed不自动授予正式实机标定资格或证明有稳定控制收益。
+
 ## 怎样解释输出
 
 | 文件/字段 | 含义 |
@@ -117,11 +173,11 @@ bash scripts/humble/container.sh casbot-calib hardware-analyse \
 
 静态passed表示探索拟合和序列化运行成功；commissioning_validation_passed另比较配置的联调误差门槛。hardware_calibration_accepted、torque_scale_verified、sample_time_known仍为false；不伪装成S3/S4合格观测，不自动部署候选。
 
-## 完整实机路径还剩哪些代码
+## 当前各阶段范围与剩余工作
 
 | 轮次 | 交付范围 | 状态 |
 | --- | --- | --- |
-| H1：位置与静态起步 | 实际SDK后端、实测起姿、单轴小幅、静态采集、原始记录、探索重力/候选导出 | 本轮接入，隔离ROS协议及S2原生Mock回归；无物理设备验证 |
+| H1：位置与静态起步 | 实际SDK后端、实测起姿、单轴小幅、静态采集、原始记录、探索重力/候选导出 | 已实现，隔离ROS协议及S2原生Mock回归；无物理设备验证 |
 | H2：现场批次编排 | 14轴人工方向结论绑定、100/250/500Hz重复/随机顺序、稳定窗口重试、受控中断续采、整批状态/回放 | [H2入口已实现](hardware_batch_h2.md)；执行故障只记录占位清故障日志并终止，当前不恢复/续采故障会话 |
 | H3：摩擦 | 多构型匀速接SDK、冻结现场重力、运动摩擦处理；真实effort/PD下的反馈守护起动力矩斜坡 | [H3入口已实现](hardware_friction_h3.md)；统一SDK Mock验证1轴多速度/独立姿态及双向斜坡，输出探索候选，未连接实机 |
 | H4：惯量与控制 | SDK加速度激励、缓存/时钟/滤波适配、独立预测/前序复核、前馈与PD四组对照 | [H4入口已实现](hardware_inertia_h4.md)：SDK周期观测适配、物理惯量候选、前序复核、PD选择和四组控制；旧4kHz/专用腕部门禁保持，未连接实机 |
@@ -133,4 +189,6 @@ bash scripts/humble/container.sh casbot-calib hardware-analyse \
 
 当前verify_hardware_field.py转入[统一SDK Mock](sdk_mock_unification.md)验证：私有domain和localhost内，同一硬件客户端连接SDK服务端及原有机械内核，覆盖H1/H2、两种反馈类型和故障处理。早期直接给位置赋值的Python协议夹具已移除；下列H1历史证据仍按其当时的协议夹具范围解释，不升格为新的机械Mock或实机验收。
 
-原S2的Pinocchio/Boost物理Mock 500Hz往返回归另跑，仍保持本机scope和原停止服务逻辑。最终协议证据为artifacts/hardware_field_ros_v4（包含小幅jog、静态及中断）与artifacts/hardware_field_s2_regression_v1。本轮完整Python回归401项通过，后续更新的28项相关专项通过；具体为hardware_field_tests_v3/full.xml与hardware_field_tests_v6/focused.xml。旧数值物理内核/采样资格未修改，未重跑历史114项数值交付。汇总见artifacts/hardware_field_delivery_v1/delivery.json。
+原S2的Pinocchio/Boost物理Mock 500Hz往返回归另跑，仍保持本机scope和原停止服务逻辑。最终协议证据为artifacts/hardware_field_ros_v4（包含小幅jog、静态及中断）与artifacts/hardware_field_s2_regression_v1。H1当轮完整Python回归401项通过，后续更新的28项相关专项通过；具体为hardware_field_tests_v3/full.xml与hardware_field_tests_v6/focused.xml。旧数值物理内核/采样资格未修改，未重跑历史114项数值交付。汇总见artifacts/hardware_field_delivery_v1/delivery.json。
+
+H3/H4的当前本机范围与交付记录分别见[H3验证说明](hardware_friction_h3.md)及[H4验证说明](hardware_inertia_h4.md)。H4已完成单轴12条SDK Mock实验，默认14轴8条不同参考离线门禁通过；尚未采集完整14轴实机数据。
