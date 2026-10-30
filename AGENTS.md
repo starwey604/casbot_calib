@@ -4,6 +4,8 @@
 
 **实机接入前必须阅读并逐项弄清[SDK待确认能力与前置条件](docs/sdk_hardware_prerequisites.md)**。反馈/指令effort含义、输出尺度、PD和内部补偿、采样/时钟/实际采用频率、停止与设备限制、真实模型和腰部固定条件须有对应设备/版本的证据与结论。未确认或明确不支持时，阻断依赖它的阶段；不得以字段存在、配置布尔值、SDK编译或Mock验收替代。只读采集可保留未知字段，不授予运动/标定资格；不要直接改S1 unknown或移除S2 localhost限制来接实机。
 
+**用户2026-10-30本轮进一步授权：现在补齐真实SDK执行路径，不确定行为先询问或配置假设，到场联调再修正，不让正式观测资格阻断其余代码开发。** 用户确认只发双臂14轴时腰/头/手保持；断流由机体自保护是用户要求采用的假设，尚未实测。新增[硬件联调H1–H5路径](docs/hardware_execution_path.md)和显式`hardware-*`入口支持真实位置发送、静态探索；原S1未知配置、S2私有scope与S3/S4/P0资格保持独立。不要再把“原S2未开放”等同于“仓库没有硬件执行命令”，也不要把探索拟合通过写成正式标定通过。硬件命令只在用户调用相应入口时执行，开发/测试不得连接物理机器人。未知项记入profile/报告，不编造采样时间、独立扭矩传感器、stop RPC或物理停止证明。
+
 2026-10-30厂家答复由用户转述，记为**已说明待验证**：反馈effort是模组驱动估算Nm，无独立扭矩传感器；电流乘转矩常数只是推测，输出侧/尺度/滤波/补偿仍未闭合。仅position线性插值到1000Hz；debug的`/motion/joint_state`和`/motion/debug/joint_state`据称1000Hz发布、可能重复最新缓存，其header.stamp为发布时刻，当前无可用高频日志。不能把发布时刻当采样时刻、把相同数值当旧帧去重或将velocity/effort视为同样插值。设备/版本、上身模式可用性、字段/逐轴同步、新帧更新率/缓存年龄和实际命令消费规则仍待核验；详情及阶段影响见[答复记录](docs/sdk_hardware_prerequisites.md#厂家答复记录2026-10-30同步)。本次文档同步未修改运行配置或资格政策。
 
 ## 当前目标与已完成范围
@@ -12,7 +14,7 @@
 - 截至2026-10-28，M1–M6本机合成流程已完成：Humble迁移及原实验回归、真实ROS双端Mock、频率/延迟实验、碰撞门禁、重力→运动摩擦→起动摩擦→惯量分阶段辨识、独立验证和中文视频。
 - 动力学[P0计划](docs/staged_dynamics_p0_plan.md)已实现[R0数据契约](docs/staged_dynamics_p0_r0.md)及[R1多构型开发](docs/staged_dynamics_p0_r1.md)：七中心连续参考门禁、32条惯量/56条腕部角色与548条最终前序参考；本轮只采集train/selection共60条。已有前序显式绑定为开发参考并重新辨识，不能算新的独立留出。[R2稳定性](docs/staged_dynamics_p0_r2.md)已实现，复用train完成30变体/33次拟合、固定尺度/度量/行权重、前序复核和原生算子独立核验；三档ridge仅获稳定性资格。右腕yaw对角项删组敏感性约9.01%，接近10%合成门槛。[R3归因/selection选参](docs/staged_dynamics_p0_r3.md)已实现：复用R2的B/D解，匹配40阶频带，显式信号不足、原始偏置和带外诊断，独立重算后冻结候选；[R4正式验收](docs/staged_dynamics_p0_r4.md)已通过：新576条标定记录、9条独立控制记录，636+9条路径独立复核、16组步长减半和无真值新进程重评分；275项Python及114项冻结数值回归通过。仅声明范围的合成P0通过，实机/发布标志仍为false。旧schema 1继续运行，不能替代P0验收。
 - 该次验收记录为111项Python测试、3项C++测试、114项冻结数值对照、13组ROS实验和764条分阶段轨迹。数字属于历史版本记录，后续结果以实际运行报告为准，不能据此直接宣称新改动通过。
-- **尚未连接实机、开放实机控制或实现ros2_control硬件插件，尚未验证物理以太网或硬实时能力。** 当前ROS端点使用wall timer；同机回环通过不能作为跨机性能承诺。
+- **尚未连接实机或实现ros2_control硬件插件，尚未验证物理以太网或硬实时能力。** 已新增显式硬件位置联调入口；原S2和S4执行范围不变。当前ROS端点使用wall timer，同机回环不作为跨机性能承诺。
 - 2026-10-29已审阅相邻`../casbot2-ros2-sdk`提交`397dc955980956be3ede7376f81a57fafb2b23fe`，完成六包隔离构建与17项SDK离线契约测试；[源码评估](docs/casbot02_sdk_source_intake.md)的[S1](docs/vendor_s1.md)已实现：可选C++只读记录、CDR／回调时刻／端点QoS、字段规范化及能力门禁，统一ROS只读显示兼容厂商两种反馈和已有原生ROS Mock。不创建厂商命令publisher或模式client；S1不含控制；S2本机执行、S3离线资格及S4离线闭环见下条，实机控制和S4现场闭环尚待后续。上身消息是扁平数组，旧PDF嵌套joint不能沿用；PD须核对主机配置/生效反馈，effort不默认等于原始电流或独立力矩。原Mock私有域入口保持隔离，批量虚拟时间实验不强制经过DDS。
 - S1/统一显示当轮验收：301项Python测试及42项相关测试通过，可选SDK两包与不加载SDK的原ROS三包构建通过；厂商协议／中断证据为`artifacts/vendor_s1_contract_v3`，原生Mock→ROS→显示为`artifacts/ros_state_view_v1`（1775条，线上的q与显示q差0）。中文视频已实际解码查看；没有实机、跨机或桌面窗口资格。
 - [S2本机位置流程](docs/vendor_s2.md)已实现：实际姿态快照／二次核对、Coal连续参考及0.003rad条件包络、C++上身模式与位置流、停止确认／故障拒绝和原始SDK CDR。`position_executor`只允许localhost私有端点，`mock_sdk_bridge`用现有Pinocchio逆动力学实现声明的固定合成伺服，原生`mock_host`仍独占物理推进；实机资格和S4现场执行未开放。`artifacts/vendor_s2_release_v3/review/verification.json`复核6正常＋9故障，停止拒绝另在`vendor_s2_stop_rejection_v1`验证；原始总报告false及v1/v2反馈空窗失败保留，不能据此宣称稳定500Hz。静止断流看门狗另有`vendor_s2_watchdog_v1`，该轮316项Python测试通过。物理停止距离未认证，不把观测插值或模拟负回执验收写成实机停止证明。
@@ -46,6 +48,7 @@
 - `vendor_staged.py`负责S4角色冻结、观测reader与阶段编排；原`staged_*`数值函数通过显式records/config回调复用，默认旧入口保持原政策。`torque_observations.py`只选择一个总输出力矩通道；S4不伪造current或设备seq。非周期处理要求全记录连续/均匀/同步，腕部30Hz处理不超资格频带；惯量按明确角色分train/validation，不按名字猜。Mock采集脚本可读取合成plant，分析与复核不得读取evaluation；控制对照另存绑定，不能回写已经封存的analysis。
 - `dynamic_export.py`提供[动力学候选URDF导出/重加载](docs/dynamic_urdf_export.md)：消费已接受且封存的S4 gravity/inertia，Pinocchio转换空间惯性，每运动关节写一个等效体；固定手部后代保留几何/帧但不重复添加惯性，固定根部属性不标为已标定。摩擦/转子/世界重力留在配套JSON，重加载不能用JSON刚体值覆盖URDF结果。源模型摘要必须匹配；独立输出、新进程校验，不修改nominal或旧分析。静态候选的惯量不可观测部分仍是先验选择，序列化通过不等于实机/参数唯一性通过。本机375项Python测试（含16项新增）通过，两种候选各32构型验证及禁止访问原分析/evaluation的新进程复核通过，证据为`artifacts/dynamic_urdf_release_v1/delivery.json`。新S4分析记录源模型摘要；旧gravity-only缺绑定时拒绝，旧完整S4可使用封存的inertia候选绑定。
 - `static_field.py`提供[静态现场预设](docs/static_field_preset.md)：`plan-static-field`/`verify-static-field`仅规划/复核，复用Motion、Pinocchio静态回归与Coal完整路径门禁；配置为`configs/static_field_nominal.yaml`。每臂具名7轴扫描+五轴组合，角度是相对配置基准的偏移；保留正反单轴诊断及成对接近，参考信息选24训练+8验证，不能把组合验证遗漏腕部roll的秩13当作完整覆盖。每臂训练/验证需分别覆盖候选池静态方向；不得宣称140参数或各连杆质量/质心唯一。输出为独立参考规划包，不是可直接运行的staged会话或S4观测协议；1s窗口不是测量，保留缓存/采样资格与S2 localhost限制。nominal肩部外展基准不是实机home，现场到基准的路径、实际插值/跟踪包络、限制和停止仍须另验。失败v1/覆盖不足v2保留，最终离线参考为`artifacts/static_field_nominal_v3`及其review。
+- `hardware_field.py`与`configs/hardware_field.yaml`实现H1：实际起姿、单轴小幅、从实测起姿到静态预设再返回的完整序列、原始CDR/整数ns回调/发布stamp/effort记录、探索重力与URDF重加载。`position_executor`共享显式hardware scope（默认S2仍本机），只发位置、velocity和零effort/空PD；异常停止发布，绝不伪造服务回执。现场fit使用回调窗口，独立采样数未知，不是S3采样资格，正式接受/自动部署保持false。reference与命令插值及观测插值检查不等于真实跟踪/制动包络已获证。快照只读，执行前复核起姿；计划绑定模型/SDK/二进制/ROS domain，分析绑定实际执行CSV摘要。硬件摩擦/起动/惯量与整批恢复未完成，不能宣称H1等于完整硬件标定。
 - `tests/`、`cpp/tests/`、`tests/installation/`分别覆盖Python、C++和安装后消费者。`configs/`存实验条件，`scripts/humble/`存目标环境自动化。
 - `artifacts/`、`build/`、`install/`、`log/`及虚拟环境为生成物，不提交Git。
 

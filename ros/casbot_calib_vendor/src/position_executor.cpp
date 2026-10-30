@@ -1,9 +1,14 @@
-// S2 position stream and fault state machine. Hardware execution remains blocked.
+// Shared S2/field position stream. Default S2 remains private/localhost only.
 #include "vendor_common.hpp"
 #include <crb_ros_msg/msg/upper_joint_data.hpp>
+#include <crb_ros_msg/msg/joint_state_data.hpp>
 #include <std_msgs/msg/string.hpp>
 #include <std_srvs/srv/set_bool.hpp>
 #include <csignal>
+#ifdef __linux__
+#include <sys/prctl.h>
+#include <unistd.h>
+#endif
 
 namespace {volatile std::sig_atomic_t interrupted=0; void on_signal(int) {interrupted=1;}}
 class PositionExecutor final : public rclcpp::Node {
@@ -16,7 +21,20 @@ class PositionExecutor final : public rclcpp::Node {
     const auto joint=declare_parameter<std::string>("joint_topic"),mode=declare_parameter<std::string>("mode_topic");
     const auto command=declare_parameter<std::string>("command_topic"),service=declare_parameter<std::string>("mode_service"),stop=declare_parameter<std::string>("stop_service");
     command_topic_=command;
-    vendor::local_topics({joint,mode,command,service,stop});
+    scope_=declare_parameter<std::string>("execution_scope","localhost_contract_mock");
+    if(scope_=="localhost_contract_mock") vendor::local_topics({joint,mode,command,service,stop});
+    else if(scope_!="hardware_position_stream") throw std::runtime_error("Unknown execution scope");
+    hardware_=scope_=="hardware_position_stream";
+    #ifdef __linux__
+    if(hardware_) {
+      const auto parent=getppid();
+      if(parent<=1||prctl(PR_SET_PDEATHSIG,SIGTERM)!=0||getppid()!=parent)
+        throw std::runtime_error("Field publisher requires a live supervising process");
+    }
+    #endif
+    if(hardware_ && (command!="/upper_body_debug/joint_cmd"||service!="/motion/upper_body_debug"||!stop.empty()))
+      throw std::runtime_error("Field profile requires SDK upper-body endpoints and no invented stop service");
+    const auto feedback_type=declare_parameter<std::string>("feedback_type","sensor_msgs/msg/JointState");
     if (names_.size()!=14||std::set<std::string>(names_.begin(),names_.end()).size()!=14) throw std::runtime_error("Expected 14 unique joint names");
     for (const auto& n:names_) if (n.find("waist")!=std::string::npos || n.find("head")!=std::string::npos ||
         (n.find("wrist")==std::string::npos&&n.find("shoulder")==std::string::npos&&n.find("elbow")==std::string::npos))
@@ -24,7 +42,8 @@ class PositionExecutor final : public rclcpp::Node {
     const std::filesystem::path root(output);
     if (!std::filesystem::create_directory(root)) throw std::runtime_error("Execution output must not exist");
     root_=root; events_=vendor::log(root/"events.csv","receive_ns,state,reason");
-    received_=vendor::log(root/"feedback.csv","receive_ns"+vendor::columns("q")+vendor::columns("v"));
+    received_=vendor::log(root/"feedback.csv","receive_ns"+vendor::columns("q")+vendor::columns("v")+
+      (hardware_?",publish_stamp_ns"+vendor::columns("effort_raw"):""));
     commands_=vendor::log(root/"commands.csv","planned_index,planned_ns,publish_ns,phase"+vendor::columns("q")+vendor::columns("v"));
     max_age_=declare_parameter<std::int64_t>("max_feedback_age_ns",60000000);
     mode_age_=declare_parameter<std::int64_t>("max_mode_age_ns",300000000);
@@ -38,11 +57,13 @@ class PositionExecutor final : public rclcpp::Node {
     period_=declare_parameter<std::int64_t>("command_period_ns",2000000);
     if(max_age_<=0||mode_age_<=0||timeout_<=0||period_<1000000||period_>10000000||tolerance_<=0||tracking_<=0||max_velocity_<=0||vel_scale_<=0||vel_scale_>1)
       throw std::runtime_error("Invalid execution limits");
-    sub_=create_subscription<sensor_msgs::msg::JointState>(joint,rclcpp::QoS(10).reliable(),[this](sensor_msgs::msg::JointState::SharedPtr msg) {
-      vendor::State value;
-      if(!vendor::state(*msg,names_,value)) {if(active()) fault("invalid_feedback");return;}
-      state_=value; received_<<value.receive;vendor::values(received_,value.q);vendor::values(received_,value.v);received_<<'\n';
-    });
+    if(feedback_type=="sensor_msgs/msg/JointState")
+      sub_=create_subscription<sensor_msgs::msg::JointState>(joint,rclcpp::QoS(10).reliable(),[this](sensor_msgs::msg::JointState::SharedPtr msg) {receive(*msg);});
+    else if(hardware_&&feedback_type=="crb_ros_msg/msg/JointStateData")
+      debug_sub_=create_subscription<crb_ros_msg::msg::JointStateData>(joint,rclcpp::QoS(10).reliable(),[this](crb_ros_msg::msg::JointStateData::SharedPtr msg) {
+        sensor_msgs::msg::JointState value;value.header=msg->header;value.name=msg->name;value.position=msg->position;value.velocity=msg->velocity;value.effort=msg->effort;receive(value);
+      });
+    else throw std::runtime_error("Unsupported execution feedback type");
     status_=create_subscription<std_msgs::msg::String>(mode,rclcpp::QoS(10).reliable(),[this](std_msgs::msg::String::SharedPtr msg) {mode_=msg->data;mode_at_=vendor::now();});
     if(!snapshot_) {
       auto lower=declare_parameter<std::vector<double>>("lower"),upper=declare_parameter<std::vector<double>>("upper");
@@ -59,7 +80,8 @@ class PositionExecutor final : public rclcpp::Node {
       for(int j=0;j<14;++j) if(std::abs(plan_.back()[j+1]-plan_[0][j+1])>1e-12) throw std::runtime_error("Plan must return to observed start");
       // Publisher and service clients are created only after local scope / plan validation.
       pub_=create_publisher<crb_ros_msg::msg::UpperJointData>(command,rclcpp::QoS(1).reliable());
-      mode_client_=create_client<std_srvs::srv::SetBool>(service);stop_client_=create_client<std_srvs::srv::SetBool>(stop);
+      mode_client_=create_client<std_srvs::srv::SetBool>(service);
+      if(!hardware_)stop_client_=create_client<std_srvs::srv::SetBool>(stop);
     }
     began_=vendor::now(); phase_at_=began_;event("WAIT_FEEDBACK","startup");
   }
@@ -72,9 +94,9 @@ class PositionExecutor final : public rclcpp::Node {
       if(stop_future_.valid() && stop_future_.wait_for(std::chrono::seconds(0))==std::future_status::ready) {
         stop_ack_=stop_future_.get()->success;stop_future_={};
       }
-      if(stop_ack_ && fresh(now) && speed()<.02) {
+      if((stop_ack_||hardware_) && fresh(now) && speed()<.02) {
         if(!stable_at_) stable_at_=now;
-        if(now-stable_at_>=100000000) finish(false,"stop_ack_and_observed_rest");
+        if(now-stable_at_>=100000000) {stop_rest_observed_=true;finish(false,hardware_?"stream_stopped_and_feedback_rest_observed":"stop_ack_and_observed_rest");}
       } else stable_at_=0;
       if(now-phase_at_>timeout_) finish(false,"stop_unconfirmed");
       return;
@@ -83,8 +105,9 @@ class PositionExecutor final : public rclcpp::Node {
       if(fresh(now)&&speed()<.02&&now-mode_at_<mode_age_) {
         if(snapshot_) {save_snapshot();finish(true,"snapshot_only");return;}
         if(mode_!="mode: READY, state: READY"&&mode_!="mode: IDLE_MODE, state: STAND") {fault("unexpected_start_mode");return;}
+        if(hardware_&&count_publishers(command_topic_)>1) {fault("competing_command_publisher");return;}
         for(int j=0;j<14;++j) if(std::abs(state_.q[j]-plan_[0][j+1])>tolerance_) {fault("start_pose_changed");return;}
-        if(!mode_client_->service_is_ready()||!stop_client_->service_is_ready()) {fault("required_service_unavailable");return;}
+        if(!mode_client_->service_is_ready()||(!hardware_&&!stop_client_->service_is_ready())) {fault("required_service_unavailable");return;}
         mode_future_=request(mode_client_,true); event("ENTERING","request_upper_debug");
       } else if(now-began_>startup_timeout_) fault("initial_feedback_or_mode_timeout");
       return;
@@ -105,8 +128,14 @@ class PositionExecutor final : public rclcpp::Node {
       if(mode_future_.valid()&&mode_future_.wait_for(std::chrono::seconds(0))==std::future_status::ready) {
         exit_ack_=mode_future_.get()->success;mode_future_={};if(!exit_ack_) {fault("exit_rejected");return;}
       }
-      if(exit_ack_&&mode_=="mode: READY, state: READY") finish(true,"completed_at_observed_start");
-      else if(now-phase_at_>timeout_) fault("exit_timeout");
+      if(exit_ack_&&(mode_=="mode: READY, state: READY"||(hardware_&&mode_=="mode: IDLE_MODE, state: STAND"))) {
+        if(!hardware_) {finish(true,"completed_at_observed_start");return;}
+        double error=0;for(int j=0;j<14;++j)error=std::max(error,std::abs(state_.q[j]-plan_[0][j+1]));
+        if(error<tolerance_&&speed()<.02) {if(!stable_at_)stable_at_=now;}
+        else stable_at_=0;
+        if(stable_at_&&now-stable_at_>150000000) {finish(true,"completed_at_observed_start");return;}
+      }
+      if(now-phase_at_>timeout_) fault("exit_timeout");
       return;
     }
     if(now-last_graph_check_>20000000) {
@@ -144,9 +173,27 @@ class PositionExecutor final : public rclcpp::Node {
     std::ofstream out(root_/"result.json");out<<"{\"passed\":"<<(ok?"true":"false")<<",\"reason\":"<<std::quoted(reason)
       <<",\"last_feedback_receive_ns\":"<<state_.receive<<",\"last_mode_receive_ns\":"<<mode_at_<<",\"last_mode\":"<<std::quoted(mode_)
       <<",\"fault\":"<<std::quoted(fault_)<<",\"skipped_slots\":"<<skips_<<",\"stop_ack\":"<<(stop_ack_?"true":"false")
-      <<",\"snapshot_only\":"<<(snapshot_?"true":"false")<<",\"hardware_executable\":false,\"clock_id\":"<<std::quoted(vendor::clock_id())<<"}\n";
+      <<",\"snapshot_only\":"<<(snapshot_?"true":"false")<<",\"hardware_executable\":"<<(hardware_?"true":"false")
+      <<",\"execution_scope\":"<<std::quoted(scope_)<<",\"device_disconnect_protection_assumed\":"<<(hardware_?"true":"false")
+      <<",\"feedback_rest_observed_after_fault\":"<<(stop_rest_observed_?"true":"false")
+      <<",\"physical_stop_verified\":false,\"clock_id\":"<<std::quoted(vendor::clock_id())<<"}\n";
   }
  private:
+  void receive(const sensor_msgs::msg::JointState& msg) {
+    vendor::State value;
+    if(!vendor::state(msg,names_,value)) {if(active())fault("invalid_feedback");return;}
+    state_=value;received_<<value.receive;vendor::values(received_,value.q);vendor::values(received_,value.v);
+    if(hardware_) {
+      const auto stamp=static_cast<std::int64_t>(msg.header.stamp.sec)*1000000000LL+msg.header.stamp.nanosec;
+      received_<<','<<stamp;
+      for(const auto& name:names_) {
+        const auto i=std::find(msg.name.begin(),msg.name.end(),name)-msg.name.begin();
+        if(msg.effort.size()==msg.name.size()&&std::isfinite(msg.effort[i]))received_<<','<<msg.effort[i];
+        else received_<<",nan";
+      }
+    }
+    received_<<'\n';
+  }
   using Client=rclcpp::Client<std_srvs::srv::SetBool>;
   Client::SharedFuture request(const Client::SharedPtr& cli,bool value) {auto r=std::make_shared<std_srvs::srv::SetBool::Request>();r->data=value;return cli->async_send_request(r).share();}
   bool fresh(std::int64_t now) const {return state_.receive>0&&now-state_.receive<=max_age_;}
@@ -162,6 +209,7 @@ class PositionExecutor final : public rclcpp::Node {
   }
   void publish(const std::vector<double>& row,std::int64_t index,const std::string& phase) {
     crb_ros_msg::msg::UpperJointData msg;msg.header.stamp=this->now();msg.name=names_;msg.time_ref=0;msg.vel_scale=vel_scale_;
+    if(hardware_)msg.header.frame_id="base_link";
     msg.position.assign(row.begin()+1,row.begin()+15);msg.velocity.assign(row.begin()+15,row.end());msg.effort.assign(14,0.);
     last_publish_=vendor::now();pub_->publish(msg);commands_<<index<<','<<start_+index*period_<<','<<last_publish_<<','<<phase;
     vendor::values(commands_,msg.position);vendor::values(commands_,msg.velocity);commands_<<'\n';
@@ -173,10 +221,11 @@ class PositionExecutor final : public rclcpp::Node {
   std::filesystem::path root_;std::vector<std::string> names_;vendor::State state_;
   std::array<double,14> lower_{},upper_{};std::vector<std::vector<double>> plan_;
   std::ofstream events_,received_,commands_;
-  std::string phase_,mode_,fault_,command_topic_;std::int64_t began_=0,phase_at_=0,mode_at_=0,start_=0,last_index_=-1,last_publish_=0,stable_at_=0,skips_=0,last_graph_check_=0;
+  std::string phase_,mode_,fault_,command_topic_,scope_;std::int64_t began_=0,phase_at_=0,mode_at_=0,start_=0,last_index_=-1,last_publish_=0,stable_at_=0,skips_=0,last_graph_check_=0;
   std::int64_t max_age_,mode_age_,timeout_,period_,startup_timeout_;double tolerance_,tracking_,allowance_,max_velocity_,vel_scale_;
-  bool snapshot_=false,done_=false,success_=false,mode_ack_=false,exit_ack_=false,stop_ack_=false;
+  bool snapshot_=false,done_=false,success_=false,mode_ack_=false,exit_ack_=false,stop_ack_=false,hardware_=false,stop_rest_observed_=false;
   rclcpp::Subscription<sensor_msgs::msg::JointState>::SharedPtr sub_;rclcpp::Subscription<std_msgs::msg::String>::SharedPtr status_;
+  rclcpp::Subscription<crb_ros_msg::msg::JointStateData>::SharedPtr debug_sub_;
   rclcpp::Publisher<crb_ros_msg::msg::UpperJointData>::SharedPtr pub_;Client::SharedPtr mode_client_,stop_client_;
   Client::SharedFuture mode_future_,stop_future_;
 };

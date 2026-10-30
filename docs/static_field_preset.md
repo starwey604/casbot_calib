@@ -62,7 +62,7 @@ bash scripts/humble/container.sh casbot-calib verify-static-field \
 
 ## 接入现有标定流程的边界
 
-参考继续使用既有`Motion`，stage为`gravity`，有`batch/pose/approach`和`static_measure`窗口；Pinocchio、Coal及已有数值求解器不复制。但它是独立规划包，**不能直接作为已有`staged-calibrate`会话或S4观测协议运行**。后续现场适配需要逐条绑定实际采集与保护记录，再通过S3资格进入S4。现有重力求解器还使用测量窗口末段约0.45s；计划的1s窗口不代表本轮修改了该统计规则，未来静态缓存协议须显式约定有效样本/窗口统计。
+参考继续使用既有`Motion`，stage为`gravity`，有`batch/pose/approach`和`static_measure`窗口；Pinocchio、Coal及已有求解器不复制。它是独立规划包，**不能直接作为staged-calibrate会话或S4观测协议运行**。新增[hardware-plan-static现场入口](hardware_execution_path.md)已能连接实际起姿、采集和探索拟合；它另存回调时间窗口，不获得S3/S4正式资格。既有S4重力求解仍使用末段约0.45s，新现场探索使用预设的整个静态窗口并保留缓存/滤波未知状态，不隐式改变旧统计规则。
 
 依据[最新SDK边界](sdk_hardware_prerequisites.md#厂家答复记录2026-10-30同步)，effort是模组估算Nm，debug发布可能重复缓存，stamp仅为发布时间。不能把重复帧当独立采样、直接按stamp求导，或让仅有发布时间的数据自动满足S3。新帧/缓存年龄、尺度/偏置、补偿/滤波、实际版本、真实模型/夹具和停止条件仍待闭合。现场前两步方向/零位与频率/整体响应仍需完成，本预设不替代它们，也不改变S2 localhost限制。
 

@@ -14,6 +14,23 @@ from .experiments import run_stage
 def main(argv=None):
     parser=argparse.ArgumentParser(description="CASBOT calibration: synthetic experiments and explicit read-only vendor capture")
     sub=parser.add_subparsers(dest="command",required=True)
+    field_snapshot=sub.add_parser('hardware-snapshot',help='Read actual SDK start; no command publisher or mode request')
+    field_snapshot.add_argument('--config',type=Path,default=Path('configs/hardware_field.yaml'))
+    field_snapshot.add_argument('--output',type=Path,required=True);field_snapshot.add_argument('--domain-id',type=int,required=True)
+    field_jog=sub.add_parser('hardware-plan-jog',help='Plan a small single-joint direction jog from measured start; no commands')
+    field_jog.add_argument('--config',type=Path,default=Path('configs/hardware_field.yaml'))
+    field_jog.add_argument('--snapshot',type=Path,required=True);field_jog.add_argument('--joint',required=True)
+    field_jog.add_argument('--amplitude-deg',type=float,default=1.);field_jog.add_argument('--output',type=Path,required=True)
+    field_plan=sub.add_parser('hardware-plan-static',help='Build static sequence from actual snapshot and selected preset; no commands')
+    field_plan.add_argument('preset',type=Path);field_plan.add_argument('--snapshot',type=Path,required=True)
+    field_plan.add_argument('--config',type=Path,default=Path('configs/hardware_field.yaml'))
+    field_plan.add_argument('--output',type=Path,required=True);field_plan.add_argument('--max-poses-per-split',type=int)
+    field_execute=sub.add_parser('hardware-execute',aliases=['hardware-execute-static'],help='ACTUAL SDK position commands; recorded assumptions and device disconnect protection')
+    field_execute.add_argument('plan',type=Path);field_execute.add_argument('--output',type=Path,required=True)
+    field_execute.add_argument('--domain-id',type=int,required=True)
+    field_analysis=sub.add_parser('hardware-analyse',aliases=['hardware-analyse-static'],help='Position diagnostics or exploratory gravity fit; publication timestamps remain unqualified')
+    field_analysis.add_argument('plan',type=Path);field_analysis.add_argument('--capture',type=Path,required=True)
+    field_analysis.add_argument('--output',type=Path,required=True)
     static_plan=sub.add_parser('plan-static-field',help='Offline static field preset: signed scans, combination poses, collision and gravity information')
     static_plan.add_argument('--config',type=Path,default=Path('configs/static_field_nominal.yaml'))
     static_plan.add_argument('--output',type=Path,required=True)
@@ -169,6 +186,15 @@ def main(argv=None):
     view.add_argument("--mapping",type=Path);view.add_argument("--scene",type=Path)
     view.add_argument("--follow",action="store_true",help="Follow an externally appended JSONL file")
     args=parser.parse_args(argv)
+    if args.command.startswith('hardware-'):
+        from .hardware_field import snapshot_field,prepare_jog,prepare_field,execute_field,analyse_field
+        if args.command=='hardware-snapshot':result=snapshot_field(args.config,args.output,args.domain_id)
+        elif args.command=='hardware-plan-jog':result=prepare_jog(args.config,args.snapshot,args.output,args.joint,args.amplitude_deg)
+        elif args.command=='hardware-plan-static':result=prepare_field(args.config,args.preset,args.snapshot,args.output,max_poses_per_split=args.max_poses_per_split)
+        elif args.command in ('hardware-execute','hardware-execute-static'):result=execute_field(args.plan,args.output,args.domain_id)
+        else:result=analyse_field(args.plan,args.capture,args.output)
+        print(f"现场路径{'完成' if result['passed'] else '失败'}；查看假设与实测状态 -> {args.output}")
+        return 0 if result['passed'] else 1
     if args.command in ('plan-static-field','verify-static-field'):
         from .static_field import plan_static_field,verify_static_field
         result=plan_static_field(args.config,args.output) if args.command=='plan-static-field' else verify_static_field(args.folder,args.output)

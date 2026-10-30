@@ -4,7 +4,7 @@
 
 默认对象为 **完整装配、腰部刚性固定的 14 轴双臂机器人**。动力学由 Pinocchio 计算，碰撞由 Coal 检查，模拟积分使用 Boost.Odeint；MuJoCo 只负责显示。先跑通本地模拟，再根据设备能力接入真实观测，可以逐步确认安装、数据和求解流程。
 
-**当前可以完整运行的是 Mock 标定与离线分析，尚未开放实机运动。** SDK 只读采集不发送运动命令；现场执行仍需满足 [SDK 接入前置条件](sdk_hardware_prerequisites.md)。首次练习不依赖本机历史 `artifacts/`，也不复用已经消耗的正式测试数据。
+**本指南的完整示例运行 Mock 标定与离线分析。** 已新增真实SDK位置/静态探索的[实机联调路径](hardware_execution_path.md)，其hardware-execute会真实发送位置命令；完整硬件摩擦/起动/惯量及正式验收尚未完成。下文S1仍只读，S3/S4正式资格遵循[SDK前置条件](sdk_hardware_prerequisites.md)。首次Mock练习不依赖本机历史artifacts，也不复用已消耗的正式测试数据。
 
 ---
 
@@ -204,7 +204,7 @@ bash scripts/humble/container.sh casbot-calib verify-static-field \
 
 主要查看 `poses.csv`、`candidates.json`、`report.json` 及 `plans/`。训练与验证分别检查静态可观测方向覆盖，超限、端点碰撞或连续路径不合格的候选会保留淘汰原因。
 
-**这是独立的参考规划包，不能直接传给 `staged-calibrate` 或当作 S4 观测协议。** 配置基准角是离线设计值；实际到基准的路径、真实夹具、设备限制、跟踪包络和采样资格均需另验。后续通过现场适配逐条绑定采集与保护记录，再进入统一观测流程。详细规则见 [静态现场扫描预设](static_field_preset.md)。
+**这是独立参考规划包，不能直接传给staged-calibrate或当作S4观测协议。** 新增hardware-plan-static可将它与实际起姿连接后送入现场位置流，操作见[实机联调路径](hardware_execution_path.md)。基准角仍是离线设计值，真实夹具、设备限制、跟踪/停止包络和正式采样资格需另验；现场探索不自动升级为S3/S4合格观测。详细规则见[静态现场预设](static_field_preset.md)。
 
 ---
 
@@ -266,7 +266,7 @@ bash scripts/humble/container.sh casbot-calib vendor-normalize \
 
 **不可变观测导入 → 逐阶段资格检查 → 角色冻结 → 重力 → 运动摩擦 → 起动摩擦 → 惯量 → 独立验收。**
 
-实机动态观测当前不满足既有 4 kHz 等方法门禁；该门槛是项目当前政策，不是厂家通用指标。不能直接改成 1000 Hz、将未知滤波标为无滤波，或将 default unknown 配置改成“通过”。详细入口见 [S3](vendor_s3.md) 与 [S4](vendor_s4.md)；本指南不提供尚未开放的实机运动命令，S2 localhost 限制保留。
+实机动态观测当前不满足既有4kHz等方法门禁；该门槛是项目当前政策，不是厂家通用指标。不能直接降阈值、将未知滤波标为无滤波或改default unknown配置来宣称正式通过。S3/S4入口见[S3](vendor_s3.md)、[S4](vendor_s4.md)。按明确假设进行真实位置/静态探索的命令在[实机联调路径](hardware_execution_path.md)，原S2 localhost限制继续保留。
 
 ---
 

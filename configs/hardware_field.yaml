@@ -1,0 +1,50 @@
+schema_version: casbot_hardware_field_v1
+execution_scope: hardware_position_stream
+device:
+  serial_number: unknown
+  firmware_version: unknown
+  robot_software_version: unknown
+command_hz: 500
+joint_topic: /joint_states
+feedback_type: sensor_msgs/msg/JointState
+mode_topic: /motion/status
+command_topic: /upper_body_debug/joint_cmd
+mode_service: /motion/upper_body_debug
+stop_service: ''
+collision_scene: collision_scene.yaml
+initial_hold_s: 0.5
+final_hold_s: 0.5
+anchor_transition_s: 4.0
+max_feedback_age_ns: 100000000
+max_mode_age_ns: 500000000
+transition_timeout_ns: 3000000000
+start_tolerance_rad: 0.005
+tracking_limit_rad: 0.02
+position_allowance_rad: 0.025
+maximum_velocity_rad_s: 0.75
+vel_scale: 0.1
+static_velocity_rad_s: 0.01
+static_position_range_rad: 0.003
+static_max_gap_s: 0.1
+gravity_validation_rmse_nm: 0.5  # commissioning threshold, not the synthetic P0 acceptance
+effort_gain: 1.0
+effort_zero_nm: 0.0
+gravity_world: [0.0, 0.0, -9.81]  # assumed installation; update from measured mounting
+assumptions:
+  arm_subset: user_confirmed_14_arm_axes_leave_waist_head_hands_unchanged
+  disconnect: user_assumed_robot_self_protection_when_stream_stops
+  position_interpolation: vendor_declared_linear_position_only_1000hz
+  effort: vendor_declared_module_estimate_nm_no_torque_sensor
+  effort_side: assumed_output_equivalent_pending_load_check
+  effort_filter: unknown
+  feedback_stamp: vendor_declared_publication_time_not_acquisition
+  feedback_cache: may_repeat_latest_sample
+  limits_and_geometry: nominal_assumed_pending_site_check
+  pd: assumed_host_default_kp_kd
+  time_ref: zero_as_sdk_example
+  mode_exit: sdk_service_disable_after_return_rest_assumed_then_observe_rest_again
+notes:
+  - This profile enables actual SDK position commands when explicitly executed.
+  - Runtime failures stop publishing; no unprovided vendor stop service is invented.
+  - Device protection, actual geometry/limits and effort scale need commissioning checks.
+  - Fits using publish/receive-time cache windows remain exploratory, not S3/P0 acceptance.
