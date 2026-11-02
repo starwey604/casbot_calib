@@ -38,7 +38,7 @@
 
 ## 架构与目录
 
-- `cpp/include/casbot_calib/`、`cpp/src/`：C++17设备/状态接口、动力学、模拟、反馈保护、碰撞查询及pybind11绑定。批量Runner与ROS Mock共用持久化`ArmSimulationSession`，不要再复制一套物理内核。
+- `cpp/include/casbot_calib/`、`cpp/src/`：C++17设备/状态接口、动力学、模拟、反馈保护、碰撞查询及pybind11绑定。批量Runner与ROS Mock共用持久化`ArmSimulationSession`，`simulated_device.hpp`封装共同的设备配置/反馈交付，不复制物理内核。
 - `python/casbot_calib/`：激励、时间处理、参数辨识、阶段编排、控制选择、报告与只读回放；`assets/`存随包模型、映射和碰撞缓存。
 - `staged_motion.py`/`staged_plan.py`负责完整轨迹与参考门禁，`staged_collection.py`负责采集，`staged_identification.py`/`staged_breakaway.py`/`staged_inertia.py`负责辨识，`staged_control.py`负责四组控制对照。
 - `staged_analysis.py`是无真值重分析入口；`staged_validation.py`负责综合验证；`staged_delivery.py`汇总交付及独立合成真值评估；`staged_presentation.py`只读回放。
@@ -58,7 +58,10 @@
 - H3本轮本机回归441项Python、4项核心C++、2项SDK检查通过；H1/H2统一SDK回归23项及旧S2单条500Hz往返通过。交付见`artifacts/hardware_friction_delivery_v1/delivery.json`。H3ROS验证范围为1轴7尝试，独立记录指令100/50µs比较位置轨迹/峰值通过，粘住切换的逐点速度2.03%差异单列诊断。原始1msSDK观测仍不取得采样资格；本轮未重跑历史114项冻结数值交付。
 - `hardware_inertia.py`/`hardware_periodic.py`/`hardware_control.py`与[H4指南](docs/hardware_inertia_h4.md)接入H3冻结输入、共享多频参考/C3幅值包络激励、回调窗口Fourier适配、原`fit_rigid`物理一致140列求解、独立预测及H3观测重评分。惯量/控制选择通过后才冻结进入下一阶段；五档PD只用selection轨迹，四组control独立，回调误差不逐组优化滞后。完整前馈由Pinocchio批量计算、单独CSV封存并与位置同索引发送；不重复补重力，SDK故障继续整批终止。URDF与摩擦JSON分开，候选不自动部署。未知采样/相位/滤波、弱惯量方向和原专用腕部门禁仍保留，不把低频候选升格为S3/S4/P0。SDK Mock可用inertia_scales改变等效体质心惯性，默认全1；不可让分析读取该合成真值。
 - H4本轮本机交付为`artifacts/hardware_inertia_delivery_v1/delivery.json`：456项Python完整回归、最终18项H4专项（与全量有交叠）、4项核心C++/2项SDK检查及旧S2单条500Hz往返通过。SDK Mock仅1轴12单元通过，默认14轴8条不同参考离线门禁通过，不能宣称全14轴已采集。独立Nm预测RMSE约0.00122，所测M00合成误差1.65%，回归秩17/140。选择1.0倍PD，前馈记录差2.78%小于同增益复测波动，稳定控制收益未证明。原始反馈新进程重建/重拟合禁止evaluation且参数差0，100/50µs记录指令回放通过；无实机/物理网络/正式采样资格。H4使用C3幅值包络，避免长高阶匹配过渡造成回摆；不通过放宽跟踪/反馈/碰撞阈值掩盖失败。v1–v5失败保留。
-- **SDK Mock收敛约定**：新增[统一入口](docs/sdk_mock_unification.md)，`sdk_mock.py`/`configs/sdk_mock.yaml`启动`sdk_mock_server`和现有`mock_host`；后者独占ArmSimulationSession。新SDK Mock以device_pd配置让原生内核用本地状态计算PD；普通ROS实验默认不受影响。用户已确认CASBOT主机转发五字段、模组本地PD，固定device_pd=true作为SDK路径约定；本地环具体频率仍未知，见[能力证据](docs/sdk_hardware_prerequisites.md#因克斯模组本地pd能力证据)。H1/H2及后续H3共用SDK客户端、厂商消息和记录，只切换生成profile中的`sdk_connection.py`连接配置，不再另写直接修改q的集成夹具。新服务器仅position插值到配置参考频率，velocity/effort/PD保持；公开反馈不提供内部采样时间/序号/电流，`evaluation/`内部诊断只给独立测试。用户要求先按简单线性插值处理，默认当前参考到新目标2ms明确为合成假设，time_ref=0不解释成已确认时长。新入口无专用stop RPC；旧mock_sdk_bridge仅保留冻结S2回归，不扩成第二条现场开发路径。H3用户确认effort叠加/零PD有效后，当前Mock默认开启对应接口、关闭运行态内部补偿；旧v5条件与证据保留，不能解锁正式实机采样资格。
+- **SDK Mock收敛约定**：新增[统一入口](docs/sdk_mock_unification.md)，`sdk_mock.py`/`configs/sdk_mock.yaml`只启动一个`sdk_mock_server`，通过共享`SimulatedArmDevice`独占其ArmSimulationSession；SDK路径不再运行内部plant ROS桥。通用`mock_host`复用相同设备组件，每次实验仍只有一个物理状态所有者。新SDK Mock固定device_pd=true让原生内核用本地状态计算PD；普通ROS实验默认不受影响。用户已确认CASBOT主机转发五字段、模组本地PD，固定device_pd=true作为SDK路径约定；本地环具体频率仍未知，见[能力证据](docs/sdk_hardware_prerequisites.md#因克斯模组本地pd能力证据)。H1–H4共用SDK客户端、厂商消息和记录，只切换生成profile中的`sdk_connection.py`连接配置，不再另写直接修改q的集成夹具。新服务器仅position插值到配置参考频率，velocity/effort/PD保持；公开反馈不提供内部采样时间/序号/电流，`evaluation/`内部诊断只给独立测试。用户要求先按简单线性插值处理，默认当前参考到新目标2ms明确为合成假设，time_ref=0不解释成已确认时长。新入口无专用stop RPC；旧mock_sdk_bridge仅保留冻结S2回归，不扩成第二条现场开发路径。H3用户确认effort叠加/零PD有效后，当前Mock默认开启对应接口、关闭运行态内部补偿；旧v5条件与证据保留，不能解锁正式实机采样资格。
+- 2026-11-02收敛：`control_policy.py`复用五档PD、缩放和四组差值策略；虚拟采样/SDK回调时间的预处理、资格与接受阈值保持各自原契约。`sdk_process.py`复用H1–H4和legacy S2的参数编码、录制/执行监视及子进程回收；保留S2私有scope/stop语义及现场故障终止规则。SDK Mock行为记录升级backend_v2，五字段下发日志与估算反馈分别命名，不能用外层ROS反馈重新计算的PD充当真实内环请求。旧双进程时序报告保留，不冒充当前基线；新实现用新会话验证。
+- 共用执行器启动时允许话题/服务异步发现，在原10s内等服务、期间不下发；超时仍故障终止。H3零PD审计按实际`publish_ns`与确认决策时刻，不按计划槽位推断控制状态。SDK Mock物理推进使用专用线程、SDK使用单线程ROS执行器，进程内队列/快照交接，只有物理线程访问模拟设备；积分异常传回并退出进程，析构先停止并回收物理线程。
+- Mock诊断CSV通过独立spdlog有界阻塞队列写盘，反馈先交接、不等诊断格式化或写盘；退出先回收物理线程，再排空诊断并检查错误。`libspdlog-dev`仅为可选SDK包原生依赖，离线核心/绑定不强制依赖它。采集/回放仍只读正常SDK消息，不读内部诊断。当前收敛验收和适用范围见[统一入口的本轮结果](docs/sdk_mock_unification.md)。
 - `tests/`、`cpp/tests/`、`tests/installation/`分别覆盖Python、C++和安装后消费者。`configs/`存实验条件，`scripts/humble/`存目标环境自动化。
 - `artifacts/`、`build/`、`install/`、`log/`及虚拟环境为生成物，不提交Git。
 

@@ -13,6 +13,7 @@ from .staged_motion import periodic_motion,derivative_bounds
 from .rigid_identification import fit_rigid,model_from_parameters
 from .hardware_periodic import periodic_problem,prediction_metrics
 from .vendor_identity import sha256
+from .control_policy import PD_FACTORS,CONTROL_GROUPS,scale_pd
 
 
 def settings(path,names):
@@ -41,7 +42,7 @@ def settings(path,names):
         if not np.isfinite(c['holding'][key]) or c['holding'][key]<=0:raise ValueError('Positive explicit H4 holding gain design required')
     roles += [control['tuning_seed'],control['validation_seed']]
     if len(set(roles))!=len(roles) or set(c['pose_offsets_rad']['train'])&set(c['pose_offsets_rad']['validation']):raise ValueError('Whole H4 trajectory roles must be disjoint')
-    if type(control['enabled']) is not bool or control['kp_factors']!=[.5,.75,1.,1.25,1.5]:raise ValueError('Five predeclared common PD factors required')
+    if type(control['enabled']) is not bool or control['kp_factors']!=list(PD_FACTORS):raise ValueError('Five predeclared common PD factors required')
     if not np.isfinite(control['maximum_effort_nm']) or not 0<control['maximum_effort_nm']<=100 or not np.isfinite(control['maximum_speed_rad_s']) or control['maximum_speed_rad_s']<=0:raise ValueError('Bounded H4 control envelope required')
     offsets=np.asarray(c['offset_diagnostic_grid_s'])
     if offsets.ndim!=1 or len(offsets)<2 or not np.isfinite(offsets).all() or np.max(abs(offsets))>.05 or not np.isfinite(c['effort_relative_offset_s']) or abs(c['effort_relative_offset_s'])>.05:raise ValueError('Bounded explicit relative-time diagnostic required')
@@ -114,10 +115,9 @@ def plan_inertia(config_path,profile_path,prior,output,*,domain_id):
         for factor in c['control']['kp_factors']:
             jobs.append(dict(id=f'tuning_{len(jobs):03}',kind='control_tuning',joint='both_arms',hz=profile['command_hz'],
                 split='selection',pose_offset_rad=0.,seed=c['control']['tuning_seed'],kp_factor=factor,feedforward='prior'))
-        for model in ('prior','identified'):
-            for gains in ('original','tuned'):
-                jobs.append(dict(id='control_'+model+'_'+gains,kind='control_validation',joint='both_arms',hz=profile['command_hz'],
-                    split='control_validation',pose_offset_rad=0.,seed=c['control']['validation_seed'],feedforward=model,gain_strategy=gains))
+        for model,gains in CONTROL_GROUPS:
+            jobs.append(dict(id='control_'+model+'_'+gains,kind='control_validation',joint='both_arms',hz=profile['command_hz'],
+                split='control_validation',pose_offset_rad=0.,seed=c['control']['validation_seed'],feedforward=model,gain_strategy=gains))
     generic=dict(direction=dict(enabled=False,require_review=False,joints=[]),frequency=dict(enabled=False,joints=[]),
         static=dict(enabled=False,quality_retries=0,retry_settle_extra_s=0.),inter_job_pause_s=c['inter_job_pause_s'])
     record=dict(schema_version='casbot_hardware_batch_protocol_v1',workflow='h4_inertia',jobs=jobs,domain_id=domain_id,
@@ -150,7 +150,7 @@ def prepare_trial(root,protocol,job,profile_path,snapshot,output):
     out=field.output_outside(output,root/'protocol',snapshot);out.mkdir(parents=True,exist_ok=False)
     write_json(out/'h4.json',c);write_json(out/'friction.json',prior)
     kp,kd=holding_gains(pose,c['holding']);factor=control_factor(root,job)
-    kp*=factor;kd*=np.sqrt(factor)
+    kp,kd=scale_pd(kp,kd,factor)
     extra=dict(command_kp=kp.tolist(),command_kd=kd.tolist())
     if job['kind']=='inertia':
         shutil.copytree(root/'protocol/prior/gravity',out/'gravity')

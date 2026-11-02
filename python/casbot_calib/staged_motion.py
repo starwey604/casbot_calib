@@ -9,6 +9,7 @@ import numpy as np
 from scipy.interpolate import BPoly,PPoly
 from math import factorial
 from .collision import certify_reference
+from .control_policy import PD_FACTORS,CONTROL_GROUPS
 
 
 @dataclass
@@ -214,15 +215,15 @@ def build_recipes(config):
                     dict(pose=p,batch='validation' if p==1 else 'train')))
     dynamic=[('train',seed,'both') for seed in config.get('dynamic_candidate_seeds',[27])]
     dynamic += [('validation',127,'both'),('left_validation',128,'left'),('right_validation',129,'right')]
-    dynamic += [(f'tuning_{k}',227,'both') for k in range(5)]
-    dynamic += [(f'control_{model}_{gain}',327,'both') for model in ('nominal','identified') for gain in ('original','tuned')]
+    dynamic += [(f'tuning_{k}',227,'both') for k in range(len(PD_FACTORS))]
+    dynamic += [(f'control_{"nominal" if model=="prior" else model}_{gain}',327,'both') for model,gain in CONTROL_GROUPS]
     for batch,seed,active in dynamic:
         period=config['dynamic_period_s'];periods=config['dynamic_periods']
         stage='inertia';name='inertia_'+batch;conditions=dict(batch=batch,period_s=period,periods=periods,seed=seed,active=active,
             sample_period_ns=config.get('inertia_sample_period_ns',250000))
         if batch=='train':name=f'inertia_train_candidate_{seed}'
         elif batch.startswith('tuning_'):
-            stage='control_tuning';name='control_'+batch;k=int(batch.rsplit('_',1)[1]);conditions.update(kp_factor=[.5,.75,1.,1.25,1.5][k],feedforward='nominal')
+            stage='control_tuning';name='control_'+batch;k=int(batch.rsplit('_',1)[1]);conditions.update(kp_factor=PD_FACTORS[k],feedforward='nominal')
         elif batch.startswith('control_'):
             stage='control_validation';name=batch;_,ff,gain=batch.split('_');conditions.update(feedforward=ff,gain_strategy=gain)
         result.append(periodic_motion(name,stage,home,home,config,seed,batch!='train',active,conditions))

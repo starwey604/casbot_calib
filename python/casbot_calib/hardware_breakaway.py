@@ -76,6 +76,15 @@ def prepare_trial(root,protocol,job,profile,start,pose,snapshot,output):
         command_assumptions={k:b[k] for k in ('gravity_source','effort_semantics','custom_pd_semantics','internal_friction_compensation')}))
 
 
+def audit_zero_pd(commands,origin,free_begin_s,decision_elapsed_ns,joint):
+    # The controller reacts at callback/decision time, not the nominal slot.
+    # A late slot can carry restored PD after onset was already confirmed.
+    free_begin_ns=round(free_begin_s*1e9)
+    in_free=[r for r in commands if free_begin_ns<=int(r['publish_ns'])-origin<decision_elapsed_ns]
+    if not in_free or any(float(r['kp'+str(joint)])!=0 or float(r['kd'+str(joint)])!=0 for r in in_free):
+        raise ValueError('Executed target PD was not zero during free dwell/ramp')
+
+
 def inspect_trial(plan,capture,output,metadata,commands,origin,obs,elapsed,collision,c):
     from .hardware_friction import read,gravity_engine
     b=c['breakaway'];job=metadata['job'];j=metadata['joint_names'].index(job['joint']);sign=job['direction']
@@ -95,8 +104,7 @@ def inspect_trial(plan,capture,output,metadata,commands,origin,obs,elapsed,colli
     values=sign*(effort[[last,first,confirmed],j]-g)
     lo=float(min(values[:2])-b['torque_noise_allowance_nm']);hi=float(max(values[:2])+b['torque_noise_allowance_nm'])
     # Audit the actual SDK command stream, not just the requested ramp metadata.
-    in_free=[r for r in commands if w['free_begin_s']<=int(r['planned_index'])*metadata['command_period_ns']*1e-9<confirmation]
-    if not in_free or any(float(r['kp'+str(j)])!=0 or float(r['kd'+str(j)])!=0 for r in in_free):raise ValueError('Executed target PD was not zero during free dwell/ramp')
+    audit_zero_pd(commands,origin,w['free_begin_s'],guard['decision_elapsed_ns'],j)
     after=[r for r in commands if int(r['publish_ns'])-origin>guard['decision_elapsed_ns']+metadata['command_period_ns']]
     if not after or any(float(r['ramp_increment_nm'])!=0 for r in after):raise ValueError('Ramp continued after motion confirmation')
     if sign*(obs['q'][confirmed,j]-guard['baseline_q_rad'])<b['displacement_rad']*.8:raise ValueError('Confirmation displacement inconsistent with feedback')

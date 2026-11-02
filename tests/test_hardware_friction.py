@@ -15,6 +15,17 @@ from test_hardware_batch import FakeBackend
 ROOT=Path(__file__).resolve().parents[1]
 
 
+def test_zero_pd_audit_uses_actual_publication_not_late_planned_slot():
+    from casbot_calib.hardware_breakaway import audit_zero_pd
+    origin=1000000000;decision=8788430506
+    commands=[dict(planned_index=4000,publish_ns=origin+8000010000,kp0=0.,kd0=0.),
+              dict(planned_index=4394,publish_ns=origin+8788445070,kp0=21.,kd0=1.)]
+    audit_zero_pd(commands,origin,7.55,decision,0)
+    commands[0]['kp0']=1.
+    with pytest.raises(ValueError,match='target PD'):audit_zero_pd(commands,origin,7.55,decision,0)
+    with pytest.raises(ValueError,match='target PD'):audit_zero_pd([],origin,7.55,decision,0)
+
+
 @pytest.fixture
 def fixture(tmp_path,monkeypatch):
     preset,snapshot=make_inputs(tmp_path)

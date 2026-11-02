@@ -1,5 +1,5 @@
 #include "transport_common.hpp"
-#include <casbot_calib/arm_simulator.hpp>
+#include <casbot_calib/simulated_device.hpp>
 #include <algorithm>
 #include <cmath>
 #include <deque>
@@ -10,8 +10,7 @@ class MockHost : public rclcpp::Node {
   std::string experiment_,model_id_,clock_=bench::clock_id();
   std::array<std::string,14> names_;
   std::unique_ptr<casbot::ArmDynamics> model_;
-  std::unique_ptr<casbot::ArmSimulationSession> plant_;
-  std::deque<casbot::ArmSample> delivery_;
+  std::unique_ptr<casbot::SimulatedArmDevice> plant_;
   std::vector<Incoming> inbox_;
   std::optional<Incoming> latest_;
   casbot::ArmSample sample_{};
@@ -52,10 +51,8 @@ class MockHost : public rclcpp::Node {
   }
   void tick() {
     const auto tick=bench::now_ns();
-    auto chunk=plant_->advance_to(tick-epoch_);
-    for(auto& value:chunk.observations)delivery_.push_back(std::move(value));
-    while(!delivery_.empty() && delivery_.front().receive_ns<=tick-epoch_) {
-      sample_=std::move(delivery_.front());delivery_.pop_front();driver_receive_=tick;
+    for(auto& value:plant_->advance_to(tick-epoch_)) {
+      sample_=std::move(value);driver_receive_=tick;
       samples_<<sample_.sequence<<','<<sample_.sample_ns+epoch_<<','<<tick;
       bench::columns(samples_,sample_.q);bench::columns(samples_,sample_.dq);bench::columns(samples_,sample_.current);bench::columns(samples_,sample_.status);samples_<<'\n';
     }
@@ -74,23 +71,28 @@ class MockHost : public rclcpp::Node {
     if(fresh && adopted_sequence_!=last_sequence_) {adopted_sequence_=last_sequence_;++adopted_;event(bench::Event::ADOPTED,"latest_valid",&*latest_,tick);}
     if(!fresh && !watchdog_) {hold_=sample_.q;event(bench::Event::WATCHDOG,"mock_gravity_weak_damping",latest_?&*latest_:nullptr,tick);}
     watchdog_=!fresh;
-    Eigen::VectorXd effort(14);
-    if(fresh) {
-      const auto& c=latest_->command;
-      for(int j=0;j<14;++j)effort[j]=c.effort[j]+(c.mode==bench::Command::POSITION_PD?
-        c.kp[j]*(c.position[j]-sample_.q[j])+c.kd[j]*(c.velocity[j]-sample_.dq[j]):0.);
-    } else effort=model_->gravity(sample_.q)-.001*sample_.dq;
-    effort=effort.cwiseMax(-100.).cwiseMin(100.);
-    const auto write=bench::now_ns();
-    casbot::ArmCommand command{write-epoch_,hold_,Eigen::VectorXd::Zero(14),effort,Eigen::VectorXd::Zero(14),Eigen::VectorXd::Zero(14)};
-    if(device_pd_&&fresh&&latest_->command.mode==bench::Command::POSITION_PD) {
-      // Device-local feedback uses the existing core's PD/current response,
-      // rather than closing a second controller through ROS state feedback.
+    const bool local_pd=device_pd_&&fresh&&latest_->command.mode==bench::Command::POSITION_PD;
+    Eigen::VectorXd effort=Eigen::VectorXd::Zero(14);
+    casbot::ArmCommand command{0,hold_,Eigen::VectorXd::Zero(14),effort,Eigen::VectorXd::Zero(14),Eigen::VectorXd::Zero(14)};
+    if(local_pd) {
       const auto& c=latest_->command;
       for(int j=0;j<14;++j){command.q[j]=c.position[j];command.dq[j]=c.velocity[j];command.torque[j]=c.effort[j];command.kp[j]=c.kp[j];command.kd[j]=c.kd[j];}
+    } else {
+      if(fresh) {
+        const auto& c=latest_->command;
+        for(int j=0;j<14;++j)effort[j]=c.effort[j]+(c.mode==bench::Command::POSITION_PD?
+          c.kp[j]*(c.position[j]-sample_.q[j])+c.kd[j]*(c.velocity[j]-sample_.dq[j]):0.);
+      } else effort=model_->gravity(sample_.q)-.001*sample_.dq;
+      command.torque=effort.cwiseMax(-100.).cwiseMin(100.);
     }
+    const auto write=bench::now_ns();command.send_ns=write-epoch_;
     plant_->submit(command);
-    writes_<<tick<<','<<write<<','<<(fresh?adopted_sequence_:-1)<<','<<watchdog_;bench::columns(writes_,effort);writes_<<'\n';
+    writes_<<tick<<','<<write<<','<<(fresh?adopted_sequence_:-1)<<','<<watchdog_;
+    if(device_pd_) {
+      bench::columns(writes_,command.q);bench::columns(writes_,command.dq);bench::columns(writes_,command.torque);
+      bench::columns(writes_,command.kp);bench::columns(writes_,command.kd);
+    } else bench::columns(writes_,command.torque);
+    writes_<<'\n';
   }
   void publish() {
     if(!driver_receive_)return;
@@ -111,40 +113,15 @@ class MockHost : public rclcpp::Node {
     if(control_hz<10 || control_hz>2000 || feedback_hz<10 || feedback_hz>2000)throw std::invalid_argument("Invalid benchmark rate");
     inject_every_=declare_parameter<int>("inject_every",0);inject_delay_=declare_parameter<std::int64_t>("inject_delay_ns",0);
     if(inject_every_<0 || inject_delay_<0 || inject_delay_>500'000'000)throw std::invalid_argument("Invalid injection");
-    auto native=casbot::ArmDynamics::from_urdf(path).model();
-    if(native.joints.size()!=14)throw std::invalid_argument("Mock requires the declared nominal 14-axis model");
-    const auto inertia_scales=declare_parameter<std::vector<double>>("inertia_scales",std::vector<double>(14,1.));
-    if(inertia_scales.size()!=14)throw std::invalid_argument("14 synthetic inertia scales required");
-    for(int j=0;j<14;++j) {
-      if(!std::isfinite(inertia_scales[j])||inertia_scales[j]<.1||inertia_scales[j]>5.)throw std::invalid_argument("Bounded synthetic inertia scale required");
-      native.joints[j].body.inertia_com*=inertia_scales[j];
-    }
-    if(declare_parameter<bool>("zero_gravity",true))native.gravity_world.setZero();
-    // Opt-in SDK/H3 plant parameters; frozen historical defaults remain unchanged.
-    const auto viscous=declare_parameter<std::vector<double>>("friction_viscous",std::vector<double>(14,0.));
-    const auto coulomb=declare_parameter<std::vector<double>>("friction_coulomb",std::vector<double>(14,0.));
-    const auto static_friction=declare_parameter<std::vector<double>>("friction_static",std::vector<double>(14,0.));
-    if(viscous.size()!=14||coulomb.size()!=14||static_friction.size()!=14)throw std::invalid_argument("14 friction parameters required");
-    for(int j=0;j<14;++j) {
-      if(!std::isfinite(viscous[j])||!std::isfinite(coulomb[j])||!std::isfinite(static_friction[j])||viscous[j]<0||coulomb[j]<0||static_friction[j]<coulomb[j])throw std::invalid_argument("Invalid synthetic friction");
-      native.joints[j].friction.viscous=viscous[j];native.joints[j].friction.coulomb=coulomb[j];native.joints[j].friction.static_friction=static_friction[j];
-      native.joints[j].friction.stribeck_velocity=.005;
-    }
-    model_=std::make_unique<casbot::ArmDynamics>(native);
-    for(int j=0;j<14;++j)names_[j]=native.joints[j].name;
-    casbot::ArmSimulationConfig config;config.gain=Eigen::VectorXd::Constant(14,2.);
-    config.stiction_enabled=declare_parameter<bool>("stiction_enabled",false);
+    auto setup=casbot::simulated_arm_settings(path,[this](const auto& key,const auto& value){return declare_parameter<std::decay_t<decltype(value)>>(key,value);});
+    if(setup.model.joints.size()!=14)throw std::invalid_argument("Mock requires the declared nominal 14-axis model");
+    model_=std::make_unique<casbot::ArmDynamics>(setup.model);
+    for(int j=0;j<14;++j)names_[j]=setup.model.joints[j].name;
     device_pd_=declare_parameter<bool>("device_pd",false);
-    config.sample_period_ns=declare_parameter<std::int64_t>("sample_period_ns",1000000);
-    config.integration_ns=declare_parameter<std::int64_t>("integration_ns",50000);
-    config.current_tau=declare_parameter<double>("current_tau",.001);config.command_delay_ns=declare_parameter<std::int64_t>("drive_delay_ns",1'350'000);
-    config.feedback_delay_ns=declare_parameter<std::int64_t>("feedback_delay_ns",700'000);
-    const auto initial=declare_parameter<std::vector<double>>("initial_q",std::vector<double>(14,0.));
-    if(initial.size()!=14)throw std::invalid_argument("initial_q must contain 14 values");
-    hold_=Eigen::Map<const Eigen::VectorXd>(initial.data(),14);sample_.q=hold_;sample_.dq=Eigen::VectorXd::Zero(14);sample_.current=Eigen::VectorXd::Zero(14);sample_.status=Eigen::VectorXi::Zero(14);
-    plant_=std::make_unique<casbot::ArmSimulationSession>(*model_,config,hold_,sample_.dq,false);
+    hold_=setup.initial_q;sample_.q=hold_;sample_.dq=Eigen::VectorXd::Zero(14);sample_.current=Eigen::VectorXd::Zero(14);sample_.status=Eigen::VectorXi::Zero(14);
+    plant_=std::make_unique<casbot::SimulatedArmDevice>(*model_,setup.simulation,hold_);
     receives_=bench::log(output+"/host_events.csv","event_sequence,command_sequence,kind,reason,source_send_ns,receive_ns,decision_ns,event_publish_ns");
-    writes_=bench::log(output+"/host_writes.csv","tick_ns,write_ns,command_sequence,watchdog"+bench::indexed("effort"));
+    writes_=bench::log(output+"/host_writes.csv","tick_ns,write_ns,command_sequence,watchdog"+(device_pd_?bench::indexed("command_q")+bench::indexed("command_dq")+bench::indexed("feedforward_nm")+bench::indexed("kp")+bench::indexed("kd"):bench::indexed("effort")));
     samples_=bench::log(output+"/host_samples.csv","sequence,sample_ns,driver_receive_ns"+bench::indexed("q")+bench::indexed("dq")+bench::indexed("current")+bench::indexed("status"));
     events_=create_publisher<bench::Event>("events",bench::qos(true,1024));
     observations_=create_publisher<bench::Observation>("observations",bench::qos(declare_parameter<bool>("reliable",true),1));

@@ -80,7 +80,7 @@ def implementation():
     binary, sdk = field.executor_binary()
     base = Path(__file__).parent
     names = ['hardware_batch.py', 'hardware_field.py', 'sdk_connection.py', 'control_gains.py','hardware_friction.py','hardware_breakaway.py','staged_identification.py','staged_motion.py', 'collision.py',
-             'rigid_identification.py', 'dynamic_export.py','hardware_inertia.py','hardware_periodic.py','hardware_control.py','dynamics_problem.py']
+             'rigid_identification.py', 'dynamic_export.py','hardware_inertia.py','hardware_periodic.py','hardware_control.py','dynamics_problem.py','control_policy.py','sdk_process.py']
     return dict(sources={name: sha256(base / name) for name in names},
                 executor_sha256=sha256(binary), sdk=sdk, core_sha256=sha256(_core.__file__),
                 numpy_version=np.__version__)

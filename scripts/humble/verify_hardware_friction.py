@@ -92,6 +92,9 @@ def main():
         speeds_rad_s=dict(train=[.03,.06],validation=[.045]),transition_s=4.,settle_s=3.,speed_ramp_s=.75,
         plateau_trim_s=.5,inter_job_pause_s=.1)
     c['breakaway'].update(dwell_s=[.4],slopes_nm_s=[.12],ramp_s=1.3,recovery_hold_s=.8)
+    # Background joints have synthetic static friction .01 Nm. Kp >= 5
+    # bounds its static PD offset to .002 rad, inside the unchanged .003 guard.
+    c['breakaway']['hold_minimum_kp']=5.
     config_path=root/'h3.yaml';config_path.write_text(yaml.safe_dump(c))
     profile=yaml.safe_load(Path('configs/hardware_field.yaml').read_text())
     profile.update(collision_scene=str(Path('configs/collision_scene.yaml').resolve()),initial_hold_s=.15,final_hold_s=.15)

@@ -69,6 +69,7 @@ def main():
     c.update(joints=['left_shoulder_pitch_joint'],pose_offsets_rad=dict(train=[-.01],validation=[.01]),
         train_seeds=[401,402],validation_seeds=[501],period_s=8.,periods=3,discard_periods=1,
         amplitude_rad=[.08]*14,harmonics=12,settle_s=3.,transition_s=4.,inter_job_pause_s=.1)
+    c['holding']['hold_minimum_kp']=5. # Same background-friction fixture as H3.
     config=root/'h4.yaml';config.write_text(yaml.safe_dump(c))
     profile=yaml.safe_load(Path('configs/hardware_field.yaml').read_text())
     profile.update(collision_scene=str(Path('configs/collision_scene.yaml').resolve()),initial_hold_s=.15,final_hold_s=.15)

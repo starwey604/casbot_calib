@@ -6,6 +6,7 @@ from .data import write_json
 from .dual_model import nominal_dual_arm
 from .rigid_identification import model_from_parameters
 from .staged_collection import collect_trial,load_trial
+from .control_policy import pd_multipliers,scale_pd,select_pd_factor,comparison_reductions
 
 
 def load_candidate(path):
@@ -36,7 +37,7 @@ def _metrics(root,name,config):
 
 def _scale(factor):
     def transform(t,commands,meta):
-        commands[:,:,3]*=factor;commands[:,:,4]*=np.sqrt(factor)
+        commands[:,:,3],commands[:,:,4]=scale_pd(commands[:,:,3],commands[:,:,4],factor)
         return commands
     return transform
 
@@ -93,8 +94,8 @@ def _run_control(root,plant,config,profile,candidate,nominal,resume):
     if len(grid)!=5:raise ValueError('Exactly five predeclared PD candidates required')
     allowed=[r for r in grid if r['admissible']]
     if not allowed:raise RuntimeError('No PD candidate satisfies the declared constraints')
-    best=min(allowed,key=lambda x:x['aggregate_rmse_rad']);factor=best['kp_factor']
-    selection=dict(grid=grid,selected_kp_factor=factor,selected_kd_factor=float(np.sqrt(factor)),
+    factor=select_pd_factor([(r['kp_factor'],r['admissible'],r['aggregate_rmse_rad']) for r in grid])
+    selection=dict(grid=grid,selected_kp_factor=factor,selected_kd_factor=pd_multipliers(factor)[1],
         selection_objective='tracking RMSE on nominal feedforward tuning trajectory only',
         validation_used_for_selection=False,training_seed=227,validation_seed=327,
         common_gain_for_both_models=True,baseline_kp=config['drive']['kp'],baseline_kd=config['drive']['kd'])
@@ -111,9 +112,10 @@ def _run_control(root,plant,config,profile,candidate,nominal,resume):
     if len(results)!=4:raise ValueError('Four independent control groups required')
     n0=results['control_nominal_original']['aggregate_rmse_rad'];i0=results['control_identified_original']['aggregate_rmse_rad']
     n1=results['control_nominal_tuned']['aggregate_rmse_rad'];i1=results['control_identified_tuned']['aggregate_rmse_rad']
-    report=dict(passed=all(r['admissible'] for r in results.values()) and 1-i0/n0>=.2,groups=results,
-        fixed_pd_feedforward_rmse_reduction=1-i0/n0,nominal_model_pd_rmse_reduction=1-n1/n0,
-        identified_model_pd_rmse_reduction=1-i1/i0,selected_kp_factor=factor,
+    ff,pd_prior,pd_identified=comparison_reductions(n0,i0,n1,i1)
+    report=dict(passed=all(r['admissible'] for r in results.values()) and ff>=.2,groups=results,
+        fixed_pd_feedforward_rmse_reduction=ff,nominal_model_pd_rmse_reduction=pd_prior,
+        identified_model_pd_rmse_reduction=pd_identified,selected_kp_factor=factor,
         independent_validation=True,minimum_synthetic_fixed_pd_feedforward_reduction=.2,
         interpretation='same plant/reference/initial state/noise/limits; model and PD factors crossed; negative PD benefit retained if observed')
     write_json(root/'control_comparison.json',report)

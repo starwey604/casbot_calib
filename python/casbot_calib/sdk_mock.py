@@ -4,7 +4,6 @@ from importlib.resources import files
 import json
 import os
 from pathlib import Path
-import signal
 import subprocess
 import time
 import uuid
@@ -45,7 +44,7 @@ def mock_config(path):
     for key in ('drive_delay_ns', 'feedback_delay_ns'):
         if type(plant[key]) is not int or not 0 <= plant[key] <= 100000000: raise ValueError('Invalid native delay')
     if 'stiction_enabled' in plant and type(plant['stiction_enabled']) is not bool: raise ValueError('Boolean synthetic stiction required')
-    if type(plant.get('device_pd')) is not bool: raise ValueError('Explicit Mock PD backend required')
+    if plant.get('device_pd') is not True: raise ValueError('SDK five-field contract requires device-local PD')
     if 'inertia_scales' in plant:
         values=np.asarray(plant['inertia_scales'],dtype=float)
         if values.shape!=(14,) or not np.isfinite(values).all() or np.any(values<.1) or np.any(values>5.):raise ValueError('14 bounded synthetic inertia scales required')
@@ -60,10 +59,8 @@ def mock_config(path):
 
 
 def stop(process):
-    if process.poll() is None:
-        process.send_signal(signal.SIGINT)
-        try: process.wait(timeout=10)
-        except subprocess.TimeoutExpired: process.kill(); process.wait()
+    from .sdk_process import stop_process
+    return stop_process(process)
 
 
 class SDKMockSession(AbstractContextManager):
@@ -87,23 +84,25 @@ class SDKMockSession(AbstractContextManager):
         from .control_gains import nominal_pd_gains
         kp,kd=nominal_pd_gains(engine,q,omega,damping,self.config['servo_minimum_kp'],self.config['servo_minimum_kd'])
         if np.max(kp)>1000 or np.max(kd)>100: raise ValueError('Derived synthetic gains exceed declared range')
-        native = Path('install/humble-ros/casbot_calib_transport/lib/casbot_calib_transport/mock_host').resolve()
         server = Path(os.environ.get('CASBOT_VENDOR_INSTALL', 'install/vendor')).resolve()/'casbot_calib_vendor/lib/casbot_calib_vendor/sdk_mock_server'
-        for binary in (native, server):
-            if not binary.is_file(): raise FileNotFoundError('Build native ROS and optional SDK packages first: ' + str(binary))
+        if not server.is_file(): raise FileNotFoundError('Build optional SDK packages first: ' + str(server))
         protocol = self.root/'protocol'; protocol.mkdir(); plant_dir = self.root/'evaluation/plant'; plant_dir.mkdir(parents=True)
         server_dir = self.root/'evaluation/server'; server_dir.mkdir()
         model_path = str(files('casbot_calib').joinpath('assets/casbot_dual_arm_benchmark_nominal.urdf'))
         model_id = 'casbot_20251015_nominal:' + source['sha256'][:12]
-        common = dict(experiment_id='sdk_mock', model_id=model_id, model_path=model_path)
-        host_params = dict(common, output_dir=str(plant_dir), initial_q=q.tolist(), **self.config['plant'])
+        device_params = dict(self.config['plant'])
+        device_params['plant_control_hz'] = device_params.pop('control_hz')
+        device_params['plant_feedback_hz'] = device_params.pop('feedback_hz')
+        device_params.update(initial_q=q.tolist(),plant_output=str(plant_dir))
         keys = ('control_hz','publish_hz','cache_period_ns','interpolation_ns','watchdog_ns','internal_gravity','allow_effort','allow_custom_pd','effort_limit_nm')
-        server_params = dict(common, output=str(server_dir), endpoint_root=self.endpoint,
-            joint_names=[j.name for j in model.joints], kp=kp.tolist(), kd=kd.tolist(), **{k:self.config[k] for k in keys})
-        write_json(protocol/'behavior.json', dict(config=self.config, source_model_sha256=source['sha256'],
-            host_sha256=sha256(native), server_sha256=sha256(server), host_params=host_params, server_params=server_params,
-            assumptions=self.config['assumptions'], physical_device_semantics_verified=False,
-            public_feedback_sample_time_known=False, stop_service_available=False,
+        server_params = dict(experiment_id='sdk_mock',model_id=model_id,model_path=model_path,
+            output=str(server_dir),endpoint_root=self.endpoint,joint_names=[j.name for j in model.joints],
+            kp=kp.tolist(),kd=kd.tolist(),**{k:self.config[k] for k in keys},**device_params)
+        write_json(protocol/'behavior.json', dict(schema_version='casbot_sdk_mock_backend_v2',config=self.config,
+            backend='in_process_shared_SimulatedArmDevice',internal_ros_bridge=False,source_model_sha256=source['sha256'],
+            server_sha256=sha256(server),server_params=server_params,
+            assumptions=self.config['assumptions'],physical_device_semantics_verified=False,
+            public_feedback_sample_time_known=False,stop_service_available=False,
             internal_diagnostics_not_for_identification=True))
         seal(protocol)
         self.connection = mock_connection(self.endpoint, self.domain_id, sha256(protocol/'manifest.json'))
@@ -111,15 +110,10 @@ class SDKMockSession(AbstractContextManager):
         profile.update(collision_scene='scene.yaml', connection=self.connection)
         (self.root/'scene.yaml').write_text(yaml.safe_dump(self.profile['scene']), encoding='utf-8')
         self.client_profile.write_text(yaml.safe_dump(profile), encoding='utf-8')
-        def args(binary, params, namespace=None):
-            command = [str(binary), '--ros-args']
-            if namespace: command += ['-r', '__ns:='+namespace]
-            for key, value in params.items():
-                command += ['-p', key+':='+ (json.dumps(value) if isinstance(value,(list,bool)) else str(value))]
-            return command
+        from .sdk_process import ros_arguments
         env = dict(os.environ, ROS_DOMAIN_ID=str(self.domain_id), ROS_LOCALHOST_ONLY='1')
         try:
-            for name, command in [('host', args(native,host_params,self.endpoint+'/plant')), ('server',args(server,server_params,self.endpoint))]:
+            for name, command in [('server',ros_arguments(server,server_params,{'__ns':self.endpoint}))]:
                 stream=(self.root/(name+'.log')).open('x');self.logs.append(stream)
                 self.processes.append(subprocess.Popen(command, env=env, stdout=stream, stderr=subprocess.STDOUT))
             deadline=time.monotonic()+30
@@ -148,7 +142,7 @@ class SDKMockSession(AbstractContextManager):
 def serve_mock(config, output, domain_id, *, profile='configs/hardware_field.yaml', duration=None):
     if duration is not None and (not np.isfinite(duration) or duration<=0): raise ValueError('Positive Mock duration required')
     with SDKMockSession(config,output,domain_id,profile=profile) as session:
-        print('SDK Mock已就绪；H1/H2使用此profile：'+str(session.client_profile),flush=True)
+        print('SDK Mock已就绪；H1–H4共用此profile：'+str(session.client_profile),flush=True)
         deadline=time.monotonic()+duration if duration is not None else float('inf')
         try:
             while time.monotonic()<deadline:

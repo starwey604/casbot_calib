@@ -8,6 +8,7 @@ from . import hardware_field as field
 from .data import write_json
 from .hardware_friction import read
 from .vendor_identity import sha256
+from .control_policy import pd_multipliers,select_pd_factor,comparison_reductions
 
 
 def control_factor(root,job):
@@ -67,9 +68,9 @@ def freeze_selection(root,protocol,history):
     if len({r['periodic_reference_sha256'] for r in grid})!=1:raise ValueError('PD candidates used different periodic references')
     allowed=[r for r in grid if r['admissible']]
     if not allowed:return False
-    best=min(allowed,key=lambda r:r['aggregate_rmse_rad'])
-    folder.mkdir();write_json(folder/'report.json',dict(passed=True,selected_kp_factor=best['job']['kp_factor'],
-        selected_kd_factor=float(np.sqrt(best['job']['kp_factor'])),grid=grid,
+    factor=select_pd_factor([(r['job']['kp_factor'],r['admissible'],r['aggregate_rmse_rad']) for r in grid])
+    folder.mkdir();write_json(folder/'report.json',dict(passed=True,selected_kp_factor=factor,
+        selected_kd_factor=pd_multipliers(factor)[1],grid=grid,
         validation_used_for_selection=False,selection_objective='five-point tracking RMSE, same frozen prior feedforward',
         inertia_checkpoint_manifest_sha256=sha256(root/'inertia_checkpoint/manifest.json')))
     field.seal(folder);batch.event(root,'controller_selected',manifest_sha256=sha256(folder/'manifest.json'));return True
@@ -94,9 +95,10 @@ def control_result(root,protocol,history):
         repeat_changes={model:abs(value(model+'_original')-value(model+'_tuned')) for model in ('prior','identified')}
     model_change=baseline-identified
     interpretation=benefit_interpretation(model_change,repeat_changes)
+    ff,pd_prior,pd_identified=comparison_reductions(baseline,identified,tuned,value('identified_tuned'),denominator_floor=1e-15)
     return dict(available=True,passed=all(r['admissible'] for r in groups.values()),groups=groups,
-        fixed_pd_feedforward_rmse_reduction=1-identified/max(baseline,1e-15),prior_model_pd_rmse_reduction=1-tuned/max(baseline,1e-15),
-        identified_model_pd_rmse_reduction=1-value('identified_tuned')/max(identified,1e-15),
+        fixed_pd_feedforward_rmse_reduction=ff,prior_model_pd_rmse_reduction=pd_prior,
+        identified_model_pd_rmse_reduction=pd_identified,
         selection=selection,independent_control_trajectory=True,selected_gain_changed=gain_changed,
         pd_difference_interpretation='different configured gains; exploratory paired observations' if gain_changed else 'identical gains; measured differences are repeat variability, not PD tuning benefit',
         **interpretation,

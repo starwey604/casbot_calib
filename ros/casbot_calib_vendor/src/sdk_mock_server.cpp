@@ -1,14 +1,18 @@
-// SDK-shaped server; mock_host remains the sole ArmSimulationSession owner.
+// SDK-shaped device: one in-process shared simulator, public SDK endpoints only.
 #include "vendor_common.hpp"
+#include "async_csv.hpp"
 #include "sdk_position_ramp.hpp"
-#include <casbot_calib/arm_dynamics.hpp>
-#include <casbot_calib_interfaces/msg/joint_command.hpp>
-#include <casbot_calib_interfaces/msg/joint_observation.hpp>
+#include <casbot_calib/simulated_device.hpp>
 #include <crb_ros_msg/msg/upper_joint_data.hpp>
 #include <crb_ros_msg/msg/joint_state_data.hpp>
 #include <std_msgs/msg/string.hpp>
 #include <std_srvs/srv/set_bool.hpp>
 #include <limits>
+#include <mutex>
+#include <deque>
+#include <atomic>
+#include <thread>
+#include <exception>
 
 class SdkMockServer final:public rclcpp::Node {
  public:
@@ -37,22 +41,48 @@ class SdkMockServer final:public rclcpp::Node {
     declare_parameter<bool>("feedback_enabled",true);declare_parameter<bool>("reject_mode",false);
     declare_parameter<bool>("lose_mode",false);declare_parameter<int>("unstable_static_pairs",0);
     declare_parameter<double>("unstable_q0",.006);
-    events_=vendor::log(std::filesystem::path(output)/"server_events.csv","receive_ns,event");
-    commands_=vendor::log(std::filesystem::path(output)/"server_commands.csv","receive_ns"+vendor::columns("q")+vendor::columns("v")+vendor::columns("effort"));
-    references_=vendor::log(std::filesystem::path(output)/"server_references.csv","tick_ns,active"+vendor::columns("q")+vendor::columns("v")+vendor::columns("effort"));
-    publications_=vendor::log(std::filesystem::path(output)/"server_publications.csv","publish_ns,cache_sequence,cache_sample_ns,cache_driver_receive_ns,source_publication_sequence,duplicate_cache");
-    native_=create_publisher<casbot_calib_interfaces::msg::JointCommand>(root_+"/plant/commands",rclcpp::QoS(1).reliable());
+    events_.open(std::filesystem::path(output)/"server_events.csv","receive_ns,event",log_pool_);
+    commands_.open(std::filesystem::path(output)/"server_commands.csv","receive_ns"+vendor::columns("q")+vendor::columns("v")+vendor::columns("effort"),log_pool_);
+    references_.open(std::filesystem::path(output)/"server_references.csv","tick_ns,active"+vendor::columns("q")+vendor::columns("v")+vendor::columns("effort"),log_pool_);
+    publications_.open(std::filesystem::path(output)/"server_publications.csv","publish_ns,cache_sequence,cache_sample_ns,cache_driver_receive_ns,source_publication_sequence,duplicate_cache",log_pool_);
+    const auto plant_output=declare_parameter<std::string>("plant_output");
+    auto setup=casbot::simulated_arm_settings(path,[this](const auto& key,const auto& value){return declare_parameter<std::decay_t<decltype(value)>>(key,value);});
+    if(!declare_parameter<bool>("device_pd",true))throw std::runtime_error("SDK five-field contract requires device-local PD");
+    const auto plant_hz=declare_parameter<int>("plant_control_hz",1000),plant_feedback_hz=declare_parameter<int>("plant_feedback_hz",1000);
+    if(plant_hz<100||plant_hz>2000||plant_feedback_hz<100||plant_feedback_hz>2000)throw std::runtime_error("Invalid local device cadence");
+    device_=std::make_unique<casbot::SimulatedArmDevice>(casbot::ArmDynamics(setup.model),setup.simulation,setup.initial_q);
+    for(int j=0;j<14;++j)q_[j]=setup.initial_q[j];
+    device_commands_.open(std::filesystem::path(plant_output)/"device_commands.csv", "write_ns,local_pd"+vendor::columns("q")+vendor::columns("v")+vendor::columns("feedforward_nm")+vendor::columns("kp")+vendor::columns("kd"),log_pool_);
+    device_samples_.open(std::filesystem::path(plant_output)/"host_samples.csv", "sequence,sample_ns,driver_receive_ns"+vendor::columns("q")+vendor::columns("dq")+vendor::columns("current")+vendor::columns("status"),log_pool_);
+    epoch_=vendor::now();
+    const auto advance_device=[this]{
+      const auto now=vendor::now();
+      std::deque<casbot::ArmCommand> commands;
+      {std::lock_guard<std::mutex> lock(commands_mutex_);commands.swap(device_inbox_);}
+      for(const auto& command:commands)device_->submit(command);
+      auto samples=device_->advance_to(now-epoch_);
+      if(!samples.empty()) {
+        const auto available=vendor::now();
+        {std::lock_guard<std::mutex> lock(feedback_mutex_);
+          delivered_.sample=samples.back();delivered_.driver_receive_ns=available;have_delivered_=true;}
+        for(const auto& sample:samples) {
+          device_samples_<<sample.sequence<<','<<sample.sample_ns+epoch_<<','<<available;
+          vendor::values(device_samples_,sample.q);vendor::values(device_samples_,sample.dq);
+          vendor::values(device_samples_,sample.current);vendor::values(device_samples_,sample.status);device_samples_<<'\n';
+        }
+      }
+      if(now-last_samples_flush_>=20000000){device_samples_.flush();last_samples_flush_=now;}
+    };
+    plant_feedback_=create_wall_timer(std::chrono::nanoseconds(1000000000/plant_feedback_hz),[this]{
+      {std::lock_guard<std::mutex> lock(feedback_mutex_);if(plant_error_)std::rethrow_exception(plant_error_);if(!have_delivered_)return;latest_=delivered_;}
+      latest_.publish_sequence=++source_publication_sequence_;state_at_=latest_.driver_receive_ns;
+      for(int j=0;j<14;++j){q_[j]=latest_.sample.q[j];v_[j]=latest_.sample.dq[j];}
+      if(!have_state_){ramp_->reset(q_,vendor::now());have_state_=true;}
+    });
     feedback_=create_publisher<sensor_msgs::msg::JointState>(root_+"/joint_states",rclcpp::QoS(10).reliable());
     motion_feedback_=create_publisher<sensor_msgs::msg::JointState>(root_+"/motion/joint_state",rclcpp::QoS(10).reliable());
     debug_=create_publisher<crb_ros_msg::msg::JointStateData>(root_+"/motion/debug/joint_state",rclcpp::QoS(10).reliable());
     mode_=create_publisher<std_msgs::msg::String>(root_+"/motion/status",rclcpp::QoS(10).reliable());
-    observed_=create_subscription<casbot_calib_interfaces::msg::JointObservation>(root_+"/plant/observations",rclcpp::QoS(1).reliable(),
-      [this](casbot_calib_interfaces::msg::JointObservation::SharedPtr msg) {
-        if(msg->model_id!=model_id_||msg->experiment_id!=experiment_||std::vector<std::string>(msg->joint_names.begin(),msg->joint_names.end())!=names_)return;
-        latest_=*msg;state_at_=vendor::now();
-        for(int j=0;j<14;++j){q_[j]=msg->position[j];v_[j]=msg->velocity[j];}
-        if(!have_state_){ramp_->reset(q_,state_at_);have_state_=true;}
-      });
     upper_=create_subscription<crb_ros_msg::msg::UpperJointData>(root_+"/upper_body_debug/joint_cmd",rclcpp::QoS(1).reliable(),
       [this](crb_ros_msg::msg::UpperJointData::SharedPtr msg){command(*msg);});
     modes_=create_service<std_srvs::srv::SetBool>(root_+"/motion/upper_body_debug",
@@ -68,10 +98,32 @@ class SdkMockServer final:public rclcpp::Node {
     publish_=create_wall_timer(std::chrono::nanoseconds(1000000000/publish_hz),[this]{publish();});
     status_=create_wall_timer(std::chrono::milliseconds(20),[this]{
       std_msgs::msg::String msg;msg.data=active_?"mode: UPPER_BODY_DEBUG, state: STAND":"mode: READY, state: READY";mode_->publish(msg);
-      events_.flush();commands_.flush();references_.flush();publications_.flush();
+      events_.flush();commands_.flush();references_.flush();publications_.flush();device_commands_.flush();
     });
     record("ready_position_only_linear_ramp_assumed_no_stop_service");
+    // One physics owner, independent of ROS executor scheduling. Missed wall
+    // slots are skipped; virtual integration still advances every event.
+    plant_thread_=std::thread([this,advance_device,plant_hz]{
+      const auto period=std::chrono::nanoseconds(1000000000/plant_hz);
+      auto next=std::chrono::steady_clock::now();
+      try {
+        while(!plant_stop_) {
+          advance_device();next+=period;
+          const auto now=std::chrono::steady_clock::now();
+          if(next<now)next=now+period;
+          std::this_thread::sleep_until(next);
+        }
+      } catch(...) {std::lock_guard<std::mutex> lock(feedback_mutex_);plant_error_=std::current_exception();}
+    });
   }
+  void close() {
+    plant_stop_=true;if(plant_thread_.joinable())plant_thread_.join();
+    if(!log_pool_)return;
+    events_.flush();commands_.flush();references_.flush();publications_.flush();device_commands_.flush();device_samples_.flush();
+    log_pool_.reset(); // Drain all writes before checking errors or destroying streams.
+    events_.check();commands_.check();references_.check();publications_.check();device_commands_.check();device_samples_.check();
+  }
+  ~SdkMockServer() override {try{close();}catch(const std::exception& e){std::cerr<<e.what()<<'\n';}}
  private:
   std::vector<double> gains(const std::string& name,double maximum) {
     auto values=declare_parameter<std::vector<double>>(name);
@@ -112,18 +164,17 @@ class SdkMockServer final:public rclcpp::Node {
       } else initial_stable_at_=0;
     }
     const auto reference=ramp_->at(now);
-    casbot_calib_interfaces::msg::JointCommand cmd;cmd.experiment_id=experiment_;cmd.model_id=model_id_;cmd.clock_id=clock_;
-    cmd.sequence=++sequence_;cmd.send_ns=now;cmd.valid_for_ns=100000000;cmd.mode=cmd.POSITION_PD;
+    casbot::ArmCommand cmd{now-epoch_,Eigen::VectorXd(14),Eigen::VectorXd(14),Eigen::VectorXd(14),Eigen::VectorXd(14),Eigen::VectorXd(14)};
     Eigen::Map<const Eigen::VectorXd> q(q_.data(),14);
-    // Inactive protection hold is synthetic, distinct from active SDK commands.
     const Eigen::VectorXd g=(!active_||awaiting_first_command_||gravity_)?workspace_->gravity(q):Eigen::VectorXd::Zero(14);
     for(int j=0;j<14;++j) {
-      const auto p=custom_pd_?custom_kp_[j]:kp_[j],d=custom_pd_?custom_kd_[j]:kd_[j];
-      cmd.joint_names[j]=names_[j];
-      cmd.position[j]=reference[j];cmd.velocity[j]=target_v_[j];cmd.kp[j]=p;cmd.kd[j]=d;
-      cmd.effort[j]=std::clamp(g[j]+feedforward_[j],-effort_limit_,effort_limit_);
+      cmd.q[j]=reference[j];cmd.dq[j]=target_v_[j];cmd.kp[j]=custom_pd_?custom_kp_[j]:kp_[j];cmd.kd[j]=custom_pd_?custom_kd_[j]:kd_[j];
+      cmd.torque[j]=std::clamp(g[j]+feedforward_[j],-effort_limit_,effort_limit_);
     }
-    native_->publish(cmd);
+    std::int64_t written;
+    {std::lock_guard<std::mutex> lock(commands_mutex_);written=vendor::now();cmd.send_ns=written-epoch_;device_inbox_.push_back(cmd);}
+    device_commands_<<written<<",1";vendor::values(device_commands_,cmd.q);vendor::values(device_commands_,cmd.dq);
+    vendor::values(device_commands_,cmd.torque);vendor::values(device_commands_,cmd.kp);vendor::values(device_commands_,cmd.kd);device_commands_<<'\n';
     references_<<now<<','<<active_;vendor::values(references_,reference);vendor::values(references_,target_v_);vendor::values(references_,feedforward_);references_<<'\n';
     if(!have_cache_||now-cache_at_>=cache_period_){cache_=latest_;cache_at_=now;have_cache_=true;}
   }
@@ -131,32 +182,41 @@ class SdkMockServer final:public rclcpp::Node {
     const auto now=vendor::now();
     if(!have_cache_||now-state_at_>20000000||!get_parameter("feedback_enabled").as_bool())return;
     sensor_msgs::msg::JointState msg;msg.header.stamp=this->now();msg.name=names_;
-    msg.position.assign(cache_.position.begin(),cache_.position.end());msg.velocity.assign(cache_.velocity.begin(),cache_.velocity.end());
-    msg.effort.assign(cache_.estimated_effort.begin(),cache_.estimated_effort.end());
+    msg.position.assign(cache_.sample.q.data(),cache_.sample.q.data()+14);msg.velocity.assign(cache_.sample.dq.data(),cache_.sample.dq.data()+14);
+    msg.effort.assign(cache_.sample.current.data(),cache_.sample.current.data()+14);
+    for(auto& value:msg.effort)value*=2.;
     if(inject_pair_&&std::abs(msg.position[0]-get_parameter("unstable_q0").as_double())<.0005&&std::abs(msg.velocity[0])<.01)msg.velocity[0]=.02;
     msg.name.push_back("waist_yaw_joint");msg.position.push_back(.17);msg.velocity.push_back(0);msg.effort.push_back(0);
     feedback_->publish(msg);motion_feedback_->publish(msg);
     crb_ros_msg::msg::JointStateData debug;debug.header=msg.header;debug.name=msg.name;debug.position=msg.position;debug.velocity=msg.velocity;debug.effort=msg.effort;
     debug.kp=custom_pd_?custom_kp_:kp_;debug.kd=custom_pd_?custom_kd_:kd_;debug.kp.push_back(0);debug.kd.push_back(0);debug_->publish(debug);
-    publications_<<now<<','<<cache_.sequence<<','<<cache_.sample_ns<<','<<cache_.driver_receive_ns<<','<<cache_.publish_sequence<<','<<(previous_cache_==cache_.sequence)<<'\n';
-    previous_cache_=cache_.sequence;
+    publications_<<now<<','<<cache_.sample.sequence<<','<<cache_.sample.sample_ns+epoch_<<','<<cache_.driver_receive_ns<<','<<cache_.publish_sequence<<','<<(previous_cache_==static_cast<std::uint64_t>(cache_.sample.sequence))<<'\n';
+    previous_cache_=cache_.sample.sequence;
   }
   std::string root_,model_id_,experiment_,clock_=vendor::clock_id();std::vector<std::string> names_;
   std::vector<double> kp_,kd_,custom_kp_,custom_kd_;std::array<double,14> q_{},v_{},target_v_{},feedforward_{};
   std::int64_t state_at_=0,cache_at_=0,last_command_=0,cache_period_=0,watchdog_=0,initial_stable_at_=0;
-  std::uint64_t sequence_=0,previous_cache_=std::numeric_limits<std::uint64_t>::max();
+  std::int64_t epoch_=0,last_samples_flush_=0;
+  std::uint64_t source_publication_sequence_=0,previous_cache_=std::numeric_limits<std::uint64_t>::max();
   bool have_state_=false,have_cache_=false,active_=false,inject_pair_=false,custom_pd_=false,gravity_=false,allow_effort_=false,allow_pd_=false,initial_ready_=false,awaiting_first_command_=false;
   double effort_limit_=100.;
-  casbot_calib_interfaces::msg::JointObservation latest_,cache_;
+  struct DeviceFrame {casbot::ArmSample sample;std::int64_t driver_receive_ns=0;std::uint64_t publish_sequence=0;};
+  DeviceFrame latest_,cache_,delivered_;
+  bool have_delivered_=false;
+  std::mutex commands_mutex_,feedback_mutex_;
+  std::deque<casbot::ArmCommand> device_inbox_;
+  std::atomic<bool> plant_stop_{false};
+  std::exception_ptr plant_error_;
+  std::thread plant_thread_;
+  std::unique_ptr<casbot::SimulatedArmDevice> device_;
   std::unique_ptr<SdkPositionRamp> ramp_;std::unique_ptr<casbot::ArmDynamics> engine_;std::unique_ptr<casbot::ArmWorkspace> workspace_;
-  std::ofstream events_,commands_,references_,publications_;
-  rclcpp::Publisher<casbot_calib_interfaces::msg::JointCommand>::SharedPtr native_;
+  std::shared_ptr<spdlog::details::thread_pool> log_pool_=std::make_shared<spdlog::details::thread_pool>(1024,1);
+  AsyncCsv events_,commands_,references_,publications_,device_commands_,device_samples_;
   rclcpp::Publisher<sensor_msgs::msg::JointState>::SharedPtr feedback_,motion_feedback_;
   rclcpp::Publisher<crb_ros_msg::msg::JointStateData>::SharedPtr debug_;
   rclcpp::Publisher<std_msgs::msg::String>::SharedPtr mode_;
-  rclcpp::Subscription<casbot_calib_interfaces::msg::JointObservation>::SharedPtr observed_;
   rclcpp::Subscription<crb_ros_msg::msg::UpperJointData>::SharedPtr upper_;
   rclcpp::Service<std_srvs::srv::SetBool>::SharedPtr modes_;
-  rclcpp::TimerBase::SharedPtr control_,publish_,status_;
+  rclcpp::TimerBase::SharedPtr control_,publish_,status_,plant_feedback_;
 };
-int main(int argc,char** argv){rclcpp::init(argc,argv);try{auto node=std::make_shared<SdkMockServer>();rclcpp::spin(node);node.reset();rclcpp::shutdown();return 0;}catch(const std::exception& e){std::cerr<<e.what()<<'\n';rclcpp::shutdown();return 1;}}
+int main(int argc,char** argv){rclcpp::init(argc,argv);try{auto node=std::make_shared<SdkMockServer>();rclcpp::spin(node);node->close();node.reset();rclcpp::shutdown();return 0;}catch(const std::exception& e){std::cerr<<e.what()<<'\n';rclcpp::shutdown();return 1;}}

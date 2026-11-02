@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""H1/H2 through the unified SDK server and existing native mechanical host."""
+"""H1/H2 through the SDK server with its shared in-process mechanical device."""
 import argparse
 import csv
 import json
@@ -98,7 +98,10 @@ def reference(root,engine,source):
 def main():
     parser=argparse.ArgumentParser(description=__doc__);parser.add_argument('--output',type=Path,required=True)
     parser.add_argument('--h2',action='store_true');parser.add_argument('--render',action='store_true')
-    args=parser.parse_args();root=args.output.resolve();root.mkdir(parents=True,exist_ok=False)
+    parser.add_argument('--discovery-only',action='store_true',help='Run only the bounded service-discovery regression')
+    args=parser.parse_args()
+    if args.discovery_only and args.h2:parser.error('--discovery-only and --h2 are exclusive')
+    root=args.output.resolve();root.mkdir(parents=True,exist_ok=False)
     domain=220+int(uuid.uuid4().hex[:2],16)%10
     os.environ['ROS_DOMAIN_ID']=str(domain);os.environ['ROS_LOCALHOST_ONLY']='1'
     from casbot_calib.sdk_mock import SDKMockSession
@@ -116,16 +119,24 @@ def main():
     with SDKMockSession('configs/sdk_mock.yaml',root/'mock',domain,profile=profile) as session:
         admin=MockAdmin(session)
         try:
+            checks['single_shared_device_process']=len(session.processes)==1
+            checks['no_internal_plant_ros_transport']=not any(name.startswith(session.endpoint+'/plant/') for name,_ in admin.node.get_topic_names_and_types())
             profile=session.client_profile;config=load_profile(profile)
             remaps=connection_remaps(config,domain)
             snap=run_executor(config,root/'snapshot',domain,snapshot=True)
             checks['snapshot_read_only']=snap['passed'] and admin['received']==admin['mode_calls']==0
             prepare_jog(profile,root/'snapshot',root/'jog_plan',names[0],.2)
+            if args.discovery_only:
+                checks.update(verify_service_discovery(root,admin,config,domain,remaps))
+                write_json(root/'verification.json',dict(passed=all(checks.values()),checks=checks,
+                    domain=domain,local_only=True,physical_device_tested=False,scope='bounded SDK service discovery only'))
+                return 0 if all(checks.values()) else 1
             jog=execute_field(root/'jog_plan',root/'jog_capture',domain)
             checks['single_axis_jog']=jog['passed']
             if not jog['passed']:raise RuntimeError('Physical SDK Mock jog failed; inspect retained capture')
             jr=analyse_field(root/'jog_plan',root/'jog_capture',root/'jog_analysis')
             checks['jog_response_diagnostic']=jr['passed'] and jr['aggregate_response_lag_ms'] is not None
+            checks.update(verify_service_discovery(root,admin,config,domain,remaps))
             prepare_field(profile,preset,root/'snapshot',root/'plan')
             run=execute_field(root/'plan',root/'capture',domain)
             checks['real_executor_normal_path']=run['passed'] and run['returncode']==0
@@ -155,10 +166,48 @@ def main():
     # The client's raw/normal records still carry no acquisition-time claim.
     write_json(root/'verification.json',dict(passed=all(checks.values()),checks=checks,domain=domain,
         local_only=True,physical_device_tested=False,hardware_commands_on_public_network=False,
-        fixture='SDK server + existing ArmSimulationSession host; declared local PD and configured compensation; position-only linear ramp',
+        fixture='Single SDK server with shared SimulatedArmDevice; device-local PD and configured compensation; position-only linear ramp',
         native_truth_used_by_client=False,public_stamp_is_acquisition=False,
         reference_tick_hz=1e9/np.mean(np.diff(references['tick_ns']))))
     return 0 if all(checks.values()) else 1
+
+
+def verify_service_discovery(root,admin,config,domain,remaps):
+    """Exercise late/missing services without granting a motion request."""
+    from std_srvs.srv import SetBool
+    from casbot_calib.hardware_field import run_executor
+    config=dict(config);config.pop('connection',None)
+    target=admin.session.endpoint+'/delayed_mode'
+    remaps=dict(remaps);remaps['/motion/upper_body_debug']=target
+    output=root/'delayed_service';services=[];errors=[]
+    before=admin['received']
+    def create_late():
+        try:
+            deadline=time.monotonic()+10
+            events=output/'execution/events.csv'
+            while not events.exists() or ',WAIT_FEEDBACK,startup' not in events.read_text():
+                if time.monotonic()>deadline:raise TimeoutError('Executor did not start')
+                time.sleep(.01)
+            time.sleep(.4)
+            def reject(request,response):response.success=False;return response
+            services.append(admin.node.create_service(SetBool,target,reject))
+        except Exception as error:errors.append(str(error))
+    worker=Thread(target=create_late);worker.start()
+    try:
+        delayed=run_executor(config,output,domain,plan=root/'jog_plan/position_plan.csv',local_remaps=remaps)
+    finally:
+        worker.join(timeout=12)
+        for service in services:admin.node.destroy_service(service)
+    with (output/'execution/events.csv').open() as stream:events=list(csv.DictReader(stream))
+    entering=next((row for row in events if row['state']=='ENTERING'),None)
+    delayed_ok=not errors and delayed.get('fault')=='mode_rejected' and entering is not None and (
+        int(entering['receive_ns'])-int(events[0]['receive_ns'])>=400000000) and admin['received']==before
+    remaps['/motion/upper_body_debug']=admin.session.endpoint+'/missing_mode'
+    missing=run_executor(config,root/'missing_service',domain,plan=root/'jog_plan/position_plan.csv',local_remaps=remaps)
+    with (root/'missing_service/execution/events.csv').open() as stream:events=list(csv.DictReader(stream))
+    missing_ok=missing.get('fault')=='required_service_unavailable' and (
+        int(events[-1]['receive_ns'])-int(events[0]['receive_ns'])>=10000000000) and admin['received']==before
+    return dict(late_service_discovery_waits_without_commands=delayed_ok,missing_service_times_out_without_commands=missing_ok)
 
 
 def verify_truth_isolation(root):

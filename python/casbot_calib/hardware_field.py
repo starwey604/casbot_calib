@@ -9,9 +9,6 @@ from importlib.resources import files
 import json
 import os
 from pathlib import Path
-import signal
-import subprocess
-import time
 import numpy as np
 import yaml
 from .collision import nominal_profile, certify_polyline
@@ -111,13 +108,10 @@ def run_executor(config, output, domain_id, *, snapshot=False, plan=None, timeou
     values['output'] = str(root / 'execution')
     if not snapshot:
         values.update(plan_file=str(Path(plan).resolve()), lower=[j.lower for j in engine.model.joints], upper=[j.upper for j in engine.model.joints])
-    command = [str(binary), '--ros-args']
-    for key, value in values.items():
-        command += ['-p', key + ':=' + ("''" if value == '' else json.dumps(value) if isinstance(value, (bool, list)) else str(value))]
-    if local_remaps:
-        if any(not target.startswith('/casbot_calib_s2_') for target in local_remaps.values()):
-            raise ValueError('Integration remaps require isolated private endpoints')
-        for first, second in local_remaps.items(): command += ['-r', first + ':=' + second]
+    from .sdk_process import ros_arguments,recording_process,run_process
+    if local_remaps and any(not target.startswith('/casbot_calib_s2_') for target in local_remaps.values()):
+        raise ValueError('Integration remaps require isolated private endpoints')
+    command=ros_arguments(binary,values,local_remaps)
     write_json(root / 'request.json', dict(config=config, domain_id=domain_id, snapshot_only=snapshot,
         executor_sha256=sha256(binary), sdk=identity, local_contract_remaps=local_remaps,
         source_plan_csv_sha256=sha256(plan) if plan is not None else None,
@@ -130,45 +124,12 @@ def run_executor(config, output, domain_id, *, snapshot=False, plan=None, timeou
         robot_state_topic='', debug_topic='')
     observation_path = root / 'observation.yaml'; observation_path.write_text(yaml.safe_dump(observation))
     import sys
-    interruption = None
-    with (root / 'recorder.log').open('x') as recorder_log, (root / 'process.log').open('x') as log:
-        recorder = subprocess.Popen([sys.executable, '-m', 'casbot_calib.cli', 'vendor-capture', '--config', str(observation_path),
-            '--output', str(root / 'raw_state'), '--duration', str(timeout_s + 5), '--domain-id', str(domain_id),
-            '--scope', 'localhost_contract_mock' if local_remaps else 'hardware_read_only'], env=environment,
-            stdout=recorder_log, stderr=subprocess.STDOUT)
-        process = None
-        try:
-            deadline = time.monotonic() + 10
-            while not (root / 'raw_state/raw/recorder.json').exists():
-                if recorder.poll() is not None or time.monotonic() > deadline:
-                    raise RuntimeError('Raw field recorder failed before any command process started')
-                time.sleep(.02)
-            process = subprocess.Popen(command, env=environment, stdout=log, stderr=subprocess.STDOUT)
-            try:
-                execution_deadline = time.monotonic() + timeout_s
-                while process.poll() is None:
-                    if recorder.poll() is not None:
-                        interruption = 'raw_recorder_exited'; break
-                    if time.monotonic() > execution_deadline:
-                        interruption = 'execution_timeout'; break
-                    time.sleep(.02)
-            except KeyboardInterrupt:
-                interruption = 'user_interrupt'
-            if process.poll() is None:
-                process.send_signal(signal.SIGINT)
-                try: code = process.wait(timeout=10)
-                except subprocess.TimeoutExpired:
-                    process.kill(); code = process.wait()
-            else: code = process.returncode
-        finally:
-            if process is not None and process.poll() is None:
-                process.send_signal(signal.SIGINT)
-                try: process.wait(timeout=10)
-                except subprocess.TimeoutExpired: process.kill(); process.wait()
-            if recorder.poll() is None:
-                recorder.send_signal(signal.SIGINT)
-                try: recorder.wait(timeout=10)
-                except subprocess.TimeoutExpired: recorder.kill(); recorder.wait()
+    recorder_command=[sys.executable,'-m','casbot_calib.cli','vendor-capture','--config',str(observation_path),
+        '--output',str(root/'raw_state'),'--duration',str(timeout_s+5),'--domain-id',str(domain_id),
+        '--scope','localhost_contract_mock' if local_remaps else 'hardware_read_only']
+    with recording_process(recorder_command,environment,root/'recorder.log',root/'raw_state/raw/recorder.json') as recorder:
+        process_result=run_process(command,environment,root/'process.log',timeout_s=timeout_s,recorder=recorder)
+    code=process_result.returncode;interruption=process_result.interruption
     path = root / 'execution/result.json'
     result = json.loads(path.read_text()) if path.exists() else dict(passed=False, reason='executor_did_not_finish')
     if interruption is not None: result['passed'] = False

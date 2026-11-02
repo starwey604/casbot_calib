@@ -3,9 +3,7 @@ import json
 import os
 from pathlib import Path
 import signal
-import subprocess
 import sys
-import time
 import numpy as np
 import yaml
 from .vendor_data import load_config
@@ -56,20 +54,10 @@ def executor_binary():
 def _run(binary, params, output, domain_id, log):
     if not 0<=domain_id<=232: raise ValueError('Explicit valid ROS domain required')
     params=dict(params,output=str(Path(output).resolve()))
-    args=[str(binary),'--ros-args']
-    for key,value in params.items():
-        encoded=json.dumps(value) if isinstance(value,(bool,list)) else str(value)
-        args+=['-p',key+':='+encoded]
-    with Path(log).open('x') as stream:
-        process=subprocess.Popen(args,env=dict(os.environ,ROS_DOMAIN_ID=str(domain_id),ROS_LOCALHOST_ONLY='1'),stdout=stream,stderr=subprocess.STDOUT)
-        try: code=process.wait(timeout=60)
-        except KeyboardInterrupt:
-            process.send_signal(signal.SIGINT);code=process.wait(timeout=5)
-        except subprocess.TimeoutExpired:
-            process.send_signal(signal.SIGTERM)
-            try: code=process.wait(timeout=5)
-            except subprocess.TimeoutExpired: process.kill();code=process.wait()
-    return code
+    from .sdk_process import ros_arguments,run_process
+    result=run_process(ros_arguments(binary,params),dict(os.environ,ROS_DOMAIN_ID=str(domain_id),ROS_LOCALHOST_ONLY='1'),
+        log,timeout_s=60,timeout_signal=signal.SIGTERM,stop_timeout_s=5)
+    return result.returncode
 
 
 def _params(config,names,root):
@@ -178,22 +166,17 @@ def execute_position(plan,output):
     output=Path(output).resolve();output.mkdir(parents=True,exist_ok=False)
     observation=dict(metadata['observation'],joint_topic=params['joint_topic'],mode_topic=params['mode_topic'],debug_topic='',robot_state_topic='')
     (output/'observation-config.yaml').write_text(yaml.safe_dump(observation))
-    with (output/'recorder.log').open('x') as log:
-        recorder=subprocess.Popen([sys.executable,'-m','casbot_calib.cli','vendor-capture','--config',str(output/'observation-config.yaml'),
-            '--output',str(output/'raw_state'),'--duration','60','--domain-id',str(metadata['domain_id']),'--scope','localhost_contract_mock'],stdout=log,stderr=subprocess.STDOUT)
-        try:
-            deadline=time.monotonic()+5
-            while not (output/'raw_state/raw/recorder.json').exists():
-                if recorder.poll() is not None or time.monotonic()>deadline:raise RuntimeError('Read-only recorder did not start; no commands issued')
-                time.sleep(.01)
-            code=_run(binary,dict(params,snapshot_only=False,plan_file=str(plan/'position_plan.csv'),lower=limits[:,0].tolist(),upper=limits[:,1].tolist()),
-                      output/'execution',metadata['domain_id'],output/'process.log')
-        finally:
-            if recorder.poll() is None:
-                recorder.send_signal(signal.SIGINT)
-                try:recorder.wait(timeout=5)
-                except subprocess.TimeoutExpired:recorder.kill();recorder.wait()
+    from .sdk_process import ros_arguments,recording_process,run_process
+    environment=dict(os.environ,ROS_DOMAIN_ID=str(metadata['domain_id']),ROS_LOCALHOST_ONLY='1')
+    recorder_command=[sys.executable,'-m','casbot_calib.cli','vendor-capture','--config',str(output/'observation-config.yaml'),
+        '--output',str(output/'raw_state'),'--duration','60','--domain-id',str(metadata['domain_id']),'--scope','localhost_contract_mock']
+    values=dict(params,output=str(output/'execution'),snapshot_only=False,plan_file=str(plan/'position_plan.csv'),lower=limits[:,0].tolist(),upper=limits[:,1].tolist())
+    with recording_process(recorder_command,environment,output/'recorder.log',output/'raw_state/raw/recorder.json',ready_timeout_s=5,stop_timeout_s=5) as recorder:
+        executed=run_process(ros_arguments(binary,values),environment,output/'process.log',timeout_s=60,
+            recorder=recorder,timeout_signal=signal.SIGTERM,stop_timeout_s=5)
+    code=executed.returncode
     result=json.loads((output/'execution/result.json').read_text()) if (output/'execution/result.json').exists() else dict(passed=False,reason='executor_failed_before_completion')
+    if executed.interruption is not None:result.update(passed=False,supervisor_interruption=executed.interruption)
     result.update(returncode=code,plan=str(plan),plan_manifest_sha256=sha256(plan/'manifest.json'),hardware_executable=False)
     (output/'capture.json').write_text(json.dumps(result,indent=2)+'\n')
     paths=['capture.json','process.log','recorder.log','observation-config.yaml']+[str(p.relative_to(output)) for p in sorted((output/'execution').glob('*'))]

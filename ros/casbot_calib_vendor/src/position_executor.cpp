@@ -64,7 +64,7 @@ class PositionExecutor final : public rclcpp::Node {
     max_velocity_=declare_parameter<double>("maximum_velocity_rad_s",.5);
     vel_scale_=declare_parameter<double>("vel_scale",.1);
     period_=declare_parameter<std::int64_t>("command_period_ns",2000000);
-    if(max_age_<=0||mode_age_<=0||timeout_<=0||period_<1000000||period_>10000000||tolerance_<=0||tracking_<=0||max_velocity_<=0||vel_scale_<=0||vel_scale_>1)
+    if(max_age_<=0||mode_age_<=0||timeout_<=0||startup_timeout_<=0||period_<1000000||period_>10000000||tolerance_<=0||tracking_<=0||max_velocity_<=0||vel_scale_<=0||vel_scale_>1)
       throw std::runtime_error("Invalid execution limits");
     if(feedback_type=="sensor_msgs/msg/JointState")
       sub_=create_subscription<sensor_msgs::msg::JointState>(joint,rclcpp::QoS(10).reliable(),[this](sensor_msgs::msg::JointState::SharedPtr msg) {receive(*msg);});
@@ -150,7 +150,12 @@ class PositionExecutor final : public rclcpp::Node {
         if(mode_!="mode: READY, state: READY"&&mode_!="mode: IDLE_MODE, state: STAND") {fault("unexpected_start_mode");return;}
         if(hardware_&&count_publishers(command_topic_)>1) {fault("competing_command_publisher");return;}
         for(int j=0;j<14;++j) if(std::abs(state_.q[j]-plan_[0][j+1])>tolerance_) {fault("start_pose_changed");return;}
-        if(!mode_client_->service_is_ready()||(!hardware_&&!stop_client_->service_is_ready())) {fault("required_service_unavailable");return;}
+        // Topic and service discovery are independent. Stay read-only until
+        // all required services appear, bounded by the existing startup limit.
+        if(!mode_client_->service_is_ready()||(!hardware_&&!stop_client_->service_is_ready())) {
+          if(now-began_>startup_timeout_)fault("required_service_unavailable");
+          return;
+        }
         mode_future_=request(mode_client_,true); event("ENTERING","request_upper_debug");
       } else if(now-began_>startup_timeout_) fault("initial_feedback_or_mode_timeout");
       return;
