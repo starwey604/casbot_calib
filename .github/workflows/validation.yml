@@ -17,6 +17,8 @@ jobs:
       MPLBACKEND: Agg
     steps:
       - uses: actions/checkout@v7
+        with:
+          lfs: true
       - uses: ilammy/msvc-dev-cmd@v1
         if: runner.os == 'Windows'
       - uses: conda-incubator/setup-miniconda@v4
@@ -60,6 +62,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - run: bash scripts/humble/install_system.sh
+      - run: git lfs install --local && git lfs pull
       - run: bash scripts/humble/setup_python.sh
       - run: bash scripts/humble/run.sh bash scripts/humble/validate.sh artifacts/humble_validation
       - run: bash scripts/humble/run.sh bash scripts/humble/ros.sh casbot-calib ros-benchmark --output artifacts/humble_validation/ros_stream

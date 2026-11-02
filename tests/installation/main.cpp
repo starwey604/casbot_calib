@@ -3,7 +3,18 @@
 #include <casbot_calib/trical.hpp>
 #include <casbot_calib/trical_mock.hpp>
 #include <iostream>
+#include <filesystem>
 int main() {
+#ifdef CASBOT_CALIB_MODEL_DIRECTORY
+  const auto sources=std::filesystem::path(CASBOT_CALIB_MODEL_DIRECTORY)/"casbot_hl12p1_dvt2"/"source";
+  const std::vector<std::pair<std::string,std::size_t>> variants{{"a2",51},{"a2_ff",29},{"b1",40},{"b2",51},{"b3",29}};
+  for(const auto& variant:variants) {
+    const auto model=casbot::ArmDynamics::from_urdf((sources/variant.first/"robot_description_formatted.urdf").string());
+    if(model.model().joints.size()!=variant.second)return 5;
+  }
+  if(!std::filesystem::is_regular_file(sources/"assets/collision/CASBOTHL12/base_link.obj"))return 6;
+  std::cout<<"Installed DVT2 sources: five variants loaded from "<<sources<<'\n';
+#endif
   casbot::TricalCalibration calibration;casbot::ArmPose sensor;
   const Eigen::Vector3d displacement(.001,-.002,.003);
   if((casbot::trical_readings(sensor,displacement,calibration)-displacement).norm()>1e-14) return 1;

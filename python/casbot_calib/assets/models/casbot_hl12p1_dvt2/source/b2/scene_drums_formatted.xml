@@ -1,0 +1,76 @@
+<?xml version="1.0" ?>
+<mujoco model="scene">
+
+	<include file="mujoco_description_formatted.xml"/>
+	<!--
+		Drums Scene: seated HL12P1 B3 on a drum throne, kit in front.
+		Canonical Robot is included only in B3 scene_drums_formatted.xml.
+		Mesh paths are relative to mjcf/casbot_hl12p1_{dvt2|evt1}/ (formatted location).
+
+		Scale: kit meshes use uniform meshscale 0.7 (scene-side; OBJ not re-exported).
+		Unscaled kit AABB was ~2.22 x 2.81 x 1.86 m vs standing robot ~1.63 m tall.
+		Kit body is translated in XY toward the stool/robot so snare/toms sit in
+		the lap/reach zone. Sit keyframe puts the left foot on the hi-hat pedal
+		(MetalBits hull drum_kit_metal_col_021); right foot stays on the floor.
+		Kit collision is per-piece convex hulls (convert_glb.py), not one hull around
+		the whole MainParts/MetalBits mesh — MuJoCo mesh geoms collide as convex hulls.
+
+		Sitting: Scene keyframe "sit" uses B3's 36 qpos values (no hand joints):
+		hip/knee/ankle sit qpos + free-joint z, plus
+		FIXED weld (base_anchor + base_weld, same mechanism as hang-drop) at sitting
+		pelvis height. YAML base_constraint.initial_mode remains inherit.
+		Launch injects hardware param initial_keyframe=sit for scene:=drums only.
+		No sit FSM / Canonical Robot fork. Kit OBJs have the GLB throne stripped
+		(convert_glb.py). Sitting uses the adjustable cylinder stool: change
+		stool_seat pos z (and stool_post size/pos) to raise or lower.
+	-->
+
+	<statistic center="0.4 0 0.6" extent="3"/>
+
+	<option integrator="implicitfast" timestep="0.002"/>
+
+	<visual>
+		<headlight ambient="0.1 0.1 0.1" diffuse="0.6 0.6 0.6" specular="0 0 0"/>
+		<rgba haze="0.15 0.25 0.35 1"/>
+		<global azimuth="120" elevation="-20"/>
+	</visual>
+
+	<asset>
+		<texture builtin="gradient" height="3072" rgb1="0.3 0.5 0.7" rgb2="0 0 0" type="skybox" width="512"/>
+		<texture builtin="checker" height="300" mark="edge" markrgb="0.8 0.8 0.8" name="groundplane" rgb1="0.2 0.3 0.4" rgb2="0.1 0.2 0.3" type="2d" width="300"/>
+		<material name="groundplane" texrepeat="5 5" texture="groundplane" texuniform="true"/>
+		<texture file="../../../../scenes/drums/drum_kit_main.png" name="drum_kit_main_tex" type="2d"/>
+		<texture file="../../../../scenes/drums/drum_kit_metal.png" name="drum_kit_metal_tex" type="2d"/>
+		<material name="drum_kit_main_mat" texture="drum_kit_main_tex" texuniform="false"/>
+		<material name="drum_kit_metal_mat" texture="drum_kit_metal_tex" texuniform="false"/>
+		<mesh file="../../../../scenes/drums/drum_kit_main.obj" name="drum_kit_main" scale="0.7 0.7 0.7"/>
+		<mesh file="../../../../scenes/drums/drum_kit_metal.obj" name="drum_kit_metal" scale="0.7 0.7 0.7"/>
+		<include file="../../../../scenes/drums/drum_kit_col_assets.xml"/>
+	</asset>
+
+	<worldbody>
+		<geom condim="3" friction="0.7" material="groundplane" name="floor" size="0 0 .05" type="plane"/>
+		<light diffuse="0.9 0.9 0.9" dir="0 0 -5" directional="true" pos="0 0 10"/>
+		<body mocap="true" name="base_anchor" pos="0 0 -0.345479">
+			<geom conaffinity="0" contype="0" rgba="1 0 0 0.3" size="0.02" type="sphere"/>
+		</body>
+		<body name="stool" pos="0 0 0">
+			<geom condim="3" friction="1.0 0.1 0.1" name="stool_base" pos="0 0 0.02" rgba="0.12 0.12 0.12 1" size="0.18 0.02" type="cylinder"/>
+			<geom condim="3" friction="0.8" name="stool_post" pos="0 0 0.255" rgba="0.18 0.18 0.18 1" size="0.025 0.215" type="cylinder"/>
+			<geom condim="3" friction="1.2 0.15 0.1" name="stool_seat" pos="0 0 0.495" rgba="0.28 0.12 0.10 1" size="0.16 0.025" type="cylinder"/>
+		</body>
+		<body name="drum_kit" pos="0.56 -0.04 0" quat="0.70710678 0 0 -0.70710678">
+			<geom conaffinity="0" contype="0" group="1" material="drum_kit_main_mat" mesh="drum_kit_main" name="drum_kit_main_vis" type="mesh"/>
+			<geom conaffinity="0" contype="0" group="1" material="drum_kit_metal_mat" mesh="drum_kit_metal" name="drum_kit_metal_vis" type="mesh"/>
+			<include file="../../../../scenes/drums/drum_kit_col_geoms.xml"/>
+		</body>
+	</worldbody>
+
+	<equality>
+		<weld active="true" body1="base_footprint" body2="base_anchor" name="base_weld" relpose="0 0 0 1 0 0 0"/>
+	</equality>
+
+	<keyframe>
+		<key name="sit" qpos="0 0 -0.345479 1 0 0 0 -1.65 0.34 0.09 1.85 0.05 0 -1.5 -0.1 0 1.4 0.25 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0"/>
+	</keyframe>
+</mujoco>

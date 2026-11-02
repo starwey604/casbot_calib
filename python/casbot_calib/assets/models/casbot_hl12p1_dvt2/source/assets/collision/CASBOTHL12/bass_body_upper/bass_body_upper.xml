@@ -1,0 +1,19 @@
+<mujoco model="bass_body_upper">
+  <default>
+    <default class="visual">
+      <geom group="2" type="mesh" contype="0" conaffinity="0"/>
+    </default>
+    <default class="collision">
+      <geom group="3" type="mesh"/>
+    </default>
+  </default>
+  <asset>
+    <mesh file="bass_body_upper.obj"/>
+  </asset>
+  <worldbody>
+    <body name="bass_body_upper">
+      <geom mesh="bass_body_upper" class="visual"/>
+      <geom mesh="bass_body_upper" class="collision"/>
+    </body>
+  </worldbody>
+</mujoco>

@@ -1,0 +1,19 @@
+<mujoco model="right_drum_hand_link">
+  <default>
+    <default class="visual">
+      <geom group="2" type="mesh" contype="0" conaffinity="0"/>
+    </default>
+    <default class="collision">
+      <geom group="3" type="mesh"/>
+    </default>
+  </default>
+  <asset>
+    <mesh file="right_drum_hand_link.obj"/>
+  </asset>
+  <worldbody>
+    <body name="right_drum_hand_link">
+      <geom mesh="right_drum_hand_link" class="visual"/>
+      <geom mesh="right_drum_hand_link" class="collision"/>
+    </body>
+  </worldbody>
+</mujoco>

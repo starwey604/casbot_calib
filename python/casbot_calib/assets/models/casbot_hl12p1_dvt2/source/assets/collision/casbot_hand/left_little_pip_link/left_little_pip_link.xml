@@ -1,0 +1,19 @@
+<mujoco model="left_little_pip_link">
+  <default>
+    <default class="visual">
+      <geom group="2" type="mesh" contype="0" conaffinity="0"/>
+    </default>
+    <default class="collision">
+      <geom group="3" type="mesh"/>
+    </default>
+  </default>
+  <asset>
+    <mesh file="left_little_pip_link.obj"/>
+  </asset>
+  <worldbody>
+    <body name="left_little_pip_link">
+      <geom mesh="left_little_pip_link" class="visual"/>
+      <geom mesh="left_little_pip_link" class="collision"/>
+    </body>
+  </worldbody>
+</mujoco>

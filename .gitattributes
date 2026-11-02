@@ -7,3 +7,6 @@
 *.csv text eol=lf
 *.xml text eol=lf
 *.md text eol=lf
+# Preserve vendor bytes (including URDF identity) on Windows and Linux.
+python/casbot_calib/assets/models/casbot_hl12p1_dvt2/source/** -text
+python/casbot_calib/assets/models/casbot_hl12p1_dvt2/source/assets/**/*.obj filter=lfs diff=lfs merge=lfs -text

@@ -39,11 +39,14 @@ endif()
 install(TARGETS calib_core calib_integration EXPORT casbot_calibTargets
   ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR} COMPONENT Core)
 install(DIRECTORY cpp/include/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR} COMPONENT Core)
+install(DIRECTORY python/casbot_calib/assets/models/
+  DESTINATION ${CMAKE_INSTALL_DATADIR}/casbot_calib/models COMPONENT Models)
 install(EXPORT casbot_calibTargets FILE casbot_calibTargets.cmake NAMESPACE casbot_calib::
   DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/casbot_calib COMPONENT Core)
 configure_package_config_file(cmake/casbot_calibConfig.cmake.in
   ${CMAKE_CURRENT_BINARY_DIR}/casbot_calibConfig.cmake
-  INSTALL_DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/casbot_calib)
+  INSTALL_DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/casbot_calib
+  PATH_VARS CMAKE_INSTALL_DATADIR)
 write_basic_package_version_file(${CMAKE_CURRENT_BINARY_DIR}/casbot_calibConfigVersion.cmake
   VERSION ${PROJECT_VERSION} COMPATIBILITY SameMajorVersion)
 install(FILES ${CMAKE_CURRENT_BINARY_DIR}/casbot_calibConfig.cmake

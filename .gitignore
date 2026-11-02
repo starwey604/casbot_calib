@@ -16,6 +16,7 @@ CMakeUserPresets.json
 .ruff_cache/
 *.o
 *.obj
+!python/casbot_calib/assets/models/casbot_hl12p1_dvt2/source/assets/**/*.obj
 *.a
 *.lib
 *.dll

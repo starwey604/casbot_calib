@@ -1,0 +1,19 @@
+<mujoco model="guitar_head">
+  <default>
+    <default class="visual">
+      <geom group="2" type="mesh" contype="0" conaffinity="0"/>
+    </default>
+    <default class="collision">
+      <geom group="3" type="mesh"/>
+    </default>
+  </default>
+  <asset>
+    <mesh file="guitar_head.obj"/>
+  </asset>
+  <worldbody>
+    <body name="guitar_head">
+      <geom mesh="guitar_head" class="visual"/>
+      <geom mesh="guitar_head" class="collision"/>
+    </body>
+  </worldbody>
+</mujoco>

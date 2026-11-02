@@ -1,0 +1,2927 @@
+<?xml version="1.0" ?>
+<robot name="CASBOT">
+	<link name="base_footprint"/>
+	<joint name="base_fixed_joint" type="fixed">
+		<origin rpy="0 0 0" xyz="0 0 0.886842"/>
+		<parent link="base_footprint"/>
+		<child link="base_link"/>
+	</joint>
+	<link name="base_link">
+		<visual name="base_link_vis">
+			<origin rpy="0 0 0" xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="visual/CASBOTHL12/base_link.obj"/>
+			</geometry>
+			<material name="metal">
+				<color rgba="0.85 0.85 0.85 1"/>
+			</material>
+		</visual>
+		<collision name="base_link_col">
+			<origin rpy="0 0 0" xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="collision/CASBOTHL12/base_link.obj"/>
+			</geometry>
+		</collision>
+		<inertial>
+			<origin rpy="0.0 0.0 0.0" xyz="0.00032862 1.61e-05 0.059275"/>
+			<mass value="4.68090283"/>
+			<inertia ixx="0.01570023" ixy="3.26e-06" ixz="-9.02e-05" iyy="0.01170267" iyz="-2.39e-06" izz="0.01334888"/>
+		</inertial>
+	</link>
+	<joint name="left_hip_pitch_joint" type="revolute">
+		<origin rpy="0.0 0.0 0.0" xyz="0.0 0.061 0.057"/>
+		<parent link="base_link"/>
+		<child link="left_hip_pitch_link"/>
+		<axis xyz="0 1 0"/>
+		<limit effort="150.0" lower="-2.96705973" upper="1.57079633" velocity="14.0"/>
+		<safety_controller k_position="60.0" k_velocity="42.0" soft_lower_limit="-2.879793266" soft_upper_limit="1.483529864"/>
+		<dynamics damping="0.1" friction="0.1"/>
+	</joint>
+	<link name="left_hip_pitch_link">
+		<visual name="left_hip_pitch_link_vis">
+			<origin rpy="0 0 0" xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="visual/CASBOTHL12/left_hip_pitch_link.obj"/>
+			</geometry>
+			<material name="metal">
+				<color rgba="0.85 0.85 0.85 1"/>
+			</material>
+		</visual>
+		<collision name="left_hip_pitch_link_col">
+			<origin rpy="0 0 0" xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="collision/CASBOTHL12/left_hip_pitch_link.obj"/>
+			</geometry>
+		</collision>
+		<inertial>
+			<origin rpy="0.0 0.0 0.0" xyz="0.00443023 0.07409724 -0.04801217"/>
+			<mass value="2.32200764"/>
+			<inertia ixx="0.00515565" ixy="7.1e-05" ixz="-0.000127" iyy="0.00357348" iyz="0.00072357" izz="0.00377371"/>
+		</inertial>
+	</link>
+	<joint name="left_hip_roll_joint" type="revolute">
+		<origin rpy="0.0 0.0 0.0" xyz="0.0258 0.0815 -0.055"/>
+		<parent link="left_hip_pitch_link"/>
+		<child link="left_hip_roll_link"/>
+		<axis xyz="1 0 0"/>
+		<limit effort="150.0" lower="-0.174533" upper="1.570796" velocity="14.0"/>
+		<safety_controller k_position="160.0" k_velocity="42.0" soft_lower_limit="-0.1221730476" soft_upper_limit="1.483529864"/>
+		<dynamics damping="0.1" friction="0.1"/>
+	</joint>
+	<link name="left_hip_roll_link">
+		<visual name="left_hip_roll_link_vis">
+			<origin rpy="0 0 0" xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="visual/CASBOTHL12/left_hip_roll_link.obj"/>
+			</geometry>
+			<material name="metal">
+				<color rgba="0.85 0.85 0.85 1"/>
+			</material>
+		</visual>
+		<collision name="left_hip_roll_link_col">
+			<origin rpy="0 0 0" xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="collision/CASBOTHL12/left_hip_roll_link.obj"/>
+			</geometry>
+		</collision>
+		<inertial>
+			<origin rpy="0.0 0.0 0.0" xyz="-0.0023903 0.00095569 -0.057713"/>
+			<mass value="0.6527"/>
+			<inertia ixx="0.0016353" ixy="-9.26e-06" ixz="-0.00041076" iyy="0.0017173" iyz="-2.53e-05" izz="0.0012169"/>
+		</inertial>
+	</link>
+	<joint name="left_hip_yaw_joint" type="revolute">
+		<origin rpy="0.0 0.0 0.0" xyz="-0.0286 0.0 -0.0975"/>
+		<parent link="left_hip_roll_link"/>
+		<child link="left_hip_yaw_link"/>
+		<axis xyz="0 0 1"/>
+		<limit effort="60.0" lower="-1.570796" upper="1.570796" velocity="14.0"/>
+		<safety_controller k_position="90.0" k_velocity="17.0" soft_lower_limit="-1.483529864" soft_upper_limit="1.483529864"/>
+		<dynamics damping="0.1" friction="0.1"/>
+	</joint>
+	<link name="left_hip_yaw_link">
+		<visual name="left_hip_yaw_link_vis">
+			<origin rpy="0 0 0" xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="visual/CASBOTHL12/left_hip_yaw_link.obj"/>
+			</geometry>
+			<material name="metal">
+				<color rgba="0.85 0.85 0.85 1"/>
+			</material>
+		</visual>
+		<collision name="left_hip_yaw_link_col">
+			<origin rpy="0 0 0" xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="collision/CASBOTHL12/left_hip_yaw_link.obj"/>
+			</geometry>
+		</collision>
+		<inertial>
+			<origin rpy="0.0 0.0 0.0" xyz="-0.00645851 0.00205745 -0.1622354"/>
+			<mass value="4.27241157"/>
+			<inertia ixx="0.06074764" ixy="0.000274" ixz="-0.00394551" iyy="0.06255399" iyz="0.00111" izz="0.00668221"/>
+		</inertial>
+	</link>
+	<joint name="left_knee_pitch_joint" type="revolute">
+		<origin rpy="0.0 0.0 0.0" xyz="-0.02 -0.0138 -0.2735"/>
+		<parent link="left_hip_yaw_link"/>
+		<child link="left_knee_pitch_link"/>
+		<axis xyz="0 1 0"/>
+		<limit effort="150.0" lower="-0.017453293" upper="2.6204" velocity="14.0"/>
+		<safety_controller k_position="100.0" k_velocity="42.0" soft_lower_limit="0.0" soft_upper_limit="2.530727415"/>
+		<dynamics damping="0.1" friction="0.1"/>
+	</joint>
+	<link name="left_knee_pitch_link">
+		<visual name="left_knee_pitch_link_vis">
+			<origin rpy="0 0 0" xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="visual/CASBOTHL12/left_knee_pitch_link.obj"/>
+			</geometry>
+			<material name="metal">
+				<color rgba="0.85 0.85 0.85 1"/>
+			</material>
+		</visual>
+		<collision name="left_knee_pitch_link_col">
+			<origin rpy="0 0 0" xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="collision/CASBOTHL12/left_knee_pitch_link.obj"/>
+			</geometry>
+		</collision>
+		<inertial>
+			<origin rpy="0.0 0.0 0.0" xyz="0.00810952 0.01032886 -0.19053634"/>
+			<mass value="4.01602603"/>
+			<inertia ixx="0.04605896" ixy="-0.000216" ixz="-0.00082701" iyy="0.04608103" iyz="0.00117641" izz="0.00516382"/>
+		</inertial>
+	</link>
+	<joint name="left_ankle_pitch_joint" type="revolute">
+		<origin rpy="0.0 0.0 0.0" xyz="0.0 0.0138 -0.453"/>
+		<parent link="left_knee_pitch_link"/>
+		<child link="left_ankle_pitch_link"/>
+		<axis xyz="0 1 0"/>
+		<limit effort="60.0" lower="-0.6981317" upper="0.506145483" velocity="14.0"/>
+		<safety_controller k_position="220.0" k_velocity="17.0" soft_lower_limit="-0.6457718232" soft_upper_limit="0.4537856055"/>
+		<dynamics damping="0.1" friction="0.1"/>
+	</joint>
+	<link name="left_ankle_pitch_link">
+		<visual name="left_ankle_pitch_link_vis">
+			<origin rpy="0 0 0" xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="visual/CASBOTHL12/left_ankle_pitch_link.obj"/>
+			</geometry>
+			<material name="metal">
+				<color rgba="0.85 0.85 0.85 1"/>
+			</material>
+		</visual>
+		<collision name="left_ankle_pitch_link_col">
+			<origin rpy="0 0 0" xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="collision/CASBOTHL12/left_ankle_pitch_link.obj"/>
+			</geometry>
+		</collision>
+		<inertial>
+			<origin rpy="0.0 0.0 0.0" xyz="0.0 0.0 0.0"/>
+			<mass value="0.11445563"/>
+			<inertia ixx="3.33e-05" ixy="0.0" ixz="0.0" iyy="1.17e-05" iyz="0.0" izz="3.28e-05"/>
+		</inertial>
+	</link>
+	<joint name="left_ankle_roll_joint" type="revolute">
+		<origin rpy="0.0 0.0 0.0" xyz="0.0 0.0 0.0"/>
+		<parent link="left_ankle_pitch_link"/>
+		<child link="left_ankle_roll_link"/>
+		<axis xyz="1 0 0"/>
+		<limit effort="60.0" lower="-0.6108652382" upper="0.610865238" velocity="14.0"/>
+		<safety_controller k_position="220.0" k_velocity="17.0" soft_lower_limit="-0.5585053606" soft_upper_limit="0.5585053606"/>
+		<dynamics damping="0.1" friction="0.1"/>
+	</joint>
+	<link name="left_ankle_roll_link">
+		<visual name="left_ankle_roll_link_vis">
+			<origin rpy="0 0 0" xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="visual/CASBOTHL12/left_ankle_roll_link.obj"/>
+			</geometry>
+			<material name="metal">
+				<color rgba="0.85 0.85 0.85 1"/>
+			</material>
+		</visual>
+		<collision name="left_ankle_roll_link_col">
+			<origin rpy="0 0 0" xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="collision/CASBOTHL12/left_ankle_roll_link.obj"/>
+			</geometry>
+		</collision>
+		<inertial>
+			<origin rpy="0.0 0.0 0.0" xyz="0.01858298 3.61e-06 -0.03818734"/>
+			<mass value="1.07857548"/>
+			<inertia ixx="0.00142471" ixy="2.7e-07" ixz="0.000287" iyy="0.00576939" iyz="3e-08" izz="0.00615174"/>
+		</inertial>
+	</link>
+	<joint name="left_foot_forefoot_fixed_joint" type="fixed">
+		<origin rpy="0 0 0" xyz="0.173 0 -0.064842"/>
+		<parent link="left_ankle_roll_link"/>
+		<child link="left_foot_forefoot_frame"/>
+	</joint>
+	<link name="left_foot_forefoot_frame">
+		<visual name="left_foot_forefoot_frame_vis">
+			<origin rpy="0 0 0" xyz="0 0 0"/>
+			<geometry>
+				<sphere radius="0.005"/>
+			</geometry>
+			<material name="yellow">
+				<color rgba="1 1 0 1"/>
+			</material>
+		</visual>
+		<collision name="left_foot_forefoot_frame_col">
+			<origin rpy="0 0 0" xyz="0 0 0"/>
+			<geometry>
+				<sphere radius="0.005"/>
+			</geometry>
+		</collision>
+		<inertial>
+			<mass value="0"/>
+			<inertia ixx="0" ixy="0" ixz="0" iyy="0" iyz="0" izz="0"/>
+		</inertial>
+	</link>
+	<joint name="left_foot_heel_fixed_joint" type="fixed">
+		<origin rpy="0 0 0" xyz="-0.102 0 -0.064842"/>
+		<parent link="left_ankle_roll_link"/>
+		<child link="left_foot_heel_frame"/>
+	</joint>
+	<link name="left_foot_heel_frame">
+		<visual name="left_foot_heel_frame_vis">
+			<origin rpy="0 0 0" xyz="0 0 0"/>
+			<geometry>
+				<sphere radius="0.005"/>
+			</geometry>
+			<material name="yellow">
+				<color rgba="1 1 0 1"/>
+			</material>
+		</visual>
+		<collision name="left_foot_heel_frame_col">
+			<origin rpy="0 0 0" xyz="0 0 0"/>
+			<geometry>
+				<sphere radius="0.005"/>
+			</geometry>
+		</collision>
+		<inertial>
+			<mass value="0"/>
+			<inertia ixx="0" ixy="0" ixz="0" iyy="0" iyz="0" izz="0"/>
+		</inertial>
+	</link>
+	<joint name="right_hip_pitch_joint" type="revolute">
+		<origin rpy="0.0 0.0 0.0" xyz="0.0 -0.061 0.057"/>
+		<parent link="base_link"/>
+		<child link="right_hip_pitch_link"/>
+		<axis xyz="0 1 0"/>
+		<limit effort="150.0" lower="-1.9199" upper="1.5708" velocity="14.0"/>
+		<safety_controller k_position="60.0" k_velocity="42.0" soft_lower_limit="-1.832595715" soft_upper_limit="1.483529864"/>
+		<dynamics damping="0.1" friction="0.1"/>
+	</joint>
+	<link name="right_hip_pitch_link">
+		<visual name="right_hip_pitch_link_vis">
+			<origin rpy="0 0 0" xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="visual/CASBOTHL12/right_hip_pitch_link.obj"/>
+			</geometry>
+			<material name="metal">
+				<color rgba="0.85 0.85 0.85 1"/>
+			</material>
+		</visual>
+		<collision name="right_hip_pitch_link_col">
+			<origin rpy="0 0 0" xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="collision/CASBOTHL12/right_hip_pitch_link.obj"/>
+			</geometry>
+		</collision>
+		<inertial>
+			<origin rpy="0.0 0.0 0.0" xyz="0.0043199 -0.073882 -0.048087"/>
+			<mass value="2.3198"/>
+			<inertia ixx="0.0051631" ixy="-6.18e-05" ixz="-0.000121" iyy="0.0035747" iyz="-0.00073265" izz="0.0037714"/>
+		</inertial>
+	</link>
+	<joint name="right_hip_roll_joint" type="revolute">
+		<origin rpy="0.0 0.0 0.0" xyz="0.0258 -0.0815 -0.055"/>
+		<parent link="right_hip_pitch_link"/>
+		<child link="right_hip_roll_link"/>
+		<axis xyz="1 0 0"/>
+		<limit effort="150.0" lower="-1.57079633" upper="0.17453293" velocity="14.0"/>
+		<safety_controller k_position="160.0" k_velocity="42.0" soft_lower_limit="-1.483529864" soft_upper_limit="0.1221730476"/>
+		<dynamics damping="0.1" friction="0.1"/>
+	</joint>
+	<link name="right_hip_roll_link">
+		<visual name="right_hip_roll_link_vis">
+			<origin rpy="0 0 0" xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="visual/CASBOTHL12/right_hip_roll_link.obj"/>
+			</geometry>
+			<material name="metal">
+				<color rgba="0.85 0.85 0.85 1"/>
+			</material>
+		</visual>
+		<collision name="right_hip_roll_link_col">
+			<origin rpy="0 0 0" xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="collision/CASBOTHL12/right_hip_roll_link.obj"/>
+			</geometry>
+		</collision>
+		<inertial>
+			<origin rpy="0.0 0.0 0.0" xyz="-0.0023893 -0.00089845 -0.05768"/>
+			<mass value="0.65145"/>
+			<inertia ixx="0.001632" ixy="7.97e-06" ixz="-0.00041076" iyy="0.0017168" iyz="3.25e-05" izz="0.0012138"/>
+		</inertial>
+	</link>
+	<joint name="right_hip_yaw_joint" type="revolute">
+		<origin rpy="0.0 0.0 0.0" xyz="-0.0286 0.0 -0.0975"/>
+		<parent link="right_hip_roll_link"/>
+		<child link="right_hip_yaw_link"/>
+		<axis xyz="0 0 1"/>
+		<limit effort="60.0" lower="-1.570796" upper="1.570796" velocity="14.0"/>
+		<safety_controller k_position="90.0" k_velocity="17.0" soft_lower_limit="-1.483529864" soft_upper_limit="1.483529864"/>
+		<dynamics damping="0.1" friction="0.1"/>
+	</joint>
+	<link name="right_hip_yaw_link">
+		<visual name="right_hip_yaw_link_vis">
+			<origin rpy="0 0 0" xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="visual/CASBOTHL12/right_hip_yaw_link.obj"/>
+			</geometry>
+			<material name="metal">
+				<color rgba="0.85 0.85 0.85 1"/>
+			</material>
+		</visual>
+		<collision name="right_hip_yaw_link_col">
+			<origin rpy="0 0 0" xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="collision/CASBOTHL12/right_hip_yaw_link.obj"/>
+			</geometry>
+		</collision>
+		<inertial>
+			<origin rpy="0.0 0.0 0.0" xyz="-0.0064775 -0.0019932 -0.16218"/>
+			<mass value="4.272"/>
+			<inertia ixx="0.060771" ixy="-0.000267" ixz="-0.0039421" iyy="0.062571" iyz="-0.00116" izz="0.006685"/>
+		</inertial>
+	</link>
+	<joint name="right_knee_pitch_joint" type="revolute">
+		<origin rpy="0.0 0.0 0.0" xyz="-0.02 0.0138 -0.2735"/>
+		<parent link="right_hip_yaw_link"/>
+		<child link="right_knee_pitch_link"/>
+		<axis xyz="0 1 0"/>
+		<limit effort="150.0" lower="-0.017453293" upper="2.6204" velocity="14.0"/>
+		<safety_controller k_position="100.0" k_velocity="42.0" soft_lower_limit="0.0" soft_upper_limit="2.530727415"/>
+		<dynamics damping="0.1" friction="0.1"/>
+	</joint>
+	<link name="right_knee_pitch_link">
+		<visual name="right_knee_pitch_link_vis">
+			<origin rpy="0 0 0" xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="visual/CASBOTHL12/right_knee_pitch_link.obj"/>
+			</geometry>
+			<material name="metal">
+				<color rgba="0.85 0.85 0.85 1"/>
+			</material>
+		</visual>
+		<collision name="right_knee_pitch_link_col">
+			<origin rpy="0 0 0" xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="collision/CASBOTHL12/right_knee_pitch_link.obj"/>
+			</geometry>
+		</collision>
+		<inertial>
+			<origin rpy="0.0 0.0 0.0" xyz="0.006081 -0.011967 -0.18962"/>
+			<mass value="4.0043"/>
+			<inertia ixx="0.044878" ixy="-0.000194" ixz="-0.0022033" iyy="0.045904" iyz="-0.0023493" izz="0.0060824"/>
+		</inertial>
+	</link>
+	<joint name="right_ankle_pitch_joint" type="revolute">
+		<origin rpy="0.0 0.0 0.0" xyz="0.0 -0.0138 -0.453"/>
+		<parent link="right_knee_pitch_link"/>
+		<child link="right_ankle_pitch_link"/>
+		<axis xyz="0 1 0"/>
+		<limit effort="60.0" lower="-0.6981317" upper="0.506145483" velocity="14.0"/>
+		<safety_controller k_position="220.0" k_velocity="17.0" soft_lower_limit="-0.6457718232" soft_upper_limit="0.4537856055"/>
+		<dynamics damping="0.1" friction="0.1"/>
+	</joint>
+	<link name="right_ankle_pitch_link">
+		<visual name="right_ankle_pitch_link_vis">
+			<origin rpy="0 0 0" xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="visual/CASBOTHL12/right_ankle_pitch_link.obj"/>
+			</geometry>
+			<material name="metal">
+				<color rgba="0.85 0.85 0.85 1"/>
+			</material>
+		</visual>
+		<collision name="right_ankle_pitch_link_col">
+			<origin rpy="0 0 0" xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="collision/CASBOTHL12/right_ankle_pitch_link.obj"/>
+			</geometry>
+		</collision>
+		<inertial>
+			<origin rpy="0.0 0.0 0.0" xyz="0.0 0.0 0.0"/>
+			<mass value="0.11446"/>
+			<inertia ixx="3.33e-05" ixy="0.0" ixz="0.0" iyy="1.17e-05" iyz="0.0" izz="3.28e-05"/>
+		</inertial>
+	</link>
+	<joint name="right_ankle_roll_joint" type="revolute">
+		<origin rpy="0.0 0.0 0.0" xyz="0.0 0.0 0.0"/>
+		<parent link="right_ankle_pitch_link"/>
+		<child link="right_ankle_roll_link"/>
+		<axis xyz="1 0 0"/>
+		<limit effort="60.0" lower="-0.6108652382" upper="0.610865238" velocity="14.0"/>
+		<safety_controller k_position="220.0" k_velocity="17.0" soft_lower_limit="-0.5585053606" soft_upper_limit="0.5585053606"/>
+		<dynamics damping="0.1" friction="0.1"/>
+	</joint>
+	<link name="right_ankle_roll_link">
+		<visual name="right_ankle_roll_link_vis">
+			<origin rpy="0 0 0" xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="visual/CASBOTHL12/right_ankle_roll_link.obj"/>
+			</geometry>
+			<material name="metal">
+				<color rgba="0.85 0.85 0.85 1"/>
+			</material>
+		</visual>
+		<collision name="right_ankle_roll_link_col">
+			<origin rpy="0 0 0" xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="collision/CASBOTHL12/right_ankle_roll_link.obj"/>
+			</geometry>
+		</collision>
+		<inertial>
+			<origin rpy="0.0 0.0 0.0" xyz="0.018583 3.61e-06 -0.038187"/>
+			<mass value="1.0786"/>
+			<inertia ixx="0.0014247" ixy="2.7e-07" ixz="0.000287" iyy="0.0057694" iyz="3e-08" izz="0.0061517"/>
+		</inertial>
+	</link>
+	<joint name="right_foot_forefoot_fixed_joint" type="fixed">
+		<origin rpy="0 0 0" xyz="0.173 0 -0.064842"/>
+		<parent link="right_ankle_roll_link"/>
+		<child link="right_foot_forefoot_frame"/>
+	</joint>
+	<link name="right_foot_forefoot_frame">
+		<visual name="right_foot_forefoot_frame_vis">
+			<origin rpy="0 0 0" xyz="0 0 0"/>
+			<geometry>
+				<sphere radius="0.005"/>
+			</geometry>
+			<material name="yellow">
+				<color rgba="1 1 0 1"/>
+			</material>
+		</visual>
+		<collision name="right_foot_forefoot_frame_col">
+			<origin rpy="0 0 0" xyz="0 0 0"/>
+			<geometry>
+				<sphere radius="0.005"/>
+			</geometry>
+		</collision>
+		<inertial>
+			<mass value="0"/>
+			<inertia ixx="0" ixy="0" ixz="0" iyy="0" iyz="0" izz="0"/>
+		</inertial>
+	</link>
+	<joint name="right_foot_heel_fixed_joint" type="fixed">
+		<origin rpy="0 0 0" xyz="-0.102 0 -0.064842"/>
+		<parent link="right_ankle_roll_link"/>
+		<child link="right_foot_heel_frame"/>
+	</joint>
+	<link name="right_foot_heel_frame">
+		<visual name="right_foot_heel_frame_vis">
+			<origin rpy="0 0 0" xyz="0 0 0"/>
+			<geometry>
+				<sphere radius="0.005"/>
+			</geometry>
+			<material name="yellow">
+				<color rgba="1 1 0 1"/>
+			</material>
+		</visual>
+		<collision name="right_foot_heel_frame_col">
+			<origin rpy="0 0 0" xyz="0 0 0"/>
+			<geometry>
+				<sphere radius="0.005"/>
+			</geometry>
+		</collision>
+		<inertial>
+			<mass value="0"/>
+			<inertia ixx="0" ixy="0" ixz="0" iyy="0" iyz="0" izz="0"/>
+		</inertial>
+	</link>
+	<joint name="waist_yaw_joint" type="revolute">
+		<origin rpy="0.0 0.0 0.0" xyz="0.0 0.0 0.15374"/>
+		<parent link="base_link"/>
+		<child link="waist_yaw_link"/>
+		<axis xyz="0 0 1"/>
+		<limit effort="60.0" lower="-1.78896" upper="1.78896" velocity="14.0"/>
+		<safety_controller k_position="80.0" k_velocity="17.0" soft_lower_limit="-1.658062789" soft_upper_limit="1.658062789"/>
+		<dynamics damping="0.1" friction="0.1"/>
+	</joint>
+	<link name="waist_yaw_link">
+		<visual name="waist_yaw_link_vis">
+			<origin rpy="0 0 0" xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="visual/CASBOTHL12/waist_yaw_link.obj"/>
+			</geometry>
+			<material name="metal">
+				<color rgba="0.85 0.85 0.85 1"/>
+			</material>
+		</visual>
+		<collision name="waist_yaw_link_col">
+			<origin rpy="0 0 0" xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="collision/CASBOTHL12/waist_yaw_link.obj"/>
+			</geometry>
+		</collision>
+		<inertial>
+			<origin rpy="0.0 0.0 0.0" xyz="-0.014482 -0.00017831 0.17624"/>
+			<mass value="9.7937"/>
+			<inertia ixx="0.11019" ixy="-0.00043961" ixz="0.0038566" iyy="0.1171" iyz="-0.00033297" izz="0.056389"/>
+		</inertial>
+	</link>
+	<joint name="head_yaw_joint" type="revolute">
+		<origin rpy="0.0 0.0 0.0" xyz="0.0 0.0 0.3623"/>
+		<parent link="waist_yaw_link"/>
+		<child link="head_yaw_link"/>
+		<axis xyz="0 0 1"/>
+		<limit effort="36.0" lower="-1.570796" upper="1.570796" velocity="9.3"/>
+		<safety_controller k_position="60.0" k_velocity="15.0" soft_lower_limit="-1.483529864" soft_upper_limit="1.483529864"/>
+		<dynamics damping="0.1" friction="0.1"/>
+	</joint>
+	<link name="head_yaw_link">
+		<visual name="head_yaw_link_vis">
+			<origin rpy="0 0 0" xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="visual/CASBOTHL12/head_yaw_link.obj"/>
+			</geometry>
+			<material name="metal">
+				<color rgba="0.85 0.85 0.85 1"/>
+			</material>
+		</visual>
+		<collision name="head_yaw_link_col">
+			<origin rpy="0 0 0" xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="collision/CASBOTHL12/head_yaw_link.obj"/>
+			</geometry>
+		</collision>
+		<inertial>
+			<origin rpy="0.0 0.0 0.0" xyz="-0.00071944 0.00167218 0.04336509"/>
+			<mass value="0.55335153"/>
+			<inertia ixx="0.000299" ixy="-2.61e-06" ixz="1.77e-05" iyy="0.00025234" iyz="-9.58e-06" izz="0.000274"/>
+		</inertial>
+	</link>
+	<joint name="head_pitch_joint" type="revolute">
+		<origin rpy="0.0 0.0 0.0" xyz="0.0 -0.026 0.046"/>
+		<parent link="head_yaw_link"/>
+		<child link="head_pitch_link"/>
+		<axis xyz="0 1 0"/>
+		<limit effort="36.0" lower="-0.43633" upper="0.523599" velocity="9.3"/>
+		<safety_controller k_position="200.0" k_velocity="15.0" soft_lower_limit="-0.3839724354" soft_upper_limit="0.471238898"/>
+		<dynamics damping="0.1" friction="0.1"/>
+	</joint>
+	<link name="head_pitch_link">
+		<visual name="head_pitch_link_vis">
+			<origin rpy="0 0 0" xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="visual/CASBOTHL12/head_pitch_link.obj"/>
+			</geometry>
+			<material name="metal">
+				<color rgba="0.85 0.85 0.85 1"/>
+			</material>
+		</visual>
+		<collision name="head_pitch_link_col">
+			<origin rpy="0 0 0" xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="collision/CASBOTHL12/head_pitch_link.obj"/>
+			</geometry>
+		</collision>
+		<inertial>
+			<origin rpy="0.0 0.0 0.0" xyz="0.02810004 0.02513896 0.08764139"/>
+			<mass value="1.36206664"/>
+			<inertia ixx="0.00428" ixy="-2.33e-05" ixz="0.000528" iyy="0.00509821" iyz="-7.02e-05" izz="0.0045"/>
+		</inertial>
+	</link>
+	<joint name="head_camera_mount_joint" type="fixed">
+		<origin rpy="0.0 0.0 0.0" xyz="0.0859 0.026 0.0474"/>
+		<parent link="head_pitch_link"/>
+		<child link="head_camera_base_link"/>
+	</joint>
+	<link name="head_camera_base_link"/>
+	<link name="head_camera_link">
+		<inertial>
+			<origin rpy="0 0 0" xyz="-0.00102332859358 -0.00724730227698 0.00861535908007"/>
+			<mass value="0.027257690187"/>
+			<inertia ixx="2.28011573373e-05" ixy="-1.86522817527e-06" ixz="-9.36297870061e-07" iyy="4.11655773441e-06" iyz="-1.78054101114e-06" izz="2.20448715713e-05"/>
+		</inertial>
+		<visual name="head_camera_link_vis">
+			<origin rpy="0 0 0" xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="visual/CASBOTHL12/gemini_336_camera_link.obj"/>
+			</geometry>
+			<material name="gemini_336_body">
+				<color rgba="0.8 0.82 0.86 1"/>
+			</material>
+		</visual>
+		<collision name="head_camera_link_col">
+			<origin rpy="0 0 0" xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="collision/CASBOTHL12/gemini_336_camera_link.obj"/>
+			</geometry>
+		</collision>
+	</link>
+	<link name="head_camera_bottom_screw_frame"></link>
+	<joint name="head_camera_bottom_screw_frame_joint" type="fixed">
+		<origin rpy="0 0 0" xyz="-0.01587 -0.025 -0.0125"/>
+		<parent link="head_camera_link"/>
+		<child link="head_camera_bottom_screw_frame"/>
+		<axis xyz="0 0 0"/>
+	</joint>
+	<link name="head_camera_left_ir_frame"></link>
+	<joint name="head_camera_left_ir_joint" type="fixed">
+		<origin rpy="0 0 0" xyz="0 0 0"/>
+		<parent link="head_camera_depth_frame"/>
+		<child link="head_camera_left_ir_frame"/>
+		<axis xyz="0 0 0"/>
+	</joint>
+	<link name="head_camera_left_ir_optical_frame"></link>
+	<joint name="head_camera_left_ir_optical_joint" type="fixed">
+		<origin rpy="-1.5707963267949 0 -1.5707963267949" xyz="0 0 0"/>
+		<parent link="head_camera_left_ir_frame"/>
+		<child link="head_camera_left_ir_optical_frame"/>
+		<axis xyz="0 0 0"/>
+	</joint>
+	<link name="head_camera_right_ir_frame"></link>
+	<joint name="head_camera_right_ir_joint" type="fixed">
+		<origin rpy="0 0 0" xyz="0 -0.05 0"/>
+		<parent link="head_camera_depth_frame"/>
+		<child link="head_camera_right_ir_frame"/>
+		<axis xyz="0 0 0"/>
+	</joint>
+	<link name="head_camera_right_ir_optical_frame"></link>
+	<joint name="head_camera_right_ir_optical_joint" type="fixed">
+		<origin rpy="-1.5707963267949 0 -1.5707963267949" xyz="0 0 0"/>
+		<parent link="head_camera_right_ir_frame"/>
+		<child link="head_camera_right_ir_optical_frame"/>
+		<axis xyz="0 0 0"/>
+	</joint>
+	<link name="head_camera_color_frame"></link>
+	<joint name="head_camera_color_joint" type="fixed">
+		<origin rpy="0 0 0" xyz="0.001663 -0.014005 0.000005"/>
+		<parent link="head_camera_depth_frame"/>
+		<child link="head_camera_color_frame"/>
+		<axis xyz="0 0 0"/>
+	</joint>
+	<link name="head_camera_color_optical_frame"></link>
+	<joint name="head_camera_color_optical_joint" type="fixed">
+		<origin rpy="-1.5707963267949 0 -1.5707963267949" xyz="0 0 0"/>
+		<parent link="head_camera_color_frame"/>
+		<child link="head_camera_color_optical_frame"/>
+		<axis xyz="0 0 0"/>
+	</joint>
+	<link name="head_camera_depth_frame"></link>
+	<joint name="head_camera_depth_joint" type="fixed">
+		<origin rpy="0 0 0" xyz="0 0 0"/>
+		<parent link="head_camera_link"/>
+		<child link="head_camera_depth_frame"/>
+		<axis xyz="0 0 0"/>
+	</joint>
+	<link name="head_camera_depth_optical_frame"></link>
+	<joint name="head_camera_depth_optical_joint" type="fixed">
+		<origin rpy="-1.5707963267949 0 -1.5707963267949" xyz="0 0 0"/>
+		<parent link="head_camera_depth_frame"/>
+		<child link="head_camera_depth_optical_frame"/>
+		<axis xyz="0 0 0"/>
+	</joint>
+	<joint name="head_camera_base_link_to_camera_link" type="fixed">
+		<parent link="head_camera_base_link"/>
+		<child link="head_camera_link"/>
+		<origin rpy="0 0 0" xyz="0.01587 0.025 0.0125"/>
+	</joint>
+	<joint name="waist_down_camera_mount_joint" type="fixed">
+		<origin rpy="0.0 1.0472 0.0" xyz="0.058425 0.0 0.0084763"/>
+		<parent link="waist_yaw_link"/>
+		<child link="waist_down_camera_base_link"/>
+	</joint>
+	<link name="waist_down_camera_base_link"/>
+	<link name="waist_down_camera_link">
+		<inertial>
+			<origin rpy="0 0 0" xyz="-0.00102332859358 -0.00724730227698 0.00861535908007"/>
+			<mass value="0.027257690187"/>
+			<inertia ixx="2.28011573373e-05" ixy="-1.86522817527e-06" ixz="-9.36297870061e-07" iyy="4.11655773441e-06" iyz="-1.78054101114e-06" izz="2.20448715713e-05"/>
+		</inertial>
+		<visual name="waist_down_camera_link_vis">
+			<origin rpy="0 0 0" xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="visual/CASBOTHL12/gemini_336_camera_link.obj"/>
+			</geometry>
+			<material name="gemini_336_body">
+				<color rgba="0.8 0.82 0.86 1"/>
+			</material>
+		</visual>
+		<collision name="waist_down_camera_link_col">
+			<origin rpy="0 0 0" xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="collision/CASBOTHL12/gemini_336_camera_link.obj"/>
+			</geometry>
+		</collision>
+	</link>
+	<link name="waist_down_camera_bottom_screw_frame"></link>
+	<joint name="waist_down_camera_bottom_screw_frame_joint" type="fixed">
+		<origin rpy="0 0 0" xyz="-0.01587 -0.025 -0.0125"/>
+		<parent link="waist_down_camera_link"/>
+		<child link="waist_down_camera_bottom_screw_frame"/>
+		<axis xyz="0 0 0"/>
+	</joint>
+	<link name="waist_down_camera_left_ir_frame"></link>
+	<joint name="waist_down_camera_left_ir_joint" type="fixed">
+		<origin rpy="0 0 0" xyz="0 0 0"/>
+		<parent link="waist_down_camera_depth_frame"/>
+		<child link="waist_down_camera_left_ir_frame"/>
+		<axis xyz="0 0 0"/>
+	</joint>
+	<link name="waist_down_camera_left_ir_optical_frame"></link>
+	<joint name="waist_down_camera_left_ir_optical_joint" type="fixed">
+		<origin rpy="-1.5707963267949 0 -1.5707963267949" xyz="0 0 0"/>
+		<parent link="waist_down_camera_left_ir_frame"/>
+		<child link="waist_down_camera_left_ir_optical_frame"/>
+		<axis xyz="0 0 0"/>
+	</joint>
+	<link name="waist_down_camera_right_ir_frame"></link>
+	<joint name="waist_down_camera_right_ir_joint" type="fixed">
+		<origin rpy="0 0 0" xyz="0 -0.05 0"/>
+		<parent link="waist_down_camera_depth_frame"/>
+		<child link="waist_down_camera_right_ir_frame"/>
+		<axis xyz="0 0 0"/>
+	</joint>
+	<link name="waist_down_camera_right_ir_optical_frame"></link>
+	<joint name="waist_down_camera_right_ir_optical_joint" type="fixed">
+		<origin rpy="-1.5707963267949 0 -1.5707963267949" xyz="0 0 0"/>
+		<parent link="waist_down_camera_right_ir_frame"/>
+		<child link="waist_down_camera_right_ir_optical_frame"/>
+		<axis xyz="0 0 0"/>
+	</joint>
+	<link name="waist_down_camera_color_frame"></link>
+	<joint name="waist_down_camera_color_joint" type="fixed">
+		<origin rpy="0 0 0" xyz="0.001663 -0.014005 0.000005"/>
+		<parent link="waist_down_camera_depth_frame"/>
+		<child link="waist_down_camera_color_frame"/>
+		<axis xyz="0 0 0"/>
+	</joint>
+	<link name="waist_down_camera_color_optical_frame"></link>
+	<joint name="waist_down_camera_color_optical_joint" type="fixed">
+		<origin rpy="-1.5707963267949 0 -1.5707963267949" xyz="0 0 0"/>
+		<parent link="waist_down_camera_color_frame"/>
+		<child link="waist_down_camera_color_optical_frame"/>
+		<axis xyz="0 0 0"/>
+	</joint>
+	<link name="waist_down_camera_depth_frame"></link>
+	<joint name="waist_down_camera_depth_joint" type="fixed">
+		<origin rpy="0 0 0" xyz="0 0 0"/>
+		<parent link="waist_down_camera_link"/>
+		<child link="waist_down_camera_depth_frame"/>
+		<axis xyz="0 0 0"/>
+	</joint>
+	<link name="waist_down_camera_depth_optical_frame"></link>
+	<joint name="waist_down_camera_depth_optical_joint" type="fixed">
+		<origin rpy="-1.5707963267949 0 -1.5707963267949" xyz="0 0 0"/>
+		<parent link="waist_down_camera_depth_frame"/>
+		<child link="waist_down_camera_depth_optical_frame"/>
+		<axis xyz="0 0 0"/>
+	</joint>
+	<joint name="waist_down_camera_base_link_to_camera_link" type="fixed">
+		<parent link="waist_down_camera_base_link"/>
+		<child link="waist_down_camera_link"/>
+		<origin rpy="0 0 0" xyz="0.01587 0.025 0.0125"/>
+	</joint>
+	<joint name="waist_up_camera_mount_joint" type="fixed">
+		<origin rpy="0.0 0.54105 0.0" xyz="0.10026 0.0 0.17904"/>
+		<parent link="waist_yaw_link"/>
+		<child link="waist_up_camera_base_link"/>
+	</joint>
+	<link name="waist_up_camera_base_link"/>
+	<link name="waist_up_camera_link">
+		<inertial>
+			<origin rpy="0 0 0" xyz="0.000142675813167 -0.00966894870279 0.0106711693516"/>
+			<mass value="0.043076778428"/>
+			<inertia ixx="7.30519637463e-05" ixy="-4.28252768133e-06" ixz="-1.39337564605e-06" iyy="6.45959069549e-06" iyz="-4.80058928484e-06" izz="7.0236847943e-05"/>
+		</inertial>
+		<visual name="waist_up_camera_link_vis">
+			<origin rpy="0 0 0" xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="visual/CASBOTHL12/gemini_336_l_camera_link.obj"/>
+			</geometry>
+			<material name="gemini_336_l_body">
+				<color rgba="0.8 0.82 0.86 1"/>
+			</material>
+		</visual>
+		<collision name="waist_up_camera_link_col">
+			<origin rpy="0 0 0" xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="collision/CASBOTHL12/gemini_336_l_camera_link.obj"/>
+			</geometry>
+		</collision>
+	</link>
+	<link name="waist_up_camera_color_screw_frame"></link>
+	<joint name="waist_up_camera_color_screw_joint" type="fixed">
+		<origin rpy="0 0 0" xyz="-0.011715 -0.0475 -0.014311"/>
+		<parent link="waist_up_camera_link"/>
+		<child link="waist_up_camera_color_screw_frame"/>
+		<axis xyz="0 0 0"/>
+	</joint>
+	<link name="waist_up_camera_imu_frame"></link>
+	<joint name="waist_up_camera_imu_joint" type="fixed">
+		<origin rpy="0 0 0" xyz="-0.01425 -0.007866 -0.001068"/>
+		<parent link="waist_up_camera_depth_frame"/>
+		<child link="waist_up_camera_imu_frame"/>
+		<axis xyz="0 0 0"/>
+	</joint>
+	<link name="waist_up_camera_depth_frame"></link>
+	<joint name="waist_up_camera_depth_joint" type="fixed">
+		<origin rpy="0 0 0" xyz="0 0 0"/>
+		<parent link="waist_up_camera_link"/>
+		<child link="waist_up_camera_depth_frame"/>
+		<axis xyz="0 0 0"/>
+	</joint>
+	<link name="waist_up_camera_left_ir_frame"></link>
+	<joint name="waist_up_camera_left_ir_joint" type="fixed">
+		<origin rpy="0 0 0" xyz="0 0 0"/>
+		<parent link="waist_up_camera_depth_frame"/>
+		<child link="waist_up_camera_left_ir_frame"/>
+		<axis xyz="0 0 0"/>
+	</joint>
+	<link name="waist_up_camera_left_ir_optical_frame"></link>
+	<joint name="waist_up_camera_left_ir_optical_joint" type="fixed">
+		<origin rpy="-1.5708 0 -1.5708" xyz="0 0 0"/>
+		<parent link="waist_up_camera_left_ir_frame"/>
+		<child link="waist_up_camera_left_ir_optical_frame"/>
+		<axis xyz="0 0 0"/>
+	</joint>
+	<link name="waist_up_camera_right_ir_frame"></link>
+	<joint name="waist_up_camera_right_ir_joint" type="fixed">
+		<origin rpy="0 0 0" xyz="0 -0.095 0"/>
+		<parent link="waist_up_camera_depth_frame"/>
+		<child link="waist_up_camera_right_ir_frame"/>
+		<axis xyz="0 0 0"/>
+	</joint>
+	<link name="waist_up_camera_right_ir_optical_frame"></link>
+	<joint name="waist_up_camera_right_ir_optical_joint" type="fixed">
+		<origin rpy="-1.5708 0 -1.5708" xyz="0 0 0"/>
+		<parent link="waist_up_camera_right_ir_frame"/>
+		<child link="waist_up_camera_right_ir_optical_frame"/>
+		<axis xyz="0 0 0"/>
+	</joint>
+	<link name="waist_up_camera_color_frame"></link>
+	<joint name="waist_up_camera_color_joint" type="fixed">
+		<origin rpy="0.0010157 0 0" xyz="0 -0.02375 0"/>
+		<parent link="waist_up_camera_depth_frame"/>
+		<child link="waist_up_camera_color_frame"/>
+		<axis xyz="0 0 0"/>
+	</joint>
+	<link name="waist_up_camera_color_optical_frame"></link>
+	<joint name="waist_up_camera_color_optical_joint" type="fixed">
+		<origin rpy="-1.5708 0 -1.5708" xyz="0 0 0"/>
+		<parent link="waist_up_camera_color_frame"/>
+		<child link="waist_up_camera_color_optical_frame"/>
+		<axis xyz="0 0 0"/>
+	</joint>
+	<joint name="waist_up_camera_base_link_to_camera_link" type="fixed">
+		<parent link="waist_up_camera_base_link"/>
+		<child link="waist_up_camera_link"/>
+		<origin rpy="0 0 0" xyz="0.011715 0.0475 0.014311"/>
+	</joint>
+	<joint name="left_shoulder_pitch_joint" type="revolute">
+		<origin rpy="0.0 0.0 0.0" xyz="0.0 0.145 0.2673"/>
+		<parent link="waist_yaw_link"/>
+		<child link="left_shoulder_pitch_link"/>
+		<axis xyz="0 1 0"/>
+		<limit effort="75.0" lower="-3.22886" upper="1.6057" velocity="12.2"/>
+		<safety_controller k_position="50.0" k_velocity="25.0" soft_lower_limit="-3.141592654" soft_upper_limit="1.483529864"/>
+		<dynamics damping="0.1" friction="0.1"/>
+	</joint>
+	<link name="left_shoulder_pitch_link">
+		<visual name="left_shoulder_pitch_link_vis">
+			<origin rpy="0 0 0" xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="visual/CASBOTHL12/left_shoulder_pitch_link.obj"/>
+			</geometry>
+			<material name="metal">
+				<color rgba="0.85 0.85 0.85 1"/>
+			</material>
+		</visual>
+		<collision name="left_shoulder_pitch_link_col">
+			<origin rpy="0 0 0" xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="collision/CASBOTHL12/left_shoulder_pitch_link.obj"/>
+			</geometry>
+		</collision>
+		<inertial>
+			<origin rpy="0.0 0.0 0.0" xyz="0.00709268 0.05146378 9.02e-06"/>
+			<mass value="0.74593706"/>
+			<inertia ixx="0.00050846" ixy="-3.4e-05" ixz="-1.5e-06" iyy="0.00043133" iyz="4.66e-06" izz="0.00053973"/>
+		</inertial>
+	</link>
+	<joint name="left_shoulder_roll_joint" type="revolute">
+		<origin rpy="0 0 0" xyz="-0.026 0.057 0.0"/>
+		<parent link="left_shoulder_pitch_link"/>
+		<child link="left_shoulder_roll_link"/>
+		<axis xyz="1 0 0"/>
+		<limit effort="75.0" lower="-0.34906585" upper="3.14159265" velocity="12.2"/>
+		<safety_controller k_position="70.0" k_velocity="25.0" soft_lower_limit="-0.2967059728" soft_upper_limit="3.054326191"/>
+		<dynamics damping="0.1" friction="0.1"/>
+	</joint>
+	<link name="left_shoulder_roll_link">
+		<visual name="left_shoulder_roll_link_vis">
+			<origin rpy="0 0 0" xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="visual/CASBOTHL12/left_shoulder_roll_link.obj"/>
+			</geometry>
+			<material name="metal">
+				<color rgba="0.85 0.85 0.85 1"/>
+			</material>
+		</visual>
+		<collision name="left_shoulder_roll_link_col">
+			<origin rpy="0 0 0" xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="collision/CASBOTHL12/left_shoulder_roll_link.obj"/>
+			</geometry>
+		</collision>
+		<inertial>
+			<origin rpy="0.0 0.0 0.0" xyz="0.02493395 0.00053122 -0.07970286"/>
+			<mass value="0.71449684"/>
+			<inertia ixx="0.00117191" ixy="-2.18e-06" ixz="5.7e-05" iyy="0.00137408" iyz="-2.04e-05" izz="0.00055484"/>
+		</inertial>
+	</link>
+	<joint name="left_shoulder_yaw_joint" type="revolute">
+		<origin rpy="0.0 0.0 0.0" xyz="0.026 0.0 -0.1315"/>
+		<parent link="left_shoulder_roll_link"/>
+		<child link="left_shoulder_yaw_link"/>
+		<axis xyz="0 0 1"/>
+		<limit effort="36.0" lower="-1.57079633" upper="1.57079633" velocity="9.3"/>
+		<safety_controller k_position="60.0" k_velocity="15.0" soft_lower_limit="-1.518436449" soft_upper_limit="1.518436449"/>
+		<dynamics damping="0.1" friction="0.1"/>
+	</joint>
+	<link name="left_shoulder_yaw_link">
+		<visual name="left_shoulder_yaw_link_vis">
+			<origin rpy="0 0 0" xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="visual/CASBOTHL12/left_shoulder_yaw_link.obj"/>
+			</geometry>
+			<material name="metal">
+				<color rgba="0.85 0.85 0.85 1"/>
+			</material>
+		</visual>
+		<collision name="left_shoulder_yaw_link_col">
+			<origin rpy="0 0 0" xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="collision/CASBOTHL12/left_shoulder_yaw_link.obj"/>
+			</geometry>
+		</collision>
+		<inertial>
+			<origin rpy="0.0 0.0 0.0" xyz="-0.0025532 0.01949028 -0.03103589"/>
+			<mass value="0.20074477"/>
+			<inertia ixx="0.00034342" ixy="-1.05e-05" ixz="-5.5e-07" iyy="0.00029969" iyz="8.69e-05" izz="0.000176"/>
+		</inertial>
+	</link>
+	<joint name="left_elbow_pitch_joint" type="revolute">
+		<origin rpy="0.0 0.0 0.0" xyz="0.0 0.027 -0.081"/>
+		<parent link="left_shoulder_yaw_link"/>
+		<child link="left_elbow_pitch_link"/>
+		<axis xyz="0 1 0"/>
+		<limit effort="75.0" lower="-2.26893" upper="0.34907" velocity="12.2"/>
+		<safety_controller k_position="90.0" k_velocity="25.0" soft_lower_limit="-2.181661565" soft_upper_limit="0.2967059728"/>
+		<dynamics damping="0.1" friction="0.1"/>
+	</joint>
+	<link name="left_elbow_pitch_link">
+		<visual name="left_elbow_pitch_link_vis">
+			<origin rpy="0 0 0" xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="visual/CASBOTHL12/left_elbow_pitch_link.obj"/>
+			</geometry>
+			<material name="metal">
+				<color rgba="0.85 0.85 0.85 1"/>
+			</material>
+		</visual>
+		<collision name="left_elbow_pitch_link_col">
+			<origin rpy="0 0 0" xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="collision/CASBOTHL12/left_elbow_pitch_link.obj"/>
+			</geometry>
+		</collision>
+		<inertial>
+			<origin rpy="0.0 0.0 0.0" xyz="-0.00062833 -0.03081424 -0.00460156"/>
+			<mass value="0.67820103"/>
+			<inertia ixx="0.000457" ixy="1.55e-05" ixz="2e-07" iyy="0.0004038" iyz="1.59e-05" izz="0.00035424"/>
+		</inertial>
+	</link>
+	<joint name="left_wrist_yaw_joint" type="revolute">
+		<origin rpy="0.0 0.0 0.0" xyz="0.0 -0.027 -0.0525"/>
+		<parent link="left_elbow_pitch_link"/>
+		<child link="left_wrist_yaw_link"/>
+		<axis xyz="0 0 1"/>
+		<limit effort="36.0" lower="-1.57079633" upper="1.57079633" velocity="9.3"/>
+		<safety_controller k_position="60.0" k_velocity="15.0" soft_lower_limit="-1.518436449" soft_upper_limit="1.518436449"/>
+		<dynamics damping="0.1" friction="0.1"/>
+	</joint>
+	<link name="left_wrist_yaw_link">
+		<visual name="left_wrist_yaw_link_vis">
+			<origin rpy="0 0 0" xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="visual/CASBOTHL12/left_wrist_yaw_link.obj"/>
+			</geometry>
+			<material name="metal">
+				<color rgba="0.85 0.85 0.85 1"/>
+			</material>
+		</visual>
+		<collision name="left_wrist_yaw_link_col">
+			<origin rpy="0 0 0" xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="collision/CASBOTHL12/left_wrist_yaw_link.obj"/>
+			</geometry>
+		</collision>
+		<inertial>
+			<origin rpy="0.0 0.0 0.0" xyz="7.254e-05 0.00881751 -0.06731562"/>
+			<mass value="1.07072888"/>
+			<inertia ixx="0.00211099" ixy="8.4e-07" ixz="2.05e-06" iyy="0.00199189" iyz="0.000332" izz="0.0005"/>
+		</inertial>
+	</link>
+	<joint name="left_wrist_pitch_joint" type="revolute">
+		<origin rpy="0.0 0.0 0.0" xyz="0.0 0.038 -0.1665"/>
+		<parent link="left_wrist_yaw_link"/>
+		<child link="left_wrist_pitch_link"/>
+		<axis xyz="0 1 0"/>
+		<limit effort="36.0" lower="-1.04719755" upper="1.04719755" velocity="9.3"/>
+		<safety_controller k_position="90.0" k_velocity="15.0" soft_lower_limit="-0.9948376736" soft_upper_limit="0.9948376736"/>
+		<dynamics damping="0.1" friction="0.1"/>
+	</joint>
+	<link name="left_wrist_pitch_link">
+		<visual name="left_wrist_pitch_link_vis">
+			<origin rpy="0 0 0" xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="visual/CASBOTHL12/left_wrist_pitch_link.obj"/>
+			</geometry>
+			<material name="metal">
+				<color rgba="0.85 0.85 0.85 1"/>
+			</material>
+		</visual>
+		<collision name="left_wrist_pitch_link_col">
+			<origin rpy="0 0 0" xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="collision/CASBOTHL12/left_wrist_pitch_link.obj"/>
+			</geometry>
+		</collision>
+		<inertial>
+			<origin rpy="0.0 0.0 0.0" xyz="0.00220635 -0.03479838 0.00035337"/>
+			<mass value="0.50569038"/>
+			<inertia ixx="0.000186" ixy="1.74e-06" ixz="-4.08e-06" iyy="0.000166" iyz="2.55e-06" izz="0.000206"/>
+		</inertial>
+	</link>
+	<joint name="left_wrist_roll_joint" type="revolute">
+		<origin rpy="0.0 0.0 0.0" xyz="0.032 -0.038 0.0"/>
+		<parent link="left_wrist_pitch_link"/>
+		<child link="left_wrist_roll_link"/>
+		<axis xyz="1 0 0"/>
+		<limit effort="36.0" lower="-1.57079633" upper="1.04719755" velocity="9.3"/>
+		<safety_controller k_position="70.0" k_velocity="15.0" soft_lower_limit="-1.518436449" soft_upper_limit="0.9948376736"/>
+		<dynamics damping="0.1" friction="0.1"/>
+	</joint>
+	<link name="left_wrist_roll_link">
+		<visual name="left_wrist_roll_link_vis">
+			<origin rpy="0 0 0" xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="visual/CASBOTHL12/left_wrist_roll_link.obj"/>
+			</geometry>
+			<material name="metal">
+				<color rgba="0.85 0.85 0.85 1"/>
+			</material>
+		</visual>
+		<collision name="left_wrist_roll_link_col">
+			<origin rpy="0 0 0" xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="collision/CASBOTHL12/left_wrist_roll_link.obj"/>
+			</geometry>
+		</collision>
+		<inertial>
+			<origin rpy="0.0 0.0 0.0" xyz="-0.03433172 -9.76e-05 -0.03044051"/>
+			<mass value="0.10766201"/>
+			<inertia ixx="9.58e-05" ixy="4.3e-07" ixz="7.37e-06" iyy="0.000187" iyz="2.1e-07" izz="0.000126"/>
+		</inertial>
+	</link>
+	<joint name="left_flange_fixed_joint" type="fixed">
+		<origin rpy="0 3.14159 1.5708" xyz="-0.032 0 -0.064"/>
+		<parent link="left_wrist_roll_link"/>
+		<child link="left_flange_frame"/>
+	</joint>
+	<link name="left_flange_frame">
+		<visual name="left_flange_frame_vis">
+			<origin rpy="0 0 0" xyz="0 0 0"/>
+			<geometry>
+				<sphere radius="0.0015"/>
+			</geometry>
+			<material name="yellow">
+				<color rgba="1 1 0 1"/>
+			</material>
+		</visual>
+		<collision name="left_flange_frame_col">
+			<origin rpy="0 0 0" xyz="0 0 0"/>
+			<geometry>
+				<sphere radius="0.0015"/>
+			</geometry>
+		</collision>
+		<inertial>
+			<mass value="0"/>
+			<inertia ixx="0" ixy="0" ixz="0" iyy="0" iyz="0" izz="0"/>
+		</inertial>
+	</link>
+	<joint name="right_shoulder_pitch_joint" type="revolute">
+		<origin rpy="0.0 0.0 0.0" xyz="0.0 -0.145 0.2673"/>
+		<parent link="waist_yaw_link"/>
+		<child link="right_shoulder_pitch_link"/>
+		<axis xyz="0 1 0"/>
+		<limit effort="75.0" lower="-3.22886" upper="1.6057" velocity="12.2"/>
+		<safety_controller k_position="50.0" k_velocity="25.0" soft_lower_limit="-3.141592654" soft_upper_limit="1.483529864"/>
+		<dynamics damping="0.1" friction="0.1"/>
+	</joint>
+	<link name="right_shoulder_pitch_link">
+		<visual name="right_shoulder_pitch_link_vis">
+			<origin rpy="0 0 0" xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="visual/CASBOTHL12/right_shoulder_pitch_link.obj"/>
+			</geometry>
+			<material name="metal">
+				<color rgba="0.85 0.85 0.85 1"/>
+			</material>
+		</visual>
+		<collision name="right_shoulder_pitch_link_col">
+			<origin rpy="0 0 0" xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="collision/CASBOTHL12/right_shoulder_pitch_link.obj"/>
+			</geometry>
+		</collision>
+		<inertial>
+			<origin rpy="0.0 0.0 0.0" xyz="0.00711684 -0.05146801 1.4e-05"/>
+			<mass value="0.74541476"/>
+			<inertia ixx="0.00050811" ixy="3.39e-05" ixz="-1.55e-06" iyy="0.00043045" iyz="-4.65e-06" izz="0.00053901"/>
+		</inertial>
+	</link>
+	<joint name="right_shoulder_roll_joint" type="revolute">
+		<origin rpy="0 0 0" xyz="-0.026 -0.057 0.0"/>
+		<parent link="right_shoulder_pitch_link"/>
+		<child link="right_shoulder_roll_link"/>
+		<axis xyz="1 0 0"/>
+		<limit effort="75.0" lower="-3.14159265" upper="0.34906585" velocity="12.2"/>
+		<safety_controller k_position="70.0" k_velocity="25.0" soft_lower_limit="-3.054326191" soft_upper_limit="0.2967059728"/>
+		<dynamics damping="0.1" friction="0.1"/>
+	</joint>
+	<link name="right_shoulder_roll_link">
+		<visual name="right_shoulder_roll_link_vis">
+			<origin rpy="0 0 0" xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="visual/CASBOTHL12/right_shoulder_roll_link.obj"/>
+			</geometry>
+			<material name="metal">
+				<color rgba="0.85 0.85 0.85 1"/>
+			</material>
+		</visual>
+		<collision name="right_shoulder_roll_link_col">
+			<origin rpy="0 0 0" xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="collision/CASBOTHL12/right_shoulder_roll_link.obj"/>
+			</geometry>
+		</collision>
+		<inertial>
+			<origin rpy="0.0 0.0 0.0" xyz="0.02491789 -0.0005402 -0.07970301"/>
+			<mass value="0.71454127"/>
+			<inertia ixx="0.00117188" ixy="2.01e-06" ixz="5.7e-05" iyy="0.00137399" iyz="2.09e-05" izz="0.00055484"/>
+		</inertial>
+	</link>
+	<joint name="right_shoulder_yaw_joint" type="revolute">
+		<origin rpy="0.0 0.0 0.0" xyz="0.026 0.0 -0.1315"/>
+		<parent link="right_shoulder_roll_link"/>
+		<child link="right_shoulder_yaw_link"/>
+		<axis xyz="0 0 1"/>
+		<limit effort="36.0" lower="-1.57079633" upper="1.57079633" velocity="9.3"/>
+		<safety_controller k_position="60.0" k_velocity="15.0" soft_lower_limit="-1.518436449" soft_upper_limit="1.518436449"/>
+		<dynamics damping="0.1" friction="0.1"/>
+	</joint>
+	<link name="right_shoulder_yaw_link">
+		<visual name="right_shoulder_yaw_link_vis">
+			<origin rpy="0 0 0" xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="visual/CASBOTHL12/right_shoulder_yaw_link.obj"/>
+			</geometry>
+			<material name="metal">
+				<color rgba="0.85 0.85 0.85 1"/>
+			</material>
+		</visual>
+		<collision name="right_shoulder_yaw_link_col">
+			<origin rpy="0 0 0" xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="collision/CASBOTHL12/right_shoulder_yaw_link.obj"/>
+			</geometry>
+		</collision>
+		<inertial>
+			<origin rpy="0.0 0.0 0.0" xyz="-0.00257903 -0.01960882 -0.0309344"/>
+			<mass value="0.20157689"/>
+			<inertia ixx="0.00034443" ixy="1.04e-05" ixz="-3.2e-07" iyy="0.00030025" iyz="-8.67e-05" izz="0.000176"/>
+		</inertial>
+	</link>
+	<joint name="right_elbow_pitch_joint" type="revolute">
+		<origin rpy="0.0 0.0 0.0" xyz="4.487e-05 -0.027 -0.080922"/>
+		<parent link="right_shoulder_yaw_link"/>
+		<child link="right_elbow_pitch_link"/>
+		<axis xyz="0 1 0"/>
+		<limit effort="75.0" lower="-2.26893" upper="0.34907" velocity="12.2"/>
+		<safety_controller k_position="90.0" k_velocity="25.0" soft_lower_limit="-2.181661565" soft_upper_limit="0.2967059728"/>
+		<dynamics damping="0.1" friction="0.1"/>
+	</joint>
+	<link name="right_elbow_pitch_link">
+		<visual name="right_elbow_pitch_link_vis">
+			<origin rpy="0 0 0" xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="visual/CASBOTHL12/right_elbow_pitch_link.obj"/>
+			</geometry>
+			<material name="metal">
+				<color rgba="0.85 0.85 0.85 1"/>
+			</material>
+		</visual>
+		<collision name="right_elbow_pitch_link_col">
+			<origin rpy="0 0 0" xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="collision/CASBOTHL12/right_elbow_pitch_link.obj"/>
+			</geometry>
+		</collision>
+		<inertial>
+			<origin rpy="0.0 0.0 0.0" xyz="-0.0006703 0.03077309 -0.0046702"/>
+			<mass value="0.67954062"/>
+			<inertia ixx="0.000458" ixy="-1.54e-05" ixz="1.4e-07" iyy="0.00040464" iyz="-1.58e-05" izz="0.00035523"/>
+		</inertial>
+	</link>
+	<joint name="right_wrist_yaw_joint" type="revolute">
+		<origin rpy="0.0 0.0 0.0" xyz="-4.487e-05 0.027 -0.052578"/>
+		<parent link="right_elbow_pitch_link"/>
+		<child link="right_wrist_yaw_link"/>
+		<axis xyz="0 0 1"/>
+		<limit effort="36.0" lower="-1.57079633" upper="1.57079633" velocity="9.3"/>
+		<safety_controller k_position="60.0" k_velocity="15.0" soft_lower_limit="-1.518436449" soft_upper_limit="1.518436449"/>
+		<dynamics damping="0.1" friction="0.1"/>
+	</joint>
+	<link name="right_wrist_yaw_link">
+		<visual name="right_wrist_yaw_link_vis">
+			<origin rpy="0 0 0" xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="visual/CASBOTHL12/right_wrist_yaw_link.obj"/>
+			</geometry>
+			<material name="metal">
+				<color rgba="0.85 0.85 0.85 1"/>
+			</material>
+		</visual>
+		<collision name="right_wrist_yaw_link_col">
+			<origin rpy="0 0 0" xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="collision/CASBOTHL12/right_wrist_yaw_link.obj"/>
+			</geometry>
+		</collision>
+		<inertial>
+			<origin rpy="0.0 0.0 0.0" xyz="6.938e-05 -0.00868499 -0.06737159"/>
+			<mass value="1.06320338"/>
+			<inertia ixx="0.00209773" ixy="-1.38e-06" ixz="2.07e-06" iyy="0.00198138" iyz="-0.000332" izz="0.000494"/>
+		</inertial>
+	</link>
+	<joint name="right_wrist_pitch_joint" type="revolute">
+		<origin rpy="0.0 0.0 0.0" xyz="0.0 -0.038 -0.1665"/>
+		<parent link="right_wrist_yaw_link"/>
+		<child link="right_wrist_pitch_link"/>
+		<axis xyz="0 1 0"/>
+		<limit effort="36.0" lower="-1.04719755" upper="1.04719755" velocity="9.3"/>
+		<safety_controller k_position="90.0" k_velocity="15.0" soft_lower_limit="-0.9948376736" soft_upper_limit="0.9948376736"/>
+		<dynamics damping="0.1" friction="0.1"/>
+	</joint>
+	<link name="right_wrist_pitch_link">
+		<visual name="right_wrist_pitch_link_vis">
+			<origin rpy="0 0 0" xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="visual/CASBOTHL12/right_wrist_pitch_link.obj"/>
+			</geometry>
+			<material name="metal">
+				<color rgba="0.85 0.85 0.85 1"/>
+			</material>
+		</visual>
+		<collision name="right_wrist_pitch_link_col">
+			<origin rpy="0 0 0" xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="collision/CASBOTHL12/right_wrist_pitch_link.obj"/>
+			</geometry>
+		</collision>
+		<inertial>
+			<origin rpy="0.0 0.0 0.0" xyz="0.00232894 0.03484227 0.00032484"/>
+			<mass value="0.50832961"/>
+			<inertia ixx="0.000188" ixy="-1.97e-06" ixz="-3.89e-06" iyy="0.000169" iyz="-2.38e-06" izz="0.000209"/>
+		</inertial>
+	</link>
+	<joint name="right_wrist_roll_joint" type="revolute">
+		<origin rpy="0.0 0.0 0.0" xyz="0.032 0.038 0.0"/>
+		<parent link="right_wrist_pitch_link"/>
+		<child link="right_wrist_roll_link"/>
+		<axis xyz="1 0 0"/>
+		<limit effort="36.0" lower="-1.04719755" upper="1.57079633" velocity="9.3"/>
+		<safety_controller k_position="70.0" k_velocity="15.0" soft_lower_limit="-0.9948376736" soft_upper_limit="1.518436449"/>
+		<dynamics damping="0.1" friction="0.1"/>
+	</joint>
+	<link name="right_wrist_roll_link">
+		<visual name="right_wrist_roll_link_vis">
+			<origin rpy="0 0 0" xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="visual/CASBOTHL12/right_wrist_roll_link.obj"/>
+			</geometry>
+			<material name="metal">
+				<color rgba="0.85 0.85 0.85 1"/>
+			</material>
+		</visual>
+		<collision name="right_wrist_roll_link_col">
+			<origin rpy="0 0 0" xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="collision/CASBOTHL12/right_wrist_roll_link.obj"/>
+			</geometry>
+		</collision>
+		<inertial>
+			<origin rpy="0.0 0.0 0.0" xyz="-0.02966828 9.76e-05 -0.03044051"/>
+			<mass value="0.10766201"/>
+			<inertia ixx="9.58e-05" ixy="4.3e-07" ixz="-7.37e-06" iyy="0.000187" iyz="-2.1e-07" izz="0.000126"/>
+		</inertial>
+	</link>
+	<joint name="right_flange_fixed_joint" type="fixed">
+		<origin rpy="0 3.14159 -1.5708" xyz="-0.032 0 -0.064"/>
+		<parent link="right_wrist_roll_link"/>
+		<child link="right_flange_frame"/>
+	</joint>
+	<link name="right_flange_frame">
+		<visual name="right_flange_frame_vis">
+			<origin rpy="0 0 0" xyz="0 0 0"/>
+			<geometry>
+				<sphere radius="0.0015"/>
+			</geometry>
+			<material name="yellow">
+				<color rgba="1 1 0 1"/>
+			</material>
+		</visual>
+		<collision name="right_flange_frame_col">
+			<origin rpy="0 0 0" xyz="0 0 0"/>
+			<geometry>
+				<sphere radius="0.0015"/>
+			</geometry>
+		</collision>
+		<inertial>
+			<mass value="0"/>
+			<inertia ixx="0" ixy="0" ixz="0" iyy="0" iyz="0" izz="0"/>
+		</inertial>
+	</link>
+	<joint name="left_hand_mount_joint" type="fixed">
+		<origin rpy="0 0 0" xyz="0 0 0"/>
+		<parent link="left_flange_frame"/>
+		<child link="left_hand_mount_frame"/>
+	</joint>
+	<link name="left_hand_mount_frame"/>
+	<joint name="left_hand_joint" type="fixed">
+		<origin rpy="0 0 0" xyz="0 0 0.0095"/>
+		<parent link="left_hand_mount_frame"/>
+		<child link="left_palm_base_link"/>
+	</joint>
+	<link name="left_palm_base_link">
+		<visual name="left_palm_base_link_vis">
+			<origin rpy="0 0 0" xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="visual/casbot_hand/left_palm_base_link.obj"/>
+			</geometry>
+			<material name="metal">
+				<color rgba="0.85 0.85 0.85 1"/>
+			</material>
+		</visual>
+		<collision name="left_palm_base_link_col">
+			<origin rpy="0 0 0" xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="collision/casbot_hand/left_palm_base_link.obj"/>
+			</geometry>
+		</collision>
+		<inertial>
+			<origin rpy="0.0 0.0 0.0" xyz="-0.0013 -0.00050057 0.05223"/>
+			<mass value="0.43199"/>
+			<inertia ixx="0.00052055" ixy="9.71e-06" ixz="3.11e-05" iyy="0.00037083" iyz="-1.74e-05" izz="0.000235"/>
+		</inertial>
+	</link>
+	<joint name="left_thumb_cmc_joint" type="revolute">
+		<origin rpy="0 0 0" xyz="0.01725 -0.019999 0.031069"/>
+		<parent link="left_palm_base_link"/>
+		<child link="left_thumb_cmc_link"/>
+		<axis xyz="0 0 1"/>
+		<limit effort="0.5" lower="0" upper="2.0944" velocity="2.6175"/>
+		<dynamics damping="0.1" friction="0.1"/>
+	</joint>
+	<link name="left_thumb_cmc_link">
+		<visual name="left_thumb_cmc_link_vis">
+			<origin rpy="0 0 0" xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="visual/casbot_hand/left_thumb_cmc_link.obj"/>
+			</geometry>
+			<material name="metal">
+				<color rgba="0.85 0.85 0.85 1"/>
+			</material>
+		</visual>
+		<collision name="left_thumb_cmc_link_col">
+			<origin rpy="0 0 0" xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="collision/casbot_hand/left_thumb_cmc_link.obj"/>
+			</geometry>
+		</collision>
+		<inertial>
+			<origin rpy="0.0 0.0 0.0" xyz="0 -0.0049732 0.0007749"/>
+			<mass value="0.022768"/>
+			<inertia ixx="2E-06" ixy="0" ixz="0" iyy="1.02e-06" iyz="-1.75e-07" izz="1.51e-06"/>
+		</inertial>
+	</link>
+	<joint name="left_thumb_pip_joint" type="revolute">
+		<origin rpy="0 0 0" xyz="0 -0.0105 0.00165"/>
+		<parent link="left_thumb_cmc_link"/>
+		<child link="left_thumb_pip_link"/>
+		<axis xyz="-1 0 0"/>
+		<limit effort="1.1" lower="0" upper="0.5236" velocity="2.5303"/>
+		<dynamics damping="0.1" friction="0.1"/>
+	</joint>
+	<link name="left_thumb_pip_link">
+		<visual name="left_thumb_pip_link_vis">
+			<origin rpy="0 0 0" xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="visual/casbot_hand/left_thumb_pip_link.obj"/>
+			</geometry>
+			<material name="metal">
+				<color rgba="0.85 0.85 0.85 1"/>
+			</material>
+		</visual>
+		<collision name="left_thumb_pip_link_col">
+			<origin rpy="0 0 0" xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="collision/casbot_hand/left_thumb_pip_link.obj"/>
+			</geometry>
+		</collision>
+		<inertial>
+			<origin rpy="0.0 0.0 0.0" xyz="5.03e-06 -0.023794 0.005"/>
+			<mass value="0.02573"/>
+			<inertia ixx="5.72e-06" ixy="0" ixz="0" iyy="1.75e-06" iyz="1.45e-06" izz="5.48e-06"/>
+		</inertial>
+	</link>
+	<joint name="left_thumb_dip_joint" type="revolute">
+		<origin rpy="0 0 0" xyz="0 -0.0404571702173548 0.0113233112649935"/>
+		<parent link="left_thumb_pip_link"/>
+		<child link="left_thumb_dip_link"/>
+		<axis xyz="-1 0 0"/>
+		<limit effort="1.1" lower="0" upper="1.5708" velocity="2.5303"/>
+		<dynamics damping="0.1" friction="0.1"/>
+		<mimic joint="left_thumb_pip_joint" multiplier="1.0" offset="0.0"/>
+	</joint>
+	<link name="left_thumb_dip_link">
+		<visual name="left_thumb_dip_link_vis">
+			<origin rpy="0 0 0" xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="visual/casbot_hand/left_thumb_dip_link.obj"/>
+			</geometry>
+			<material name="metal">
+				<color rgba="0.85 0.85 0.85 1"/>
+			</material>
+		</visual>
+		<collision name="left_thumb_dip_link_col">
+			<origin rpy="0 0 0" xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="collision/casbot_hand/left_thumb_dip_link.obj"/>
+			</geometry>
+		</collision>
+		<inertial>
+			<origin rpy="0.0 0.0 0.0" xyz="-1.38e-05 -0.020432 0.0085859"/>
+			<mass value="0.01371"/>
+			<inertia ixx="2.57e-06" ixy="0" ixz="0" iyy="9.2e-07" iyz="8.3e-07" izz="2.29e-06"/>
+		</inertial>
+	</link>
+	<joint name="left_thumb_tip_fixed_joint" type="fixed">
+		<origin rpy="0 0 0" xyz="0 -0.044235 0.02122"/>
+		<parent link="left_thumb_dip_link"/>
+		<child link="left_thumb_tip_frame"/>
+	</joint>
+	<link name="left_thumb_tip_frame">
+		<visual name="left_thumb_tip_frame_vis">
+			<origin rpy="0 0 0" xyz="0 0 0"/>
+			<geometry>
+				<sphere radius="0.0015"/>
+			</geometry>
+			<material name="yellow">
+				<color rgba="1 1 0 1"/>
+			</material>
+		</visual>
+		<collision name="left_thumb_tip_frame_col">
+			<origin rpy="0 0 0" xyz="0 0 0"/>
+			<geometry>
+				<sphere radius="0.0015"/>
+			</geometry>
+		</collision>
+		<inertial>
+			<mass value="0"/>
+			<inertia ixx="0" ixy="0" ixz="0" iyy="0" iyz="0" izz="0"/>
+		</inertial>
+	</link>
+	<joint name="left_index_mcp_joint" type="revolute">
+		<origin rpy="0.07854 0 0" xyz="0.00025022 -0.027833 0.093267"/>
+		<parent link="left_palm_base_link"/>
+		<child link="left_index_mcp_link"/>
+		<axis xyz="0 1 0"/>
+		<limit effort="2.0" lower="0" upper="1.5708" velocity="2.2685"/>
+		<dynamics damping="0.1" friction="0.1"/>
+	</joint>
+	<link name="left_index_mcp_link">
+		<visual name="left_index_mcp_link_vis">
+			<origin rpy="0 0 0" xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="visual/casbot_hand/left_index_mcp_link.obj"/>
+			</geometry>
+			<material name="metal">
+				<color rgba="0.85 0.85 0.85 1"/>
+			</material>
+		</visual>
+		<collision name="left_index_mcp_link_col">
+			<origin rpy="0 0 0" xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="collision/casbot_hand/left_index_mcp_link.obj"/>
+			</geometry>
+		</collision>
+		<inertial>
+			<origin rpy="0.0 0.0 0.0" xyz="-0.0014621 0 0.020991"/>
+			<mass value="0.01931"/>
+			<inertia ixx="4.71e-06" ixy="0" ixz="2E-08" iyy="4.7e-06" iyz="0" izz="6.6e-07"/>
+		</inertial>
+	</link>
+	<joint name="left_index_pip_joint" type="revolute">
+		<origin rpy="0 0 0" xyz="-0.000999999999798432 0 0.0420000000000047"/>
+		<parent link="left_index_mcp_link"/>
+		<child link="left_index_pip_link"/>
+		<axis xyz="0 1 0"/>
+		<limit effort="2.0" lower="0" upper="1.5708" velocity="2.2685"/>
+		<dynamics damping="0.1" friction="0.1"/>
+		<mimic joint="left_index_mcp_joint" multiplier="1.14" offset="0.0"/>
+	</joint>
+	<link name="left_index_pip_link">
+		<visual name="left_index_pip_link_vis">
+			<origin rpy="0 0 0" xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="visual/casbot_hand/left_index_pip_link.obj"/>
+			</geometry>
+			<material name="metal">
+				<color rgba="0.85 0.85 0.85 1"/>
+			</material>
+		</visual>
+		<collision name="left_index_pip_link_col">
+			<origin rpy="0 0 0" xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="collision/casbot_hand/left_index_pip_link.obj"/>
+			</geometry>
+		</collision>
+		<inertial>
+			<origin rpy="0.0 0.0 0.0" xyz="-0.00052321 -4.79e-05 0.020992"/>
+			<mass value="0.011321"/>
+			<inertia ixx="2.23e-06" ixy="0" ixz="-8E-08" iyy="2.24e-06" iyz="0" izz="3.4e-07"/>
+		</inertial>
+	</link>
+	<joint name="left_index_tip_fixed_joint" type="fixed">
+		<origin rpy="0 0 0" xyz="0.002395 0 0.0488"/>
+		<parent link="left_index_pip_link"/>
+		<child link="left_index_tip_frame"/>
+	</joint>
+	<link name="left_index_tip_frame">
+		<visual name="left_index_tip_frame_vis">
+			<origin rpy="0 0 0" xyz="0 0 0"/>
+			<geometry>
+				<sphere radius="0.0015"/>
+			</geometry>
+			<material name="yellow">
+				<color rgba="1 1 0 1"/>
+			</material>
+		</visual>
+		<collision name="left_index_tip_frame_col">
+			<origin rpy="0 0 0" xyz="0 0 0"/>
+			<geometry>
+				<sphere radius="0.0015"/>
+			</geometry>
+		</collision>
+		<inertial>
+			<mass value="0"/>
+			<inertia ixx="0" ixy="0" ixz="0" iyy="0" iyz="0" izz="0"/>
+		</inertial>
+	</link>
+	<joint name="left_middle_mcp_joint" type="revolute">
+		<origin rpy="0.02618 0 0" xyz="0.00025022 -0.0079444 0.094317"/>
+		<parent link="left_palm_base_link"/>
+		<child link="left_middle_mcp_link"/>
+		<axis xyz="0 1 0"/>
+		<limit effort="2.0" lower="0" upper="1.5708" velocity="2.2685"/>
+		<dynamics damping="0.1" friction="0.1"/>
+	</joint>
+	<link name="left_middle_mcp_link">
+		<visual name="left_middle_mcp_link_vis">
+			<origin rpy="0 0 0" xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="visual/casbot_hand/left_middle_mcp_link.obj"/>
+			</geometry>
+			<material name="metal">
+				<color rgba="0.85 0.85 0.85 1"/>
+			</material>
+		</visual>
+		<collision name="left_middle_mcp_link_col">
+			<origin rpy="0 0 0" xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="collision/casbot_hand/left_middle_mcp_link.obj"/>
+			</geometry>
+		</collision>
+		<inertial>
+			<origin rpy="0.0 0.0 0.0" xyz="-0.0016354 -5.225e-05 0.023208"/>
+			<mass value="0.021278"/>
+			<inertia ixx="6.35e-06" ixy="0" ixz="5E-08" iyy="6.35e-06" iyz="0" izz="7.4e-07"/>
+		</inertial>
+	</link>
+	<joint name="left_middle_pip_joint" type="revolute">
+		<origin rpy="0 0 0" xyz="-0.00125209669046785 0 0.0471448973036052"/>
+		<parent link="left_middle_mcp_link"/>
+		<child link="left_middle_pip_link"/>
+		<axis xyz="0 1 0"/>
+		<limit effort="2.0" lower="0" upper="1.5708" velocity="2.2685"/>
+		<dynamics damping="0.1" friction="0.1"/>
+		<mimic joint="left_middle_mcp_joint" multiplier="1.155" offset="0.0"/>
+	</joint>
+	<link name="left_middle_pip_link">
+		<visual name="left_middle_pip_link_vis">
+			<origin rpy="0 0 0" xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="visual/casbot_hand/left_middle_pip_link.obj"/>
+			</geometry>
+			<material name="metal">
+				<color rgba="0.85 0.85 0.85 1"/>
+			</material>
+		</visual>
+		<collision name="left_middle_pip_link_col">
+			<origin rpy="0 0 0" xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="collision/casbot_hand/left_middle_pip_link.obj"/>
+			</geometry>
+		</collision>
+		<inertial>
+			<origin rpy="0.0 0.0 0.0" xyz="-0.00052321 -4.79e-05 0.020992"/>
+			<mass value="0.011321"/>
+			<inertia ixx="2.23e-06" ixy="0" ixz="-8E-08" iyy="2.24e-06" iyz="0" izz="3.4e-07"/>
+		</inertial>
+	</link>
+	<joint name="left_middle_tip_fixed_joint" type="fixed">
+		<origin rpy="0 0 0" xyz="0.002395 0 0.0488"/>
+		<parent link="left_middle_pip_link"/>
+		<child link="left_middle_tip_frame"/>
+	</joint>
+	<link name="left_middle_tip_frame">
+		<visual name="left_middle_tip_frame_vis">
+			<origin rpy="0 0 0" xyz="0 0 0"/>
+			<geometry>
+				<sphere radius="0.0015"/>
+			</geometry>
+			<material name="yellow">
+				<color rgba="1 1 0 1"/>
+			</material>
+		</visual>
+		<collision name="left_middle_tip_frame_col">
+			<origin rpy="0 0 0" xyz="0 0 0"/>
+			<geometry>
+				<sphere radius="0.0015"/>
+			</geometry>
+		</collision>
+		<inertial>
+			<mass value="0"/>
+			<inertia ixx="0" ixy="0" ixz="0" iyy="0" iyz="0" izz="0"/>
+		</inertial>
+	</link>
+	<joint name="left_ring_mcp_joint" type="revolute">
+		<origin rpy="-0.02618 0 0" xyz="0.00025022 0.011946 0.093314"/>
+		<parent link="left_palm_base_link"/>
+		<child link="left_ring_mcp_link"/>
+		<axis xyz="0 1 0"/>
+		<limit effort="2.0" lower="0" upper="1.5708" velocity="2.2685"/>
+		<dynamics damping="0.1" friction="0.1"/>
+	</joint>
+	<link name="left_ring_mcp_link">
+		<visual name="left_ring_mcp_link_vis">
+			<origin rpy="0 0 0" xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="visual/casbot_hand/left_ring_mcp_link.obj"/>
+			</geometry>
+			<material name="metal">
+				<color rgba="0.85 0.85 0.85 1"/>
+			</material>
+		</visual>
+		<collision name="left_ring_mcp_link_col">
+			<origin rpy="0 0 0" xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="collision/casbot_hand/left_ring_mcp_link.obj"/>
+			</geometry>
+		</collision>
+		<inertial>
+			<origin rpy="0.0 0.0 0.0" xyz="-0.0014621 0 0.020991"/>
+			<mass value="0.01931"/>
+			<inertia ixx="4.71e-06" ixy="0" ixz="2E-08" iyy="4.7e-06" iyz="0" izz="6.6e-07"/>
+		</inertial>
+	</link>
+	<joint name="left_ring_pip_joint" type="revolute">
+		<origin rpy="0 0 0" xyz="-0.000999999999795606 0 0.0420000000000048"/>
+		<parent link="left_ring_mcp_link"/>
+		<child link="left_ring_pip_link"/>
+		<axis xyz="0 1 0"/>
+		<limit effort="2.0" lower="0" upper="1.5708" velocity="2.2685"/>
+		<dynamics damping="0.1" friction="0.1"/>
+		<mimic joint="left_ring_mcp_joint" multiplier="1.155" offset="0.0"/>
+	</joint>
+	<link name="left_ring_pip_link">
+		<visual name="left_ring_pip_link_vis">
+			<origin rpy="0 0 0" xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="visual/casbot_hand/left_ring_pip_link.obj"/>
+			</geometry>
+			<material name="metal">
+				<color rgba="0.85 0.85 0.85 1"/>
+			</material>
+		</visual>
+		<collision name="left_ring_pip_link_col">
+			<origin rpy="0 0 0" xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="collision/casbot_hand/left_ring_pip_link.obj"/>
+			</geometry>
+		</collision>
+		<inertial>
+			<origin rpy="0.0 0.0 0.0" xyz="-0.00052321 -4.79e-05 0.020992"/>
+			<mass value="0.011321"/>
+			<inertia ixx="2.23e-06" ixy="0" ixz="-8E-08" iyy="2.24e-06" iyz="0" izz="3.4e-07"/>
+		</inertial>
+	</link>
+	<joint name="left_ring_tip_fixed_joint" type="fixed">
+		<origin rpy="0 0 0" xyz="0.002395 0 0.0488"/>
+		<parent link="left_ring_pip_link"/>
+		<child link="left_ring_tip_frame"/>
+	</joint>
+	<link name="left_ring_tip_frame">
+		<visual name="left_ring_tip_frame_vis">
+			<origin rpy="0 0 0" xyz="0 0 0"/>
+			<geometry>
+				<sphere radius="0.0015"/>
+			</geometry>
+			<material name="yellow">
+				<color rgba="1 1 0 1"/>
+			</material>
+		</visual>
+		<collision name="left_ring_tip_frame_col">
+			<origin rpy="0 0 0" xyz="0 0 0"/>
+			<geometry>
+				<sphere radius="0.0015"/>
+			</geometry>
+		</collision>
+		<inertial>
+			<mass value="0"/>
+			<inertia ixx="0" ixy="0" ixz="0" iyy="0" iyz="0" izz="0"/>
+		</inertial>
+	</link>
+	<joint name="left_little_mcp_joint" type="revolute">
+		<origin rpy="-0.07854 0 0" xyz="0.00025022 0.031624 0.090267"/>
+		<parent link="left_palm_base_link"/>
+		<child link="left_little_mcp_link"/>
+		<axis xyz="0 1 0"/>
+		<limit effort="2.0" lower="0" upper="1.5708" velocity="2.2685"/>
+		<dynamics damping="0.1" friction="0.1"/>
+	</joint>
+	<link name="left_little_mcp_link">
+		<visual name="left_little_mcp_link_vis">
+			<origin rpy="0 0 0" xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="visual/casbot_hand/left_little_mcp_link.obj"/>
+			</geometry>
+			<material name="metal">
+				<color rgba="0.85 0.85 0.85 1"/>
+			</material>
+		</visual>
+		<collision name="left_little_mcp_link_col">
+			<origin rpy="0 0 0" xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="collision/casbot_hand/left_little_mcp_link.obj"/>
+			</geometry>
+		</collision>
+		<inertial>
+			<origin rpy="0.0 0.0 0.0" xyz="-0.00146313 -4.158e-05 0.01853468"/>
+			<mass value="0.01761671"/>
+			<inertia ixx="3.75e-06" ixy="0" ixz="3E-08" iyy="3.73e-06" iyz="0" izz="5.7e-07"/>
+		</inertial>
+	</link>
+	<joint name="left_little_pip_joint" type="revolute">
+		<origin rpy="0 0 0" xyz="-0.000999999999988846 0 0.0369999999999856"/>
+		<parent link="left_little_mcp_link"/>
+		<child link="left_little_pip_link"/>
+		<axis xyz="0 1 0"/>
+		<limit effort="2.0" lower="0" upper="1.5708" velocity="2.2685"/>
+		<dynamics damping="0.1" friction="0.1"/>
+		<mimic joint="left_little_mcp_joint" multiplier="1.155" offset="0.0"/>
+	</joint>
+	<link name="left_little_pip_link">
+		<visual name="left_little_pip_link_vis">
+			<origin rpy="0 0 0" xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="visual/casbot_hand/left_little_pip_link.obj"/>
+			</geometry>
+			<material name="metal">
+				<color rgba="0.85 0.85 0.85 1"/>
+			</material>
+		</visual>
+		<collision name="left_little_pip_link_col">
+			<origin rpy="0 0 0" xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="collision/casbot_hand/left_little_pip_link.obj"/>
+			</geometry>
+		</collision>
+		<inertial>
+			<origin rpy="0.0 0.0 0.0" xyz="-0.00052321 -4.79e-05 0.020992"/>
+			<mass value="0.011321"/>
+			<inertia ixx="2.23e-06" ixy="0" ixz="-8E-08" iyy="2.24e-06" iyz="0" izz="3.4e-07"/>
+		</inertial>
+	</link>
+	<joint name="left_little_tip_fixed_joint" type="fixed">
+		<origin rpy="0 0 0" xyz="0.002395 0 0.0488"/>
+		<parent link="left_little_pip_link"/>
+		<child link="left_little_tip_frame"/>
+	</joint>
+	<link name="left_little_tip_frame">
+		<visual name="left_little_tip_frame_vis">
+			<origin rpy="0 0 0" xyz="0 0 0"/>
+			<geometry>
+				<sphere radius="0.0015"/>
+			</geometry>
+			<material name="yellow">
+				<color rgba="1 1 0 1"/>
+			</material>
+		</visual>
+		<collision name="left_little_tip_frame_col">
+			<origin rpy="0 0 0" xyz="0 0 0"/>
+			<geometry>
+				<sphere radius="0.0015"/>
+			</geometry>
+		</collision>
+		<inertial>
+			<mass value="0"/>
+			<inertia ixx="0" ixy="0" ixz="0" iyy="0" iyz="0" izz="0"/>
+		</inertial>
+	</link>
+	<joint name="right_hand_mount_joint" type="fixed">
+		<origin rpy="0 0 0" xyz="0 0 0"/>
+		<parent link="right_flange_frame"/>
+		<child link="right_hand_mount_frame"/>
+	</joint>
+	<link name="right_hand_mount_frame"/>
+	<joint name="right_hand_joint" type="fixed">
+		<origin rpy="0 0 0" xyz="0 0 0.0095"/>
+		<parent link="right_hand_mount_frame"/>
+		<child link="right_palm_base_link"/>
+	</joint>
+	<link name="right_palm_base_link"/>
+	<joint name="right_guitar_hand_fixed_joint" type="fixed">
+		<origin rpy="3.141592653589793 0 0.5236" xyz="0 0 -0.0095"/>
+		<parent link="right_palm_base_link"/>
+		<child link="right_guitar_hand_link"/>
+	</joint>
+	<link name="right_guitar_hand_link">
+		<visual name="right_guitar_hand_link_visual">
+			<origin rpy="0 0 0" xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="visual/casbot_guitar_hand/right_guitar_hand_link.obj"/>
+			</geometry>
+			<material name="metal">
+				<color rgba="0.85 0.85 0.85 1"/>
+			</material>
+		</visual>
+		<collision name="right_guitar_hand_link_collision">
+			<origin rpy="0 0 0" xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="collision/casbot_guitar_hand/right_guitar_hand_link.obj"/>
+			</geometry>
+		</collision>
+	</link>
+	<joint name="pelvis_imu_joint" type="fixed">
+		<origin rpy="0.0 0.0 0.0" xyz="0.0 0.0 0.0"/>
+		<parent link="base_link"/>
+		<child link="pelvis_imu_frame"/>
+	</joint>
+	<link name="pelvis_imu_frame">
+		<inertial>
+			<origin rpy="0.0 0.0 0.0" xyz="0.0 0.0 0.0"/>
+			<mass value="0.01"/>
+			<inertia ixx="1e-08" ixy="0.0" ixz="0.0" iyy="1e-08" iyz="0.0" izz="1e-08"/>
+		</inertial>
+	</link>
+	<sensor id="pelvis_imu" name="pelvis_imu" type="imu" update_rate="100.0">
+		<parent link="base_link"/>
+		<origin rpy="0.0 0.0 0.0" xyz="0.0 0.0 0.0"/>
+	</sensor>
+	<joint name="guitar_joint" type="fixed">
+		<origin rpy="0.0 0.0 0.0" xyz="0.0521 -0.0005858 0.066642"/>
+		<parent link="waist_yaw_link"/>
+		<child link="guitar_link"/>
+	</joint>
+	<link name="guitar_link">
+		<visual name="guitar_body_lower_vis">
+			<origin rpy="0 0 0" xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="visual/CASBOTHL12/guitar_body_lower.obj"/>
+			</geometry>
+			<material name="metal">
+				<color rgba="0.85 0.85 0.85 1"/>
+			</material>
+		</visual>
+		<visual name="guitar_body_upper_vis">
+			<origin rpy="0 0 0" xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="visual/CASBOTHL12/guitar_body_upper.obj"/>
+			</geometry>
+			<material name="metal">
+				<color rgba="0.85 0.85 0.85 1"/>
+			</material>
+		</visual>
+		<visual name="guitar_neck_vis">
+			<origin rpy="0 0 0" xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="visual/CASBOTHL12/guitar_neck.obj"/>
+			</geometry>
+			<material name="metal">
+				<color rgba="0.85 0.85 0.85 1"/>
+			</material>
+		</visual>
+		<visual name="guitar_head_vis">
+			<origin rpy="0 0 0" xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="visual/CASBOTHL12/guitar_head.obj"/>
+			</geometry>
+			<material name="metal">
+				<color rgba="0.85 0.85 0.85 1"/>
+			</material>
+		</visual>
+		<collision name="guitar_body_lower_col">
+			<origin rpy="0 0 0" xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="collision/CASBOTHL12/guitar_body_lower.obj"/>
+			</geometry>
+		</collision>
+		<collision name="guitar_body_upper_col">
+			<origin rpy="0 0 0" xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="collision/CASBOTHL12/guitar_body_upper.obj"/>
+			</geometry>
+		</collision>
+		<collision name="guitar_neck_col">
+			<origin rpy="0 0 0" xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="collision/CASBOTHL12/guitar_neck.obj"/>
+			</geometry>
+		</collision>
+		<collision name="guitar_head_col">
+			<origin rpy="0 0 0" xyz="0 0 0"/>
+			<geometry>
+				<mesh filename="collision/CASBOTHL12/guitar_head.obj"/>
+			</geometry>
+		</collision>
+		<inertial>
+			<origin rpy="0.0 0.0 0.0" xyz="0.10974 -0.084285 -0.073077"/>
+			<mass value="3.8952"/>
+			<inertia ixx="0.17482" ixy="-0.0062205" ixz="0.003998" iyy="0.033723" iyz="-0.039813" izz="0.15426"/>
+		</inertial>
+	</link>
+	<mujoco>
+		<compiler assetdir="../assets" balanceinertia="true" discardvisual="false" fusestatic="false" strippath="false"/>
+	</mujoco>
+	<ros2_control name="HL12P1_left_arm" type="system">
+		<hardware>
+			<plugin>casbot_mujoco_ros2_control/MujocoSystemInterface</plugin>
+		</hardware>
+		<joint name="left_shoulder_pitch_joint">
+			<command_interface name="position"/>
+			<command_interface name="velocity"/>
+			<command_interface name="effort"/>
+			<command_interface name="proportional"/>
+			<command_interface name="derivative"/>
+			<state_interface name="position">
+				<param name="initial_value">0.0</param>
+			</state_interface>
+			<state_interface name="velocity"/>
+			<state_interface name="effort"/>
+			<state_interface name="acceleration"/>
+		</joint>
+		<joint name="left_shoulder_roll_joint">
+			<command_interface name="position"/>
+			<command_interface name="velocity"/>
+			<command_interface name="effort"/>
+			<command_interface name="proportional"/>
+			<command_interface name="derivative"/>
+			<state_interface name="position">
+				<param name="initial_value">0.1745</param>
+			</state_interface>
+			<state_interface name="velocity"/>
+			<state_interface name="effort"/>
+			<state_interface name="acceleration"/>
+		</joint>
+		<joint name="left_shoulder_yaw_joint">
+			<command_interface name="position"/>
+			<command_interface name="velocity"/>
+			<command_interface name="effort"/>
+			<command_interface name="proportional"/>
+			<command_interface name="derivative"/>
+			<state_interface name="position">
+				<param name="initial_value">0.0</param>
+			</state_interface>
+			<state_interface name="velocity"/>
+			<state_interface name="effort"/>
+			<state_interface name="acceleration"/>
+		</joint>
+		<joint name="left_elbow_pitch_joint">
+			<command_interface name="position"/>
+			<command_interface name="velocity"/>
+			<command_interface name="effort"/>
+			<command_interface name="proportional"/>
+			<command_interface name="derivative"/>
+			<state_interface name="position">
+				<param name="initial_value">0.0</param>
+			</state_interface>
+			<state_interface name="velocity"/>
+			<state_interface name="effort"/>
+			<state_interface name="acceleration"/>
+		</joint>
+		<joint name="left_wrist_yaw_joint">
+			<command_interface name="position"/>
+			<command_interface name="velocity"/>
+			<command_interface name="effort"/>
+			<command_interface name="proportional"/>
+			<command_interface name="derivative"/>
+			<state_interface name="position">
+				<param name="initial_value">0.0</param>
+			</state_interface>
+			<state_interface name="velocity"/>
+			<state_interface name="effort"/>
+			<state_interface name="acceleration"/>
+		</joint>
+		<joint name="left_wrist_pitch_joint">
+			<command_interface name="position"/>
+			<command_interface name="velocity"/>
+			<command_interface name="effort"/>
+			<command_interface name="proportional"/>
+			<command_interface name="derivative"/>
+			<state_interface name="position">
+				<param name="initial_value">0.0</param>
+			</state_interface>
+			<state_interface name="velocity"/>
+			<state_interface name="effort"/>
+			<state_interface name="acceleration"/>
+		</joint>
+		<joint name="left_wrist_roll_joint">
+			<command_interface name="position"/>
+			<command_interface name="velocity"/>
+			<command_interface name="effort"/>
+			<command_interface name="proportional"/>
+			<command_interface name="derivative"/>
+			<state_interface name="position">
+				<param name="initial_value">0.0</param>
+			</state_interface>
+			<state_interface name="velocity"/>
+			<state_interface name="effort"/>
+			<state_interface name="acceleration"/>
+		</joint>
+		<transmission name="left_shoulder_pitch_transmission">
+			<plugin>transmission_interface/SimpleTransmission</plugin>
+			<joint name="left_shoulder_pitch_joint" role="joint1">
+				<mechanical_reduction>1.0</mechanical_reduction>
+				<offset>0.0</offset>
+			</joint>
+			<actuator name="left_shoulder_pitch_motor" role="actuator1">
+				<mechanical_reduction>1.0</mechanical_reduction>
+				<offset>0.0</offset>
+			</actuator>
+		</transmission>
+		<transmission name="left_shoulder_roll_transmission">
+			<plugin>transmission_interface/SimpleTransmission</plugin>
+			<joint name="left_shoulder_roll_joint" role="joint1">
+				<mechanical_reduction>1.0</mechanical_reduction>
+				<offset>0.0</offset>
+			</joint>
+			<actuator name="left_shoulder_roll_motor" role="actuator1">
+				<mechanical_reduction>1.0</mechanical_reduction>
+				<offset>0.0</offset>
+			</actuator>
+		</transmission>
+		<transmission name="left_shoulder_yaw_transmission">
+			<plugin>transmission_interface/SimpleTransmission</plugin>
+			<joint name="left_shoulder_yaw_joint" role="joint1">
+				<mechanical_reduction>1.0</mechanical_reduction>
+				<offset>0.0</offset>
+			</joint>
+			<actuator name="left_shoulder_yaw_motor" role="actuator1">
+				<mechanical_reduction>1.0</mechanical_reduction>
+				<offset>0.0</offset>
+			</actuator>
+		</transmission>
+		<transmission name="left_elbow_pitch_transmission">
+			<plugin>transmission_interface/SimpleTransmission</plugin>
+			<joint name="left_elbow_pitch_joint" role="joint1">
+				<mechanical_reduction>1.0</mechanical_reduction>
+				<offset>0.0</offset>
+			</joint>
+			<actuator name="left_elbow_pitch_motor" role="actuator1">
+				<mechanical_reduction>1.0</mechanical_reduction>
+				<offset>0.0</offset>
+			</actuator>
+		</transmission>
+		<transmission name="left_wrist_yaw_transmission">
+			<plugin>transmission_interface/SimpleTransmission</plugin>
+			<joint name="left_wrist_yaw_joint" role="joint1">
+				<mechanical_reduction>1.0</mechanical_reduction>
+				<offset>0.0</offset>
+			</joint>
+			<actuator name="left_wrist_yaw_motor" role="actuator1">
+				<mechanical_reduction>1.0</mechanical_reduction>
+				<offset>0.0</offset>
+			</actuator>
+		</transmission>
+		<transmission name="left_wrist_pitch_transmission">
+			<plugin>transmission_interface/SimpleTransmission</plugin>
+			<joint name="left_wrist_pitch_joint" role="joint1">
+				<mechanical_reduction>1.0</mechanical_reduction>
+				<offset>0.0</offset>
+			</joint>
+			<actuator name="left_wrist_pitch_motor" role="actuator1">
+				<mechanical_reduction>1.0</mechanical_reduction>
+				<offset>0.0</offset>
+			</actuator>
+		</transmission>
+		<transmission name="left_wrist_roll_transmission">
+			<plugin>transmission_interface/SimpleTransmission</plugin>
+			<joint name="left_wrist_roll_joint" role="joint1">
+				<mechanical_reduction>1.0</mechanical_reduction>
+				<offset>0.0</offset>
+			</joint>
+			<actuator name="left_wrist_roll_motor" role="actuator1">
+				<mechanical_reduction>1.0</mechanical_reduction>
+				<offset>0.0</offset>
+			</actuator>
+		</transmission>
+	</ros2_control>
+	<ros2_control name="HL12P1_right_arm" type="system">
+		<hardware>
+			<plugin>casbot_mujoco_ros2_control/MujocoSystemInterface</plugin>
+		</hardware>
+		<joint name="right_shoulder_pitch_joint">
+			<command_interface name="position"/>
+			<command_interface name="velocity"/>
+			<command_interface name="effort"/>
+			<command_interface name="proportional"/>
+			<command_interface name="derivative"/>
+			<state_interface name="position">
+				<param name="initial_value">0.0</param>
+			</state_interface>
+			<state_interface name="velocity"/>
+			<state_interface name="effort"/>
+			<state_interface name="acceleration"/>
+		</joint>
+		<joint name="right_shoulder_roll_joint">
+			<command_interface name="position"/>
+			<command_interface name="velocity"/>
+			<command_interface name="effort"/>
+			<command_interface name="proportional"/>
+			<command_interface name="derivative"/>
+			<state_interface name="position">
+				<param name="initial_value">-0.1745</param>
+			</state_interface>
+			<state_interface name="velocity"/>
+			<state_interface name="effort"/>
+			<state_interface name="acceleration"/>
+		</joint>
+		<joint name="right_shoulder_yaw_joint">
+			<command_interface name="position"/>
+			<command_interface name="velocity"/>
+			<command_interface name="effort"/>
+			<command_interface name="proportional"/>
+			<command_interface name="derivative"/>
+			<state_interface name="position">
+				<param name="initial_value">0.0</param>
+			</state_interface>
+			<state_interface name="velocity"/>
+			<state_interface name="effort"/>
+			<state_interface name="acceleration"/>
+		</joint>
+		<joint name="right_elbow_pitch_joint">
+			<command_interface name="position"/>
+			<command_interface name="velocity"/>
+			<command_interface name="effort"/>
+			<command_interface name="proportional"/>
+			<command_interface name="derivative"/>
+			<state_interface name="position">
+				<param name="initial_value">0.0</param>
+			</state_interface>
+			<state_interface name="velocity"/>
+			<state_interface name="effort"/>
+			<state_interface name="acceleration"/>
+		</joint>
+		<joint name="right_wrist_yaw_joint">
+			<command_interface name="position"/>
+			<command_interface name="velocity"/>
+			<command_interface name="effort"/>
+			<command_interface name="proportional"/>
+			<command_interface name="derivative"/>
+			<state_interface name="position">
+				<param name="initial_value">0.0</param>
+			</state_interface>
+			<state_interface name="velocity"/>
+			<state_interface name="effort"/>
+			<state_interface name="acceleration"/>
+		</joint>
+		<joint name="right_wrist_pitch_joint">
+			<command_interface name="position"/>
+			<command_interface name="velocity"/>
+			<command_interface name="effort"/>
+			<command_interface name="proportional"/>
+			<command_interface name="derivative"/>
+			<state_interface name="position">
+				<param name="initial_value">0.0</param>
+			</state_interface>
+			<state_interface name="velocity"/>
+			<state_interface name="effort"/>
+			<state_interface name="acceleration"/>
+		</joint>
+		<joint name="right_wrist_roll_joint">
+			<command_interface name="position"/>
+			<command_interface name="velocity"/>
+			<command_interface name="effort"/>
+			<command_interface name="proportional"/>
+			<command_interface name="derivative"/>
+			<state_interface name="position">
+				<param name="initial_value">0.0</param>
+			</state_interface>
+			<state_interface name="velocity"/>
+			<state_interface name="effort"/>
+			<state_interface name="acceleration"/>
+		</joint>
+		<transmission name="right_shoulder_pitch_transmission">
+			<plugin>transmission_interface/SimpleTransmission</plugin>
+			<joint name="right_shoulder_pitch_joint" role="joint1">
+				<mechanical_reduction>1.0</mechanical_reduction>
+				<offset>0.0</offset>
+			</joint>
+			<actuator name="right_shoulder_pitch_motor" role="actuator1">
+				<mechanical_reduction>1.0</mechanical_reduction>
+				<offset>0.0</offset>
+			</actuator>
+		</transmission>
+		<transmission name="right_shoulder_roll_transmission">
+			<plugin>transmission_interface/SimpleTransmission</plugin>
+			<joint name="right_shoulder_roll_joint" role="joint1">
+				<mechanical_reduction>1.0</mechanical_reduction>
+				<offset>0.0</offset>
+			</joint>
+			<actuator name="right_shoulder_roll_motor" role="actuator1">
+				<mechanical_reduction>1.0</mechanical_reduction>
+				<offset>0.0</offset>
+			</actuator>
+		</transmission>
+		<transmission name="right_shoulder_yaw_transmission">
+			<plugin>transmission_interface/SimpleTransmission</plugin>
+			<joint name="right_shoulder_yaw_joint" role="joint1">
+				<mechanical_reduction>1.0</mechanical_reduction>
+				<offset>0.0</offset>
+			</joint>
+			<actuator name="right_shoulder_yaw_motor" role="actuator1">
+				<mechanical_reduction>1.0</mechanical_reduction>
+				<offset>0.0</offset>
+			</actuator>
+		</transmission>
+		<transmission name="right_elbow_pitch_transmission">
+			<plugin>transmission_interface/SimpleTransmission</plugin>
+			<joint name="right_elbow_pitch_joint" role="joint1">
+				<mechanical_reduction>1.0</mechanical_reduction>
+				<offset>0.0</offset>
+			</joint>
+			<actuator name="right_elbow_pitch_motor" role="actuator1">
+				<mechanical_reduction>1.0</mechanical_reduction>
+				<offset>0.0</offset>
+			</actuator>
+		</transmission>
+		<transmission name="right_wrist_yaw_transmission">
+			<plugin>transmission_interface/SimpleTransmission</plugin>
+			<joint name="right_wrist_yaw_joint" role="joint1">
+				<mechanical_reduction>1.0</mechanical_reduction>
+				<offset>0.0</offset>
+			</joint>
+			<actuator name="right_wrist_yaw_motor" role="actuator1">
+				<mechanical_reduction>1.0</mechanical_reduction>
+				<offset>0.0</offset>
+			</actuator>
+		</transmission>
+		<transmission name="right_wrist_pitch_transmission">
+			<plugin>transmission_interface/SimpleTransmission</plugin>
+			<joint name="right_wrist_pitch_joint" role="joint1">
+				<mechanical_reduction>1.0</mechanical_reduction>
+				<offset>0.0</offset>
+			</joint>
+			<actuator name="right_wrist_pitch_motor" role="actuator1">
+				<mechanical_reduction>1.0</mechanical_reduction>
+				<offset>0.0</offset>
+			</actuator>
+		</transmission>
+		<transmission name="right_wrist_roll_transmission">
+			<plugin>transmission_interface/SimpleTransmission</plugin>
+			<joint name="right_wrist_roll_joint" role="joint1">
+				<mechanical_reduction>1.0</mechanical_reduction>
+				<offset>0.0</offset>
+			</joint>
+			<actuator name="right_wrist_roll_motor" role="actuator1">
+				<mechanical_reduction>1.0</mechanical_reduction>
+				<offset>0.0</offset>
+			</actuator>
+		</transmission>
+	</ros2_control>
+	<ros2_control name="left_leg" type="system">
+		<hardware>
+			<plugin>casbot_mujoco_ros2_control/MujocoSystemInterface</plugin>
+		</hardware>
+		<joint name="left_hip_pitch_joint">
+			<command_interface name="position"/>
+			<command_interface name="velocity"/>
+			<command_interface name="effort"/>
+			<command_interface name="proportional"/>
+			<command_interface name="derivative"/>
+			<state_interface name="position">
+				<param name="initial_value">0.0</param>
+			</state_interface>
+			<state_interface name="velocity"/>
+			<state_interface name="effort"/>
+			<state_interface name="acceleration"/>
+		</joint>
+		<joint name="left_hip_roll_joint">
+			<command_interface name="position"/>
+			<command_interface name="velocity"/>
+			<command_interface name="effort"/>
+			<command_interface name="proportional"/>
+			<command_interface name="derivative"/>
+			<state_interface name="position">
+				<param name="initial_value">0.0</param>
+			</state_interface>
+			<state_interface name="velocity"/>
+			<state_interface name="effort"/>
+			<state_interface name="acceleration"/>
+		</joint>
+		<joint name="left_hip_yaw_joint">
+			<command_interface name="position"/>
+			<command_interface name="velocity"/>
+			<command_interface name="effort"/>
+			<command_interface name="proportional"/>
+			<command_interface name="derivative"/>
+			<state_interface name="position">
+				<param name="initial_value">0.0</param>
+			</state_interface>
+			<state_interface name="velocity"/>
+			<state_interface name="effort"/>
+			<state_interface name="acceleration"/>
+		</joint>
+		<joint name="left_knee_pitch_joint">
+			<command_interface name="position"/>
+			<command_interface name="velocity"/>
+			<command_interface name="effort"/>
+			<command_interface name="proportional"/>
+			<command_interface name="derivative"/>
+			<state_interface name="position">
+				<param name="initial_value">0.0</param>
+			</state_interface>
+			<state_interface name="velocity"/>
+			<state_interface name="effort"/>
+			<state_interface name="acceleration"/>
+		</joint>
+		<joint name="left_ankle_pitch_joint">
+			<command_interface name="position"/>
+			<command_interface name="velocity"/>
+			<command_interface name="effort"/>
+			<command_interface name="proportional"/>
+			<command_interface name="derivative"/>
+			<state_interface name="position">
+				<param name="initial_value">0.0</param>
+			</state_interface>
+			<state_interface name="velocity"/>
+			<state_interface name="effort"/>
+			<state_interface name="acceleration"/>
+		</joint>
+		<joint name="left_ankle_roll_joint">
+			<command_interface name="position"/>
+			<command_interface name="velocity"/>
+			<command_interface name="effort"/>
+			<command_interface name="proportional"/>
+			<command_interface name="derivative"/>
+			<state_interface name="position">
+				<param name="initial_value">0.0</param>
+			</state_interface>
+			<state_interface name="velocity"/>
+			<state_interface name="effort"/>
+			<state_interface name="acceleration"/>
+		</joint>
+		<transmission name="left_hip_pitch_transmission">
+			<plugin>transmission_interface/SimpleTransmission</plugin>
+			<joint name="left_hip_pitch_joint" role="joint1">
+				<mechanical_reduction>1.0</mechanical_reduction>
+				<offset>0.0</offset>
+			</joint>
+			<actuator name="left_hip_pitch_motor" role="actuator1">
+				<mechanical_reduction>1.0</mechanical_reduction>
+				<offset>0.0</offset>
+			</actuator>
+		</transmission>
+		<transmission name="left_hip_roll_transmission">
+			<plugin>transmission_interface/SimpleTransmission</plugin>
+			<joint name="left_hip_roll_joint" role="joint1">
+				<mechanical_reduction>1.0</mechanical_reduction>
+				<offset>0.0</offset>
+			</joint>
+			<actuator name="left_hip_roll_motor" role="actuator1">
+				<mechanical_reduction>1.0</mechanical_reduction>
+				<offset>0.0</offset>
+			</actuator>
+		</transmission>
+		<transmission name="left_hip_yaw_transmission">
+			<plugin>transmission_interface/SimpleTransmission</plugin>
+			<joint name="left_hip_yaw_joint" role="joint1">
+				<mechanical_reduction>1.0</mechanical_reduction>
+				<offset>0.0</offset>
+			</joint>
+			<actuator name="left_hip_yaw_motor" role="actuator1">
+				<mechanical_reduction>1.0</mechanical_reduction>
+				<offset>0.0</offset>
+			</actuator>
+		</transmission>
+		<transmission name="left_knee_pitch_transmission">
+			<plugin>transmission_interface/SimpleTransmission</plugin>
+			<joint name="left_knee_pitch_joint" role="joint1">
+				<mechanical_reduction>1.0</mechanical_reduction>
+				<offset>0.0</offset>
+			</joint>
+			<actuator name="left_knee_pitch_motor" role="actuator1">
+				<mechanical_reduction>1.0</mechanical_reduction>
+				<offset>0.0</offset>
+			</actuator>
+		</transmission>
+		<transmission name="left_ankle_pitch_transmission">
+			<plugin>transmission_interface/SimpleTransmission</plugin>
+			<joint name="left_ankle_pitch_joint" role="joint1">
+				<mechanical_reduction>1.0</mechanical_reduction>
+				<offset>0.0</offset>
+			</joint>
+			<actuator name="left_ankle_pitch_motor" role="actuator1">
+				<mechanical_reduction>1.0</mechanical_reduction>
+				<offset>0.0</offset>
+			</actuator>
+		</transmission>
+		<transmission name="left_ankle_roll_transmission">
+			<plugin>transmission_interface/SimpleTransmission</plugin>
+			<joint name="left_ankle_roll_joint" role="joint1">
+				<mechanical_reduction>1.0</mechanical_reduction>
+				<offset>0.0</offset>
+			</joint>
+			<actuator name="left_ankle_roll_motor" role="actuator1">
+				<mechanical_reduction>1.0</mechanical_reduction>
+				<offset>0.0</offset>
+			</actuator>
+		</transmission>
+	</ros2_control>
+	<ros2_control name="right_leg" type="system">
+		<hardware>
+			<plugin>casbot_mujoco_ros2_control/MujocoSystemInterface</plugin>
+		</hardware>
+		<joint name="right_hip_pitch_joint">
+			<command_interface name="position"/>
+			<command_interface name="velocity"/>
+			<command_interface name="effort"/>
+			<command_interface name="proportional"/>
+			<command_interface name="derivative"/>
+			<state_interface name="position">
+				<param name="initial_value">0.0</param>
+			</state_interface>
+			<state_interface name="velocity"/>
+			<state_interface name="effort"/>
+			<state_interface name="acceleration"/>
+		</joint>
+		<joint name="right_hip_roll_joint">
+			<command_interface name="position"/>
+			<command_interface name="velocity"/>
+			<command_interface name="effort"/>
+			<command_interface name="proportional"/>
+			<command_interface name="derivative"/>
+			<state_interface name="position">
+				<param name="initial_value">0.0</param>
+			</state_interface>
+			<state_interface name="velocity"/>
+			<state_interface name="effort"/>
+			<state_interface name="acceleration"/>
+		</joint>
+		<joint name="right_hip_yaw_joint">
+			<command_interface name="position"/>
+			<command_interface name="velocity"/>
+			<command_interface name="effort"/>
+			<command_interface name="proportional"/>
+			<command_interface name="derivative"/>
+			<state_interface name="position">
+				<param name="initial_value">0.0</param>
+			</state_interface>
+			<state_interface name="velocity"/>
+			<state_interface name="effort"/>
+			<state_interface name="acceleration"/>
+		</joint>
+		<joint name="right_knee_pitch_joint">
+			<command_interface name="position"/>
+			<command_interface name="velocity"/>
+			<command_interface name="effort"/>
+			<command_interface name="proportional"/>
+			<command_interface name="derivative"/>
+			<state_interface name="position">
+				<param name="initial_value">0.0</param>
+			</state_interface>
+			<state_interface name="velocity"/>
+			<state_interface name="effort"/>
+			<state_interface name="acceleration"/>
+		</joint>
+		<joint name="right_ankle_pitch_joint">
+			<command_interface name="position"/>
+			<command_interface name="velocity"/>
+			<command_interface name="effort"/>
+			<command_interface name="proportional"/>
+			<command_interface name="derivative"/>
+			<state_interface name="position">
+				<param name="initial_value">0.0</param>
+			</state_interface>
+			<state_interface name="velocity"/>
+			<state_interface name="effort"/>
+			<state_interface name="acceleration"/>
+		</joint>
+		<joint name="right_ankle_roll_joint">
+			<command_interface name="position"/>
+			<command_interface name="velocity"/>
+			<command_interface name="effort"/>
+			<command_interface name="proportional"/>
+			<command_interface name="derivative"/>
+			<state_interface name="position">
+				<param name="initial_value">0.0</param>
+			</state_interface>
+			<state_interface name="velocity"/>
+			<state_interface name="effort"/>
+			<state_interface name="acceleration"/>
+		</joint>
+		<transmission name="right_hip_pitch_transmission">
+			<plugin>transmission_interface/SimpleTransmission</plugin>
+			<joint name="right_hip_pitch_joint" role="joint1">
+				<mechanical_reduction>1.0</mechanical_reduction>
+				<offset>0.0</offset>
+			</joint>
+			<actuator name="right_hip_pitch_motor" role="actuator1">
+				<mechanical_reduction>1.0</mechanical_reduction>
+				<offset>0.0</offset>
+			</actuator>
+		</transmission>
+		<transmission name="right_hip_roll_transmission">
+			<plugin>transmission_interface/SimpleTransmission</plugin>
+			<joint name="right_hip_roll_joint" role="joint1">
+				<mechanical_reduction>1.0</mechanical_reduction>
+				<offset>0.0</offset>
+			</joint>
+			<actuator name="right_hip_roll_motor" role="actuator1">
+				<mechanical_reduction>1.0</mechanical_reduction>
+				<offset>0.0</offset>
+			</actuator>
+		</transmission>
+		<transmission name="right_hip_yaw_transmission">
+			<plugin>transmission_interface/SimpleTransmission</plugin>
+			<joint name="right_hip_yaw_joint" role="joint1">
+				<mechanical_reduction>1.0</mechanical_reduction>
+				<offset>0.0</offset>
+			</joint>
+			<actuator name="right_hip_yaw_motor" role="actuator1">
+				<mechanical_reduction>1.0</mechanical_reduction>
+				<offset>0.0</offset>
+			</actuator>
+		</transmission>
+		<transmission name="right_knee_pitch_transmission">
+			<plugin>transmission_interface/SimpleTransmission</plugin>
+			<joint name="right_knee_pitch_joint" role="joint1">
+				<mechanical_reduction>1.0</mechanical_reduction>
+				<offset>0.0</offset>
+			</joint>
+			<actuator name="right_knee_pitch_motor" role="actuator1">
+				<mechanical_reduction>1.0</mechanical_reduction>
+				<offset>0.0</offset>
+			</actuator>
+		</transmission>
+		<transmission name="right_ankle_pitch_transmission">
+			<plugin>transmission_interface/SimpleTransmission</plugin>
+			<joint name="right_ankle_pitch_joint" role="joint1">
+				<mechanical_reduction>1.0</mechanical_reduction>
+				<offset>0.0</offset>
+			</joint>
+			<actuator name="right_ankle_pitch_motor" role="actuator1">
+				<mechanical_reduction>1.0</mechanical_reduction>
+				<offset>0.0</offset>
+			</actuator>
+		</transmission>
+		<transmission name="right_ankle_roll_transmission">
+			<plugin>transmission_interface/SimpleTransmission</plugin>
+			<joint name="right_ankle_roll_joint" role="joint1">
+				<mechanical_reduction>1.0</mechanical_reduction>
+				<offset>0.0</offset>
+			</joint>
+			<actuator name="right_ankle_roll_motor" role="actuator1">
+				<mechanical_reduction>1.0</mechanical_reduction>
+				<offset>0.0</offset>
+			</actuator>
+		</transmission>
+	</ros2_control>
+	<ros2_control name="waist" type="system">
+		<hardware>
+			<plugin>casbot_mujoco_ros2_control/MujocoSystemInterface</plugin>
+		</hardware>
+		<joint name="waist_yaw_joint">
+			<command_interface name="position"/>
+			<command_interface name="velocity"/>
+			<command_interface name="effort"/>
+			<command_interface name="proportional"/>
+			<command_interface name="derivative"/>
+			<state_interface name="position">
+				<param name="initial_value">0.0</param>
+			</state_interface>
+			<state_interface name="velocity"/>
+			<state_interface name="effort"/>
+			<state_interface name="acceleration"/>
+		</joint>
+		<transmission name="waist_yaw_transmission">
+			<plugin>transmission_interface/SimpleTransmission</plugin>
+			<joint name="waist_yaw_joint" role="joint1">
+				<mechanical_reduction>1.0</mechanical_reduction>
+				<offset>0.0</offset>
+			</joint>
+			<actuator name="waist_yaw_motor" role="actuator1">
+				<mechanical_reduction>1.0</mechanical_reduction>
+				<offset>0.0</offset>
+			</actuator>
+		</transmission>
+		<sensor name="pelvis_imu" type="imu">
+			<state_interface name="orientation.x"/>
+			<state_interface name="orientation.y"/>
+			<state_interface name="orientation.z"/>
+			<state_interface name="orientation.w"/>
+			<state_interface name="angular_velocity.x"/>
+			<state_interface name="angular_velocity.y"/>
+			<state_interface name="angular_velocity.z"/>
+			<state_interface name="linear_acceleration.x"/>
+			<state_interface name="linear_acceleration.y"/>
+			<state_interface name="linear_acceleration.z"/>
+			<param name="frame_id">pelvis_imu_frame</param>
+			<param name="gyro_sensor">pelvis_imu_gyro</param>
+			<param name="accelerometer_sensor">pelvis_imu_accelerometer</param>
+			<param name="quaternion_sensor">pelvis_imu_quaternion</param>
+			<param name="sensor_type">imu</param>
+		</sensor>
+	</ros2_control>
+	<ros2_control name="head" type="system">
+		<hardware>
+			<plugin>casbot_mujoco_ros2_control/MujocoSystemInterface</plugin>
+		</hardware>
+		<joint name="head_yaw_joint">
+			<command_interface name="position"/>
+			<command_interface name="velocity"/>
+			<command_interface name="effort"/>
+			<command_interface name="proportional"/>
+			<command_interface name="derivative"/>
+			<state_interface name="position">
+				<param name="initial_value">0.0</param>
+			</state_interface>
+			<state_interface name="velocity"/>
+			<state_interface name="effort"/>
+			<state_interface name="acceleration"/>
+		</joint>
+		<joint name="head_pitch_joint">
+			<command_interface name="position"/>
+			<command_interface name="velocity"/>
+			<command_interface name="effort"/>
+			<command_interface name="proportional"/>
+			<command_interface name="derivative"/>
+			<state_interface name="position">
+				<param name="initial_value">0.0</param>
+			</state_interface>
+			<state_interface name="velocity"/>
+			<state_interface name="effort"/>
+			<state_interface name="acceleration"/>
+		</joint>
+		<transmission name="head_yaw_transmission">
+			<plugin>transmission_interface/SimpleTransmission</plugin>
+			<joint name="head_yaw_joint" role="joint1">
+				<mechanical_reduction>1.0</mechanical_reduction>
+				<offset>0.0</offset>
+			</joint>
+			<actuator name="head_yaw_motor" role="actuator1">
+				<mechanical_reduction>1.0</mechanical_reduction>
+				<offset>0.0</offset>
+			</actuator>
+		</transmission>
+		<transmission name="head_pitch_transmission">
+			<plugin>transmission_interface/SimpleTransmission</plugin>
+			<joint name="head_pitch_joint" role="joint1">
+				<mechanical_reduction>1.0</mechanical_reduction>
+				<offset>0.0</offset>
+			</joint>
+			<actuator name="head_pitch_motor" role="actuator1">
+				<mechanical_reduction>1.0</mechanical_reduction>
+				<offset>0.0</offset>
+			</actuator>
+		</transmission>
+	</ros2_control>
+	<ros2_control name="left_hand" type="system">
+		<hardware>
+			<plugin>casbot_mujoco_ros2_control/MujocoSystemInterface</plugin>
+		</hardware>
+		<joint name="left_thumb_cmc_joint">
+			<command_interface name="position"/>
+			<command_interface name="velocity"/>
+			<command_interface name="effort"/>
+			<state_interface name="position">
+				<param name="initial_value">0.0</param>
+			</state_interface>
+			<state_interface name="velocity"/>
+			<state_interface name="effort"/>
+			<state_interface name="acceleration"/>
+		</joint>
+		<joint name="left_thumb_pip_joint">
+			<command_interface name="position"/>
+			<command_interface name="velocity"/>
+			<command_interface name="effort"/>
+			<state_interface name="position">
+				<param name="initial_value">0.0</param>
+			</state_interface>
+			<state_interface name="velocity"/>
+			<state_interface name="effort"/>
+			<state_interface name="acceleration"/>
+		</joint>
+		<joint name="left_thumb_dip_joint">
+			<param name="mimic">left_thumb_pip_joint</param>
+			<param name="multiplier">1.0</param>
+			<state_interface name="position">
+				<param name="initial_value">0.0</param>
+			</state_interface>
+			<state_interface name="velocity"/>
+			<state_interface name="effort"/>
+			<state_interface name="acceleration"/>
+		</joint>
+		<joint name="left_index_mcp_joint">
+			<command_interface name="position"/>
+			<command_interface name="velocity"/>
+			<command_interface name="effort"/>
+			<state_interface name="position">
+				<param name="initial_value">0.0</param>
+			</state_interface>
+			<state_interface name="velocity"/>
+			<state_interface name="effort"/>
+			<state_interface name="acceleration"/>
+		</joint>
+		<joint name="left_index_pip_joint">
+			<param name="mimic">left_index_mcp_joint</param>
+			<param name="multiplier">1.14</param>
+			<state_interface name="position">
+				<param name="initial_value">0.0</param>
+			</state_interface>
+			<state_interface name="velocity"/>
+			<state_interface name="effort"/>
+			<state_interface name="acceleration"/>
+		</joint>
+		<joint name="left_middle_mcp_joint">
+			<command_interface name="position"/>
+			<command_interface name="velocity"/>
+			<command_interface name="effort"/>
+			<state_interface name="position">
+				<param name="initial_value">0.0</param>
+			</state_interface>
+			<state_interface name="velocity"/>
+			<state_interface name="effort"/>
+			<state_interface name="acceleration"/>
+		</joint>
+		<joint name="left_middle_pip_joint">
+			<param name="mimic">left_middle_mcp_joint</param>
+			<param name="multiplier">1.155</param>
+			<state_interface name="position">
+				<param name="initial_value">0.0</param>
+			</state_interface>
+			<state_interface name="velocity"/>
+			<state_interface name="effort"/>
+			<state_interface name="acceleration"/>
+		</joint>
+		<joint name="left_ring_mcp_joint">
+			<command_interface name="position"/>
+			<command_interface name="velocity"/>
+			<command_interface name="effort"/>
+			<state_interface name="position">
+				<param name="initial_value">0.0</param>
+			</state_interface>
+			<state_interface name="velocity"/>
+			<state_interface name="effort"/>
+			<state_interface name="acceleration"/>
+		</joint>
+		<joint name="left_ring_pip_joint">
+			<param name="mimic">left_ring_mcp_joint</param>
+			<param name="multiplier">1.155</param>
+			<state_interface name="position">
+				<param name="initial_value">0.0</param>
+			</state_interface>
+			<state_interface name="velocity"/>
+			<state_interface name="effort"/>
+			<state_interface name="acceleration"/>
+		</joint>
+		<joint name="left_little_mcp_joint">
+			<command_interface name="position"/>
+			<command_interface name="velocity"/>
+			<command_interface name="effort"/>
+			<state_interface name="position">
+				<param name="initial_value">0.0</param>
+			</state_interface>
+			<state_interface name="velocity"/>
+			<state_interface name="effort"/>
+			<state_interface name="acceleration"/>
+		</joint>
+		<joint name="left_little_pip_joint">
+			<param name="mimic">left_little_mcp_joint</param>
+			<param name="multiplier">1.155</param>
+			<state_interface name="position">
+				<param name="initial_value">0.0</param>
+			</state_interface>
+			<state_interface name="velocity"/>
+			<state_interface name="effort"/>
+			<state_interface name="acceleration"/>
+		</joint>
+		<transmission name="left_thumb_cmc_transmission">
+			<plugin>transmission_interface/SimpleTransmission</plugin>
+			<joint name="left_thumb_cmc_joint" role="joint1">
+				<mechanical_reduction>1.0</mechanical_reduction>
+				<offset>0.0</offset>
+			</joint>
+			<actuator name="left_thumb_cmc_motor" role="actuator1">
+				<mechanical_reduction>1.0</mechanical_reduction>
+				<offset>0.0</offset>
+			</actuator>
+		</transmission>
+		<transmission name="left_thumb_pip_transmission">
+			<plugin>transmission_interface/SimpleTransmission</plugin>
+			<joint name="left_thumb_pip_joint" role="joint1">
+				<mechanical_reduction>1.0</mechanical_reduction>
+				<offset>0.0</offset>
+			</joint>
+			<actuator name="left_thumb_pip_motor" role="actuator1">
+				<mechanical_reduction>1.0</mechanical_reduction>
+				<offset>0.0</offset>
+			</actuator>
+		</transmission>
+		<transmission name="left_index_mcp_transmission">
+			<plugin>transmission_interface/SimpleTransmission</plugin>
+			<joint name="left_index_mcp_joint" role="joint1">
+				<mechanical_reduction>1.0</mechanical_reduction>
+				<offset>0.0</offset>
+			</joint>
+			<actuator name="left_index_mcp_motor" role="actuator1">
+				<mechanical_reduction>1.0</mechanical_reduction>
+				<offset>0.0</offset>
+			</actuator>
+		</transmission>
+		<transmission name="left_middle_mcp_joint_transmission">
+			<plugin>transmission_interface/SimpleTransmission</plugin>
+			<joint name="left_middle_mcp_joint" role="joint1">
+				<mechanical_reduction>1.0</mechanical_reduction>
+				<offset>0.0</offset>
+			</joint>
+			<actuator name="left_middle_mcp_motor" role="actuator1">
+				<mechanical_reduction>1.0</mechanical_reduction>
+				<offset>0.0</offset>
+			</actuator>
+		</transmission>
+		<transmission name="left_ring_mcp_joint_transmission">
+			<plugin>transmission_interface/SimpleTransmission</plugin>
+			<joint name="left_ring_mcp_joint" role="joint1">
+				<mechanical_reduction>1.0</mechanical_reduction>
+				<offset>0.0</offset>
+			</joint>
+			<actuator name="left_ring_mcp_motor" role="actuator1">
+				<mechanical_reduction>1.0</mechanical_reduction>
+				<offset>0.0</offset>
+			</actuator>
+		</transmission>
+		<transmission name="left_little_mcp_joint_transmission">
+			<plugin>transmission_interface/SimpleTransmission</plugin>
+			<joint name="left_little_mcp_joint" role="joint1">
+				<mechanical_reduction>1.0</mechanical_reduction>
+				<offset>0.0</offset>
+			</joint>
+			<actuator name="left_little_mcp_motor" role="actuator1">
+				<mechanical_reduction>1.0</mechanical_reduction>
+				<offset>0.0</offset>
+			</actuator>
+		</transmission>
+	</ros2_control>
+</robot>

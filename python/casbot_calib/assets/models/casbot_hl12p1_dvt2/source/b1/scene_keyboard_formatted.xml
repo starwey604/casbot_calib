@@ -1,0 +1,86 @@
+<?xml version="1.0" ?>
+<mujoco model="scene">
+
+	<include file="mujoco_description_formatted.xml"/>
+	<!--
+		Keyboard Scene: standing HL12 FIXED, electronic keyboard on a table in front.
+		Canonical Robot is included only in per-revision scene_keyboard_formatted.xml.
+		Mesh paths are relative to mjcf/casbot_hl12p1_{dvt2|evt1}/ (formatted location).
+
+		Scale: keyboard meshes use uniform meshscale 0.26 (scene-side; OBJ not re-exported).
+		Unscaled Z-up AABB was ~4.72 x 1.05 x 0.28 m (Sketchfab/FBX cm with node scale 0.01,
+		already metres in the converted OBJ). Scaled board is ~1.23 x 0.27 x 0.07 m —
+		88-key width, not a toy and not a wall. HL12 standing height ~1.54 m (geom),
+		pelvis/hip ~0.89 m.
+
+		Standing FIXED: mocap base_anchor + base_weld on base_footprint at z = 0
+		(feet on the floor). Default standing qpos; no sit keyframe. Launch injects
+		initial_keyframe=sit for scene:=drums only, not keyboard.
+		YAML base_constraint.initial_mode remains inherit.
+
+		Keyboard collision is per-mesh convex hulls (convert_glb.py: body, white keys,
+		black keys, buttons), not one hull of the whole GLB.
+
+		Stand: primitive table under the keyboard. Default top surface z = 0.86 m so
+		keys sit at ~0.89 m (hip). To raise or lower: change stand_top pos z
+		(surface = pos_z + size_z), stand_leg size (half-height) and pos z, and
+		keyboard body pos z = surface. Mesh z_min is baked to 0 so the board sits
+		on that surface.
+	-->
+
+	<statistic center="0.4 0 0.8" extent="3"/>
+
+	<option integrator="implicitfast" timestep="0.002"/>
+
+	<visual>
+		<headlight ambient="0.1 0.1 0.1" diffuse="0.6 0.6 0.6" specular="0 0 0"/>
+		<rgba haze="0.15 0.25 0.35 1"/>
+		<global azimuth="120" elevation="-20"/>
+	</visual>
+
+	<asset>
+		<texture builtin="gradient" height="3072" rgb1="0.3 0.5 0.7" rgb2="0 0 0" type="skybox" width="512"/>
+		<texture builtin="checker" height="300" mark="edge" markrgb="0.8 0.8 0.8" name="groundplane" rgb1="0.2 0.3 0.4" rgb2="0.1 0.2 0.3" type="2d" width="300"/>
+		<material name="groundplane" texrepeat="5 5" texture="groundplane" texuniform="true"/>
+		<material name="keyboard_body_mat" rgba="0.024 0.024 0.024 1"/>
+		<material name="keyboard_key_white_mat" rgba="0.384 0.384 0.384 1"/>
+		<material name="keyboard_key_black_mat" rgba="0 0 0 1"/>
+		<texture file="../../../../scenes/keyboard/keyboard_screen.png" name="keyboard_screen_tex" type="2d"/>
+		<material name="keyboard_screen_mat" texture="keyboard_screen_tex" texuniform="false"/>
+		<mesh file="../../../../scenes/keyboard/keyboard_body.obj" name="keyboard_body" scale="0.26 0.26 0.26"/>
+		<mesh file="../../../../scenes/keyboard/keyboard_keys_white.obj" name="keyboard_keys_white" scale="0.26 0.26 0.26"/>
+		<mesh file="../../../../scenes/keyboard/keyboard_keys_black.obj" name="keyboard_keys_black" scale="0.26 0.26 0.26"/>
+		<mesh file="../../../../scenes/keyboard/keyboard_btns_white.obj" name="keyboard_btns_white" scale="0.26 0.26 0.26"/>
+		<mesh file="../../../../scenes/keyboard/keyboard_btns_black.obj" name="keyboard_btns_black" scale="0.26 0.26 0.26"/>
+		<mesh file="../../../../scenes/keyboard/keyboard_screen.obj" inertia="shell" name="keyboard_screen" scale="0.26 0.26 0.26"/>
+		<include file="../../../../scenes/keyboard/keyboard_col_assets.xml"/>
+	</asset>
+
+	<worldbody>
+		<geom condim="3" friction="0.7" material="groundplane" name="floor" size="0 0 .05" type="plane"/>
+		<light diffuse="0.9 0.9 0.9" dir="0 0 -5" directional="true" pos="0 0 10"/>
+		<body mocap="true" name="base_anchor" pos="0 0 0">
+			<geom conaffinity="0" contype="0" rgba="1 0 0 0.3" size="0.02" type="sphere"/>
+		</body>
+		<body name="keyboard_stand" pos="0.40 0 0">
+			<geom condim="3" friction="1.0 0.1 0.1" name="stand_top" pos="0 0 0.84" rgba="0.18 0.16 0.14 1" size="0.16 0.65 0.02" type="box"/>
+			<geom condim="3" friction="0.8" name="stand_leg_fl" pos="0.12 0.55 0.41" rgba="0.14 0.14 0.14 1" size="0.022 0.41" type="cylinder"/>
+			<geom condim="3" friction="0.8" name="stand_leg_fr" pos="0.12 -0.55 0.41" rgba="0.14 0.14 0.14 1" size="0.022 0.41" type="cylinder"/>
+			<geom condim="3" friction="0.8" name="stand_leg_rl" pos="-0.12 0.55 0.41" rgba="0.14 0.14 0.14 1" size="0.022 0.41" type="cylinder"/>
+			<geom condim="3" friction="0.8" name="stand_leg_rr" pos="-0.12 -0.55 0.41" rgba="0.14 0.14 0.14 1" size="0.022 0.41" type="cylinder"/>
+		</body>
+		<body name="keyboard" pos="0.40 0 0.86" quat="0.70710678 0 0 -0.70710678">
+			<geom conaffinity="0" contype="0" group="1" material="keyboard_body_mat" mesh="keyboard_body" name="keyboard_body_vis" type="mesh"/>
+			<geom conaffinity="0" contype="0" group="1" material="keyboard_key_white_mat" mesh="keyboard_keys_white" name="keyboard_keys_white_vis" type="mesh"/>
+			<geom conaffinity="0" contype="0" group="1" material="keyboard_key_black_mat" mesh="keyboard_keys_black" name="keyboard_keys_black_vis" type="mesh"/>
+			<geom conaffinity="0" contype="0" group="1" material="keyboard_key_white_mat" mesh="keyboard_btns_white" name="keyboard_btns_white_vis" type="mesh"/>
+			<geom conaffinity="0" contype="0" group="1" material="keyboard_key_black_mat" mesh="keyboard_btns_black" name="keyboard_btns_black_vis" type="mesh"/>
+			<geom conaffinity="0" contype="0" group="1" material="keyboard_screen_mat" mesh="keyboard_screen" name="keyboard_screen_vis" type="mesh"/>
+			<include file="../../../../scenes/keyboard/keyboard_col_geoms.xml"/>
+		</body>
+	</worldbody>
+
+	<equality>
+		<weld active="true" body1="base_footprint" body2="base_anchor" name="base_weld" relpose="0 0 0 1 0 0 0"/>
+	</equality>
+</mujoco>

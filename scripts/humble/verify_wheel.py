@@ -33,8 +33,18 @@ from casbot_calib.kinematic_design import k3_config
 from casbot_calib.kinematic_acceptance import repeatability
 from casbot_calib.kinematic_metrology import UNITS
 from casbot_calib.kinematic_presentation import scene as write_trical_scene
+from casbot_calib.model_sources import source_catalog,dvt2_source,inspect_source
 assert Path(casbot_calib.__file__).is_relative_to(sys.argv[1])
 assert Path(_core.__file__).is_relative_to(sys.argv[1])
+catalog=source_catalog();source_variants=catalog["variants"]
+for variant in source_variants:
+    model_source=dvt2_source(variant)
+    assert model_source.directory.is_relative_to(sys.argv[1])
+    assert inspect_source(variant)["passed"]
+    assert len(_core.ArmDynamics.from_urdf(str(model_source.urdf)).model.joints)==len(source_variants[variant]["active_joint_names"])
+asset_files=[p for p in model_source.asset_root.rglob("*") if p.is_file()]
+assert len(asset_files)==catalog["asset_inventory"]["files"]
+assert sum(p.stat().st_size for p in asset_files)==catalog["asset_inventory"]["bytes"]
 engine,source=nominal_dual_arm();q=np.zeros(14)
 kinematics,manifest=nominal_kinematics()
 assert "left_trical_tcp" in kinematics.frame_names() and "right_trical_tcp" in kinematics.frame_names()
@@ -65,12 +75,12 @@ commands=np.zeros((1,14,5));commands[0,:,2]=engine.gravity(q)
 observations,_=_core.ArmSimulationRunner(engine,config).run(np.array([0],dtype=np.int64),commands,2_000_000,q,q)
 assert observations["q"].shape==(3,14) and np.isfinite(observations["q"]).all()
 assert np.max(np.abs(observations["q"]))<1e-10
-print(json.dumps(dict(passed=True,core_path=_core.__file__,backend=engine.backend_version(),joints=14,python_physics_imports_disabled=True,editable_disabled=True)))
+print(json.dumps(dict(passed=True,core_path=_core.__file__,backend=engine.backend_version(),joints=14,dvt2_source_variants=list(source_variants),dvt2_default_changed=False,python_physics_imports_disabled=True,editable_disabled=True)))
 '''
     result = json.loads(subprocess.check_output([sys.executable, '-I', '-c', probe, str(unpacked)], text=True))
     result.update(wheel=wheel.name, wheel_sha256=hashlib.sha256(wheel.read_bytes()).hexdigest(), wheel_bytes=wheel.stat().st_size)
     (output / 'verification.json').write_text(json.dumps(result, indent=2) + '\n', encoding='utf-8')
-    print('Independent wheel import, bundled nominal URDF and 14-axis native Mock: PASS')
+    print('Independent wheel import, five DVT2 source bundles, existing default and 14-axis native Mock: PASS')
 
 
 if __name__ == '__main__':

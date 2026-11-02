@@ -1,4 +1,7 @@
 @PACKAGE_INIT@
+# Capture our relocatable prefix before dependency configs set PACKAGE_PREFIX_DIR.
+# Optional Models component; finding the core alone must not require assets.
+set(casbot_calib_MODEL_DIRECTORY "@PACKAGE_CMAKE_INSTALL_DATADIR@/casbot_calib/models")
 include(CMakeFindDependencyMacro)
 find_dependency(Eigen3 3.4 CONFIG)
 find_dependency(Boost 1.74 CONFIG)

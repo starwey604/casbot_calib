@@ -14,6 +14,7 @@
 
 ## 当前目标与已完成范围
 
+- **2026-11-02用户确定整体替换默认模型**：来源为`~/下载/casbot_hl12p1_dvt2`，大型资源使用Git LFS；派生固定腰部14轴模型并重新冻结场景。实施见[DVT2模型替换计划](docs/dvt2_model_migration_plan.md)，N1已完成原包/LFS入库及资源/安装验证，N2派生、N3默认切换、N4收尾尚未完成。完成后新模型是唯一默认，旧nominal不再作为活动选项/fallback，只保留Git历史及历史实验。N1/N2先准备完整资源，N3将模型、场景、动力学/运动学消费者和配置一起切换；不要局部替换URDF造成身份/坐标混用。末端装配尚未确认，不能将未答复解释为拆手或擅自选b3。旧模型数值基线和旧正式test不回写为新模型通过证据。
 - 当前优先级是**整机完整装配、腰部刚性固定的14轴双臂动力学标定**。腰部抱紧位置为前腹部圆形开口附近；实际夹具尺寸、安装变换与重力方向尚需测量，当前盒体仅为合成代理。
 - 截至2026-10-28，M1–M6本机合成流程已完成：Humble迁移及原实验回归、真实ROS双端Mock、频率/延迟实验、碰撞门禁、重力→运动摩擦→起动摩擦→惯量分阶段辨识、独立验证和中文视频。
 - 动力学[P0计划](docs/staged_dynamics_p0_plan.md)已实现[R0数据契约](docs/staged_dynamics_p0_r0.md)及[R1多构型开发](docs/staged_dynamics_p0_r1.md)：七中心连续参考门禁、32条惯量/56条腕部角色与548条最终前序参考；本轮只采集train/selection共60条。已有前序显式绑定为开发参考并重新辨识，不能算新的独立留出。[R2稳定性](docs/staged_dynamics_p0_r2.md)已实现，复用train完成30变体/33次拟合、固定尺度/度量/行权重、前序复核和原生算子独立核验；三档ridge仅获稳定性资格。右腕yaw对角项删组敏感性约9.01%，接近10%合成门槛。[R3归因/selection选参](docs/staged_dynamics_p0_r3.md)已实现：复用R2的B/D解，匹配40阶频带，显式信号不足、原始偏置和带外诊断，独立重算后冻结候选；[R4正式验收](docs/staged_dynamics_p0_r4.md)已通过：新576条标定记录、9条独立控制记录，636+9条路径独立复核、16组步长减半和无真值新进程重评分；275项Python及114项冻结数值回归通过。仅声明范围的合成P0通过，实机/发布标志仍为false。旧schema 1继续运行，不能替代P0验收。
@@ -64,6 +65,13 @@
 - Mock诊断CSV通过独立spdlog有界阻塞队列写盘，反馈先交接、不等诊断格式化或写盘；退出先回收物理线程，再排空诊断并检查错误。`libspdlog-dev`仅为可选SDK包原生依赖，离线核心/绑定不强制依赖它。采集/回放仍只读正常SDK消息，不读内部诊断。当前收敛验收和适用范围见[统一入口的本轮结果](docs/sdk_mock_unification.md)。
 - `tests/`、`cpp/tests/`、`tests/installation/`分别覆盖Python、C++和安装后消费者。`configs/`存实验条件，`scripts/humble/`存目标环境自动化。
 - `artifacts/`、`build/`、`install/`、`log/`及虚拟环境为生成物，不提交Git。
+
+## DVT2源资源接入（N1）
+
+- 唯一受控源包在`python/casbot_calib/assets/models/casbot_hl12p1_dvt2/`；312个OBJ使用LFS，源数据禁止换行转换，读取前须有实际网格，不得运行时回退到下载目录。目录内`source/`保持供应商原文件，派生模型/场景另存，不直接改原件。
+- `model_sources.py`显式选择源装配并解析资源；N1不选默认装配、不运行源MJCF的机械计算，也不把完整源模型当作14轴SDK模型。源URDF身份是必要的模型契约；供应商`.mesh_index.json`仅原样保留，不重复计算全部文件摘要。
+- Python wheel携带同源数据；CMake/ament通过`casbot_calib_MODEL_DIRECTORY`提供资源目录。Models为独立安装组件，不让纯Core消费者新增模型安装前提。验证入口为`scripts/humble/verify_dvt2_sources.py`、`tests/test_model_sources.py`及启用`CALIB_CHECK_MODEL_SOURCES`的安装消费者。
+- 当前默认仍是旧模型，按替换计划待场景、配置及消费者就绪后在N3统一切换；后续不保留旧默认或fallback。证据与范围见[源模型说明](docs/dvt2_model_sources.md)。
 
 ## 必须保留的建模边界
 
