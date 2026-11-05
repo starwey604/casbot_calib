@@ -6,12 +6,16 @@ from scipy.spatial import ConvexHull
 from scipy.spatial.transform import Rotation
 from . import _core
 from .collision import CollisionProfile, nominal_profile, box_geometry
-from .kinematics import pose, ball_world, digest
+from .kinematics import pose, ball_world, digest, geometry_manifest
 
 
-def sphere_envelope(name, center, radius):
+def sphere_envelope(name, center, radius, *, samples=96):
     # Circumscribed convex polytope: all hull support planes lie outside the sphere.
-    k=np.arange(96);z=1-2*(k+.5)/len(k);angle=k*np.pi*(3-np.sqrt(5))
+    if type(samples) is not int or samples<16:raise ValueError('At least sixteen sphere envelope samples required')
+    center=np.asarray(center,dtype=float)
+    if center.shape!=(3,) or not np.isfinite(center).all() or not np.isfinite(radius) or radius<=0:
+        raise ValueError('Finite sphere center and positive radius required')
+    k=np.arange(samples);z=1-2*(k+.5)/len(k);angle=k*np.pi*(3-np.sqrt(5))
     vertices=np.column_stack([np.sqrt(1-z*z)*np.cos(angle),np.sqrt(1-z*z)*np.sin(angle),z])
     hull=ConvexHull(vertices);vertices*=radius/(-hull.equations[:,3]).min()
     hull=ConvexHull(vertices);faces=hull.simplices.copy()
@@ -22,13 +26,16 @@ def sphere_envelope(name, center, radius):
     return result
 
 
-def fixture_profile(engine, config, target=None, contact=False):
+def fixture_profile(engine, config, target=None, contact=False, *, base_profile=None):
     """Only three exact tip/selected-ball pairs may use the bounded-stroke margin.
 
     All balls, supports, housings and stems remain present, including the other arm.
     Nominal body cache may be reused only after its geometry validation succeeds.
     """
-    scene=deepcopy(config['workflow']['collision_scene']);base=nominal_profile(engine,scene)
+    scene=deepcopy(config['workflow']['collision_scene']);base=nominal_profile(engine,scene) if base_profile is None else base_profile
+    if base.engine.model.model_id!=engine.model.model_id:raise ValueError('Fixture/base model identities differ')
+    if base_profile is not None and geometry_manifest(engine,'fixture_input')['geometry_sha256']!=geometry_manifest(base.engine,'fixture_input')['geometry_sha256']:
+        raise ValueError('Fixture/base geometric models differ')
     geometry=list(base.geometry);excluded=deepcopy(base.metadata['excluded_pairs']);names=list(base.names)
     exclusions=[(names.index(x['first']),names.index(x['second'])) for x in excluded]
     radius=config['fixture']['ball_radius_m'];frames={f.name:f for f in engine.model.frames}
@@ -45,7 +52,7 @@ def fixture_profile(engine, config, target=None, contact=False):
             placement.translation=frame.placement.translation+frame.placement.rotation@np.asarray(center)
             g.placement=placement;geometry.append(g)
     for ball in config['fixture']['balls']:
-        center=ball_world(config,ball['id']);geometry.append(sphere_envelope(ball['id'],center,radius))
+        center=ball_world(config,ball['id']);geometry.append(sphere_envelope(ball['id'],center,radius,samples=config['fixture'].get('collision_envelope_samples',96)))
         # Support in the open (+sensor Z) octant of the declared nominal visit.
         direction=np.asarray(ball.get('stem_direction_world',[0,0,-1]),dtype=float);direction/=np.linalg.norm(direction)
         stem=box_geometry(ball['id']+'_stem',center+direction*.047,[.001,.001,.035],False)

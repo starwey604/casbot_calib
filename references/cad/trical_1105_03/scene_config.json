@@ -1,0 +1,69 @@
+{
+  "poles": {
+    "Part__Feature5377": "B",
+    "Part__Feature5378": "D",
+    "Part__Feature5379": "C",
+    "Part__Feature5380": "A"
+  },
+  "pillar": "Part__Feature5376",
+  "column": "Part__Feature5080",
+  "plate": "Part__Feature5164",
+  "balls": [
+    {
+      "id": "B",
+      "part": "Part__Feature5377",
+      "center_relative_waist_mm": [
+        283.60000000000394,
+        7.112704142249015,
+        167.6422021506514
+      ],
+      "outward": [
+        0.0,
+        0.0,
+        1.0
+      ]
+    },
+    {
+      "id": "D",
+      "part": "Part__Feature5378",
+      "center_relative_waist_mm": [
+        283.60000000000394,
+        -35.02799573995097,
+        87.64220215065154
+      ],
+      "outward": [
+        1.1158722454991961e-16,
+        -1.0,
+        -5.735576358574208e-20
+      ]
+    },
+    {
+      "id": "C",
+      "part": "Part__Feature5379",
+      "center_relative_waist_mm": [
+        283.60000000000394,
+        52.423234944948994,
+        87.64220215065154
+      ],
+      "outward": [
+        1.1158722454991961e-16,
+        1.0,
+        -5.735576358574208e-20
+      ]
+    },
+    {
+      "id": "A",
+      "part": "Part__Feature5380",
+      "center_relative_waist_mm": [
+        328.6000000000039,
+        7.112704142249015,
+        87.64220215065154
+      ],
+      "outward": [
+        1.0,
+        0.0,
+        0.0
+      ]
+    }
+  ]
+}

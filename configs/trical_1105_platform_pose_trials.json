@@ -1,0 +1,308 @@
+[
+  {
+    "schema_version": "casbot_trical_column_layout_v1",
+    "id": "platform_Z-075",
+    "translation_m": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "platform_lift_m": -0.075,
+    "unit": "m",
+    "moving_assemblies": [
+      "table",
+      "table-attached mounts",
+      "column",
+      "all four balls and stems"
+    ],
+    "adjustment_status": "Manual height candidate; real lift travel/locking not verified"
+  },
+  {
+    "schema_version": "casbot_trical_column_layout_v1",
+    "id": "platform_Z-050",
+    "translation_m": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "platform_lift_m": -0.05,
+    "unit": "m",
+    "moving_assemblies": [
+      "table",
+      "table-attached mounts",
+      "column",
+      "all four balls and stems"
+    ],
+    "adjustment_status": "Manual height candidate; real lift travel/locking not verified"
+  },
+  {
+    "schema_version": "casbot_trical_column_layout_v1",
+    "id": "platform_Z+050",
+    "translation_m": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "platform_lift_m": 0.05,
+    "unit": "m",
+    "moving_assemblies": [
+      "table",
+      "table-attached mounts",
+      "column",
+      "all four balls and stems"
+    ],
+    "adjustment_status": "Manual height candidate; real lift travel/locking not verified"
+  },
+  {
+    "schema_version": "casbot_trical_column_layout_v1",
+    "id": "platform_Z+075",
+    "translation_m": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "platform_lift_m": 0.075,
+    "unit": "m",
+    "moving_assemblies": [
+      "table",
+      "table-attached mounts",
+      "column",
+      "all four balls and stems"
+    ],
+    "adjustment_status": "Manual height candidate; real lift travel/locking not verified"
+  },
+  {
+    "schema_version": "casbot_trical_column_layout_v1",
+    "id": "platform_Z+100",
+    "translation_m": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "platform_lift_m": 0.1,
+    "unit": "m",
+    "moving_assemblies": [
+      "table",
+      "table-attached mounts",
+      "column",
+      "all four balls and stems"
+    ],
+    "adjustment_status": "Manual height candidate; real lift travel/locking not verified"
+  },
+  {
+    "schema_version": "casbot_trical_column_layout_v1",
+    "id": "platform_Z+125",
+    "translation_m": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "platform_lift_m": 0.125,
+    "unit": "m",
+    "moving_assemblies": [
+      "table",
+      "table-attached mounts",
+      "column",
+      "all four balls and stems"
+    ],
+    "adjustment_status": "Manual height candidate; real lift travel/locking not verified"
+  },
+  {
+    "schema_version": "casbot_trical_column_layout_v1",
+    "id": "platform_Z+150",
+    "translation_m": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "platform_lift_m": 0.15,
+    "unit": "m",
+    "moving_assemblies": [
+      "table",
+      "table-attached mounts",
+      "column",
+      "all four balls and stems"
+    ],
+    "adjustment_status": "Manual height candidate; real lift travel/locking not verified"
+  },
+  {
+    "schema_version": "casbot_trical_column_layout_v1",
+    "id": "platform_Z+050_C-030_D-030",
+    "translation_m": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "platform_lift_m": 0.05,
+    "unit": "m",
+    "moving_assemblies": [
+      "table",
+      "table-attached mounts",
+      "column",
+      "all four balls and stems"
+    ],
+    "adjustment_status": "Manual height candidate; real lift travel/locking not verified",
+    "ball_offsets_m": {
+      "C": [
+        0.0,
+        0.0,
+        -0.03
+      ],
+      "D": [
+        0.0,
+        0.0,
+        -0.03
+      ]
+    }
+  },
+  {
+    "schema_version": "casbot_trical_column_layout_v1",
+    "id": "platform_Z+050_C-030_D+030",
+    "translation_m": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "platform_lift_m": 0.05,
+    "unit": "m",
+    "moving_assemblies": [
+      "table",
+      "table-attached mounts",
+      "column",
+      "all four balls and stems"
+    ],
+    "adjustment_status": "Manual height candidate; real lift travel/locking not verified",
+    "ball_offsets_m": {
+      "C": [
+        0.0,
+        0.0,
+        -0.03
+      ],
+      "D": [
+        0.0,
+        0.0,
+        0.03
+      ]
+    }
+  },
+  {
+    "schema_version": "casbot_trical_column_layout_v1",
+    "id": "platform_Z+050_C+030_D-030",
+    "translation_m": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "platform_lift_m": 0.05,
+    "unit": "m",
+    "moving_assemblies": [
+      "table",
+      "table-attached mounts",
+      "column",
+      "all four balls and stems"
+    ],
+    "adjustment_status": "Manual height candidate; real lift travel/locking not verified",
+    "ball_offsets_m": {
+      "C": [
+        0.0,
+        0.0,
+        0.03
+      ],
+      "D": [
+        0.0,
+        0.0,
+        -0.03
+      ]
+    }
+  },
+  {
+    "schema_version": "casbot_trical_column_layout_v1",
+    "id": "platform_Z+100_C-030_D-030",
+    "translation_m": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "platform_lift_m": 0.1,
+    "unit": "m",
+    "moving_assemblies": [
+      "table",
+      "table-attached mounts",
+      "column",
+      "all four balls and stems"
+    ],
+    "adjustment_status": "Manual height candidate; real lift travel/locking not verified",
+    "ball_offsets_m": {
+      "C": [
+        0.0,
+        0.0,
+        -0.03
+      ],
+      "D": [
+        0.0,
+        0.0,
+        -0.03
+      ]
+    }
+  },
+  {
+    "schema_version": "casbot_trical_column_layout_v1",
+    "id": "platform_Z+100_C-030_D+030",
+    "translation_m": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "platform_lift_m": 0.1,
+    "unit": "m",
+    "moving_assemblies": [
+      "table",
+      "table-attached mounts",
+      "column",
+      "all four balls and stems"
+    ],
+    "adjustment_status": "Manual height candidate; real lift travel/locking not verified",
+    "ball_offsets_m": {
+      "C": [
+        0.0,
+        0.0,
+        -0.03
+      ],
+      "D": [
+        0.0,
+        0.0,
+        0.03
+      ]
+    }
+  },
+  {
+    "schema_version": "casbot_trical_column_layout_v1",
+    "id": "platform_Z+100_C+030_D-030",
+    "translation_m": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "platform_lift_m": 0.1,
+    "unit": "m",
+    "moving_assemblies": [
+      "table",
+      "table-attached mounts",
+      "column",
+      "all four balls and stems"
+    ],
+    "adjustment_status": "Manual height candidate; real lift travel/locking not verified",
+    "ball_offsets_m": {
+      "C": [
+        0.0,
+        0.0,
+        0.03
+      ],
+      "D": [
+        0.0,
+        0.0,
+        -0.03
+      ]
+    }
+  }
+]

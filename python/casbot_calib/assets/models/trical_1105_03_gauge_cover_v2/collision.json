@@ -1,0 +1,729 @@
+{
+  "schema_version": "casbot_trical_cad_collision_v1",
+  "manifest_sha256": "4d36d3f6e177bbe136069ba010d2aa75797bfda18450c75ef609064627232701",
+  "array_sha256": "5be6ab0e3c0eef1de9400ab0959811fcc08d00efe0e2320138e6d2d3d4cb7b6a",
+  "parts": [
+    {
+      "name": "fixed:0004",
+      "source_name": "fixed:0004",
+      "key": "p0",
+      "maximum_vertex_plane_violation_m": 1.1102230246251565e-16,
+      "convex": true
+    },
+    {
+      "name": "fixed:10010002000",
+      "source_name": "fixed:10010002000",
+      "key": "p1",
+      "maximum_vertex_plane_violation_m": 1.1102230246251565e-15,
+      "convex": true
+    },
+    {
+      "name": "fixed:11050002",
+      "source_name": "fixed:11050002",
+      "key": "p2",
+      "maximum_vertex_plane_violation_m": 0.0,
+      "convex": true
+    },
+    {
+      "name": "fixed:3000001_ASM",
+      "source_name": "fixed:3000001_ASM",
+      "key": "p3",
+      "maximum_vertex_plane_violation_m": 1.1102230246251565e-16,
+      "convex": true
+    },
+    {
+      "name": "fixed:3000001_ASM001",
+      "source_name": "fixed:3000001_ASM001",
+      "key": "p4",
+      "maximum_vertex_plane_violation_m": 2.220446049250313e-16,
+      "convex": true
+    },
+    {
+      "name": "fixed:300X500X130001",
+      "source_name": "fixed:300X500X130001",
+      "key": "p5",
+      "maximum_vertex_plane_violation_m": 1.1102230246251565e-16,
+      "convex": true
+    },
+    {
+      "name": "fixed:CB02-E1_SY_009V01__X2_652F5EA7__ASM",
+      "source_name": "fixed:CB02-E1_SY_009V01__X2_652F5EA7__ASM",
+      "key": "p6",
+      "maximum_vertex_plane_violation_m": 1.1102230246251565e-16,
+      "convex": true
+    },
+    {
+      "name": "fixed:CB02-E1_SY_010V01__X2_4FA7677F_",
+      "source_name": "fixed:CB02-E1_SY_010V01__X2_4FA7677F_",
+      "key": "p7",
+      "maximum_vertex_plane_violation_m": 1.1102230246251565e-16,
+      "convex": true
+    },
+    {
+      "name": "fixed:CB02-E1_SY_010V01__X2_4FA7677F_001",
+      "source_name": "fixed:CB02-E1_SY_010V01__X2_4FA7677F_001",
+      "key": "p8",
+      "maximum_vertex_plane_violation_m": 1.1102230246251565e-16,
+      "convex": true
+    },
+    {
+      "name": "fixed:CB02-E1_SY_011V01_X2_811A6491_X_ASM",
+      "source_name": "fixed:CB02-E1_SY_011V01_X2_811A6491_X_ASM",
+      "key": "p9",
+      "maximum_vertex_plane_violation_m": 3.885780586188048e-16,
+      "convex": true
+    },
+    {
+      "name": "fixed:CB02-E1_SY_011V01_X2_811A6491_X_ASM001",
+      "source_name": "fixed:CB02-E1_SY_011V01_X2_811A6491_X_ASM001",
+      "key": "p10",
+      "maximum_vertex_plane_violation_m": 6.106226635438361e-16,
+      "convex": true
+    },
+    {
+      "name": "fixed:_X2_54094ED6673A56684EBA_X0___X_ASM",
+      "source_name": "fixed:_X2_54094ED6673A56684EBA_X0___X_ASM",
+      "key": "p11",
+      "maximum_vertex_plane_violation_m": 8.881784197001252e-16,
+      "convex": true
+    },
+    {
+      "name": "fixed:_X2_94DD578B6750_X0_100_X2_89D2",
+      "source_name": "fixed:_X2_94DD578B6750_X0_100_X2_89D2",
+      "key": "p12",
+      "maximum_vertex_plane_violation_m": 1.3877787807814457e-17,
+      "convex": true
+    },
+    {
+      "name": "left:Part__Feature5145",
+      "source_name": "left:Part__Feature5145",
+      "key": "p13",
+      "maximum_vertex_plane_violation_m": 6.938893903907228e-18,
+      "convex": true
+    },
+    {
+      "name": "left:Part__Feature5146",
+      "source_name": "left:Part__Feature5146",
+      "key": "p14",
+      "maximum_vertex_plane_violation_m": 5.551115123125783e-17,
+      "convex": true
+    },
+    {
+      "name": "left:Part__Feature5147",
+      "source_name": "left:Part__Feature5147",
+      "key": "p15",
+      "maximum_vertex_plane_violation_m": 6.938893903907228e-18,
+      "convex": true
+    },
+    {
+      "name": "left:Part__Feature5148",
+      "source_name": "left:Part__Feature5148",
+      "key": "p16",
+      "maximum_vertex_plane_violation_m": 6.938893903907228e-18,
+      "convex": true
+    },
+    {
+      "name": "left:Part__Feature5149",
+      "source_name": "left:Part__Feature5149",
+      "key": "p17",
+      "maximum_vertex_plane_violation_m": 6.938893903907228e-18,
+      "convex": true
+    },
+    {
+      "name": "left:Part__Feature5150__cell0",
+      "source_name": "left:Part__Feature5150",
+      "key": "p18",
+      "maximum_vertex_plane_violation_m": 8.326672684688674e-17,
+      "convex": true
+    },
+    {
+      "name": "left:Part__Feature5150__cell1",
+      "source_name": "left:Part__Feature5150",
+      "key": "p19",
+      "maximum_vertex_plane_violation_m": 2.7755575615628914e-17,
+      "convex": true
+    },
+    {
+      "name": "left:Part__Feature5150__cell2",
+      "source_name": "left:Part__Feature5150",
+      "key": "p20",
+      "maximum_vertex_plane_violation_m": 5.377642775528102e-17,
+      "convex": true
+    },
+    {
+      "name": "left:Part__Feature5150__cell3",
+      "source_name": "left:Part__Feature5150",
+      "key": "p21",
+      "maximum_vertex_plane_violation_m": 2.0816681711721685e-17,
+      "convex": true
+    },
+    {
+      "name": "left:Part__Feature5150__cell4",
+      "source_name": "left:Part__Feature5150",
+      "key": "p22",
+      "maximum_vertex_plane_violation_m": 5.724587470723463e-17,
+      "convex": true
+    },
+    {
+      "name": "left:Part__Feature5150__cell5",
+      "source_name": "left:Part__Feature5150",
+      "key": "p23",
+      "maximum_vertex_plane_violation_m": 2.7755575615628914e-17,
+      "convex": true
+    },
+    {
+      "name": "left:Part__Feature5150__cell6",
+      "source_name": "left:Part__Feature5150",
+      "key": "p24",
+      "maximum_vertex_plane_violation_m": 1.5132751822466428e-16,
+      "convex": true
+    },
+    {
+      "name": "left:Part__Feature5150__cell7",
+      "source_name": "left:Part__Feature5150",
+      "key": "p25",
+      "maximum_vertex_plane_violation_m": 2.0816681711721685e-17,
+      "convex": true
+    },
+    {
+      "name": "left:Part__Feature5151",
+      "source_name": "left:Part__Feature5151",
+      "key": "p26",
+      "maximum_vertex_plane_violation_m": 1.942890293094024e-16,
+      "convex": true
+    },
+    {
+      "name": "left:Part__Feature5152",
+      "source_name": "left:Part__Feature5152",
+      "key": "p27",
+      "maximum_vertex_plane_violation_m": 5.551115123125783e-17,
+      "convex": true
+    },
+    {
+      "name": "left:Part__Feature5153",
+      "source_name": "left:Part__Feature5153",
+      "key": "p28",
+      "maximum_vertex_plane_violation_m": 5.551115123125783e-17,
+      "convex": true
+    },
+    {
+      "name": "left:Part__Feature5154__cell0",
+      "source_name": "left:Part__Feature5154",
+      "key": "p29",
+      "maximum_vertex_plane_violation_m": 6.591949208711867e-17,
+      "convex": true
+    },
+    {
+      "name": "left:Part__Feature5154__cell1",
+      "source_name": "left:Part__Feature5154",
+      "key": "p30",
+      "maximum_vertex_plane_violation_m": 1.249000902703301e-16,
+      "convex": true
+    },
+    {
+      "name": "left:Part__Feature5154__cell2",
+      "source_name": "left:Part__Feature5154",
+      "key": "p31",
+      "maximum_vertex_plane_violation_m": 2.1510571102112408e-16,
+      "convex": true
+    },
+    {
+      "name": "left:Part__Feature5154__cell3",
+      "source_name": "left:Part__Feature5154",
+      "key": "p32",
+      "maximum_vertex_plane_violation_m": 4.3021142204224816e-16,
+      "convex": true
+    },
+    {
+      "name": "left:Part__Feature5154__cell4",
+      "source_name": "left:Part__Feature5154",
+      "key": "p33",
+      "maximum_vertex_plane_violation_m": 4.40619762898109e-16,
+      "convex": true
+    },
+    {
+      "name": "left:Part__Feature5154__cell5",
+      "source_name": "left:Part__Feature5154",
+      "key": "p34",
+      "maximum_vertex_plane_violation_m": 3.885780586188048e-16,
+      "convex": true
+    },
+    {
+      "name": "left:Part__Feature5155",
+      "source_name": "left:Part__Feature5155",
+      "key": "p35",
+      "maximum_vertex_plane_violation_m": 6.938893903907228e-18,
+      "convex": true
+    },
+    {
+      "name": "left:Part__Feature5156__cell0",
+      "source_name": "left:Part__Feature5156",
+      "key": "p36",
+      "maximum_vertex_plane_violation_m": 7.719519468096792e-17,
+      "convex": true
+    },
+    {
+      "name": "left:Part__Feature5156__cell1",
+      "source_name": "left:Part__Feature5156",
+      "key": "p37",
+      "maximum_vertex_plane_violation_m": 1.942890293094024e-16,
+      "convex": true
+    },
+    {
+      "name": "left:Part__Feature5156__cell2",
+      "source_name": "left:Part__Feature5156",
+      "key": "p38",
+      "maximum_vertex_plane_violation_m": 2.914335439641036e-16,
+      "convex": true
+    },
+    {
+      "name": "left:Part__Feature5156__cell3",
+      "source_name": "left:Part__Feature5156",
+      "key": "p39",
+      "maximum_vertex_plane_violation_m": 1.942890293094024e-16,
+      "convex": true
+    },
+    {
+      "name": "left:Part__Feature5156__cell4",
+      "source_name": "left:Part__Feature5156",
+      "key": "p40",
+      "maximum_vertex_plane_violation_m": 4.440892098500626e-16,
+      "convex": true
+    },
+    {
+      "name": "left:Part__Feature5156__cell5",
+      "source_name": "left:Part__Feature5156",
+      "key": "p41",
+      "maximum_vertex_plane_violation_m": 7.771561172376096e-16,
+      "convex": true
+    },
+    {
+      "name": "left:Part__Feature5157",
+      "source_name": "left:Part__Feature5157",
+      "key": "p42",
+      "maximum_vertex_plane_violation_m": 6.938893903907228e-18,
+      "convex": true
+    },
+    {
+      "name": "left:Part__Feature5158",
+      "source_name": "left:Part__Feature5158",
+      "key": "p43",
+      "maximum_vertex_plane_violation_m": 5.551115123125783e-17,
+      "convex": true
+    },
+    {
+      "name": "left:Part__Feature5159",
+      "source_name": "left:Part__Feature5159",
+      "key": "p44",
+      "maximum_vertex_plane_violation_m": 5.551115123125783e-17,
+      "convex": true
+    },
+    {
+      "name": "left:Part__Feature5160__cell0",
+      "source_name": "left:Part__Feature5160",
+      "key": "p45",
+      "maximum_vertex_plane_violation_m": 6.678685382510707e-17,
+      "convex": true
+    },
+    {
+      "name": "left:Part__Feature5160__cell1",
+      "source_name": "left:Part__Feature5160",
+      "key": "p46",
+      "maximum_vertex_plane_violation_m": 1.1796119636642288e-16,
+      "convex": true
+    },
+    {
+      "name": "left:Part__Feature5160__cell2",
+      "source_name": "left:Part__Feature5160",
+      "key": "p47",
+      "maximum_vertex_plane_violation_m": 2.1510571102112408e-16,
+      "convex": true
+    },
+    {
+      "name": "left:Part__Feature5160__cell3",
+      "source_name": "left:Part__Feature5160",
+      "key": "p48",
+      "maximum_vertex_plane_violation_m": 4.40619762898109e-16,
+      "convex": true
+    },
+    {
+      "name": "left:Part__Feature5160__cell4",
+      "source_name": "left:Part__Feature5160",
+      "key": "p49",
+      "maximum_vertex_plane_violation_m": 4.961309141293668e-16,
+      "convex": true
+    },
+    {
+      "name": "left:Part__Feature5160__cell5",
+      "source_name": "left:Part__Feature5160",
+      "key": "p50",
+      "maximum_vertex_plane_violation_m": 3.885780586188048e-16,
+      "convex": true
+    },
+    {
+      "name": "left:Part__Feature5161",
+      "source_name": "left:Part__Feature5161",
+      "key": "p51",
+      "maximum_vertex_plane_violation_m": 5.551115123125783e-17,
+      "convex": true
+    },
+    {
+      "name": "left:Part__Feature5162",
+      "source_name": "left:Part__Feature5162",
+      "key": "p52",
+      "maximum_vertex_plane_violation_m": 1.3877787807814457e-16,
+      "convex": true
+    },
+    {
+      "name": "left:Part__Feature5163",
+      "source_name": "left:Part__Feature5163",
+      "key": "p53",
+      "maximum_vertex_plane_violation_m": 2.7755575615628914e-17,
+      "convex": true
+    },
+    {
+      "name": "right:Part__Feature5125",
+      "source_name": "right:Part__Feature5125",
+      "key": "p54",
+      "maximum_vertex_plane_violation_m": 6.938893903907228e-18,
+      "convex": true
+    },
+    {
+      "name": "right:Part__Feature5126",
+      "source_name": "right:Part__Feature5126",
+      "key": "p55",
+      "maximum_vertex_plane_violation_m": 5.551115123125783e-17,
+      "convex": true
+    },
+    {
+      "name": "right:Part__Feature5127",
+      "source_name": "right:Part__Feature5127",
+      "key": "p56",
+      "maximum_vertex_plane_violation_m": 6.938893903907228e-18,
+      "convex": true
+    },
+    {
+      "name": "right:Part__Feature5128",
+      "source_name": "right:Part__Feature5128",
+      "key": "p57",
+      "maximum_vertex_plane_violation_m": 6.938893903907228e-18,
+      "convex": true
+    },
+    {
+      "name": "right:Part__Feature5129",
+      "source_name": "right:Part__Feature5129",
+      "key": "p58",
+      "maximum_vertex_plane_violation_m": 6.938893903907228e-18,
+      "convex": true
+    },
+    {
+      "name": "right:Part__Feature5130__cell0",
+      "source_name": "right:Part__Feature5130",
+      "key": "p59",
+      "maximum_vertex_plane_violation_m": 4.163336342344337e-17,
+      "convex": true
+    },
+    {
+      "name": "right:Part__Feature5130__cell1",
+      "source_name": "right:Part__Feature5130",
+      "key": "p60",
+      "maximum_vertex_plane_violation_m": 2.7755575615628914e-17,
+      "convex": true
+    },
+    {
+      "name": "right:Part__Feature5130__cell2",
+      "source_name": "right:Part__Feature5130",
+      "key": "p61",
+      "maximum_vertex_plane_violation_m": 1.9949319973733282e-17,
+      "convex": true
+    },
+    {
+      "name": "right:Part__Feature5130__cell3",
+      "source_name": "right:Part__Feature5130",
+      "key": "p62",
+      "maximum_vertex_plane_violation_m": 7.632783294297951e-17,
+      "convex": true
+    },
+    {
+      "name": "right:Part__Feature5130__cell4",
+      "source_name": "right:Part__Feature5130",
+      "key": "p63",
+      "maximum_vertex_plane_violation_m": 1.0408340855860843e-16,
+      "convex": true
+    },
+    {
+      "name": "right:Part__Feature5130__cell5",
+      "source_name": "right:Part__Feature5130",
+      "key": "p64",
+      "maximum_vertex_plane_violation_m": 4.85722573273506e-17,
+      "convex": true
+    },
+    {
+      "name": "right:Part__Feature5130__cell6",
+      "source_name": "right:Part__Feature5130",
+      "key": "p65",
+      "maximum_vertex_plane_violation_m": 1.5295382148339254e-16,
+      "convex": true
+    },
+    {
+      "name": "right:Part__Feature5130__cell7",
+      "source_name": "right:Part__Feature5130",
+      "key": "p66",
+      "maximum_vertex_plane_violation_m": 2.0816681711721685e-17,
+      "convex": true
+    },
+    {
+      "name": "right:Part__Feature5131",
+      "source_name": "right:Part__Feature5131",
+      "key": "p67",
+      "maximum_vertex_plane_violation_m": 1.942890293094024e-16,
+      "convex": true
+    },
+    {
+      "name": "right:Part__Feature5132",
+      "source_name": "right:Part__Feature5132",
+      "key": "p68",
+      "maximum_vertex_plane_violation_m": 5.551115123125783e-17,
+      "convex": true
+    },
+    {
+      "name": "right:Part__Feature5133",
+      "source_name": "right:Part__Feature5133",
+      "key": "p69",
+      "maximum_vertex_plane_violation_m": 5.551115123125783e-17,
+      "convex": true
+    },
+    {
+      "name": "right:Part__Feature5134__cell0",
+      "source_name": "right:Part__Feature5134",
+      "key": "p70",
+      "maximum_vertex_plane_violation_m": 6.591949208711867e-17,
+      "convex": true
+    },
+    {
+      "name": "right:Part__Feature5134__cell1",
+      "source_name": "right:Part__Feature5134",
+      "key": "p71",
+      "maximum_vertex_plane_violation_m": 1.249000902703301e-16,
+      "convex": true
+    },
+    {
+      "name": "right:Part__Feature5134__cell2",
+      "source_name": "right:Part__Feature5134",
+      "key": "p72",
+      "maximum_vertex_plane_violation_m": 2.1510571102112408e-16,
+      "convex": true
+    },
+    {
+      "name": "right:Part__Feature5134__cell3",
+      "source_name": "right:Part__Feature5134",
+      "key": "p73",
+      "maximum_vertex_plane_violation_m": 6.522560269672795e-16,
+      "convex": true
+    },
+    {
+      "name": "right:Part__Feature5134__cell4",
+      "source_name": "right:Part__Feature5134",
+      "key": "p74",
+      "maximum_vertex_plane_violation_m": 4.40619762898109e-16,
+      "convex": true
+    },
+    {
+      "name": "right:Part__Feature5134__cell5",
+      "source_name": "right:Part__Feature5134",
+      "key": "p75",
+      "maximum_vertex_plane_violation_m": 3.885780586188048e-16,
+      "convex": true
+    },
+    {
+      "name": "right:Part__Feature5135",
+      "source_name": "right:Part__Feature5135",
+      "key": "p76",
+      "maximum_vertex_plane_violation_m": 6.938893903907228e-18,
+      "convex": true
+    },
+    {
+      "name": "right:Part__Feature5136__cell0",
+      "source_name": "right:Part__Feature5136",
+      "key": "p77",
+      "maximum_vertex_plane_violation_m": 8.326672684688674e-17,
+      "convex": true
+    },
+    {
+      "name": "right:Part__Feature5136__cell1",
+      "source_name": "right:Part__Feature5136",
+      "key": "p78",
+      "maximum_vertex_plane_violation_m": 1.734723475976807e-16,
+      "convex": true
+    },
+    {
+      "name": "right:Part__Feature5136__cell2",
+      "source_name": "right:Part__Feature5136",
+      "key": "p79",
+      "maximum_vertex_plane_violation_m": 2.914335439641036e-16,
+      "convex": true
+    },
+    {
+      "name": "right:Part__Feature5136__cell3",
+      "source_name": "right:Part__Feature5136",
+      "key": "p80",
+      "maximum_vertex_plane_violation_m": 3.8510861166685117e-16,
+      "convex": true
+    },
+    {
+      "name": "right:Part__Feature5136__cell4",
+      "source_name": "right:Part__Feature5136",
+      "key": "p81",
+      "maximum_vertex_plane_violation_m": 4.718447854656915e-16,
+      "convex": true
+    },
+    {
+      "name": "right:Part__Feature5136__cell5",
+      "source_name": "right:Part__Feature5136",
+      "key": "p82",
+      "maximum_vertex_plane_violation_m": 7.216449660063518e-16,
+      "convex": true
+    },
+    {
+      "name": "right:Part__Feature5137",
+      "source_name": "right:Part__Feature5137",
+      "key": "p83",
+      "maximum_vertex_plane_violation_m": 6.938893903907228e-18,
+      "convex": true
+    },
+    {
+      "name": "right:Part__Feature5138",
+      "source_name": "right:Part__Feature5138",
+      "key": "p84",
+      "maximum_vertex_plane_violation_m": 5.551115123125783e-17,
+      "convex": true
+    },
+    {
+      "name": "right:Part__Feature5139",
+      "source_name": "right:Part__Feature5139",
+      "key": "p85",
+      "maximum_vertex_plane_violation_m": 5.551115123125783e-17,
+      "convex": true
+    },
+    {
+      "name": "right:Part__Feature5140__cell0",
+      "source_name": "right:Part__Feature5140",
+      "key": "p86",
+      "maximum_vertex_plane_violation_m": 6.678685382510707e-17,
+      "convex": true
+    },
+    {
+      "name": "right:Part__Feature5140__cell1",
+      "source_name": "right:Part__Feature5140",
+      "key": "p87",
+      "maximum_vertex_plane_violation_m": 1.1796119636642288e-16,
+      "convex": true
+    },
+    {
+      "name": "right:Part__Feature5140__cell2",
+      "source_name": "right:Part__Feature5140",
+      "key": "p88",
+      "maximum_vertex_plane_violation_m": 2.1510571102112408e-16,
+      "convex": true
+    },
+    {
+      "name": "right:Part__Feature5140__cell3",
+      "source_name": "right:Part__Feature5140",
+      "key": "p89",
+      "maximum_vertex_plane_violation_m": 4.40619762898109e-16,
+      "convex": true
+    },
+    {
+      "name": "right:Part__Feature5140__cell4",
+      "source_name": "right:Part__Feature5140",
+      "key": "p90",
+      "maximum_vertex_plane_violation_m": 4.371503159461554e-16,
+      "convex": true
+    },
+    {
+      "name": "right:Part__Feature5140__cell5",
+      "source_name": "right:Part__Feature5140",
+      "key": "p91",
+      "maximum_vertex_plane_violation_m": 3.885780586188048e-16,
+      "convex": true
+    },
+    {
+      "name": "right:Part__Feature5141",
+      "source_name": "right:Part__Feature5141",
+      "key": "p92",
+      "maximum_vertex_plane_violation_m": 5.551115123125783e-17,
+      "convex": true
+    },
+    {
+      "name": "right:Part__Feature5142",
+      "source_name": "right:Part__Feature5142",
+      "key": "p93",
+      "maximum_vertex_plane_violation_m": 1.3877787807814457e-16,
+      "convex": true
+    },
+    {
+      "name": "right:Part__Feature5143",
+      "source_name": "right:Part__Feature5143",
+      "key": "p94",
+      "maximum_vertex_plane_violation_m": 2.7755575615628914e-17,
+      "convex": true
+    },
+    {
+      "name": "stem:A",
+      "source_name": "stem:A",
+      "key": "p95",
+      "maximum_vertex_plane_violation_m": 2.220446049250313e-16,
+      "convex": true
+    },
+    {
+      "name": "stem:B",
+      "source_name": "stem:B",
+      "key": "p96",
+      "maximum_vertex_plane_violation_m": 2.220446049250313e-16,
+      "convex": true
+    },
+    {
+      "name": "stem:C",
+      "source_name": "stem:C",
+      "key": "p97",
+      "maximum_vertex_plane_violation_m": 2.220446049250313e-16,
+      "convex": true
+    },
+    {
+      "name": "stem:D",
+      "source_name": "stem:D",
+      "key": "p98",
+      "maximum_vertex_plane_violation_m": 2.220446049250313e-16,
+      "convex": true
+    },
+    {
+      "name": "ball:A",
+      "source_name": "ball:A",
+      "key": "p99",
+      "maximum_vertex_plane_violation_m": 0.0,
+      "convex": true
+    },
+    {
+      "name": "ball:B",
+      "source_name": "ball:B",
+      "key": "p100",
+      "maximum_vertex_plane_violation_m": 0.0,
+      "convex": true
+    },
+    {
+      "name": "ball:C",
+      "source_name": "ball:C",
+      "key": "p101",
+      "maximum_vertex_plane_violation_m": 0.0,
+      "convex": true
+    },
+    {
+      "name": "ball:D",
+      "source_name": "ball:D",
+      "key": "p102",
+      "maximum_vertex_plane_violation_m": 0.0,
+      "convex": true
+    }
+  ],
+  "policy": "conservative outer convex envelopes; all source vertices retained in the envelope; selected ball circumscribed"
+}

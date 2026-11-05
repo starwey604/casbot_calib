@@ -1,0 +1,375 @@
+{
+  "source_step": "/home/ww/下载/1105_03.stp",
+  "robot_urdf": "/home/ww/下载/casbot_hl12p1_dvt2/a2_ff/robot_description_formatted.urdf",
+  "registration": {
+    "rotation": [
+      [
+        0.0,
+        1.0,
+        0.0
+      ],
+      [
+        -1.0,
+        0.0,
+        0.0
+      ],
+      [
+        0.0,
+        0.0,
+        1.0
+      ]
+    ],
+    "translation_m": [
+      -0.10124183587159605,
+      -0.20391427286095098,
+      0.44484336457565155
+    ],
+    "cad_waist_mm": [
+      -203.91427286095097,
+      101.24183587159605,
+      595.7386354243486
+    ],
+    "world_waist_m": [
+      0.0,
+      0.0,
+      1.0405820000000001
+    ],
+    "basis": "two shoulder-roll axis lines, shoulder-pitch line, nominal shoulder-to-waist height267.3mm; checked against 12 motor axis lines and 2 wrist-pitch output-bearing lines"
+  },
+  "cad_pose_q": [
+    0.0,
+    0.17453292519943295,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    -0.17453292519943295,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+  ],
+  "cad_pose_deg": [
+    0.0,
+    10.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    -10.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+  ],
+  "axis_checks": [
+    {
+      "joint": "left_shoulder_pitch_joint",
+      "cad_part": "Part__Feature1236",
+      "axis_reference": "motor cylinder",
+      "axis_line_offset_mm": 8.18789480661053e-12,
+      "axis_angle_deg": 0.0
+    },
+    {
+      "joint": "left_shoulder_roll_joint",
+      "cad_part": "Part__Feature1125",
+      "axis_reference": "motor cylinder",
+      "axis_line_offset_mm": 7.571983521139491e-12,
+      "axis_angle_deg": 0.0
+    },
+    {
+      "joint": "left_shoulder_yaw_joint",
+      "cad_part": "Part__Feature1222",
+      "axis_reference": "motor cylinder",
+      "axis_line_offset_mm": 2.610843008741442e-12,
+      "axis_angle_deg": 0.0
+    },
+    {
+      "joint": "left_elbow_pitch_joint",
+      "cad_part": "Part__Feature1059",
+      "axis_reference": "motor cylinder",
+      "axis_line_offset_mm": 4.036990919833182e-11,
+      "axis_angle_deg": 0.0
+    },
+    {
+      "joint": "left_wrist_yaw_joint",
+      "cad_part": "Part__Feature938",
+      "axis_reference": "motor cylinder",
+      "axis_line_offset_mm": 3.2209049898661656e-11,
+      "axis_angle_deg": 0.0
+    },
+    {
+      "joint": "left_wrist_pitch_joint",
+      "cad_part": "Part__Feature1014",
+      "axis_reference": "output bearing (motor axis offset77mm)",
+      "axis_line_offset_mm": 3.273508225616768e-11,
+      "axis_angle_deg": 0.0
+    },
+    {
+      "joint": "left_wrist_roll_joint",
+      "cad_part": "Part__Feature1021",
+      "axis_reference": "motor cylinder",
+      "axis_line_offset_mm": 4.899619366954927e-11,
+      "axis_angle_deg": 0.0
+    },
+    {
+      "joint": "right_shoulder_pitch_joint",
+      "cad_part": "Part__Feature066",
+      "axis_reference": "motor cylinder",
+      "axis_line_offset_mm": 0.0,
+      "axis_angle_deg": 0.0
+    },
+    {
+      "joint": "right_shoulder_roll_joint",
+      "cad_part": "Part__Feature889",
+      "axis_reference": "motor cylinder",
+      "axis_line_offset_mm": 1.2799654551949619e-11,
+      "axis_angle_deg": 0.0
+    },
+    {
+      "joint": "right_shoulder_yaw_joint",
+      "cad_part": "Part__Feature112",
+      "axis_reference": "motor cylinder",
+      "axis_line_offset_mm": 1.1206327920619153e-12,
+      "axis_angle_deg": 8.537736462515939e-07
+    },
+    {
+      "joint": "right_elbow_pitch_joint",
+      "cad_part": "Part__Feature053",
+      "axis_reference": "motor cylinder",
+      "axis_line_offset_mm": 0.08998509260482511,
+      "axis_angle_deg": 8.537736462515939e-07
+    },
+    {
+      "joint": "right_wrist_yaw_joint",
+      "cad_part": "Part__Feature248",
+      "axis_reference": "motor cylinder",
+      "axis_line_offset_mm": 3.317491291806276e-11,
+      "axis_angle_deg": 8.537736462515939e-07
+    },
+    {
+      "joint": "right_wrist_pitch_joint",
+      "cad_part": "Part__Feature201",
+      "axis_reference": "output bearing (motor axis offset77mm)",
+      "axis_line_offset_mm": 3.3891565400722585e-11,
+      "axis_angle_deg": 8.537736462515939e-07
+    },
+    {
+      "joint": "right_wrist_roll_joint",
+      "cad_part": "Part__Feature185",
+      "axis_reference": "motor cylinder",
+      "axis_line_offset_mm": 4.9856925680421296e-11,
+      "axis_angle_deg": 0.0
+    }
+  ],
+  "tools": [
+    {
+      "arm": "right",
+      "parent": "_X2_5343520653615C3A88C5914D4F5_ASM",
+      "reference_ball_part": "Part__Feature5124",
+      "tip_parts": [
+        "Part__Feature5125",
+        "Part__Feature5135",
+        "Part__Feature5137"
+      ],
+      "tip_extension_m": 0.00635,
+      "reference_radius_m": 0.01905,
+      "target_radius_m": 0.0127,
+      "cad_sphere_center_mm": [
+        7.2754536111699455,
+        194.7971362991904,
+        272.15760411136984
+      ],
+      "plane_gap_mm": [
+        6.3500000000022325,
+        6.349999999998218,
+        6.350000000002243
+      ],
+      "sensor_axes_cad": [
+        [
+          -0.16124936657807457,
+          -0.9082482904638505,
+          0.3861135644440155
+        ],
+        [
+          0.5438292249522315,
+          -0.40824829046389366,
+          -0.7332005915308333
+        ],
+        [
+          0.8235583864341645,
+          0.09175170953611363,
+          0.5597617421110128
+        ]
+      ],
+      "axis_condition": 1.0000000000000184,
+      "world_tcp": {
+        "rotation": [
+          [
+            -0.7071067811865689,
+            -0.6123724356957664,
+            -0.3535533905932799
+          ],
+          [
+            -0.6963642403199846,
+            0.6898932112377086,
+            0.1977983869795033
+          ],
+          [
+            0.12278780396904551,
+            0.38606651899401595,
+            -0.9142624339369427
+          ]
+        ],
+        "translation_m": [
+          0.09355530042759436,
+          -0.21118972647212092,
+          0.7170009686870213
+        ]
+      },
+      "flange_tcp": {
+        "rotation": [
+          [
+            -0.7071093785275037,
+            0.6123688595251187,
+            0.35355438999163
+          ],
+          [
+            -0.7071041838335612,
+            -0.6123746850611914,
+            -0.35355468926501354
+          ],
+          [
+            1.8763781521092095e-06,
+            -0.5000016249774726,
+            0.8660244655991927
+          ]
+        ],
+        "translation_m": [
+          0.09355587759039719,
+          0.09355495677915622,
+          0.0879997517414004
+        ]
+      },
+      "offset_norm_mm": 158.89993227250687,
+      "body_parts": [
+        "Part__Feature5134",
+        "Part__Feature5136",
+        "Part__Feature5140"
+      ],
+      "balance_tail_parts": [
+        "Part__Feature5142"
+      ],
+      "bridge_parts": [
+        "Part__Feature5131"
+      ]
+    },
+    {
+      "arm": "left",
+      "parent": "_X2_5343520653615C3A88C5914D4F5_ASM001",
+      "reference_ball_part": "Part__Feature5144",
+      "tip_parts": [
+        "Part__Feature5145",
+        "Part__Feature5155",
+        "Part__Feature5157"
+      ],
+      "tip_extension_m": 0.00635,
+      "reference_radius_m": 0.01905,
+      "target_radius_m": 0.0127,
+      "cad_sphere_center_mm": [
+        -599.371969726155,
+        194.79713629919044,
+        304.64901897203015
+      ],
+      "plane_gap_mm": [
+        6.350000000002254,
+        6.349999999998271,
+        6.350000000002357
+      ],
+      "sensor_axes_cad": [
+        [
+          -0.019466223228655394,
+          -0.9082482904638502,
+          0.417978598761594
+        ],
+        [
+          0.26026293825341656,
+          -0.408248290463893,
+          -0.874983734880259
+        ],
+        [
+          0.9653415297835896,
+          0.09175170953611382,
+          0.2443304210946314
+        ]
+      ],
+      "axis_condition": 1.0000000000000093,
+      "world_tcp": {
+        "rotation": [
+          [
+            -0.7071067811865682,
+            -0.6123724356957669,
+            -0.35355339059328034
+          ],
+          [
+            -0.6963642403200014,
+            0.5162450335707414,
+            0.49856585334045
+          ],
+          [
+            -0.12278780396895232,
+            0.5987412340181507,
+            -0.7914746299679505
+          ]
+        ],
+        "translation_m": [
+          0.09355530042759438,
+          0.39545769686520404,
+          0.7494923835476817
+        ]
+      },
+      "flange_tcp": {
+        "rotation": [
+          [
+            0.7071041838310298,
+            -0.61237601185398,
+            -0.3535523911875964
+          ],
+          [
+            0.7071093785300355,
+            0.6123701863220797,
+            0.3535520919167765
+          ],
+          [
+            -1.8763644622176887e-06,
+            -0.49999837500703503,
+            0.8660263419704995
+          ]
+        ],
+        "translation_m": [
+          -0.09355472326298797,
+          -0.09355564407477025,
+          0.08800024825620922
+        ]
+      },
+      "offset_norm_mm": 158.89993227252745,
+      "body_parts": [
+        "Part__Feature5154",
+        "Part__Feature5156",
+        "Part__Feature5160"
+      ],
+      "balance_tail_parts": [
+        "Part__Feature5162"
+      ],
+      "bridge_parts": [
+        "Part__Feature5151"
+      ]
+    }
+  ]
+}

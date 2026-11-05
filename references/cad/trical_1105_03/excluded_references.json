@@ -1,0 +1,15 @@
+[
+  {
+    "name": "Part__Feature5079",
+    "label": "0001",
+    "bbox": [
+      -225.32846747428636,
+      206.84183587016193,
+      424.380837573888,
+      -181.32825676237607,
+      244.34183587324893,
+      684.380852947624
+    ],
+    "reason": "same legacy waist-hanging reference previously confirmed not installed; absent from current assembly photo"
+  }
+]

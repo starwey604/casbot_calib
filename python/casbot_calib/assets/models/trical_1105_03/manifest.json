@@ -1,0 +1,1278 @@
+{
+  "schema_version": "casbot_trical_cad_v1",
+  "source": "references/cad/trical_1105_03/1105_03.stp",
+  "source_size_bytes": 434609165,
+  "unit": "m",
+  "mesh_format": "binary STL / metric float32",
+  "cad_tessellation_deflection_m": 0.0004,
+  "parts": [
+    {
+      "name": "fixed:0004",
+      "mesh": "meshes/part_000.stl",
+      "role": "fixed",
+      "source_parts": [
+        "Part__Feature5116"
+      ],
+      "coordinate_frame": "calib_world",
+      "source_triangles": 14352
+    },
+    {
+      "name": "fixed:10010002000",
+      "mesh": "meshes/part_001.stl",
+      "role": "fixed",
+      "source_parts": [
+        "Part__Feature5080",
+        "Part__Feature5081",
+        "Part__Feature5082",
+        "Part__Feature5083",
+        "Part__Feature5084",
+        "Part__Feature5085",
+        "Part__Feature5086",
+        "Part__Feature5087",
+        "Part__Feature5088",
+        "Part__Feature5089",
+        "Part__Feature5090",
+        "Part__Feature5091",
+        "Part__Feature5092",
+        "Part__Feature5093",
+        "Part__Feature5094",
+        "Part__Feature5095",
+        "Part__Feature5096",
+        "Part__Feature5097",
+        "Part__Feature5098",
+        "Part__Feature5099",
+        "Part__Feature5100",
+        "Part__Feature5101",
+        "Part__Feature5102",
+        "Part__Feature5103"
+      ],
+      "coordinate_frame": "calib_world",
+      "source_triangles": 40860
+    },
+    {
+      "name": "fixed:11050002",
+      "mesh": "meshes/part_002.stl",
+      "role": "fixed",
+      "source_parts": [
+        "Part__Feature5376"
+      ],
+      "coordinate_frame": "calib_world",
+      "source_triangles": 104720
+    },
+    {
+      "name": "fixed:3000001_ASM",
+      "mesh": "meshes/part_003.stl",
+      "role": "fixed",
+      "source_parts": [
+        "Part__Feature5374"
+      ],
+      "coordinate_frame": "calib_world",
+      "source_triangles": 29578
+    },
+    {
+      "name": "fixed:3000001_ASM001",
+      "mesh": "meshes/part_004.stl",
+      "role": "fixed",
+      "source_parts": [
+        "Part__Feature5375"
+      ],
+      "coordinate_frame": "calib_world",
+      "source_triangles": 29578
+    },
+    {
+      "name": "fixed:300X500X130001",
+      "mesh": "meshes/part_005.stl",
+      "role": "fixed",
+      "source_parts": [
+        "Part__Feature5164",
+        "Part__Feature5165",
+        "Part__Feature5166",
+        "Part__Feature5167",
+        "Part__Feature5168",
+        "Part__Feature5169",
+        "Part__Feature5170",
+        "Part__Feature5171",
+        "Part__Feature5172",
+        "Part__Feature5173",
+        "Part__Feature5174",
+        "Part__Feature5175",
+        "Part__Feature5176",
+        "Part__Feature5177",
+        "Part__Feature5178",
+        "Part__Feature5179",
+        "Part__Feature5180",
+        "Part__Feature5181",
+        "Part__Feature5182",
+        "Part__Feature5183",
+        "Part__Feature5184",
+        "Part__Feature5185",
+        "Part__Feature5186",
+        "Part__Feature5187",
+        "Part__Feature5188",
+        "Part__Feature5189",
+        "Part__Feature5190",
+        "Part__Feature5191",
+        "Part__Feature5192",
+        "Part__Feature5193",
+        "Part__Feature5194",
+        "Part__Feature5195",
+        "Part__Feature5196",
+        "Part__Feature5197",
+        "Part__Feature5198",
+        "Part__Feature5199",
+        "Part__Feature5200",
+        "Part__Feature5201",
+        "Part__Feature5202",
+        "Part__Feature5203",
+        "Part__Feature5204",
+        "Part__Feature5205",
+        "Part__Feature5206",
+        "Part__Feature5207",
+        "Part__Feature5208",
+        "Part__Feature5209",
+        "Part__Feature5210",
+        "Part__Feature5211",
+        "Part__Feature5212",
+        "Part__Feature5213",
+        "Part__Feature5214",
+        "Part__Feature5215",
+        "Part__Feature5216",
+        "Part__Feature5217",
+        "Part__Feature5218",
+        "Part__Feature5219",
+        "Part__Feature5220",
+        "Part__Feature5221",
+        "Part__Feature5222",
+        "Part__Feature5223",
+        "Part__Feature5224",
+        "Part__Feature5225",
+        "Part__Feature5226",
+        "Part__Feature5227",
+        "Part__Feature5228",
+        "Part__Feature5229",
+        "Part__Feature5230",
+        "Part__Feature5231",
+        "Part__Feature5232",
+        "Part__Feature5233",
+        "Part__Feature5234",
+        "Part__Feature5235",
+        "Part__Feature5236",
+        "Part__Feature5237",
+        "Part__Feature5238",
+        "Part__Feature5239",
+        "Part__Feature5240",
+        "Part__Feature5241",
+        "Part__Feature5242",
+        "Part__Feature5243",
+        "Part__Feature5244",
+        "Part__Feature5245",
+        "Part__Feature5246",
+        "Part__Feature5247",
+        "Part__Feature5248",
+        "Part__Feature5249",
+        "Part__Feature5250",
+        "Part__Feature5251",
+        "Part__Feature5252",
+        "Part__Feature5253",
+        "Part__Feature5254",
+        "Part__Feature5255",
+        "Part__Feature5256",
+        "Part__Feature5257",
+        "Part__Feature5258",
+        "Part__Feature5259",
+        "Part__Feature5260",
+        "Part__Feature5261",
+        "Part__Feature5262",
+        "Part__Feature5263",
+        "Part__Feature5264",
+        "Part__Feature5265",
+        "Part__Feature5266",
+        "Part__Feature5267",
+        "Part__Feature5268",
+        "Part__Feature5269",
+        "Part__Feature5270",
+        "Part__Feature5271",
+        "Part__Feature5272",
+        "Part__Feature5273",
+        "Part__Feature5274",
+        "Part__Feature5275",
+        "Part__Feature5276",
+        "Part__Feature5277",
+        "Part__Feature5278",
+        "Part__Feature5279",
+        "Part__Feature5280",
+        "Part__Feature5281",
+        "Part__Feature5282",
+        "Part__Feature5283",
+        "Part__Feature5284",
+        "Part__Feature5285",
+        "Part__Feature5286",
+        "Part__Feature5287",
+        "Part__Feature5288",
+        "Part__Feature5289",
+        "Part__Feature5290",
+        "Part__Feature5291",
+        "Part__Feature5292",
+        "Part__Feature5293",
+        "Part__Feature5294",
+        "Part__Feature5295",
+        "Part__Feature5296",
+        "Part__Feature5297",
+        "Part__Feature5298",
+        "Part__Feature5299",
+        "Part__Feature5300",
+        "Part__Feature5301",
+        "Part__Feature5302",
+        "Part__Feature5303",
+        "Part__Feature5304",
+        "Part__Feature5305",
+        "Part__Feature5306",
+        "Part__Feature5307",
+        "Part__Feature5308",
+        "Part__Feature5309",
+        "Part__Feature5310",
+        "Part__Feature5311",
+        "Part__Feature5312",
+        "Part__Feature5313",
+        "Part__Feature5314",
+        "Part__Feature5315",
+        "Part__Feature5316",
+        "Part__Feature5317",
+        "Part__Feature5318",
+        "Part__Feature5319",
+        "Part__Feature5320",
+        "Part__Feature5321",
+        "Part__Feature5322",
+        "Part__Feature5323",
+        "Part__Feature5324",
+        "Part__Feature5325",
+        "Part__Feature5326",
+        "Part__Feature5327",
+        "Part__Feature5328",
+        "Part__Feature5329",
+        "Part__Feature5330",
+        "Part__Feature5331",
+        "Part__Feature5332",
+        "Part__Feature5333",
+        "Part__Feature5334",
+        "Part__Feature5335",
+        "Part__Feature5336",
+        "Part__Feature5337",
+        "Part__Feature5338",
+        "Part__Feature5339",
+        "Part__Feature5340",
+        "Part__Feature5341",
+        "Part__Feature5342",
+        "Part__Feature5343",
+        "Part__Feature5344",
+        "Part__Feature5345",
+        "Part__Feature5346",
+        "Part__Feature5347",
+        "Part__Feature5348",
+        "Part__Feature5349",
+        "Part__Feature5350",
+        "Part__Feature5351",
+        "Part__Feature5352",
+        "Part__Feature5353",
+        "Part__Feature5354",
+        "Part__Feature5355",
+        "Part__Feature5356",
+        "Part__Feature5357",
+        "Part__Feature5358",
+        "Part__Feature5359",
+        "Part__Feature5360",
+        "Part__Feature5361",
+        "Part__Feature5362",
+        "Part__Feature5363",
+        "Part__Feature5364",
+        "Part__Feature5365",
+        "Part__Feature5366",
+        "Part__Feature5367",
+        "Part__Feature5368",
+        "Part__Feature5369",
+        "Part__Feature5370",
+        "Part__Feature5371",
+        "Part__Feature5372",
+        "Part__Feature5373"
+      ],
+      "coordinate_frame": "calib_world",
+      "source_triangles": 216080
+    },
+    {
+      "name": "fixed:CB02-E1_SY_009V01__X2_652F5EA7__ASM",
+      "mesh": "meshes/part_006.stl",
+      "role": "fixed",
+      "source_parts": [
+        "Part__Feature5104",
+        "Part__Feature5105"
+      ],
+      "coordinate_frame": "calib_world",
+      "source_triangles": 32288
+    },
+    {
+      "name": "fixed:CB02-E1_SY_010V01__X2_4FA7677F_",
+      "mesh": "meshes/part_007.stl",
+      "role": "fixed",
+      "source_parts": [
+        "Part__Feature5106",
+        "Part__Feature5107",
+        "Part__Feature5108",
+        "Part__Feature5109",
+        "Part__Feature5110"
+      ],
+      "coordinate_frame": "calib_world",
+      "source_triangles": 15704
+    },
+    {
+      "name": "fixed:CB02-E1_SY_010V01__X2_4FA7677F_001",
+      "mesh": "meshes/part_008.stl",
+      "role": "fixed",
+      "source_parts": [
+        "Part__Feature5111",
+        "Part__Feature5112",
+        "Part__Feature5113",
+        "Part__Feature5114",
+        "Part__Feature5115"
+      ],
+      "coordinate_frame": "calib_world",
+      "source_triangles": 15704
+    },
+    {
+      "name": "fixed:CB02-E1_SY_011V01_X2_811A6491_X_ASM",
+      "mesh": "meshes/part_009.stl",
+      "role": "fixed",
+      "source_parts": [
+        "Part__Feature5117",
+        "Part__Feature5118",
+        "Part__Feature5119"
+      ],
+      "coordinate_frame": "calib_world",
+      "source_triangles": 6730
+    },
+    {
+      "name": "fixed:CB02-E1_SY_011V01_X2_811A6491_X_ASM001",
+      "mesh": "meshes/part_010.stl",
+      "role": "fixed",
+      "source_parts": [
+        "Part__Feature5120",
+        "Part__Feature5121",
+        "Part__Feature5122"
+      ],
+      "coordinate_frame": "calib_world",
+      "source_triangles": 6730
+    },
+    {
+      "name": "fixed:_X2_54094ED6673A56684EBA_X0___X_ASM",
+      "mesh": "meshes/part_011.stl",
+      "role": "fixed",
+      "source_parts": [
+        "Part__Feature5024",
+        "Part__Feature5025",
+        "Part__Feature5026",
+        "Part__Feature5027",
+        "Part__Feature5028",
+        "Part__Feature5029",
+        "Part__Feature5030",
+        "Part__Feature5031",
+        "Part__Feature5032",
+        "Part__Feature5033",
+        "Part__Feature5034",
+        "Part__Feature5035",
+        "Part__Feature5036",
+        "Part__Feature5037",
+        "Part__Feature5038",
+        "Part__Feature5039",
+        "Part__Feature5040",
+        "Part__Feature5041",
+        "Part__Feature5042",
+        "Part__Feature5043",
+        "Part__Feature5044",
+        "Part__Feature5045",
+        "Part__Feature5046",
+        "Part__Feature5047",
+        "Part__Feature5048",
+        "Part__Feature5049",
+        "Part__Feature5050",
+        "Part__Feature5051",
+        "Part__Feature5052",
+        "Part__Feature5053",
+        "Part__Feature5054",
+        "Part__Feature5055",
+        "Part__Feature5056",
+        "Part__Feature5057",
+        "Part__Feature5058",
+        "Part__Feature5059",
+        "Part__Feature5060",
+        "Part__Feature5061",
+        "Part__Feature5062",
+        "Part__Feature5063",
+        "Part__Feature5064",
+        "Part__Feature5065",
+        "Part__Feature5066",
+        "Part__Feature5067",
+        "Part__Feature5068",
+        "Part__Feature5069",
+        "Part__Feature5070",
+        "Part__Feature5071",
+        "Part__Feature5072",
+        "Part__Feature5073",
+        "Part__Feature5074",
+        "Part__Feature5075",
+        "Part__Feature5076",
+        "Part__Feature5077",
+        "Part__Feature5078"
+      ],
+      "coordinate_frame": "calib_world",
+      "source_triangles": 558922
+    },
+    {
+      "name": "fixed:_X2_94DD578B6750_X0_100_X2_89D2",
+      "mesh": "meshes/part_012.stl",
+      "role": "fixed",
+      "source_parts": [
+        "Part__Feature5123"
+      ],
+      "coordinate_frame": "calib_world",
+      "source_triangles": 4164
+    },
+    {
+      "name": "left:Part__Feature5145",
+      "mesh": "meshes/part_013.stl",
+      "role": "tip",
+      "side": "left",
+      "source_parts": [
+        "Part__Feature5145"
+      ],
+      "coordinate_frame": "tool TCP",
+      "source_triangles": 1004
+    },
+    {
+      "name": "left:Part__Feature5146",
+      "mesh": "meshes/part_014.stl",
+      "role": "mount",
+      "side": "left",
+      "source_parts": [
+        "Part__Feature5146"
+      ],
+      "coordinate_frame": "tool TCP",
+      "source_triangles": 8024
+    },
+    {
+      "name": "left:Part__Feature5147",
+      "mesh": "meshes/part_015.stl",
+      "role": "tool",
+      "side": "left",
+      "source_parts": [
+        "Part__Feature5147"
+      ],
+      "coordinate_frame": "tool TCP",
+      "source_triangles": 2308
+    },
+    {
+      "name": "left:Part__Feature5148",
+      "mesh": "meshes/part_016.stl",
+      "role": "tool",
+      "side": "left",
+      "source_parts": [
+        "Part__Feature5148"
+      ],
+      "coordinate_frame": "tool TCP",
+      "source_triangles": 2340
+    },
+    {
+      "name": "left:Part__Feature5149",
+      "mesh": "meshes/part_017.stl",
+      "role": "tool",
+      "side": "left",
+      "source_parts": [
+        "Part__Feature5149"
+      ],
+      "coordinate_frame": "tool TCP",
+      "source_triangles": 2332
+    },
+    {
+      "name": "left:Part__Feature5150",
+      "mesh": "meshes/part_018.stl",
+      "role": "tool",
+      "side": "left",
+      "source_parts": [
+        "Part__Feature5150"
+      ],
+      "coordinate_frame": "tool TCP",
+      "source_triangles": 9218,
+      "collision_meshes": [
+        "meshes/left_coupling_cell_0.stl",
+        "meshes/left_coupling_cell_1.stl",
+        "meshes/left_coupling_cell_2.stl",
+        "meshes/left_coupling_cell_3.stl",
+        "meshes/left_coupling_cell_4.stl",
+        "meshes/left_coupling_cell_5.stl",
+        "meshes/left_coupling_cell_6.stl",
+        "meshes/left_coupling_cell_7.stl"
+      ],
+      "collision_cover": {
+        "method": "FreeCAD BREP box partition, per-cell outer hull",
+        "source_volume_mm3": 31010.41923442915,
+        "partition_volume_mm3": 31010.802257012387,
+        "relative_volume_difference": 1.2351415836714625e-05,
+        "missing_solid_mm3": 0.0,
+        "extra_solid_mm3": 0.0,
+        "cells": 8,
+        "cell_deflection_m": 0.0002,
+        "padding_m": 0.0002
+      }
+    },
+    {
+      "name": "left:Part__Feature5151",
+      "mesh": "meshes/part_019.stl",
+      "role": "mount",
+      "side": "left",
+      "source_parts": [
+        "Part__Feature5151"
+      ],
+      "coordinate_frame": "tool TCP",
+      "source_triangles": 10400
+    },
+    {
+      "name": "left:Part__Feature5152",
+      "mesh": "meshes/part_020.stl",
+      "role": "weight",
+      "side": "left",
+      "source_parts": [
+        "Part__Feature5152"
+      ],
+      "coordinate_frame": "tool TCP",
+      "source_triangles": 3012
+    },
+    {
+      "name": "left:Part__Feature5153",
+      "mesh": "meshes/part_021.stl",
+      "role": "weight",
+      "side": "left",
+      "source_parts": [
+        "Part__Feature5153"
+      ],
+      "coordinate_frame": "tool TCP",
+      "source_triangles": 3012
+    },
+    {
+      "name": "left:Part__Feature5154",
+      "mesh": "meshes/part_022.stl",
+      "role": "tool",
+      "side": "left",
+      "source_parts": [
+        "Part__Feature5154"
+      ],
+      "coordinate_frame": "tool TCP",
+      "source_triangles": 2532
+    },
+    {
+      "name": "left:Part__Feature5155",
+      "mesh": "meshes/part_023.stl",
+      "role": "tip",
+      "side": "left",
+      "source_parts": [
+        "Part__Feature5155"
+      ],
+      "coordinate_frame": "tool TCP",
+      "source_triangles": 1004
+    },
+    {
+      "name": "left:Part__Feature5156",
+      "mesh": "meshes/part_024.stl",
+      "role": "tool",
+      "side": "left",
+      "source_parts": [
+        "Part__Feature5156"
+      ],
+      "coordinate_frame": "tool TCP",
+      "source_triangles": 2532
+    },
+    {
+      "name": "left:Part__Feature5157",
+      "mesh": "meshes/part_025.stl",
+      "role": "tip",
+      "side": "left",
+      "source_parts": [
+        "Part__Feature5157"
+      ],
+      "coordinate_frame": "tool TCP",
+      "source_triangles": 1004
+    },
+    {
+      "name": "left:Part__Feature5158",
+      "mesh": "meshes/part_026.stl",
+      "role": "weight",
+      "side": "left",
+      "source_parts": [
+        "Part__Feature5158"
+      ],
+      "coordinate_frame": "tool TCP",
+      "source_triangles": 3012
+    },
+    {
+      "name": "left:Part__Feature5159",
+      "mesh": "meshes/part_027.stl",
+      "role": "weight",
+      "side": "left",
+      "source_parts": [
+        "Part__Feature5159"
+      ],
+      "coordinate_frame": "tool TCP",
+      "source_triangles": 3012
+    },
+    {
+      "name": "left:Part__Feature5160",
+      "mesh": "meshes/part_028.stl",
+      "role": "tool",
+      "side": "left",
+      "source_parts": [
+        "Part__Feature5160"
+      ],
+      "coordinate_frame": "tool TCP",
+      "source_triangles": 2532
+    },
+    {
+      "name": "left:Part__Feature5161",
+      "mesh": "meshes/part_029.stl",
+      "role": "weight",
+      "side": "left",
+      "source_parts": [
+        "Part__Feature5161"
+      ],
+      "coordinate_frame": "tool TCP",
+      "source_triangles": 3012
+    },
+    {
+      "name": "left:Part__Feature5162",
+      "mesh": "meshes/part_030.stl",
+      "role": "tool",
+      "side": "left",
+      "source_parts": [
+        "Part__Feature5162"
+      ],
+      "coordinate_frame": "tool TCP",
+      "source_triangles": 10442
+    },
+    {
+      "name": "left:Part__Feature5163",
+      "mesh": "meshes/part_031.stl",
+      "role": "weight",
+      "side": "left",
+      "source_parts": [
+        "Part__Feature5163"
+      ],
+      "coordinate_frame": "tool TCP",
+      "source_triangles": 3012
+    },
+    {
+      "name": "right:Part__Feature5125",
+      "mesh": "meshes/part_032.stl",
+      "role": "tip",
+      "side": "right",
+      "source_parts": [
+        "Part__Feature5125"
+      ],
+      "coordinate_frame": "tool TCP",
+      "source_triangles": 1004
+    },
+    {
+      "name": "right:Part__Feature5126",
+      "mesh": "meshes/part_033.stl",
+      "role": "mount",
+      "side": "right",
+      "source_parts": [
+        "Part__Feature5126"
+      ],
+      "coordinate_frame": "tool TCP",
+      "source_triangles": 8024
+    },
+    {
+      "name": "right:Part__Feature5127",
+      "mesh": "meshes/part_034.stl",
+      "role": "tool",
+      "side": "right",
+      "source_parts": [
+        "Part__Feature5127"
+      ],
+      "coordinate_frame": "tool TCP",
+      "source_triangles": 2308
+    },
+    {
+      "name": "right:Part__Feature5128",
+      "mesh": "meshes/part_035.stl",
+      "role": "tool",
+      "side": "right",
+      "source_parts": [
+        "Part__Feature5128"
+      ],
+      "coordinate_frame": "tool TCP",
+      "source_triangles": 2340
+    },
+    {
+      "name": "right:Part__Feature5129",
+      "mesh": "meshes/part_036.stl",
+      "role": "tool",
+      "side": "right",
+      "source_parts": [
+        "Part__Feature5129"
+      ],
+      "coordinate_frame": "tool TCP",
+      "source_triangles": 2332
+    },
+    {
+      "name": "right:Part__Feature5130",
+      "mesh": "meshes/part_037.stl",
+      "role": "tool",
+      "side": "right",
+      "source_parts": [
+        "Part__Feature5130"
+      ],
+      "coordinate_frame": "tool TCP",
+      "source_triangles": 9218,
+      "collision_meshes": [
+        "meshes/right_coupling_cell_0.stl",
+        "meshes/right_coupling_cell_1.stl",
+        "meshes/right_coupling_cell_2.stl",
+        "meshes/right_coupling_cell_3.stl",
+        "meshes/right_coupling_cell_4.stl",
+        "meshes/right_coupling_cell_5.stl",
+        "meshes/right_coupling_cell_6.stl",
+        "meshes/right_coupling_cell_7.stl"
+      ],
+      "collision_cover": {
+        "method": "FreeCAD BREP box partition, per-cell outer hull",
+        "source_volume_mm3": 31010.419234429148,
+        "partition_volume_mm3": 31010.80225701245,
+        "relative_volume_difference": 1.2351415838826292e-05,
+        "missing_solid_mm3": 0.0,
+        "extra_solid_mm3": 0.0,
+        "cells": 8,
+        "cell_deflection_m": 0.0002,
+        "padding_m": 0.0002
+      }
+    },
+    {
+      "name": "right:Part__Feature5131",
+      "mesh": "meshes/part_038.stl",
+      "role": "mount",
+      "side": "right",
+      "source_parts": [
+        "Part__Feature5131"
+      ],
+      "coordinate_frame": "tool TCP",
+      "source_triangles": 10400
+    },
+    {
+      "name": "right:Part__Feature5132",
+      "mesh": "meshes/part_039.stl",
+      "role": "weight",
+      "side": "right",
+      "source_parts": [
+        "Part__Feature5132"
+      ],
+      "coordinate_frame": "tool TCP",
+      "source_triangles": 3012
+    },
+    {
+      "name": "right:Part__Feature5133",
+      "mesh": "meshes/part_040.stl",
+      "role": "weight",
+      "side": "right",
+      "source_parts": [
+        "Part__Feature5133"
+      ],
+      "coordinate_frame": "tool TCP",
+      "source_triangles": 3012
+    },
+    {
+      "name": "right:Part__Feature5134",
+      "mesh": "meshes/part_041.stl",
+      "role": "tool",
+      "side": "right",
+      "source_parts": [
+        "Part__Feature5134"
+      ],
+      "coordinate_frame": "tool TCP",
+      "source_triangles": 2532
+    },
+    {
+      "name": "right:Part__Feature5135",
+      "mesh": "meshes/part_042.stl",
+      "role": "tip",
+      "side": "right",
+      "source_parts": [
+        "Part__Feature5135"
+      ],
+      "coordinate_frame": "tool TCP",
+      "source_triangles": 1004
+    },
+    {
+      "name": "right:Part__Feature5136",
+      "mesh": "meshes/part_043.stl",
+      "role": "tool",
+      "side": "right",
+      "source_parts": [
+        "Part__Feature5136"
+      ],
+      "coordinate_frame": "tool TCP",
+      "source_triangles": 2532
+    },
+    {
+      "name": "right:Part__Feature5137",
+      "mesh": "meshes/part_044.stl",
+      "role": "tip",
+      "side": "right",
+      "source_parts": [
+        "Part__Feature5137"
+      ],
+      "coordinate_frame": "tool TCP",
+      "source_triangles": 1004
+    },
+    {
+      "name": "right:Part__Feature5138",
+      "mesh": "meshes/part_045.stl",
+      "role": "weight",
+      "side": "right",
+      "source_parts": [
+        "Part__Feature5138"
+      ],
+      "coordinate_frame": "tool TCP",
+      "source_triangles": 3012
+    },
+    {
+      "name": "right:Part__Feature5139",
+      "mesh": "meshes/part_046.stl",
+      "role": "weight",
+      "side": "right",
+      "source_parts": [
+        "Part__Feature5139"
+      ],
+      "coordinate_frame": "tool TCP",
+      "source_triangles": 3012
+    },
+    {
+      "name": "right:Part__Feature5140",
+      "mesh": "meshes/part_047.stl",
+      "role": "tool",
+      "side": "right",
+      "source_parts": [
+        "Part__Feature5140"
+      ],
+      "coordinate_frame": "tool TCP",
+      "source_triangles": 2532
+    },
+    {
+      "name": "right:Part__Feature5141",
+      "mesh": "meshes/part_048.stl",
+      "role": "weight",
+      "side": "right",
+      "source_parts": [
+        "Part__Feature5141"
+      ],
+      "coordinate_frame": "tool TCP",
+      "source_triangles": 3012
+    },
+    {
+      "name": "right:Part__Feature5142",
+      "mesh": "meshes/part_049.stl",
+      "role": "tool",
+      "side": "right",
+      "source_parts": [
+        "Part__Feature5142"
+      ],
+      "coordinate_frame": "tool TCP",
+      "source_triangles": 10442
+    },
+    {
+      "name": "right:Part__Feature5143",
+      "mesh": "meshes/part_050.stl",
+      "role": "weight",
+      "side": "right",
+      "source_parts": [
+        "Part__Feature5143"
+      ],
+      "coordinate_frame": "tool TCP",
+      "source_triangles": 3012
+    },
+    {
+      "name": "stem:A",
+      "mesh": "meshes/part_051.stl",
+      "role": "stem",
+      "ball": "A",
+      "source_parts": [
+        "Part__Feature5380"
+      ],
+      "coordinate_frame": "calib_world",
+      "source_triangles": 2538
+    },
+    {
+      "name": "stem:B",
+      "mesh": "meshes/part_052.stl",
+      "role": "stem",
+      "ball": "B",
+      "source_parts": [
+        "Part__Feature5377"
+      ],
+      "coordinate_frame": "calib_world",
+      "source_triangles": 2538
+    },
+    {
+      "name": "stem:C",
+      "mesh": "meshes/part_053.stl",
+      "role": "stem",
+      "ball": "C",
+      "source_parts": [
+        "Part__Feature5379"
+      ],
+      "coordinate_frame": "calib_world",
+      "source_triangles": 2540
+    },
+    {
+      "name": "stem:D",
+      "mesh": "meshes/part_054.stl",
+      "role": "stem",
+      "ball": "D",
+      "source_parts": [
+        "Part__Feature5378"
+      ],
+      "coordinate_frame": "calib_world",
+      "source_triangles": 2538
+    },
+    {
+      "name": "ball:A",
+      "role": "ball",
+      "ball": "A"
+    },
+    {
+      "name": "ball:B",
+      "role": "ball",
+      "ball": "B"
+    },
+    {
+      "name": "ball:C",
+      "role": "ball",
+      "ball": "C"
+    },
+    {
+      "name": "ball:D",
+      "role": "ball",
+      "ball": "D"
+    }
+  ],
+  "setup": {
+    "model_version": "1105_03_single_column_left90_right0_v1",
+    "status": "eight_selected_contact_and_transfer_paths_pass_moving_geometry_checks",
+    "source_size_bytes": 434609165,
+    "pillar_size_cad_mm": [
+      50.0,
+      50.0,
+      200.0
+    ],
+    "platform_pillar_and_sphere_positions_changed": false,
+    "fixture_fixed_between_arms": true,
+    "one_physical_tool": true,
+    "inactive_arm": "parked bare flange; no TriCal mounted",
+    "ignored_scope": "collisions among the fixed sphere/stem/pillar/support parts, per user; stems in source are illustrative",
+    "retained_scope": "moving arms and active TriCal including all counterweights vs body, opposite arm and all fixed obstacles; only expected flat-tip/selected-sphere contact allowed",
+    "joint_limit_policy": "intersection of DVT2 download and benchmark_nominal limits, inset5deg; no manufacturer limit confirmation claimed",
+    "joint_order_by_arm": {
+      "left": [
+        "left_shoulder_pitch_joint",
+        "left_shoulder_roll_joint",
+        "left_shoulder_yaw_joint",
+        "left_elbow_pitch_joint",
+        "left_wrist_yaw_joint",
+        "left_wrist_pitch_joint",
+        "left_wrist_roll_joint"
+      ],
+      "right": [
+        "right_shoulder_pitch_joint",
+        "right_shoulder_roll_joint",
+        "right_shoulder_yaw_joint",
+        "right_elbow_pitch_joint",
+        "right_wrist_yaw_joint",
+        "right_wrist_pitch_joint",
+        "right_wrist_roll_joint"
+      ]
+    },
+    "cad_to_robot": {
+      "rotation": [
+        [
+          0.0,
+          1.0,
+          0.0
+        ],
+        [
+          -1.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          1.0
+        ]
+      ],
+      "translation_m": [
+        -0.10124183587159605,
+        -0.20391427286095098,
+        0.44484336457565155
+      ],
+      "cad_waist_mm": [
+        -203.91427286095097,
+        101.24183587159605,
+        595.7386354243486
+      ],
+      "world_waist_m": [
+        0.0,
+        0.0,
+        1.0405820000000001
+      ],
+      "basis": "two shoulder-roll axis lines, shoulder-pitch line, nominal shoulder-to-waist height267.3mm; checked against 12 motor axis lines and 2 wrist-pitch output-bearing lines"
+    },
+    "tool_flange_to_tcp": {
+      "left": {
+        "rotation": [
+          [
+            -0.7071093785300354,
+            -0.6123701863220802,
+            -0.3535520919167769
+          ],
+          [
+            0.7071041838310297,
+            -0.6123760118539804,
+            -0.3535523911875966
+          ],
+          [
+            -1.8763644622176917e-06,
+            -0.4999983750070355,
+            0.8660263419705003
+          ]
+        ],
+        "translation_m": [
+          0.09355564407477025,
+          -0.09355472326298797,
+          0.08800024825620929
+        ],
+        "clock_delta_from_source_deg": 90
+      },
+      "right": {
+        "rotation": [
+          [
+            -0.7071093785275036,
+            0.6123688595251191,
+            0.3535543899916303
+          ],
+          [
+            -0.7071041838335611,
+            -0.6123746850611919,
+            -0.3535546892650138
+          ],
+          [
+            1.8763781521092104e-06,
+            -0.500001624977473,
+            0.8660244655991934
+          ]
+        ],
+        "translation_m": [
+          0.09355587759039719,
+          0.09355495677915622,
+          0.0879997517414005
+        ],
+        "clock_delta_from_source_deg": 0
+      }
+    },
+    "CAD_tool_installation_delta": {
+      "left": {
+        "angle_deg": 90,
+        "axis_unit_cad": [
+          -0.17365079094212083,
+          -9.747179571296011e-12,
+          -0.9848072922177094
+        ],
+        "axis_point_cad_mm": [
+          -491.95694489491495,
+          101.24183587159605,
+          375.0663938067995
+        ],
+        "old_to_new_global_CAD_matrix_mm": [
+          [
+            0.03015459719482421,
+            0.9848072922194019,
+            0.17101256520942634,
+            -640.9669457571897
+          ],
+          [
+            -0.9848072922160166,
+            6.123253028099659e-17,
+            0.17365079095171992,
+            -448.3715268611892
+          ],
+          [
+            0.17101256522892072,
+            -0.17365079093252173,
+            0.9698454028051767,
+            113.02152002978438
+          ],
+          [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ]
+        ]
+      }
+    },
+    "balls": [
+      {
+        "id": "A",
+        "source_part": "Part__Feature5380",
+        "center_relative_waist_mm": [
+          328.6000000000039,
+          7.112704142249015,
+          87.64220215065154
+        ],
+        "center_height_from_table_mm": 140.0000000000001,
+        "outward": [
+          1.0,
+          0.0,
+          0.0
+        ],
+        "radius_mm": 12.7
+      },
+      {
+        "id": "B",
+        "source_part": "Part__Feature5377",
+        "center_relative_waist_mm": [
+          283.60000000000394,
+          7.112704142249015,
+          167.6422021506514
+        ],
+        "center_height_from_table_mm": 219.99999999999997,
+        "outward": [
+          0.0,
+          0.0,
+          1.0
+        ],
+        "radius_mm": 12.7
+      },
+      {
+        "id": "C",
+        "source_part": "Part__Feature5379",
+        "center_relative_waist_mm": [
+          283.60000000000394,
+          52.423234944948994,
+          87.64220215065154
+        ],
+        "center_height_from_table_mm": 140.0000000000001,
+        "outward": [
+          1.1158722454991961e-16,
+          1.0,
+          -5.735576358574208e-20
+        ],
+        "radius_mm": 12.7
+      },
+      {
+        "id": "D",
+        "source_part": "Part__Feature5378",
+        "center_relative_waist_mm": [
+          283.60000000000394,
+          -35.02799573995097,
+          87.64220215065154
+        ],
+        "center_height_from_table_mm": 140.0000000000001,
+        "outward": [
+          1.1158722454991961e-16,
+          -1.0,
+          -5.735576358574208e-20
+        ],
+        "radius_mm": 12.7
+      }
+    ],
+    "right_C_exit": "25mm straight retract then a checked staged transfer; not40mm straight retract",
+    "units": {
+      "CAD": "mm",
+      "robot_and_TCP_translation": "m",
+      "joint_angles_CSV": "deg",
+      "joint_angles_paths_JSON": "rad"
+    }
+  },
+  "axes_sensor": {
+    "right": [
+      [
+        0.5773502691896187,
+        0.816496580927731,
+        4.941795453478057e-18
+      ],
+      [
+        0.5773502691896337,
+        -0.4082482904638641,
+        0.7071067811865407
+      ],
+      [
+        0.5773502691896313,
+        -0.40824829046386707,
+        -0.7071067811865408
+      ]
+    ],
+    "left": [
+      [
+        0.5773502691896182,
+        0.8164965809277314,
+        -1.0822115603741108e-17
+      ],
+      [
+        0.5773502691896334,
+        -0.40824829046386446,
+        0.7071067811865406
+      ],
+      [
+        0.5773502691896318,
+        -0.40824829046386657,
+        -0.7071067811865406
+      ]
+    ]
+  },
+  "load_status": "unknown total tool mass/COM; six 200G CAD labels per tool, not weighed",
+  "reference_ball_removed": true,
+  "excluded_fixed_references": [
+    {
+      "name": "Part__Feature5079",
+      "label": "0001",
+      "bbox": [
+        -225.32846747428636,
+        206.84183587016193,
+        424.380837573888,
+        -181.32825676237607,
+        244.34183587324893,
+        684.380852947624
+      ],
+      "reason": "same legacy waist-hanging reference previously confirmed not installed; absent from current assembly photo"
+    }
+  ],
+  "near_contact_policy": {
+    "schema_version": "casbot_trical_1105_contact_policy_v1",
+    "ordinary_clearance_m": 0.01,
+    "near_clearance_m": 0.002,
+    "maximum_tip_stroke_m": 0.005,
+    "near_ball_parts": {
+      "left": [
+        "Part__Feature5150",
+        "Part__Feature5154",
+        "Part__Feature5156",
+        "Part__Feature5160"
+      ],
+      "right": [
+        "Part__Feature5130",
+        "Part__Feature5134",
+        "Part__Feature5136",
+        "Part__Feature5140"
+      ]
+    },
+    "near_stem_parts": "three flat tips of active tool, selected target neck only",
+    "scope": "near rules only during bounded local insertion/contact/withdrawal; all other pairs retain10mm",
+    "source": "review geometry: gauge bodies5mm and coupling6.3mm nominal selected-ball stand-off; selected neck tip gaps8.3--10mm",
+    "disabled_robot_pairs": "none beyond exact source adjacency and two previously audited wrist housing pairs"
+  }
+}

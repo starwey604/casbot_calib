@@ -1,0 +1,62 @@
+schema_version: casbot_dvt2_reduction_v1
+model_id: casbot_hl12p1_dvt2_a2ff_stock_hands_candidate_v1
+source_variant: a2_ff
+assembly: source_unchanged
+assembly_confirmed: false
+lock_positions_rad:
+  left_hip_pitch_joint: 0.0
+  left_hip_roll_joint: 0.0
+  left_hip_yaw_joint: 0.0
+  left_knee_pitch_joint: 0.0
+  left_ankle_pitch_joint: 0.0
+  left_ankle_roll_joint: 0.0
+  right_hip_pitch_joint: 0.0
+  right_hip_roll_joint: 0.0
+  right_hip_yaw_joint: 0.0
+  right_knee_pitch_joint: 0.0
+  right_ankle_pitch_joint: 0.0
+  right_ankle_roll_joint: 0.0
+  waist_yaw_joint: 0.0
+  head_yaw_joint: 0.0
+  head_pitch_joint: 0.0
+world_from_source:
+  translation_m: [0.0, 0.0, 0.0]
+  rotation_vector_rad: [0.0, 0.0, 0.0]
+gravity_world_m_s2: [0.0, 0.0, -9.81]
+installation_measured: false
+tools:
+  - name: left_trical_tcp
+    parent_frame: left_palm_base_link
+    translation_m: [0.0, 0.0, 0.28]
+    rotation_vector_rad: [0.0, 0.0, 0.0]
+  - name: right_trical_tcp
+    parent_frame: right_palm_base_link
+    translation_m: [0.0, 0.0, 0.28]
+    rotation_vector_rad: [0.0, 0.0, 0.0]
+tool_geometry_measured: false
+tool_load_known: false
+home_rad: [0, 0.85, 0, -0.9, 0, 0, 0, 0, -0.85, 0, -0.9, 0, 0, 0]
+scene:
+  motion_limits:
+    maximum_velocity_rad_s: 0.5
+    maximum_acceleration_rad_s2: 2.0
+    maximum_jerk_rad_s3: 15.0
+  clearance_m: 0.01
+  geometry_allowance_rad: 0.00105
+  fixture:
+    parent_frame: waist_yaw_link
+    center_local_m: [0.09, 0.0, 0.0]
+    half_extents_m: [0.08, 0.15, 0.025]
+  floor_surface_z_m: 0.0
+  ball_radius_m: 0.0127
+  ball_envelope_samples: 512
+  tools_face_radius_m: 0.002
+  allowed_tip_stroke_m: 0.005
+  # Left-local pose values are mirrored only as a sampling recipe, not as body parameters.
+  arm_target_poses_rad:
+    - [-1.0, 0.45, 0, -0.6, 0, 0, 0]
+    - [-1.3, 0.35, 0, -0.7, 0, 0, 0]
+    - [-1.8, 0.55, 0, -0.7, 0, 0, 0]
+audited_assembly_overlaps:
+  - [left_wrist_yaw_link, left_wrist_roll_link]
+  - [right_wrist_yaw_link, right_wrist_roll_link]

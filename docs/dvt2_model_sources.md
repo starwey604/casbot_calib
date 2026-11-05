@@ -1,6 +1,6 @@
 # 读取已导入的DVT2源模型
 
-N1已经导入五套源模型和公共资源。可以从Python、独立C++安装或ROS安装读取同一来源；当前默认标定模型尚未切换。派生14轴模型、重新冻结场景和切换入口依照[替换计划](dvt2_model_migration_plan.md)继续推进。
+N1已经导入五套源模型和公共资源。可以从Python、独立C++安装或ROS安装读取同一来源；当前默认标定模型尚未切换。N2先生成[普通手14轴候选](dvt2_model_candidate.md)，现已按1105_03 STEP导入[实际裸法兰三表装配](trical_1105_hole_trials.md)，八组路径尚未闭合；默认切换依照[替换计划](dvt2_model_migration_plan.md)继续推进。
 
 ## 先取得实际网格，不要构建LFS指针
 
@@ -25,7 +25,7 @@ report = inspect_source('a2_ff')
 print(report['urdf_meshes'])
 ```
 
-选择配置是必需参数；未知名称不会回退到旧模型。这个API返回源资源，不启动模拟器、SDK或控制循环，也不自动约简关节。五套源URDF的活动关节数分别为51、29、40、51、29；固定腰部14轴派生归N2。
+选择配置是必需参数；未知名称不会回退到旧模型。这个API返回源资源，不启动模拟器、SDK或控制循环，也不自动约简关节。五套源URDF的活动关节数分别为51、29、40、51、29；固定腰部14轴候选已另存于`derived/`，该源API仍不隐式返回派生模型。
 
 `inspect_source()`核对源URDF身份、双臂名称映射、URDF/参考MJCF资源及OBJ材质引用。缺文件或只有LFS指针会直接报错。关节完整源列表按URDF声明顺序记录，不冒充SDK或Pinocchio的广义坐标排列；`calibration_joint_names`另列既有左7/右7逻辑顺序，N2按名称建立映射。
 
@@ -57,4 +57,4 @@ ROS使用原有`build_ros.sh`安装；`find_package(casbot_calib_core REQUIRED)`
 
 本机证据目录为`artifacts/dvt2_n1_sources_v1`、`artifacts/dvt2_n1_tests_v1`、`artifacts/dvt2_n1_install_v1`、`artifacts/dvt2_n1_wheel_v2`及`artifacts/dvt2_n1_sdist_v1`，不随Git提交。17项专项测试通过，源码分发包包含实际网格而非LFS指针。安装检查包含无Models的原Core消费者、附加Models后的重定位、ament消费者和禁用editable/源码重定向的独立wheel。具体结果汇总见`artifacts/dvt2_n1_delivery_v1/delivery.json`。
 
-N2开始前确认保留普通手还是拆手装三表，以及相应锁定姿态。当前源文件、来源约定和资源解析可直接复用；旧nominal及既有场景在N1未被替换。
+N2普通手候选和新场景的构建、核验及安装接口见[候选模型指南](dvt2_model_candidate.md)。实际已明确拆普通手、同一三表工具左右换装；N2先补齐路径闭合，N3才统一切换旧nominal与既有场景。

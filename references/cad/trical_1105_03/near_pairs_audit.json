@@ -1,0 +1,50 @@
+[
+  {
+    "tool_part": "left:Part__Feature5150",
+    "target_kind": "ball",
+    "minimum_distance_m": 0.006332995018553542,
+    "source_ball": "A"
+  },
+  {
+    "tool_part": "left:Part__Feature5154",
+    "target_kind": "ball",
+    "minimum_distance_m": 0.004996230252324225,
+    "source_ball": "A"
+  },
+  {
+    "tool_part": "left:Part__Feature5156",
+    "target_kind": "ball",
+    "minimum_distance_m": 0.005000033547846568,
+    "source_ball": "B"
+  },
+  {
+    "tool_part": "left:Part__Feature5160",
+    "target_kind": "ball",
+    "minimum_distance_m": 0.0049999796830880495,
+    "source_ball": "B"
+  },
+  {
+    "tool_part": "right:Part__Feature5130",
+    "target_kind": "ball",
+    "minimum_distance_m": 0.006325726492481976,
+    "source_ball": "B"
+  },
+  {
+    "tool_part": "right:Part__Feature5134",
+    "target_kind": "ball",
+    "minimum_distance_m": 0.004979428157118736,
+    "source_ball": "B"
+  },
+  {
+    "tool_part": "right:Part__Feature5136",
+    "target_kind": "ball",
+    "minimum_distance_m": 0.005000019162331351,
+    "source_ball": "D"
+  },
+  {
+    "tool_part": "right:Part__Feature5140",
+    "target_kind": "ball",
+    "minimum_distance_m": 0.004999998828292523,
+    "source_ball": "A"
+  }
+]

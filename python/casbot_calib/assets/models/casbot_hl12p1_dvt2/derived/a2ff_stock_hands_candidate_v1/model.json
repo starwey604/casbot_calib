@@ -1,0 +1,7730 @@
+{
+  "schema_version": "casbot_dvt2_bundle_v1",
+  "model_id": "casbot_hl12p1_dvt2_a2ff_stock_hands_candidate_v1",
+  "source_variant": "a2_ff",
+  "source_urdf_sha256": "913a869c520652a8ae6d5999ef18724001681b9dd165b094064dfbf7f3773742",
+  "urdf_sha256": "5915964040b1d1dd017d36ed5f529514adfabc7045ea3aa53e22700bc19b766e",
+  "joint_names": [
+    "left_shoulder_pitch_joint",
+    "left_shoulder_roll_joint",
+    "left_shoulder_yaw_joint",
+    "left_elbow_pitch_joint",
+    "left_wrist_yaw_joint",
+    "left_wrist_pitch_joint",
+    "left_wrist_roll_joint",
+    "right_shoulder_pitch_joint",
+    "right_shoulder_roll_joint",
+    "right_shoulder_yaw_joint",
+    "right_elbow_pitch_joint",
+    "right_wrist_yaw_joint",
+    "right_wrist_pitch_joint",
+    "right_wrist_roll_joint"
+  ],
+  "profile": {
+    "schema_version": "casbot_dvt2_reduction_v1",
+    "model_id": "casbot_hl12p1_dvt2_a2ff_stock_hands_candidate_v1",
+    "source_variant": "a2_ff",
+    "assembly": "source_unchanged",
+    "assembly_confirmed": false,
+    "lock_positions_rad": {
+      "left_hip_pitch_joint": 0.0,
+      "left_hip_roll_joint": 0.0,
+      "left_hip_yaw_joint": 0.0,
+      "left_knee_pitch_joint": 0.0,
+      "left_ankle_pitch_joint": 0.0,
+      "left_ankle_roll_joint": 0.0,
+      "right_hip_pitch_joint": 0.0,
+      "right_hip_roll_joint": 0.0,
+      "right_hip_yaw_joint": 0.0,
+      "right_knee_pitch_joint": 0.0,
+      "right_ankle_pitch_joint": 0.0,
+      "right_ankle_roll_joint": 0.0,
+      "waist_yaw_joint": 0.0,
+      "head_yaw_joint": 0.0,
+      "head_pitch_joint": 0.0
+    },
+    "world_from_source": {
+      "translation_m": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation_vector_rad": [
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    "gravity_world_m_s2": [
+      0.0,
+      0.0,
+      -9.81
+    ],
+    "installation_measured": false,
+    "tools": [
+      {
+        "name": "left_trical_tcp",
+        "parent_frame": "left_palm_base_link",
+        "translation_m": [
+          0.0,
+          0.0,
+          0.28
+        ],
+        "rotation_vector_rad": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "name": "right_trical_tcp",
+        "parent_frame": "right_palm_base_link",
+        "translation_m": [
+          0.0,
+          0.0,
+          0.28
+        ],
+        "rotation_vector_rad": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    ],
+    "tool_geometry_measured": false,
+    "tool_load_known": false,
+    "home_rad": [
+      0,
+      0.85,
+      0,
+      -0.9,
+      0,
+      0,
+      0,
+      0,
+      -0.85,
+      0,
+      -0.9,
+      0,
+      0,
+      0
+    ],
+    "scene": {
+      "motion_limits": {
+        "maximum_velocity_rad_s": 0.5,
+        "maximum_acceleration_rad_s2": 2.0,
+        "maximum_jerk_rad_s3": 15.0
+      },
+      "clearance_m": 0.01,
+      "geometry_allowance_rad": 0.00105,
+      "fixture": {
+        "parent_frame": "waist_yaw_link",
+        "center_local_m": [
+          0.09,
+          0.0,
+          0.0
+        ],
+        "half_extents_m": [
+          0.08,
+          0.15,
+          0.025
+        ]
+      },
+      "floor_surface_z_m": 0.0,
+      "ball_radius_m": 0.0127,
+      "ball_envelope_samples": 512,
+      "tools_face_radius_m": 0.002,
+      "allowed_tip_stroke_m": 0.005,
+      "arm_target_poses_rad": [
+        [
+          -1.0,
+          0.45,
+          0,
+          -0.6,
+          0,
+          0,
+          0
+        ],
+        [
+          -1.3,
+          0.35,
+          0,
+          -0.7,
+          0,
+          0,
+          0
+        ],
+        [
+          -1.8,
+          0.55,
+          0,
+          -0.7,
+          0,
+          0,
+          0
+        ]
+      ]
+    },
+    "audited_assembly_overlaps": [
+      [
+        "left_wrist_yaw_link",
+        "left_wrist_roll_link"
+      ],
+      [
+        "right_wrist_yaw_link",
+        "right_wrist_roll_link"
+      ]
+    ]
+  },
+  "geometry": {
+    "schema_version": 1,
+    "robot_model_id": "casbot_hl12p1_dvt2_a2ff_stock_hands_candidate_v1",
+    "model_format": "tree_rigid_v1",
+    "geometry_version": "dvt2_locked_v1",
+    "geometry_sha256": "02065bbbc3f47feec32a4242ee1dab49a582dd6ec15da2046f4b92c246a0e7f9",
+    "joint_names": [
+      "left_shoulder_pitch_joint",
+      "left_shoulder_roll_joint",
+      "left_shoulder_yaw_joint",
+      "left_elbow_pitch_joint",
+      "left_wrist_yaw_joint",
+      "left_wrist_pitch_joint",
+      "left_wrist_roll_joint",
+      "right_shoulder_pitch_joint",
+      "right_shoulder_roll_joint",
+      "right_shoulder_yaw_joint",
+      "right_elbow_pitch_joint",
+      "right_wrist_yaw_joint",
+      "right_wrist_pitch_joint",
+      "right_wrist_roll_joint"
+    ],
+    "frame_names": [
+      "calib_world",
+      "calib_world_mount",
+      "base_footprint",
+      "base_fixed_joint",
+      "base_link",
+      "left_hip_pitch_joint",
+      "left_hip_pitch_link",
+      "left_hip_roll_joint",
+      "left_hip_roll_link",
+      "left_hip_yaw_joint",
+      "left_hip_yaw_link",
+      "left_knee_pitch_joint",
+      "left_knee_pitch_link",
+      "left_ankle_pitch_joint",
+      "left_ankle_pitch_link",
+      "left_ankle_roll_joint",
+      "left_ankle_roll_link",
+      "left_foot_forefoot_fixed_joint",
+      "left_foot_forefoot_frame",
+      "left_foot_heel_fixed_joint",
+      "left_foot_heel_frame",
+      "pelvis_imu_joint",
+      "pelvis_imu_frame",
+      "right_hip_pitch_joint",
+      "right_hip_pitch_link",
+      "right_hip_roll_joint",
+      "right_hip_roll_link",
+      "right_hip_yaw_joint",
+      "right_hip_yaw_link",
+      "right_knee_pitch_joint",
+      "right_knee_pitch_link",
+      "right_ankle_pitch_joint",
+      "right_ankle_pitch_link",
+      "right_ankle_roll_joint",
+      "right_ankle_roll_link",
+      "right_foot_forefoot_fixed_joint",
+      "right_foot_forefoot_frame",
+      "right_foot_heel_fixed_joint",
+      "right_foot_heel_frame",
+      "waist_yaw_joint",
+      "waist_yaw_link",
+      "head_yaw_joint",
+      "head_yaw_link",
+      "head_pitch_joint",
+      "head_pitch_link",
+      "head_camera_mount_joint",
+      "head_camera_base_link",
+      "head_camera_base_link_to_camera_link",
+      "head_camera_link",
+      "head_camera_bottom_screw_frame_joint",
+      "head_camera_bottom_screw_frame",
+      "head_camera_depth_joint",
+      "head_camera_depth_frame",
+      "head_camera_color_joint",
+      "head_camera_color_frame",
+      "head_camera_color_optical_joint",
+      "head_camera_color_optical_frame",
+      "head_camera_depth_optical_joint",
+      "head_camera_depth_optical_frame",
+      "head_camera_left_ir_joint",
+      "head_camera_left_ir_frame",
+      "head_camera_left_ir_optical_joint",
+      "head_camera_left_ir_optical_frame",
+      "head_camera_right_ir_joint",
+      "head_camera_right_ir_frame",
+      "head_camera_right_ir_optical_joint",
+      "head_camera_right_ir_optical_frame",
+      "left_shoulder_pitch_joint",
+      "left_shoulder_pitch_link",
+      "left_shoulder_roll_joint",
+      "left_shoulder_roll_link",
+      "left_shoulder_yaw_joint",
+      "left_shoulder_yaw_link",
+      "left_elbow_pitch_joint",
+      "left_elbow_pitch_link",
+      "left_wrist_yaw_joint",
+      "left_wrist_yaw_link",
+      "left_wrist_pitch_joint",
+      "left_wrist_pitch_link",
+      "left_wrist_roll_joint",
+      "left_wrist_roll_link",
+      "left_flange_fixed_joint",
+      "left_flange_frame",
+      "left_hand_mount_joint",
+      "left_hand_mount_frame",
+      "left_hand_joint",
+      "left_palm_base_link",
+      "left_index_mcp_joint",
+      "left_index_mcp_link",
+      "left_index_pip_joint",
+      "left_index_pip_link",
+      "left_index_tip_fixed_joint",
+      "left_index_tip_frame",
+      "left_little_mcp_joint",
+      "left_little_mcp_link",
+      "left_little_pip_joint",
+      "left_little_pip_link",
+      "left_little_tip_fixed_joint",
+      "left_little_tip_frame",
+      "left_middle_mcp_joint",
+      "left_middle_mcp_link",
+      "left_middle_pip_joint",
+      "left_middle_pip_link",
+      "left_middle_tip_fixed_joint",
+      "left_middle_tip_frame",
+      "left_ring_mcp_joint",
+      "left_ring_mcp_link",
+      "left_ring_pip_joint",
+      "left_ring_pip_link",
+      "left_ring_tip_fixed_joint",
+      "left_ring_tip_frame",
+      "left_thumb_cmc_joint",
+      "left_thumb_cmc_link",
+      "left_thumb_pip_joint",
+      "left_thumb_pip_link",
+      "left_thumb_dip_joint",
+      "left_thumb_dip_link",
+      "left_thumb_tip_fixed_joint",
+      "left_thumb_tip_frame",
+      "left_trical_tcp_mount",
+      "left_trical_tcp",
+      "right_shoulder_pitch_joint",
+      "right_shoulder_pitch_link",
+      "right_shoulder_roll_joint",
+      "right_shoulder_roll_link",
+      "right_shoulder_yaw_joint",
+      "right_shoulder_yaw_link",
+      "right_elbow_pitch_joint",
+      "right_elbow_pitch_link",
+      "right_wrist_yaw_joint",
+      "right_wrist_yaw_link",
+      "right_wrist_pitch_joint",
+      "right_wrist_pitch_link",
+      "right_wrist_roll_joint",
+      "right_wrist_roll_link",
+      "right_flange_fixed_joint",
+      "right_flange_frame",
+      "right_hand_mount_joint",
+      "right_hand_mount_frame",
+      "right_hand_joint",
+      "right_palm_base_link",
+      "right_index_mcp_joint",
+      "right_index_mcp_link",
+      "right_index_pip_joint",
+      "right_index_pip_link",
+      "right_index_tip_fixed_joint",
+      "right_index_tip_frame",
+      "right_little_mcp_joint",
+      "right_little_mcp_link",
+      "right_little_pip_joint",
+      "right_little_pip_link",
+      "right_little_tip_fixed_joint",
+      "right_little_tip_frame",
+      "right_middle_mcp_joint",
+      "right_middle_mcp_link",
+      "right_middle_pip_joint",
+      "right_middle_pip_link",
+      "right_middle_tip_fixed_joint",
+      "right_middle_tip_frame",
+      "right_ring_mcp_joint",
+      "right_ring_mcp_link",
+      "right_ring_pip_joint",
+      "right_ring_pip_link",
+      "right_ring_tip_fixed_joint",
+      "right_ring_tip_frame",
+      "right_thumb_cmc_joint",
+      "right_thumb_cmc_link",
+      "right_thumb_pip_joint",
+      "right_thumb_pip_link",
+      "right_thumb_dip_joint",
+      "right_thumb_dip_link",
+      "right_thumb_tip_fixed_joint",
+      "right_thumb_tip_frame",
+      "right_trical_tcp_mount",
+      "right_trical_tcp",
+      "waist_down_camera_mount_joint",
+      "waist_down_camera_base_link",
+      "waist_down_camera_base_link_to_camera_link",
+      "waist_down_camera_link",
+      "waist_down_camera_bottom_screw_frame_joint",
+      "waist_down_camera_bottom_screw_frame",
+      "waist_down_camera_depth_joint",
+      "waist_down_camera_depth_frame",
+      "waist_down_camera_color_joint",
+      "waist_down_camera_color_frame",
+      "waist_down_camera_color_optical_joint",
+      "waist_down_camera_color_optical_frame",
+      "waist_down_camera_depth_optical_joint",
+      "waist_down_camera_depth_optical_frame",
+      "waist_down_camera_left_ir_joint",
+      "waist_down_camera_left_ir_frame",
+      "waist_down_camera_left_ir_optical_joint",
+      "waist_down_camera_left_ir_optical_frame",
+      "waist_down_camera_right_ir_joint",
+      "waist_down_camera_right_ir_frame",
+      "waist_down_camera_right_ir_optical_joint",
+      "waist_down_camera_right_ir_optical_frame",
+      "waist_lidar_joint",
+      "waist_lidar_link",
+      "waist_lidar_frame_joint",
+      "waist_lidar_frame",
+      "waist_up_camera_mount_joint",
+      "waist_up_camera_base_link",
+      "waist_up_camera_base_link_to_camera_link",
+      "waist_up_camera_link",
+      "waist_up_camera_color_screw_joint",
+      "waist_up_camera_color_screw_frame",
+      "waist_up_camera_depth_joint",
+      "waist_up_camera_depth_frame",
+      "waist_up_camera_color_joint",
+      "waist_up_camera_color_frame",
+      "waist_up_camera_color_optical_joint",
+      "waist_up_camera_color_optical_frame",
+      "waist_up_camera_imu_joint",
+      "waist_up_camera_imu_frame",
+      "waist_up_camera_left_ir_joint",
+      "waist_up_camera_left_ir_frame",
+      "waist_up_camera_left_ir_optical_joint",
+      "waist_up_camera_left_ir_optical_frame",
+      "waist_up_camera_right_ir_joint",
+      "waist_up_camera_right_ir_frame",
+      "waist_up_camera_right_ir_optical_joint",
+      "waist_up_camera_right_ir_optical_frame"
+    ],
+    "coordinate_convention": "T_parent_child maps child to parent; q_model=q_observed, SI; zero corrections baked once into origin",
+    "geometry": {
+      "base": [
+        [
+          1.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          1.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          1.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ]
+      ],
+      "legacy_tool": [
+        [
+          1.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          1.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          1.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ]
+      ],
+      "parents": [
+        -1,
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        -1,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12
+      ],
+      "joints": [
+        {
+          "name": "left_shoulder_pitch_joint",
+          "axis": [
+            0.0,
+            1.0,
+            0.0
+          ],
+          "origin": [
+            [
+              1.0,
+              0.0,
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              1.0,
+              0.0,
+              0.145
+            ],
+            [
+              0.0,
+              0.0,
+              1.0,
+              1.3078820000000002
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "left_shoulder_roll_joint",
+          "axis": [
+            1.0,
+            0.0,
+            0.0
+          ],
+          "origin": [
+            [
+              1.0,
+              0.0,
+              0.0,
+              -0.026
+            ],
+            [
+              0.0,
+              1.0,
+              0.0,
+              0.057
+            ],
+            [
+              0.0,
+              0.0,
+              1.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "left_shoulder_yaw_joint",
+          "axis": [
+            0.0,
+            0.0,
+            1.0
+          ],
+          "origin": [
+            [
+              1.0,
+              0.0,
+              0.0,
+              0.026
+            ],
+            [
+              0.0,
+              1.0,
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0,
+              1.0,
+              -0.1315
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "left_elbow_pitch_joint",
+          "axis": [
+            0.0,
+            1.0,
+            0.0
+          ],
+          "origin": [
+            [
+              1.0,
+              0.0,
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              1.0,
+              0.0,
+              0.027
+            ],
+            [
+              0.0,
+              0.0,
+              1.0,
+              -0.081
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "left_wrist_yaw_joint",
+          "axis": [
+            0.0,
+            0.0,
+            1.0
+          ],
+          "origin": [
+            [
+              1.0,
+              0.0,
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              1.0,
+              0.0,
+              -0.027
+            ],
+            [
+              0.0,
+              0.0,
+              1.0,
+              -0.0525
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "left_wrist_pitch_joint",
+          "axis": [
+            0.0,
+            1.0,
+            0.0
+          ],
+          "origin": [
+            [
+              1.0,
+              0.0,
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              1.0,
+              0.0,
+              0.038
+            ],
+            [
+              0.0,
+              0.0,
+              1.0,
+              -0.1665
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "left_wrist_roll_joint",
+          "axis": [
+            1.0,
+            0.0,
+            0.0
+          ],
+          "origin": [
+            [
+              1.0,
+              0.0,
+              0.0,
+              0.032
+            ],
+            [
+              0.0,
+              1.0,
+              0.0,
+              -0.038
+            ],
+            [
+              0.0,
+              0.0,
+              1.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "right_shoulder_pitch_joint",
+          "axis": [
+            0.0,
+            1.0,
+            0.0
+          ],
+          "origin": [
+            [
+              1.0,
+              0.0,
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              1.0,
+              0.0,
+              -0.145
+            ],
+            [
+              0.0,
+              0.0,
+              1.0,
+              1.3078820000000002
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "right_shoulder_roll_joint",
+          "axis": [
+            1.0,
+            0.0,
+            0.0
+          ],
+          "origin": [
+            [
+              1.0,
+              0.0,
+              0.0,
+              -0.026
+            ],
+            [
+              0.0,
+              1.0,
+              0.0,
+              -0.057
+            ],
+            [
+              0.0,
+              0.0,
+              1.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "right_shoulder_yaw_joint",
+          "axis": [
+            0.0,
+            0.0,
+            1.0
+          ],
+          "origin": [
+            [
+              1.0,
+              0.0,
+              0.0,
+              0.026
+            ],
+            [
+              0.0,
+              1.0,
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0,
+              1.0,
+              -0.1315
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "right_elbow_pitch_joint",
+          "axis": [
+            0.0,
+            1.0,
+            0.0
+          ],
+          "origin": [
+            [
+              1.0,
+              0.0,
+              0.0,
+              4.487e-05
+            ],
+            [
+              0.0,
+              1.0,
+              0.0,
+              -0.027
+            ],
+            [
+              0.0,
+              0.0,
+              1.0,
+              -0.080922
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "right_wrist_yaw_joint",
+          "axis": [
+            0.0,
+            0.0,
+            1.0
+          ],
+          "origin": [
+            [
+              1.0,
+              0.0,
+              0.0,
+              -4.487e-05
+            ],
+            [
+              0.0,
+              1.0,
+              0.0,
+              0.027
+            ],
+            [
+              0.0,
+              0.0,
+              1.0,
+              -0.052578
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "right_wrist_pitch_joint",
+          "axis": [
+            0.0,
+            1.0,
+            0.0
+          ],
+          "origin": [
+            [
+              1.0,
+              0.0,
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              1.0,
+              0.0,
+              -0.038
+            ],
+            [
+              0.0,
+              0.0,
+              1.0,
+              -0.1665
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "right_wrist_roll_joint",
+          "axis": [
+            1.0,
+            0.0,
+            0.0
+          ],
+          "origin": [
+            [
+              1.0,
+              0.0,
+              0.0,
+              0.032
+            ],
+            [
+              0.0,
+              1.0,
+              0.0,
+              0.038
+            ],
+            [
+              0.0,
+              0.0,
+              1.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        }
+      ],
+      "frames": [
+        {
+          "name": "calib_world",
+          "parent": -1,
+          "placement": [
+            [
+              1.0,
+              0.0,
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              1.0,
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0,
+              1.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "calib_world_mount",
+          "parent": -1,
+          "placement": [
+            [
+              1.0,
+              0.0,
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              1.0,
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0,
+              1.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "base_footprint",
+          "parent": -1,
+          "placement": [
+            [
+              1.0,
+              0.0,
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              1.0,
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0,
+              1.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "base_fixed_joint",
+          "parent": -1,
+          "placement": [
+            [
+              1.0,
+              0.0,
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              1.0,
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0,
+              1.0,
+              0.886842
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "base_link",
+          "parent": -1,
+          "placement": [
+            [
+              1.0,
+              0.0,
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              1.0,
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0,
+              1.0,
+              0.886842
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "left_hip_pitch_joint",
+          "parent": -1,
+          "placement": [
+            [
+              1.0,
+              0.0,
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              1.0,
+              0.0,
+              0.061
+            ],
+            [
+              0.0,
+              0.0,
+              1.0,
+              0.9438420000000001
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "left_hip_pitch_link",
+          "parent": -1,
+          "placement": [
+            [
+              1.0,
+              0.0,
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              1.0,
+              0.0,
+              0.061
+            ],
+            [
+              0.0,
+              0.0,
+              1.0,
+              0.9438420000000001
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "left_hip_roll_joint",
+          "parent": -1,
+          "placement": [
+            [
+              1.0,
+              0.0,
+              0.0,
+              0.0258
+            ],
+            [
+              0.0,
+              1.0,
+              0.0,
+              0.14250000000000002
+            ],
+            [
+              0.0,
+              0.0,
+              1.0,
+              0.888842
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "left_hip_roll_link",
+          "parent": -1,
+          "placement": [
+            [
+              1.0,
+              0.0,
+              0.0,
+              0.0258
+            ],
+            [
+              0.0,
+              1.0,
+              0.0,
+              0.14250000000000002
+            ],
+            [
+              0.0,
+              0.0,
+              1.0,
+              0.888842
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "left_hip_yaw_joint",
+          "parent": -1,
+          "placement": [
+            [
+              1.0,
+              0.0,
+              0.0,
+              -0.0028000000000000004
+            ],
+            [
+              0.0,
+              1.0,
+              0.0,
+              0.14250000000000002
+            ],
+            [
+              0.0,
+              0.0,
+              1.0,
+              0.791342
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "left_hip_yaw_link",
+          "parent": -1,
+          "placement": [
+            [
+              1.0,
+              0.0,
+              0.0,
+              -0.0028000000000000004
+            ],
+            [
+              0.0,
+              1.0,
+              0.0,
+              0.14250000000000002
+            ],
+            [
+              0.0,
+              0.0,
+              1.0,
+              0.791342
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "left_knee_pitch_joint",
+          "parent": -1,
+          "placement": [
+            [
+              1.0,
+              0.0,
+              0.0,
+              -0.0228
+            ],
+            [
+              0.0,
+              1.0,
+              0.0,
+              0.1287
+            ],
+            [
+              0.0,
+              0.0,
+              1.0,
+              0.5178419999999999
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "left_knee_pitch_link",
+          "parent": -1,
+          "placement": [
+            [
+              1.0,
+              0.0,
+              0.0,
+              -0.0228
+            ],
+            [
+              0.0,
+              1.0,
+              0.0,
+              0.1287
+            ],
+            [
+              0.0,
+              0.0,
+              1.0,
+              0.5178419999999999
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "left_ankle_pitch_joint",
+          "parent": -1,
+          "placement": [
+            [
+              1.0,
+              0.0,
+              0.0,
+              -0.0228
+            ],
+            [
+              0.0,
+              1.0,
+              0.0,
+              0.14250000000000002
+            ],
+            [
+              0.0,
+              0.0,
+              1.0,
+              0.0648419999999999
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "left_ankle_pitch_link",
+          "parent": -1,
+          "placement": [
+            [
+              1.0,
+              0.0,
+              0.0,
+              -0.0228
+            ],
+            [
+              0.0,
+              1.0,
+              0.0,
+              0.14250000000000002
+            ],
+            [
+              0.0,
+              0.0,
+              1.0,
+              0.0648419999999999
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "left_ankle_roll_joint",
+          "parent": -1,
+          "placement": [
+            [
+              1.0,
+              0.0,
+              0.0,
+              -0.0228
+            ],
+            [
+              0.0,
+              1.0,
+              0.0,
+              0.14250000000000002
+            ],
+            [
+              0.0,
+              0.0,
+              1.0,
+              0.0648419999999999
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "left_ankle_roll_link",
+          "parent": -1,
+          "placement": [
+            [
+              1.0,
+              0.0,
+              0.0,
+              -0.0228
+            ],
+            [
+              0.0,
+              1.0,
+              0.0,
+              0.14250000000000002
+            ],
+            [
+              0.0,
+              0.0,
+              1.0,
+              0.0648419999999999
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "left_foot_forefoot_fixed_joint",
+          "parent": -1,
+          "placement": [
+            [
+              1.0,
+              0.0,
+              0.0,
+              0.1502
+            ],
+            [
+              0.0,
+              1.0,
+              0.0,
+              0.14250000000000002
+            ],
+            [
+              0.0,
+              0.0,
+              1.0,
+              -9.71445146547012e-17
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "left_foot_forefoot_frame",
+          "parent": -1,
+          "placement": [
+            [
+              1.0,
+              0.0,
+              0.0,
+              0.1502
+            ],
+            [
+              0.0,
+              1.0,
+              0.0,
+              0.14250000000000002
+            ],
+            [
+              0.0,
+              0.0,
+              1.0,
+              -9.71445146547012e-17
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "left_foot_heel_fixed_joint",
+          "parent": -1,
+          "placement": [
+            [
+              1.0,
+              0.0,
+              0.0,
+              -0.1248
+            ],
+            [
+              0.0,
+              1.0,
+              0.0,
+              0.14250000000000002
+            ],
+            [
+              0.0,
+              0.0,
+              1.0,
+              -9.71445146547012e-17
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "left_foot_heel_frame",
+          "parent": -1,
+          "placement": [
+            [
+              1.0,
+              0.0,
+              0.0,
+              -0.1248
+            ],
+            [
+              0.0,
+              1.0,
+              0.0,
+              0.14250000000000002
+            ],
+            [
+              0.0,
+              0.0,
+              1.0,
+              -9.71445146547012e-17
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "pelvis_imu_joint",
+          "parent": -1,
+          "placement": [
+            [
+              1.0,
+              0.0,
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              1.0,
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0,
+              1.0,
+              0.886842
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "pelvis_imu_frame",
+          "parent": -1,
+          "placement": [
+            [
+              1.0,
+              0.0,
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              1.0,
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0,
+              1.0,
+              0.886842
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "right_hip_pitch_joint",
+          "parent": -1,
+          "placement": [
+            [
+              1.0,
+              0.0,
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              1.0,
+              0.0,
+              -0.061
+            ],
+            [
+              0.0,
+              0.0,
+              1.0,
+              0.9438420000000001
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "right_hip_pitch_link",
+          "parent": -1,
+          "placement": [
+            [
+              1.0,
+              0.0,
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              1.0,
+              0.0,
+              -0.061
+            ],
+            [
+              0.0,
+              0.0,
+              1.0,
+              0.9438420000000001
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "right_hip_roll_joint",
+          "parent": -1,
+          "placement": [
+            [
+              1.0,
+              0.0,
+              0.0,
+              0.0258
+            ],
+            [
+              0.0,
+              1.0,
+              0.0,
+              -0.14250000000000002
+            ],
+            [
+              0.0,
+              0.0,
+              1.0,
+              0.888842
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "right_hip_roll_link",
+          "parent": -1,
+          "placement": [
+            [
+              1.0,
+              0.0,
+              0.0,
+              0.0258
+            ],
+            [
+              0.0,
+              1.0,
+              0.0,
+              -0.14250000000000002
+            ],
+            [
+              0.0,
+              0.0,
+              1.0,
+              0.888842
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "right_hip_yaw_joint",
+          "parent": -1,
+          "placement": [
+            [
+              1.0,
+              0.0,
+              0.0,
+              -0.0028000000000000004
+            ],
+            [
+              0.0,
+              1.0,
+              0.0,
+              -0.14250000000000002
+            ],
+            [
+              0.0,
+              0.0,
+              1.0,
+              0.791342
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "right_hip_yaw_link",
+          "parent": -1,
+          "placement": [
+            [
+              1.0,
+              0.0,
+              0.0,
+              -0.0028000000000000004
+            ],
+            [
+              0.0,
+              1.0,
+              0.0,
+              -0.14250000000000002
+            ],
+            [
+              0.0,
+              0.0,
+              1.0,
+              0.791342
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "right_knee_pitch_joint",
+          "parent": -1,
+          "placement": [
+            [
+              1.0,
+              0.0,
+              0.0,
+              -0.0228
+            ],
+            [
+              0.0,
+              1.0,
+              0.0,
+              -0.1287
+            ],
+            [
+              0.0,
+              0.0,
+              1.0,
+              0.5178419999999999
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "right_knee_pitch_link",
+          "parent": -1,
+          "placement": [
+            [
+              1.0,
+              0.0,
+              0.0,
+              -0.0228
+            ],
+            [
+              0.0,
+              1.0,
+              0.0,
+              -0.1287
+            ],
+            [
+              0.0,
+              0.0,
+              1.0,
+              0.5178419999999999
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "right_ankle_pitch_joint",
+          "parent": -1,
+          "placement": [
+            [
+              1.0,
+              0.0,
+              0.0,
+              -0.0228
+            ],
+            [
+              0.0,
+              1.0,
+              0.0,
+              -0.14250000000000002
+            ],
+            [
+              0.0,
+              0.0,
+              1.0,
+              0.0648419999999999
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "right_ankle_pitch_link",
+          "parent": -1,
+          "placement": [
+            [
+              1.0,
+              0.0,
+              0.0,
+              -0.0228
+            ],
+            [
+              0.0,
+              1.0,
+              0.0,
+              -0.14250000000000002
+            ],
+            [
+              0.0,
+              0.0,
+              1.0,
+              0.0648419999999999
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "right_ankle_roll_joint",
+          "parent": -1,
+          "placement": [
+            [
+              1.0,
+              0.0,
+              0.0,
+              -0.0228
+            ],
+            [
+              0.0,
+              1.0,
+              0.0,
+              -0.14250000000000002
+            ],
+            [
+              0.0,
+              0.0,
+              1.0,
+              0.0648419999999999
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "right_ankle_roll_link",
+          "parent": -1,
+          "placement": [
+            [
+              1.0,
+              0.0,
+              0.0,
+              -0.0228
+            ],
+            [
+              0.0,
+              1.0,
+              0.0,
+              -0.14250000000000002
+            ],
+            [
+              0.0,
+              0.0,
+              1.0,
+              0.0648419999999999
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "right_foot_forefoot_fixed_joint",
+          "parent": -1,
+          "placement": [
+            [
+              1.0,
+              0.0,
+              0.0,
+              0.1502
+            ],
+            [
+              0.0,
+              1.0,
+              0.0,
+              -0.14250000000000002
+            ],
+            [
+              0.0,
+              0.0,
+              1.0,
+              -9.71445146547012e-17
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "right_foot_forefoot_frame",
+          "parent": -1,
+          "placement": [
+            [
+              1.0,
+              0.0,
+              0.0,
+              0.1502
+            ],
+            [
+              0.0,
+              1.0,
+              0.0,
+              -0.14250000000000002
+            ],
+            [
+              0.0,
+              0.0,
+              1.0,
+              -9.71445146547012e-17
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "right_foot_heel_fixed_joint",
+          "parent": -1,
+          "placement": [
+            [
+              1.0,
+              0.0,
+              0.0,
+              -0.1248
+            ],
+            [
+              0.0,
+              1.0,
+              0.0,
+              -0.14250000000000002
+            ],
+            [
+              0.0,
+              0.0,
+              1.0,
+              -9.71445146547012e-17
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "right_foot_heel_frame",
+          "parent": -1,
+          "placement": [
+            [
+              1.0,
+              0.0,
+              0.0,
+              -0.1248
+            ],
+            [
+              0.0,
+              1.0,
+              0.0,
+              -0.14250000000000002
+            ],
+            [
+              0.0,
+              0.0,
+              1.0,
+              -9.71445146547012e-17
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "waist_yaw_joint",
+          "parent": -1,
+          "placement": [
+            [
+              1.0,
+              0.0,
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              1.0,
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0,
+              1.0,
+              1.0405820000000001
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "waist_yaw_link",
+          "parent": -1,
+          "placement": [
+            [
+              1.0,
+              0.0,
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              1.0,
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0,
+              1.0,
+              1.0405820000000001
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "head_yaw_joint",
+          "parent": -1,
+          "placement": [
+            [
+              1.0,
+              0.0,
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              1.0,
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0,
+              1.0,
+              1.4028820000000002
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "head_yaw_link",
+          "parent": -1,
+          "placement": [
+            [
+              1.0,
+              0.0,
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              1.0,
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0,
+              1.0,
+              1.4028820000000002
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "head_pitch_joint",
+          "parent": -1,
+          "placement": [
+            [
+              1.0,
+              0.0,
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              1.0,
+              0.0,
+              -0.026
+            ],
+            [
+              0.0,
+              0.0,
+              1.0,
+              1.4488820000000002
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "head_pitch_link",
+          "parent": -1,
+          "placement": [
+            [
+              1.0,
+              0.0,
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              1.0,
+              0.0,
+              -0.026
+            ],
+            [
+              0.0,
+              0.0,
+              1.0,
+              1.4488820000000002
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "head_camera_mount_joint",
+          "parent": -1,
+          "placement": [
+            [
+              1.0,
+              0.0,
+              0.0,
+              0.0859
+            ],
+            [
+              0.0,
+              1.0,
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0,
+              1.0,
+              1.4962820000000003
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "head_camera_base_link",
+          "parent": -1,
+          "placement": [
+            [
+              1.0,
+              0.0,
+              0.0,
+              0.0859
+            ],
+            [
+              0.0,
+              1.0,
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0,
+              1.0,
+              1.4962820000000003
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "head_camera_base_link_to_camera_link",
+          "parent": -1,
+          "placement": [
+            [
+              1.0,
+              0.0,
+              0.0,
+              0.10177
+            ],
+            [
+              0.0,
+              1.0,
+              0.0,
+              0.025
+            ],
+            [
+              0.0,
+              0.0,
+              1.0,
+              1.5087820000000003
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "head_camera_link",
+          "parent": -1,
+          "placement": [
+            [
+              1.0,
+              0.0,
+              0.0,
+              0.10177
+            ],
+            [
+              0.0,
+              1.0,
+              0.0,
+              0.025
+            ],
+            [
+              0.0,
+              0.0,
+              1.0,
+              1.5087820000000003
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "head_camera_bottom_screw_frame_joint",
+          "parent": -1,
+          "placement": [
+            [
+              1.0,
+              0.0,
+              0.0,
+              0.0859
+            ],
+            [
+              0.0,
+              1.0,
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0,
+              1.0,
+              1.4962820000000003
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "head_camera_bottom_screw_frame",
+          "parent": -1,
+          "placement": [
+            [
+              1.0,
+              0.0,
+              0.0,
+              0.0859
+            ],
+            [
+              0.0,
+              1.0,
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0,
+              1.0,
+              1.4962820000000003
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "head_camera_depth_joint",
+          "parent": -1,
+          "placement": [
+            [
+              1.0,
+              0.0,
+              0.0,
+              0.10177
+            ],
+            [
+              0.0,
+              1.0,
+              0.0,
+              0.025
+            ],
+            [
+              0.0,
+              0.0,
+              1.0,
+              1.5087820000000003
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "head_camera_depth_frame",
+          "parent": -1,
+          "placement": [
+            [
+              1.0,
+              0.0,
+              0.0,
+              0.10177
+            ],
+            [
+              0.0,
+              1.0,
+              0.0,
+              0.025
+            ],
+            [
+              0.0,
+              0.0,
+              1.0,
+              1.5087820000000003
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "head_camera_color_joint",
+          "parent": -1,
+          "placement": [
+            [
+              1.0,
+              0.0,
+              0.0,
+              0.103433
+            ],
+            [
+              0.0,
+              1.0,
+              0.0,
+              0.010995000000000001
+            ],
+            [
+              0.0,
+              0.0,
+              1.0,
+              1.5087870000000003
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "head_camera_color_frame",
+          "parent": -1,
+          "placement": [
+            [
+              1.0,
+              0.0,
+              0.0,
+              0.103433
+            ],
+            [
+              0.0,
+              1.0,
+              0.0,
+              0.010995000000000001
+            ],
+            [
+              0.0,
+              0.0,
+              1.0,
+              1.5087870000000003
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "head_camera_color_optical_joint",
+          "parent": -1,
+          "placement": [
+            [
+              -3.552713678800501e-15,
+              -3.608224830031759e-15,
+              1.0,
+              0.103433
+            ],
+            [
+              -1.0,
+              0.0,
+              -3.608224830031759e-15,
+              0.010995000000000001
+            ],
+            [
+              5.551115123125783e-17,
+              -1.0,
+              -3.552713678800501e-15,
+              1.5087870000000003
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "head_camera_color_optical_frame",
+          "parent": -1,
+          "placement": [
+            [
+              -3.552713678800501e-15,
+              -3.608224830031759e-15,
+              1.0,
+              0.103433
+            ],
+            [
+              -1.0,
+              0.0,
+              -3.608224830031759e-15,
+              0.010995000000000001
+            ],
+            [
+              5.551115123125783e-17,
+              -1.0,
+              -3.552713678800501e-15,
+              1.5087870000000003
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "head_camera_depth_optical_joint",
+          "parent": -1,
+          "placement": [
+            [
+              -3.552713678800501e-15,
+              -3.608224830031759e-15,
+              1.0,
+              0.10177
+            ],
+            [
+              -1.0,
+              0.0,
+              -3.608224830031759e-15,
+              0.025
+            ],
+            [
+              5.551115123125783e-17,
+              -1.0,
+              -3.552713678800501e-15,
+              1.5087820000000003
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "head_camera_depth_optical_frame",
+          "parent": -1,
+          "placement": [
+            [
+              -3.552713678800501e-15,
+              -3.608224830031759e-15,
+              1.0,
+              0.10177
+            ],
+            [
+              -1.0,
+              0.0,
+              -3.608224830031759e-15,
+              0.025
+            ],
+            [
+              5.551115123125783e-17,
+              -1.0,
+              -3.552713678800501e-15,
+              1.5087820000000003
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "head_camera_left_ir_joint",
+          "parent": -1,
+          "placement": [
+            [
+              1.0,
+              0.0,
+              0.0,
+              0.10177
+            ],
+            [
+              0.0,
+              1.0,
+              0.0,
+              0.025
+            ],
+            [
+              0.0,
+              0.0,
+              1.0,
+              1.5087820000000003
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "head_camera_left_ir_frame",
+          "parent": -1,
+          "placement": [
+            [
+              1.0,
+              0.0,
+              0.0,
+              0.10177
+            ],
+            [
+              0.0,
+              1.0,
+              0.0,
+              0.025
+            ],
+            [
+              0.0,
+              0.0,
+              1.0,
+              1.5087820000000003
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "head_camera_left_ir_optical_joint",
+          "parent": -1,
+          "placement": [
+            [
+              -3.552713678800501e-15,
+              -3.608224830031759e-15,
+              1.0,
+              0.10177
+            ],
+            [
+              -1.0,
+              0.0,
+              -3.608224830031759e-15,
+              0.025
+            ],
+            [
+              5.551115123125783e-17,
+              -1.0,
+              -3.552713678800501e-15,
+              1.5087820000000003
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "head_camera_left_ir_optical_frame",
+          "parent": -1,
+          "placement": [
+            [
+              -3.552713678800501e-15,
+              -3.608224830031759e-15,
+              1.0,
+              0.10177
+            ],
+            [
+              -1.0,
+              0.0,
+              -3.608224830031759e-15,
+              0.025
+            ],
+            [
+              5.551115123125783e-17,
+              -1.0,
+              -3.552713678800501e-15,
+              1.5087820000000003
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "head_camera_right_ir_joint",
+          "parent": -1,
+          "placement": [
+            [
+              1.0,
+              0.0,
+              0.0,
+              0.10177
+            ],
+            [
+              0.0,
+              1.0,
+              0.0,
+              -0.025
+            ],
+            [
+              0.0,
+              0.0,
+              1.0,
+              1.5087820000000003
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "head_camera_right_ir_frame",
+          "parent": -1,
+          "placement": [
+            [
+              1.0,
+              0.0,
+              0.0,
+              0.10177
+            ],
+            [
+              0.0,
+              1.0,
+              0.0,
+              -0.025
+            ],
+            [
+              0.0,
+              0.0,
+              1.0,
+              1.5087820000000003
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "head_camera_right_ir_optical_joint",
+          "parent": -1,
+          "placement": [
+            [
+              -3.552713678800501e-15,
+              -3.608224830031759e-15,
+              1.0,
+              0.10177
+            ],
+            [
+              -1.0,
+              0.0,
+              -3.608224830031759e-15,
+              -0.025
+            ],
+            [
+              5.551115123125783e-17,
+              -1.0,
+              -3.552713678800501e-15,
+              1.5087820000000003
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "head_camera_right_ir_optical_frame",
+          "parent": -1,
+          "placement": [
+            [
+              -3.552713678800501e-15,
+              -3.608224830031759e-15,
+              1.0,
+              0.10177
+            ],
+            [
+              -1.0,
+              0.0,
+              -3.608224830031759e-15,
+              -0.025
+            ],
+            [
+              5.551115123125783e-17,
+              -1.0,
+              -3.552713678800501e-15,
+              1.5087820000000003
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "left_shoulder_pitch_joint",
+          "parent": 0,
+          "placement": [
+            [
+              1.0,
+              0.0,
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              1.0,
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0,
+              1.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "left_shoulder_pitch_link",
+          "parent": 0,
+          "placement": [
+            [
+              1.0,
+              0.0,
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              1.0,
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0,
+              1.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "left_shoulder_roll_joint",
+          "parent": 1,
+          "placement": [
+            [
+              1.0,
+              0.0,
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              1.0,
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0,
+              1.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "left_shoulder_roll_link",
+          "parent": 1,
+          "placement": [
+            [
+              1.0,
+              0.0,
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              1.0,
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0,
+              1.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "left_shoulder_yaw_joint",
+          "parent": 2,
+          "placement": [
+            [
+              1.0,
+              0.0,
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              1.0,
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0,
+              1.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "left_shoulder_yaw_link",
+          "parent": 2,
+          "placement": [
+            [
+              1.0,
+              0.0,
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              1.0,
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0,
+              1.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "left_elbow_pitch_joint",
+          "parent": 3,
+          "placement": [
+            [
+              1.0,
+              0.0,
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              1.0,
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0,
+              1.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "left_elbow_pitch_link",
+          "parent": 3,
+          "placement": [
+            [
+              1.0,
+              0.0,
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              1.0,
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0,
+              1.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "left_wrist_yaw_joint",
+          "parent": 4,
+          "placement": [
+            [
+              1.0,
+              0.0,
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              1.0,
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0,
+              1.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "left_wrist_yaw_link",
+          "parent": 4,
+          "placement": [
+            [
+              1.0,
+              0.0,
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              1.0,
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0,
+              1.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "left_wrist_pitch_joint",
+          "parent": 5,
+          "placement": [
+            [
+              1.0,
+              0.0,
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              1.0,
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0,
+              1.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "left_wrist_pitch_link",
+          "parent": 5,
+          "placement": [
+            [
+              1.0,
+              0.0,
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              1.0,
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0,
+              1.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "left_wrist_roll_joint",
+          "parent": 6,
+          "placement": [
+            [
+              1.0,
+              0.0,
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              1.0,
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0,
+              1.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "left_wrist_roll_link",
+          "parent": 6,
+          "placement": [
+            [
+              1.0,
+              0.0,
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              1.0,
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0,
+              1.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "left_flange_fixed_joint",
+          "parent": 6,
+          "placement": [
+            [
+              3.6732051031940216e-06,
+              -0.999999999993254,
+              -9.747179571296011e-12,
+              -0.032
+            ],
+            [
+              -0.9999999999897332,
+              -3.673205103638111e-06,
+              2.6535897933348288e-06,
+              0.0
+            ],
+            [
+              -2.6535897933527304e-06,
+              0.0,
+              -0.9999999999964797,
+              -0.064
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "left_flange_frame",
+          "parent": 6,
+          "placement": [
+            [
+              3.6732051031940216e-06,
+              -0.999999999993254,
+              -9.747179571296011e-12,
+              -0.032
+            ],
+            [
+              -0.9999999999897332,
+              -3.673205103638111e-06,
+              2.6535897933348288e-06,
+              0.0
+            ],
+            [
+              -2.6535897933527304e-06,
+              0.0,
+              -0.9999999999964797,
+              -0.064
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "left_hand_mount_joint",
+          "parent": 6,
+          "placement": [
+            [
+              3.6732051031940216e-06,
+              -0.999999999993254,
+              -9.747179571296011e-12,
+              -0.032
+            ],
+            [
+              -0.9999999999897332,
+              -3.673205103638111e-06,
+              2.6535897933348288e-06,
+              0.0
+            ],
+            [
+              -2.6535897933527304e-06,
+              0.0,
+              -0.9999999999964797,
+              -0.064
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "left_hand_mount_frame",
+          "parent": 6,
+          "placement": [
+            [
+              3.6732051031940216e-06,
+              -0.999999999993254,
+              -9.747179571296011e-12,
+              -0.032
+            ],
+            [
+              -0.9999999999897332,
+              -3.673205103638111e-06,
+              2.6535897933348288e-06,
+              0.0
+            ],
+            [
+              -2.6535897933527304e-06,
+              0.0,
+              -0.9999999999964797,
+              -0.064
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "left_hand_joint",
+          "parent": 6,
+          "placement": [
+            [
+              3.6732051031940216e-06,
+              -0.999999999993254,
+              -9.747179571296011e-12,
+              -0.0320000000000926
+            ],
+            [
+              -0.9999999999897332,
+              -3.673205103638111e-06,
+              2.6535897933348288e-06,
+              2.520910303668087e-08
+            ],
+            [
+              -2.6535897933527304e-06,
+              0.0,
+              -0.9999999999964797,
+              -0.07349999999996656
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "left_palm_base_link",
+          "parent": 6,
+          "placement": [
+            [
+              3.6732051031940216e-06,
+              -0.999999999993254,
+              -9.747179571296011e-12,
+              -0.0320000000000926
+            ],
+            [
+              -0.9999999999897332,
+              -3.673205103638111e-06,
+              2.6535897933348288e-06,
+              2.520910303668087e-08
+            ],
+            [
+              -2.6535897933527304e-06,
+              0.0,
+              -0.9999999999964797,
+              -0.07349999999996656
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "left_index_mcp_joint",
+          "parent": 6,
+          "placement": [
+            [
+              3.6732051031940216e-06,
+              -0.9969173193173331,
+              0.07845927881168913,
+              -0.0041669990820800695
+            ],
+            [
+              -0.9999999999897332,
+              -3.453683043769247e-06,
+              2.933606646751509e-06,
+              -0.00024984506221748984
+            ],
+            [
+              -2.6535897933527304e-06,
+              -0.07845927882165935,
+              -0.9969173193197842,
+              -0.1667670006636195
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "left_index_mcp_link",
+          "parent": 6,
+          "placement": [
+            [
+              3.6732051031940216e-06,
+              -0.9969173193173331,
+              0.07845927881168913,
+              -0.0041669990820800695
+            ],
+            [
+              -0.9999999999897332,
+              -3.453683043769247e-06,
+              2.933606646751509e-06,
+              -0.00024984506221748984
+            ],
+            [
+              -2.6535897933527304e-06,
+              -0.07845927882165935,
+              -0.9969173193197842,
+              -0.1667670006636195
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "left_index_pip_joint",
+          "parent": 6,
+          "placement": [
+            [
+              3.6732051031940216e-06,
+              -0.9969173193173331,
+              0.07845927881168913,
+              -0.00087171304519386
+            ],
+            [
+              -0.9999999999897332,
+              -3.453683043769247e-06,
+              2.933606646751509e-06,
+              0.0007502781490498389
+            ],
+            [
+              -2.6535897933527304e-06,
+              -0.07845927882165935,
+              -0.9969173193197842,
+              -0.20863752542146533
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "left_index_pip_link",
+          "parent": 6,
+          "placement": [
+            [
+              3.6732051031940216e-06,
+              -0.9969173193173331,
+              0.07845927881168913,
+              -0.00087171304519386
+            ],
+            [
+              -0.9999999999897332,
+              -3.453683043769247e-06,
+              2.933606646751509e-06,
+              0.0007502781490498389
+            ],
+            [
+              -2.6535897933527304e-06,
+              -0.07845927882165935,
+              -0.9969173193197842,
+              -0.20863752542146533
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "left_index_tip_fixed_joint",
+          "parent": 6,
+          "placement": [
+            [
+              3.6732051031940216e-06,
+              -0.9969173193173331,
+              0.07845927881168913,
+              0.0029571085581427915
+            ],
+            [
+              -0.9999999999897332,
+              -3.453683043769247e-06,
+              2.933606646751509e-06,
+              -0.0016445786909212107
+            ],
+            [
+              -2.6535897933527304e-06,
+              -0.07845927882165935,
+              -0.9969173193197842,
+              -0.2572870969596184
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "left_index_tip_frame",
+          "parent": 6,
+          "placement": [
+            [
+              3.6732051031940216e-06,
+              -0.9969173193173331,
+              0.07845927881168913,
+              0.0029571085581427915
+            ],
+            [
+              -0.9999999999897332,
+              -3.453683043769247e-06,
+              2.933606646751509e-06,
+              -0.0016445786909212107
+            ],
+            [
+              -2.6535897933527304e-06,
+              -0.07845927882165935,
+              -0.9969173193197842,
+              -0.2572870969596184
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "left_little_mcp_joint",
+          "parent": 6,
+          "placement": [
+            [
+              3.6732051031940216e-06,
+              -0.9969173193158036,
+              -0.07845927883112339,
+              -0.06362399908164973
+            ],
+            [
+              -0.9999999999897332,
+              -3.870080526717846e-06,
+              2.357212599958511e-06,
+              -0.00025007142074271686
+            ],
+            [
+              -2.6535897933527304e-06,
+              0.07845927882165935,
+              -0.9969173193197842,
+              -0.16376700066363004
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "left_little_mcp_link",
+          "parent": 6,
+          "placement": [
+            [
+              3.6732051031940216e-06,
+              -0.9969173193158036,
+              -0.07845927883112339,
+              -0.06362399908164973
+            ],
+            [
+              -0.9999999999897332,
+              -3.870080526717846e-06,
+              2.357212599958511e-06,
+              -0.00025007142074271686
+            ],
+            [
+              -2.6535897933527304e-06,
+              0.07845927882165935,
+              -0.9969173193197842,
+              -0.16376700066363004
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "left_little_pip_joint",
+          "parent": 6,
+          "placement": [
+            [
+              3.6732051031940216e-06,
+              -0.9969173193158036,
+              -0.07845927883112339,
+              -0.06652699607160527
+            ],
+            [
+              -0.9999999999897332,
+              -3.870080526717846e-06,
+              2.357212599958511e-06,
+              0.0007500157961020607
+            ],
+            [
+              -2.6535897933527304e-06,
+              0.07845927882165935,
+              -0.9969173193197842,
+              -0.2006529388248579
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "left_little_pip_link",
+          "parent": 6,
+          "placement": [
+            [
+              3.6732051031940216e-06,
+              -0.9969173193158036,
+              -0.07845927883112339,
+              -0.06652699607160527
+            ],
+            [
+              -0.9999999999897332,
+              -3.870080526717846e-06,
+              2.357212599958511e-06,
+              0.0007500157961020607
+            ],
+            [
+              -2.6535897933527304e-06,
+              0.07845927882165935,
+              -0.9969173193197842,
+              -0.2006529388248579
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "left_little_tip_fixed_joint",
+          "parent": 6,
+          "placement": [
+            [
+              3.6732051031940216e-06,
+              -0.9969173193158036,
+              -0.07845927883112339,
+              -0.07035580008123787
+            ],
+            [
+              -0.9999999999897332,
+              -3.870080526717846e-06,
+              2.357212599958511e-06,
+              -0.0016448691718984726
+            ],
+            [
+              -2.6535897933527304e-06,
+              0.07845927882165935,
+              -0.9969173193197842,
+              -0.24930251036301093
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "left_little_tip_frame",
+          "parent": 6,
+          "placement": [
+            [
+              3.6732051031940216e-06,
+              -0.9969173193158036,
+              -0.07845927883112339,
+              -0.07035580008123787
+            ],
+            [
+              -0.9999999999897332,
+              -3.870080526717846e-06,
+              2.357212599958511e-06,
+              -0.0016448691718984726
+            ],
+            [
+              -2.6535897933527304e-06,
+              0.07845927882165935,
+              -0.9969173193197842,
+              -0.24930251036301093
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "left_middle_mcp_joint",
+          "parent": 6,
+          "placement": [
+            [
+              3.6732051031940216e-06,
+              -0.9996573233665118,
+              0.02617700949705913,
+              -0.024055599081956137
+            ],
+            [
+              -0.9999999999897332,
+              -3.602483336855168e-06,
+              2.748833995054029e-06,
+              -0.00024991533085523104
+            ],
+            [
+              -2.6535897933527304e-06,
+              -0.02617700950688741,
+              -0.9996573233694813,
+              -0.16781700066361577
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "left_middle_mcp_link",
+          "parent": 6,
+          "placement": [
+            [
+              3.6732051031940216e-06,
+              -0.9996573233665118,
+              0.02617700949705913,
+              -0.024055599081956137
+            ],
+            [
+              -0.9999999999897332,
+              -3.602483336855168e-06,
+              2.748833995054029e-06,
+              -0.00024991533085523104
+            ],
+            [
+              -2.6535897933527304e-06,
+              -0.02617700950688741,
+              -0.9996573233694813,
+              -0.16781700066361577
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "left_middle_pip_joint",
+          "parent": 6,
+          "placement": [
+            [
+              3.6732051031940216e-06,
+              -0.9996573233665118,
+              0.02617700949705913,
+              -0.02282149125670974
+            ],
+            [
+              -0.9999999999897332,
+              -3.602483336855168e-06,
+              2.748833995054029e-06,
+              0.0010023109530961655
+            ],
+            [
+              -2.6535897933527304e-06,
+              -0.02617700950688741,
+              -0.9996573233694813,
+              -0.21494573919011584
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "left_middle_pip_link",
+          "parent": 6,
+          "placement": [
+            [
+              3.6732051031940216e-06,
+              -0.9996573233665118,
+              0.02617700949705913,
+              -0.02282149125670974
+            ],
+            [
+              -0.9999999999897332,
+              -3.602483336855168e-06,
+              2.748833995054029e-06,
+              0.0010023109530961655
+            ],
+            [
+              -2.6535897933527304e-06,
+              -0.02617700950688741,
+              -0.9996573233694813,
+              -0.21494573919011584
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "left_middle_tip_fixed_joint",
+          "parent": 6,
+          "placement": [
+            [
+              3.6732051031940216e-06,
+              -0.9996573233665118,
+              0.02617700949705913,
+              -0.021544044395927033
+            ],
+            [
+              -0.9999999999897332,
+              -3.602483336855168e-06,
+              2.748833995054029e-06,
+              -0.001392554903780287
+            ],
+            [
+              -2.6535897933527304e-06,
+              -0.02617700950688741,
+              -0.9996573233694813,
+              -0.26372902292589406
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "left_middle_tip_frame",
+          "parent": 6,
+          "placement": [
+            [
+              3.6732051031940216e-06,
+              -0.9996573233665118,
+              0.02617700949705913,
+              -0.021544044395927033
+            ],
+            [
+              -0.9999999999897332,
+              -3.602483336855168e-06,
+              2.748833995054029e-06,
+              -0.001392554903780287
+            ],
+            [
+              -2.6535897933527304e-06,
+              -0.02617700950688741,
+              -0.9996573233694813,
+              -0.26372902292589406
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "left_ring_mcp_joint",
+          "parent": 6,
+          "placement": [
+            [
+              3.6732051031940216e-06,
+              -0.9996573233660015,
+              -0.026177009516546813,
+              -0.04394599908181218
+            ],
+            [
+              -0.9999999999897332,
+              -3.741409427350668e-06,
+              2.5565269452159877e-06,
+              -0.0002499910539245872
+            ],
+            [
+              -2.6535897933527304e-06,
+              0.02617700950688741,
+              -0.9996573233694813,
+              -0.16681400066361932
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "left_ring_mcp_link",
+          "parent": 6,
+          "placement": [
+            [
+              3.6732051031940216e-06,
+              -0.9996573233660015,
+              -0.026177009516546813,
+              -0.04394599908181218
+            ],
+            [
+              -0.9999999999897332,
+              -3.741409427350668e-06,
+              2.5565269452159877e-06,
+              -0.0002499910539245872
+            ],
+            [
+              -2.6535897933527304e-06,
+              0.02617700950688741,
+              -0.9996573233694813,
+              -0.16681400066361932
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "left_ring_pip_joint",
+          "parent": 6,
+          "placement": [
+            [
+              3.6732051031940216e-06,
+              -0.9996573233660015,
+              -0.026177009516546813,
+              -0.045045437154712376
+            ],
+            [
+              -0.9999999999897332,
+              -3.741409427350668e-06,
+              2.5565269452159877e-06,
+              0.000750116319992451
+            ],
+            [
+              -2.6535897933527304e-06,
+              0.02617700950688741,
+              -0.9996573233694813,
+              -0.20879960559155253
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "left_ring_pip_link",
+          "parent": 6,
+          "placement": [
+            [
+              3.6732051031940216e-06,
+              -0.9996573233660015,
+              -0.026177009516546813,
+              -0.045045437154712376
+            ],
+            [
+              -0.9999999999897332,
+              -3.741409427350668e-06,
+              2.5565269452159877e-06,
+              0.000750116319992451
+            ],
+            [
+              -2.6535897933527304e-06,
+              0.02617700950688741,
+              -0.9996573233694813,
+              -0.20879960559155253
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "left_ring_tip_fixed_joint",
+          "parent": 6,
+          "placement": [
+            [
+              3.6732051031940216e-06,
+              -0.9996573233660015,
+              -0.026177009516546813,
+              -0.04632286642179364
+            ],
+            [
+              -0.9999999999897332,
+              -3.741409427350668e-06,
+              2.5565269452159877e-06,
+              -0.0016447589214680337
+            ],
+            [
+              -2.6535897933527304e-06,
+              0.02617700950688741,
+              -0.9996573233694813,
+              -0.25758288932733076
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "left_ring_tip_frame",
+          "parent": 6,
+          "placement": [
+            [
+              3.6732051031940216e-06,
+              -0.9996573233660015,
+              -0.026177009516546813,
+              -0.04632286642179364
+            ],
+            [
+              -0.9999999999897332,
+              -3.741409427350668e-06,
+              2.5565269452159877e-06,
+              -0.0016447589214680337
+            ],
+            [
+              -2.6535897933527304e-06,
+              0.02617700950688741,
+              -0.9996573233694813,
+              -0.25758288932733076
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "left_thumb_cmc_joint",
+          "parent": 6,
+          "placement": [
+            [
+              3.6732051031940216e-06,
+              -0.999999999993254,
+              -9.747179571296011e-12,
+              -0.012000936637742318
+            ],
+            [
+              -0.9999999999897332,
+              -3.673205103638111e-06,
+              2.6535897933348288e-06,
+              -0.017249818885909703
+            ],
+            [
+              -2.6535897933527304e-06,
+              0.0,
+              -0.9999999999964797,
+              -0.10456904577428112
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "left_thumb_cmc_link",
+          "parent": 6,
+          "placement": [
+            [
+              3.6732051031940216e-06,
+              -0.999999999993254,
+              -9.747179571296011e-12,
+              -0.012000936637742318
+            ],
+            [
+              -0.9999999999897332,
+              -3.673205103638111e-06,
+              2.6535897933348288e-06,
+              -0.017249818885909703
+            ],
+            [
+              -2.6535897933527304e-06,
+              0.0,
+              -0.9999999999964797,
+              -0.10456904577428112
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "left_thumb_pip_joint",
+          "parent": 6,
+          "placement": [
+            [
+              3.6732051031940216e-06,
+              -0.999999999993254,
+              -9.747179571296011e-12,
+              -0.0015009366378292335
+            ],
+            [
+              -0.9999999999897332,
+              -3.673205103638111e-06,
+              2.6535897933348288e-06,
+              -0.017249775938832958
+            ],
+            [
+              -2.6535897933527304e-06,
+              0.0,
+              -0.9999999999964797,
+              -0.10621904577427532
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "left_thumb_pip_link",
+          "parent": 6,
+          "placement": [
+            [
+              3.6732051031940216e-06,
+              -0.999999999993254,
+              -9.747179571296011e-12,
+              -0.0015009366378292335
+            ],
+            [
+              -0.9999999999897332,
+              -3.673205103638111e-06,
+              2.6535897933348288e-06,
+              -0.017249775938832958
+            ],
+            [
+              -2.6535897933527304e-06,
+              0.0,
+              -0.9999999999964797,
+              -0.10621904577427532
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "left_thumb_dip_joint",
+          "parent": 6,
+          "placement": [
+            [
+              3.6732051031940216e-06,
+              -0.999999999993254,
+              -9.747179571296011e-12,
+              0.03895623357914227
+            ],
+            [
+              -0.9999999999897332,
+              -3.673205103638111e-06,
+              2.6535897933348288e-06,
+              -0.01724959728392564
+            ],
+            [
+              -2.6535897933527304e-06,
+              0.0,
+              -0.9999999999964797,
+              -0.11754235703922897
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "left_thumb_dip_link",
+          "parent": 6,
+          "placement": [
+            [
+              3.6732051031940216e-06,
+              -0.999999999993254,
+              -9.747179571296011e-12,
+              0.03895623357914227
+            ],
+            [
+              -0.9999999999897332,
+              -3.673205103638111e-06,
+              2.6535897933348288e-06,
+              -0.01724959728392564
+            ],
+            [
+              -2.6535897933527304e-06,
+              0.0,
+              -0.9999999999964797,
+              -0.11754235703922897
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "left_thumb_tip_fixed_joint",
+          "parent": 6,
+          "placement": [
+            [
+              3.6732051031940216e-06,
+              -0.999999999993254,
+              -9.747179571296011e-12,
+              0.08319123357863702
+            ],
+            [
+              -0.9999999999897332,
+              -3.673205103638111e-06,
+              2.6535897933348288e-06,
+              -0.017249378490522466
+            ],
+            [
+              -2.6535897933527304e-06,
+              0.0,
+              -0.9999999999964797,
+              -0.13876235703915427
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "left_thumb_tip_frame",
+          "parent": 6,
+          "placement": [
+            [
+              3.6732051031940216e-06,
+              -0.999999999993254,
+              -9.747179571296011e-12,
+              0.08319123357863702
+            ],
+            [
+              -0.9999999999897332,
+              -3.673205103638111e-06,
+              2.6535897933348288e-06,
+              -0.017249378490522466
+            ],
+            [
+              -2.6535897933527304e-06,
+              0.0,
+              -0.9999999999964797,
+              -0.13876235703915427
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "left_trical_tcp_mount",
+          "parent": 6,
+          "placement": [
+            [
+              3.6732051031940216e-06,
+              -0.999999999993254,
+              -9.747179571296011e-12,
+              -0.03200000000282181
+            ],
+            [
+              -0.9999999999897332,
+              -3.673205103638111e-06,
+              2.6535897933348288e-06,
+              7.68214245170433e-07
+            ],
+            [
+              -2.6535897933527304e-06,
+              0.0,
+              -0.9999999999964797,
+              -0.35349999999898096
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "left_trical_tcp",
+          "parent": 6,
+          "placement": [
+            [
+              3.6732051031940216e-06,
+              -0.999999999993254,
+              -9.747179571296011e-12,
+              -0.03200000000282181
+            ],
+            [
+              -0.9999999999897332,
+              -3.673205103638111e-06,
+              2.6535897933348288e-06,
+              7.68214245170433e-07
+            ],
+            [
+              -2.6535897933527304e-06,
+              0.0,
+              -0.9999999999964797,
+              -0.35349999999898096
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "right_shoulder_pitch_joint",
+          "parent": 7,
+          "placement": [
+            [
+              1.0,
+              0.0,
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              1.0,
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0,
+              1.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "right_shoulder_pitch_link",
+          "parent": 7,
+          "placement": [
+            [
+              1.0,
+              0.0,
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              1.0,
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0,
+              1.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "right_shoulder_roll_joint",
+          "parent": 8,
+          "placement": [
+            [
+              1.0,
+              0.0,
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              1.0,
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0,
+              1.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "right_shoulder_roll_link",
+          "parent": 8,
+          "placement": [
+            [
+              1.0,
+              0.0,
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              1.0,
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0,
+              1.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "right_shoulder_yaw_joint",
+          "parent": 9,
+          "placement": [
+            [
+              1.0,
+              0.0,
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              1.0,
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0,
+              1.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "right_shoulder_yaw_link",
+          "parent": 9,
+          "placement": [
+            [
+              1.0,
+              0.0,
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              1.0,
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0,
+              1.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "right_elbow_pitch_joint",
+          "parent": 10,
+          "placement": [
+            [
+              1.0,
+              0.0,
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              1.0,
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0,
+              1.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "right_elbow_pitch_link",
+          "parent": 10,
+          "placement": [
+            [
+              1.0,
+              0.0,
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              1.0,
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0,
+              1.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "right_wrist_yaw_joint",
+          "parent": 11,
+          "placement": [
+            [
+              1.0,
+              0.0,
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              1.0,
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0,
+              1.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "right_wrist_yaw_link",
+          "parent": 11,
+          "placement": [
+            [
+              1.0,
+              0.0,
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              1.0,
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0,
+              1.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "right_wrist_pitch_joint",
+          "parent": 12,
+          "placement": [
+            [
+              1.0,
+              0.0,
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              1.0,
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0,
+              1.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "right_wrist_pitch_link",
+          "parent": 12,
+          "placement": [
+            [
+              1.0,
+              0.0,
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              1.0,
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0,
+              1.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "right_wrist_roll_joint",
+          "parent": 13,
+          "placement": [
+            [
+              1.0,
+              0.0,
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              1.0,
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0,
+              1.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "right_wrist_roll_link",
+          "parent": 13,
+          "placement": [
+            [
+              1.0,
+              0.0,
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              1.0,
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0,
+              1.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "right_flange_fixed_joint",
+          "parent": 13,
+          "placement": [
+            [
+              3.6732051031940216e-06,
+              0.999999999993254,
+              -9.747179571296011e-12,
+              -0.032
+            ],
+            [
+              0.9999999999897332,
+              -3.673205103638111e-06,
+              -2.6535897933348288e-06,
+              0.0
+            ],
+            [
+              -2.6535897933527304e-06,
+              0.0,
+              -0.9999999999964797,
+              -0.064
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "right_flange_frame",
+          "parent": 13,
+          "placement": [
+            [
+              3.6732051031940216e-06,
+              0.999999999993254,
+              -9.747179571296011e-12,
+              -0.032
+            ],
+            [
+              0.9999999999897332,
+              -3.673205103638111e-06,
+              -2.6535897933348288e-06,
+              0.0
+            ],
+            [
+              -2.6535897933527304e-06,
+              0.0,
+              -0.9999999999964797,
+              -0.064
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "right_hand_mount_joint",
+          "parent": 13,
+          "placement": [
+            [
+              3.6732051031940216e-06,
+              0.999999999993254,
+              -9.747179571296011e-12,
+              -0.032
+            ],
+            [
+              0.9999999999897332,
+              -3.673205103638111e-06,
+              -2.6535897933348288e-06,
+              0.0
+            ],
+            [
+              -2.6535897933527304e-06,
+              0.0,
+              -0.9999999999964797,
+              -0.064
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "right_hand_mount_frame",
+          "parent": 13,
+          "placement": [
+            [
+              3.6732051031940216e-06,
+              0.999999999993254,
+              -9.747179571296011e-12,
+              -0.032
+            ],
+            [
+              0.9999999999897332,
+              -3.673205103638111e-06,
+              -2.6535897933348288e-06,
+              0.0
+            ],
+            [
+              -2.6535897933527304e-06,
+              0.0,
+              -0.9999999999964797,
+              -0.064
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "right_hand_joint",
+          "parent": 13,
+          "placement": [
+            [
+              3.6732051031940216e-06,
+              0.999999999993254,
+              -9.747179571296011e-12,
+              -0.0320000000000926
+            ],
+            [
+              0.9999999999897332,
+              -3.673205103638111e-06,
+              -2.6535897933348288e-06,
+              -2.520910303668087e-08
+            ],
+            [
+              -2.6535897933527304e-06,
+              0.0,
+              -0.9999999999964797,
+              -0.07349999999996656
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "right_palm_base_link",
+          "parent": 13,
+          "placement": [
+            [
+              3.6732051031940216e-06,
+              0.999999999993254,
+              -9.747179571296011e-12,
+              -0.0320000000000926
+            ],
+            [
+              0.9999999999897332,
+              -3.673205103638111e-06,
+              -2.6535897933348288e-06,
+              -2.520910303668087e-08
+            ],
+            [
+              -2.6535897933527304e-06,
+              0.0,
+              -0.9999999999964797,
+              -0.07349999999996656
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "right_index_mcp_joint",
+          "parent": 13,
+          "placement": [
+            [
+              3.6732051031940216e-06,
+              0.9969173193173331,
+              0.07845927881168913,
+              -0.0041669990820800695
+            ],
+            [
+              0.9999999999897332,
+              -3.453683043769247e-06,
+              -2.933606646751509e-06,
+              0.00024984506221748984
+            ],
+            [
+              -2.6535897933527304e-06,
+              0.07845927882165935,
+              -0.9969173193197842,
+              -0.1667670006636195
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "right_index_mcp_link",
+          "parent": 13,
+          "placement": [
+            [
+              3.6732051031940216e-06,
+              0.9969173193173331,
+              0.07845927881168913,
+              -0.0041669990820800695
+            ],
+            [
+              0.9999999999897332,
+              -3.453683043769247e-06,
+              -2.933606646751509e-06,
+              0.00024984506221748984
+            ],
+            [
+              -2.6535897933527304e-06,
+              0.07845927882165935,
+              -0.9969173193197842,
+              -0.1667670006636195
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "right_index_pip_joint",
+          "parent": 13,
+          "placement": [
+            [
+              3.6732051031940216e-06,
+              0.9969173193173331,
+              0.07845927881168913,
+              -0.00087171304519386
+            ],
+            [
+              0.9999999999897332,
+              -3.453683043769247e-06,
+              -2.933606646751509e-06,
+              -0.0007502781490467078
+            ],
+            [
+              -2.6535897933527304e-06,
+              0.07845927882165935,
+              -0.9969173193197842,
+              -0.20863752542146533
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "right_index_pip_link",
+          "parent": 13,
+          "placement": [
+            [
+              3.6732051031940216e-06,
+              0.9969173193173331,
+              0.07845927881168913,
+              -0.00087171304519386
+            ],
+            [
+              0.9999999999897332,
+              -3.453683043769247e-06,
+              -2.933606646751509e-06,
+              -0.0007502781490467078
+            ],
+            [
+              -2.6535897933527304e-06,
+              0.07845927882165935,
+              -0.9969173193197842,
+              -0.20863752542146533
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "right_index_tip_fixed_joint",
+          "parent": 13,
+          "placement": [
+            [
+              3.6732051031940216e-06,
+              0.9969173193173331,
+              0.07845927881168913,
+              0.002957108557783225
+            ],
+            [
+              0.9999999999897332,
+              -3.453683043769247e-06,
+              -2.933606646751509e-06,
+              0.001644484900848953
+            ],
+            [
+              -2.6535897933527304e-06,
+              0.07845927882165935,
+              -0.9969173193197842,
+              -0.2572870969591782
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "right_index_tip_frame",
+          "parent": 13,
+          "placement": [
+            [
+              3.6732051031940216e-06,
+              0.9969173193173331,
+              0.07845927881168913,
+              0.002957108557783225
+            ],
+            [
+              0.9999999999897332,
+              -3.453683043769247e-06,
+              -2.933606646751509e-06,
+              0.001644484900848953
+            ],
+            [
+              -2.6535897933527304e-06,
+              0.07845927882165935,
+              -0.9969173193197842,
+              -0.2572870969591782
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "right_little_mcp_joint",
+          "parent": 13,
+          "placement": [
+            [
+              3.6732051031940216e-06,
+              0.9969173337256377,
+              -0.07845909573703524,
+              -0.06362422141315381
+            ],
+            [
+              0.9999999999897332,
+              -3.8700800937915185e-06,
+              -2.3572133107384385e-06,
+              0.00025007180829213335
+            ],
+            [
+              -2.6535897933527304e-06,
+              -0.0784590957275712,
+              -0.9969173337296183,
+              -0.16376700485486376
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "right_little_mcp_link",
+          "parent": 13,
+          "placement": [
+            [
+              3.6732051031940216e-06,
+              0.9969173337256377,
+              -0.07845909573703524,
+              -0.06362422141315381
+            ],
+            [
+              0.9999999999897332,
+              -3.8700800937915185e-06,
+              -2.3572133107384385e-06,
+              0.00025007180829213335
+            ],
+            [
+              -2.6535897933527304e-06,
+              -0.0784590957275712,
+              -0.9969173337296183,
+              -0.16376700485486376
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "right_little_pip_joint",
+          "parent": 13,
+          "placement": [
+            [
+              3.6732051031940216e-06,
+              0.9969173337256377,
+              -0.07845909573703524,
+              -0.06652721162862923
+            ],
+            [
+              0.9999999999897332,
+              -3.8700800937915185e-06,
+              -2.3572133107384385e-06,
+              -0.0007500154085801452
+            ],
+            [
+              -2.6535897933527304e-06,
+              -0.0784590957275712,
+              -0.9969173337296183,
+              -0.20065294354927005
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "right_little_pip_link",
+          "parent": 13,
+          "placement": [
+            [
+              3.6732051031940216e-06,
+              0.9969173337256377,
+              -0.07845909573703524,
+              -0.06652721162862923
+            ],
+            [
+              0.9999999999897332,
+              -3.8700800937915185e-06,
+              -2.3572133107384385e-06,
+              -0.0007500154085801452
+            ],
+            [
+              -2.6535897933527304e-06,
+              -0.0784590957275712,
+              -0.9969173337296183,
+              -0.20065294354927005
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "right_little_tip_fixed_joint",
+          "parent": 13,
+          "placement": [
+            [
+              3.6732051031940216e-06,
+              0.9969173337256377,
+              -0.07845909573703524,
+              -0.07035600670359379
+            ],
+            [
+              0.9999999999897332,
+              -3.8700800937915185e-06,
+              -2.3572133107384385e-06,
+              0.0016447757693148534
+            ],
+            [
+              -2.6535897933527304e-06,
+              -0.0784590957275712,
+              -0.9969173337296183,
+              -0.24930251579010673
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "right_little_tip_frame",
+          "parent": 13,
+          "placement": [
+            [
+              3.6732051031940216e-06,
+              0.9969173337256377,
+              -0.07845909573703524,
+              -0.07035600670359379
+            ],
+            [
+              0.9999999999897332,
+              -3.8700800937915185e-06,
+              -2.3572133107384385e-06,
+              0.0016447757693148534
+            ],
+            [
+              -2.6535897933527304e-06,
+              -0.0784590957275712,
+              -0.9969173337296183,
+              -0.24930251579010673
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "right_middle_mcp_joint",
+          "parent": 13,
+          "placement": [
+            [
+              3.6732051031940216e-06,
+              0.9996573233665118,
+              0.02617700949705913,
+              -0.024055599081956137
+            ],
+            [
+              0.9999999999897332,
+              -3.602483336855168e-06,
+              -2.748833995054029e-06,
+              0.00024991533085523104
+            ],
+            [
+              -2.6535897933527304e-06,
+              0.02617700950688741,
+              -0.9996573233694813,
+              -0.16781700066361577
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "right_middle_mcp_link",
+          "parent": 13,
+          "placement": [
+            [
+              3.6732051031940216e-06,
+              0.9996573233665118,
+              0.02617700949705913,
+              -0.024055599081956137
+            ],
+            [
+              0.9999999999897332,
+              -3.602483336855168e-06,
+              -2.748833995054029e-06,
+              0.00024991533085523104
+            ],
+            [
+              -2.6535897933527304e-06,
+              0.02617700950688741,
+              -0.9996573233694813,
+              -0.16781700066361577
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "right_middle_pip_joint",
+          "parent": 13,
+          "placement": [
+            [
+              3.6732051031940216e-06,
+              0.9996573233665118,
+              0.02617700949705913,
+              -0.022821491256710083
+            ],
+            [
+              0.9999999999897332,
+              -3.602483336855168e-06,
+              -2.748833995054029e-06,
+              -0.0010023109531035956
+            ],
+            [
+              -2.6535897933527304e-06,
+              0.02617700950688741,
+              -0.9996573233694813,
+              -0.21494573919010262
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "right_middle_pip_link",
+          "parent": 13,
+          "placement": [
+            [
+              3.6732051031940216e-06,
+              0.9996573233665118,
+              0.02617700949705913,
+              -0.022821491256710083
+            ],
+            [
+              0.9999999999897332,
+              -3.602483336855168e-06,
+              -2.748833995054029e-06,
+              -0.0010023109531035956
+            ],
+            [
+              -2.6535897933527304e-06,
+              0.02617700950688741,
+              -0.9996573233694813,
+              -0.21494573919010262
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "right_middle_tip_fixed_joint",
+          "parent": 13,
+          "placement": [
+            [
+              3.6732051031940216e-06,
+              0.9996573233665118,
+              0.02617700949705913,
+              -0.021544044396271902
+            ],
+            [
+              0.9999999999897332,
+              -3.602483336855168e-06,
+              -2.748833995054029e-06,
+              0.0013924611137619079
+            ],
+            [
+              -2.6535897933527304e-06,
+              0.02617700950688741,
+              -0.9996573233694813,
+              -0.2637290229256314
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "right_middle_tip_frame",
+          "parent": 13,
+          "placement": [
+            [
+              3.6732051031940216e-06,
+              0.9996573233665118,
+              0.02617700949705913,
+              -0.021544044396271902
+            ],
+            [
+              0.9999999999897332,
+              -3.602483336855168e-06,
+              -2.748833995054029e-06,
+              0.0013924611137619079
+            ],
+            [
+              -2.6535897933527304e-06,
+              0.02617700950688741,
+              -0.9996573233694813,
+              -0.2637290229256314
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "right_ring_mcp_joint",
+          "parent": 13,
+          "placement": [
+            [
+              3.6732051031940216e-06,
+              0.9996573233660015,
+              -0.026177009516546813,
+              -0.04394599908181218
+            ],
+            [
+              0.9999999999897332,
+              -3.741409427350668e-06,
+              -2.5565269452159877e-06,
+              0.0002499910539245872
+            ],
+            [
+              -2.6535897933527304e-06,
+              -0.02617700950688741,
+              -0.9996573233694813,
+              -0.16681400066361932
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "right_ring_mcp_link",
+          "parent": 13,
+          "placement": [
+            [
+              3.6732051031940216e-06,
+              0.9996573233660015,
+              -0.026177009516546813,
+              -0.04394599908181218
+            ],
+            [
+              0.9999999999897332,
+              -3.741409427350668e-06,
+              -2.5565269452159877e-06,
+              0.0002499910539245872
+            ],
+            [
+              -2.6535897933527304e-06,
+              -0.02617700950688741,
+              -0.9996573233694813,
+              -0.16681400066361932
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "right_ring_pip_joint",
+          "parent": 13,
+          "placement": [
+            [
+              3.6732051031940216e-06,
+              0.9996573233660015,
+              -0.026177009516546813,
+              -0.045045437154712376
+            ],
+            [
+              0.9999999999897332,
+              -3.741409427350668e-06,
+              -2.5565269452159877e-06,
+              -0.000750116319992203
+            ],
+            [
+              -2.6535897933527304e-06,
+              -0.02617700950688741,
+              -0.9996573233694813,
+              -0.20879960559155264
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "right_ring_pip_link",
+          "parent": 13,
+          "placement": [
+            [
+              3.6732051031940216e-06,
+              0.9996573233660015,
+              -0.026177009516546813,
+              -0.045045437154712376
+            ],
+            [
+              0.9999999999897332,
+              -3.741409427350668e-06,
+              -2.5565269452159877e-06,
+              -0.000750116319992203
+            ],
+            [
+              -2.6535897933527304e-06,
+              -0.02617700950688741,
+              -0.9996573233694813,
+              -0.20879960559155264
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "right_ring_tip_fixed_joint",
+          "parent": 13,
+          "placement": [
+            [
+              3.6732051031940216e-06,
+              0.9996573233660015,
+              -0.026177009516546813,
+              -0.046322866422138134
+            ],
+            [
+              0.9999999999897332,
+              -3.741409427350668e-06,
+              -2.5565269452159877e-06,
+              0.0016446651314573327
+            ],
+            [
+              -2.6535897933527304e-06,
+              -0.02617700950688741,
+              -0.9996573233694813,
+              -0.2575828893270814
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "right_ring_tip_frame",
+          "parent": 13,
+          "placement": [
+            [
+              3.6732051031940216e-06,
+              0.9996573233660015,
+              -0.026177009516546813,
+              -0.046322866422138134
+            ],
+            [
+              0.9999999999897332,
+              -3.741409427350668e-06,
+              -2.5565269452159877e-06,
+              0.0016446651314573327
+            ],
+            [
+              -2.6535897933527304e-06,
+              -0.02617700950688741,
+              -0.9996573233694813,
+              -0.2575828893270814
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "right_thumb_cmc_joint",
+          "parent": 13,
+          "placement": [
+            [
+              3.6732051031940216e-06,
+              0.999999999993254,
+              -9.747179571296011e-12,
+              -0.012000936637744757
+            ],
+            [
+              0.9999999999897332,
+              -3.673205103638111e-06,
+              -2.6535897933348288e-06,
+              0.017249818222512255
+            ],
+            [
+              -2.6535897933527304e-06,
+              0.0,
+              -0.9999999999964797,
+              -0.10481904577428025
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "right_thumb_cmc_link",
+          "parent": 13,
+          "placement": [
+            [
+              3.6732051031940216e-06,
+              0.999999999993254,
+              -9.747179571296011e-12,
+              -0.012000936637744757
+            ],
+            [
+              0.9999999999897332,
+              -3.673205103638111e-06,
+              -2.6535897933348288e-06,
+              0.017249818222512255
+            ],
+            [
+              -2.6535897933527304e-06,
+              0.0,
+              -0.9999999999964797,
+              -0.10481904577428025
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "right_thumb_pip_joint",
+          "parent": 13,
+          "placement": [
+            [
+              3.6732051031940216e-06,
+              0.999999999993254,
+              -9.747179571296011e-12,
+              -0.0015009366378302101
+            ],
+            [
+              0.9999999999897332,
+              -3.673205103638111e-06,
+              -2.6535897933348288e-06,
+              0.017249775673473976
+            ],
+            [
+              -2.6535897933527304e-06,
+              0.0,
+              -0.9999999999964797,
+              -0.10631904577427496
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "right_thumb_pip_link",
+          "parent": 13,
+          "placement": [
+            [
+              3.6732051031940216e-06,
+              0.999999999993254,
+              -9.747179571296011e-12,
+              -0.0015009366378302101
+            ],
+            [
+              0.9999999999897332,
+              -3.673205103638111e-06,
+              -2.6535897933348288e-06,
+              0.017249775673473976
+            ],
+            [
+              -2.6535897933527304e-06,
+              0.0,
+              -0.9999999999964797,
+              -0.10631904577427496
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "right_thumb_dip_joint",
+          "parent": 13,
+          "placement": [
+            [
+              3.6732051031940216e-06,
+              0.999999999993254,
+              -9.747179571296011e-12,
+              0.03895606336178649
+            ],
+            [
+              0.9999999999897332,
+              -3.673205103638111e-06,
+              -2.6535897933348288e-06,
+              0.01724959701736428
+            ],
+            [
+              -2.6535897933527304e-06,
+              0.0,
+              -0.9999999999964797,
+              -0.1176430457742351
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "right_thumb_dip_link",
+          "parent": 13,
+          "placement": [
+            [
+              3.6732051031940216e-06,
+              0.999999999993254,
+              -9.747179571296011e-12,
+              0.03895606336178649
+            ],
+            [
+              0.9999999999897332,
+              -3.673205103638111e-06,
+              -2.6535897933348288e-06,
+              0.01724959701736428
+            ],
+            [
+              -2.6535897933527304e-06,
+              0.0,
+              -0.9999999999964797,
+              -0.1176430457742351
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "right_thumb_tip_fixed_joint",
+          "parent": 13,
+          "placement": [
+            [
+              3.6732051031940216e-06,
+              0.999999999993254,
+              -9.747179571296011e-12,
+              0.08319131097282603
+            ],
+            [
+              0.9999999999897332,
+              -3.673205103638111e-06,
+              -2.6535897933348288e-06,
+              0.017249378222288017
+            ],
+            [
+              -2.6535897933527304e-06,
+              0.0,
+              -0.9999999999964797,
+              -0.13886333352013738
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "right_thumb_tip_frame",
+          "parent": 13,
+          "placement": [
+            [
+              3.6732051031940216e-06,
+              0.999999999993254,
+              -9.747179571296011e-12,
+              0.08319131097282603
+            ],
+            [
+              0.9999999999897332,
+              -3.673205103638111e-06,
+              -2.6535897933348288e-06,
+              0.017249378222288017
+            ],
+            [
+              -2.6535897933527304e-06,
+              0.0,
+              -0.9999999999964797,
+              -0.13886333352013738
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "right_trical_tcp_mount",
+          "parent": 13,
+          "placement": [
+            [
+              3.6732051031940216e-06,
+              0.999999999993254,
+              -9.747179571296011e-12,
+              -0.03200000000282181
+            ],
+            [
+              0.9999999999897332,
+              -3.673205103638111e-06,
+              -2.6535897933348288e-06,
+              -7.68214245170433e-07
+            ],
+            [
+              -2.6535897933527304e-06,
+              0.0,
+              -0.9999999999964797,
+              -0.35349999999898096
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "right_trical_tcp",
+          "parent": 13,
+          "placement": [
+            [
+              3.6732051031940216e-06,
+              0.999999999993254,
+              -9.747179571296011e-12,
+              -0.03200000000282181
+            ],
+            [
+              0.9999999999897332,
+              -3.673205103638111e-06,
+              -2.6535897933348288e-06,
+              -7.68214245170433e-07
+            ],
+            [
+              -2.6535897933527304e-06,
+              0.0,
+              -0.9999999999964797,
+              -0.35349999999898096
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "waist_down_camera_mount_joint",
+          "parent": -1,
+          "placement": [
+            [
+              0.4999978792725456,
+              0.0,
+              0.8660266281835433,
+              0.058425
+            ],
+            [
+              0.0,
+              1.0,
+              0.0,
+              0.0
+            ],
+            [
+              -0.8660266281835433,
+              0.0,
+              0.4999978792725456,
+              1.0490583000000002
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "waist_down_camera_base_link",
+          "parent": -1,
+          "placement": [
+            [
+              0.4999978792725456,
+              0.0,
+              0.8660266281835433,
+              0.058425
+            ],
+            [
+              0.0,
+              1.0,
+              0.0,
+              0.0
+            ],
+            [
+              -0.8660266281835433,
+              0.0,
+              0.4999978792725456,
+              1.0490583000000002
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "waist_down_camera_base_link_to_camera_link",
+          "parent": -1,
+          "placement": [
+            [
+              0.4999978792725456,
+              0.0,
+              0.8660266281835433,
+              0.07718529919634959
+            ],
+            [
+              0.0,
+              1.0,
+              0.0,
+              0.025
+            ],
+            [
+              -0.8660266281835433,
+              0.0,
+              0.4999978792725456,
+              1.0415644309016343
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "waist_down_camera_link",
+          "parent": -1,
+          "placement": [
+            [
+              0.4999978792725456,
+              0.0,
+              0.8660266281835433,
+              0.07718529919634959
+            ],
+            [
+              0.0,
+              1.0,
+              0.0,
+              0.025
+            ],
+            [
+              -0.8660266281835433,
+              0.0,
+              0.4999978792725456,
+              1.0415644309016343
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "waist_down_camera_bottom_screw_frame_joint",
+          "parent": -1,
+          "placement": [
+            [
+              0.4999978792725456,
+              0.0,
+              0.8660266281835433,
+              0.058425
+            ],
+            [
+              0.0,
+              1.0,
+              0.0,
+              0.0
+            ],
+            [
+              -0.8660266281835433,
+              0.0,
+              0.4999978792725456,
+              1.0490583000000002
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "waist_down_camera_bottom_screw_frame",
+          "parent": -1,
+          "placement": [
+            [
+              0.4999978792725456,
+              0.0,
+              0.8660266281835433,
+              0.058425
+            ],
+            [
+              0.0,
+              1.0,
+              0.0,
+              0.0
+            ],
+            [
+              -0.8660266281835433,
+              0.0,
+              0.4999978792725456,
+              1.0490583000000002
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "waist_down_camera_depth_joint",
+          "parent": -1,
+          "placement": [
+            [
+              0.4999978792725456,
+              0.0,
+              0.8660266281835433,
+              0.07718529919634959
+            ],
+            [
+              0.0,
+              1.0,
+              0.0,
+              0.025
+            ],
+            [
+              -0.8660266281835433,
+              0.0,
+              0.4999978792725456,
+              1.0415644309016343
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "waist_down_camera_depth_frame",
+          "parent": -1,
+          "placement": [
+            [
+              0.4999978792725456,
+              0.0,
+              0.8660266281835433,
+              0.07718529919634959
+            ],
+            [
+              0.0,
+              1.0,
+              0.0,
+              0.025
+            ],
+            [
+              -0.8660266281835433,
+              0.0,
+              0.4999978792725456,
+              1.0415644309016343
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "waist_down_camera_color_joint",
+          "parent": -1,
+          "placement": [
+            [
+              0.4999978792725456,
+              0.0,
+              0.8660266281835433,
+              0.07802112580272075
+            ],
+            [
+              0.0,
+              1.0,
+              0.0,
+              0.010995000000000001
+            ],
+            [
+              -0.8660266281835433,
+              0.0,
+              0.4999978792725456,
+              1.0401267286083615
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "waist_down_camera_color_frame",
+          "parent": -1,
+          "placement": [
+            [
+              0.4999978792725456,
+              0.0,
+              0.8660266281835433,
+              0.07802112580272075
+            ],
+            [
+              0.0,
+              1.0,
+              0.0,
+              0.010995000000000001
+            ],
+            [
+              -0.8660266281835433,
+              0.0,
+              0.4999978792725456,
+              1.0401267286083615
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "waist_down_camera_color_optical_joint",
+          "parent": -1,
+          "placement": [
+            [
+              -1.7282751699354211e-15,
+              -0.866026628183545,
+              0.4999978792725425,
+              0.07802112580272075
+            ],
+            [
+              -1.0,
+              0.0,
+              -3.608224830031759e-15,
+              0.010995000000000001
+            ],
+            [
+              3.104500106044756e-15,
+              -0.49999787927254247,
+              -0.866026628183545,
+              1.0401267286083615
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "waist_down_camera_color_optical_frame",
+          "parent": -1,
+          "placement": [
+            [
+              -1.7282751699354211e-15,
+              -0.866026628183545,
+              0.4999978792725425,
+              0.07802112580272075
+            ],
+            [
+              -1.0,
+              0.0,
+              -3.608224830031759e-15,
+              0.010995000000000001
+            ],
+            [
+              3.104500106044756e-15,
+              -0.49999787927254247,
+              -0.866026628183545,
+              1.0401267286083615
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "waist_down_camera_depth_optical_joint",
+          "parent": -1,
+          "placement": [
+            [
+              -1.7282751699354211e-15,
+              -0.866026628183545,
+              0.4999978792725425,
+              0.07718529919634959
+            ],
+            [
+              -1.0,
+              0.0,
+              -3.608224830031759e-15,
+              0.025
+            ],
+            [
+              3.104500106044756e-15,
+              -0.49999787927254247,
+              -0.866026628183545,
+              1.0415644309016343
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "waist_down_camera_depth_optical_frame",
+          "parent": -1,
+          "placement": [
+            [
+              -1.7282751699354211e-15,
+              -0.866026628183545,
+              0.4999978792725425,
+              0.07718529919634959
+            ],
+            [
+              -1.0,
+              0.0,
+              -3.608224830031759e-15,
+              0.025
+            ],
+            [
+              3.104500106044756e-15,
+              -0.49999787927254247,
+              -0.866026628183545,
+              1.0415644309016343
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "waist_down_camera_left_ir_joint",
+          "parent": -1,
+          "placement": [
+            [
+              0.4999978792725456,
+              0.0,
+              0.8660266281835433,
+              0.07718529919634959
+            ],
+            [
+              0.0,
+              1.0,
+              0.0,
+              0.025
+            ],
+            [
+              -0.8660266281835433,
+              0.0,
+              0.4999978792725456,
+              1.0415644309016343
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "waist_down_camera_left_ir_frame",
+          "parent": -1,
+          "placement": [
+            [
+              0.4999978792725456,
+              0.0,
+              0.8660266281835433,
+              0.07718529919634959
+            ],
+            [
+              0.0,
+              1.0,
+              0.0,
+              0.025
+            ],
+            [
+              -0.8660266281835433,
+              0.0,
+              0.4999978792725456,
+              1.0415644309016343
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "waist_down_camera_left_ir_optical_joint",
+          "parent": -1,
+          "placement": [
+            [
+              -1.7282751699354211e-15,
+              -0.866026628183545,
+              0.4999978792725425,
+              0.07718529919634959
+            ],
+            [
+              -1.0,
+              0.0,
+              -3.608224830031759e-15,
+              0.025
+            ],
+            [
+              3.104500106044756e-15,
+              -0.49999787927254247,
+              -0.866026628183545,
+              1.0415644309016343
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "waist_down_camera_left_ir_optical_frame",
+          "parent": -1,
+          "placement": [
+            [
+              -1.7282751699354211e-15,
+              -0.866026628183545,
+              0.4999978792725425,
+              0.07718529919634959
+            ],
+            [
+              -1.0,
+              0.0,
+              -3.608224830031759e-15,
+              0.025
+            ],
+            [
+              3.104500106044756e-15,
+              -0.49999787927254247,
+              -0.866026628183545,
+              1.0415644309016343
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "waist_down_camera_right_ir_joint",
+          "parent": -1,
+          "placement": [
+            [
+              0.4999978792725456,
+              0.0,
+              0.8660266281835433,
+              0.07718529919634959
+            ],
+            [
+              0.0,
+              1.0,
+              0.0,
+              -0.025
+            ],
+            [
+              -0.8660266281835433,
+              0.0,
+              0.4999978792725456,
+              1.0415644309016343
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "waist_down_camera_right_ir_frame",
+          "parent": -1,
+          "placement": [
+            [
+              0.4999978792725456,
+              0.0,
+              0.8660266281835433,
+              0.07718529919634959
+            ],
+            [
+              0.0,
+              1.0,
+              0.0,
+              -0.025
+            ],
+            [
+              -0.8660266281835433,
+              0.0,
+              0.4999978792725456,
+              1.0415644309016343
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "waist_down_camera_right_ir_optical_joint",
+          "parent": -1,
+          "placement": [
+            [
+              -1.7282751699354211e-15,
+              -0.866026628183545,
+              0.4999978792725425,
+              0.07718529919634959
+            ],
+            [
+              -1.0,
+              0.0,
+              -3.608224830031759e-15,
+              -0.025
+            ],
+            [
+              3.104500106044756e-15,
+              -0.49999787927254247,
+              -0.866026628183545,
+              1.0415644309016343
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "waist_down_camera_right_ir_optical_frame",
+          "parent": -1,
+          "placement": [
+            [
+              -1.7282751699354211e-15,
+              -0.866026628183545,
+              0.4999978792725425,
+              0.07718529919634959
+            ],
+            [
+              -1.0,
+              0.0,
+              -3.608224830031759e-15,
+              -0.025
+            ],
+            [
+              3.104500106044756e-15,
+              -0.49999787927254247,
+              -0.866026628183545,
+              1.0415644309016343
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "waist_lidar_joint",
+          "parent": -1,
+          "placement": [
+            [
+              1.0,
+              0.0,
+              0.0,
+              0.052
+            ],
+            [
+              0.0,
+              1.0,
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0,
+              1.0,
+              1.105782
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "waist_lidar_link",
+          "parent": -1,
+          "placement": [
+            [
+              1.0,
+              0.0,
+              0.0,
+              0.052
+            ],
+            [
+              0.0,
+              1.0,
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0,
+              1.0,
+              1.105782
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "waist_lidar_frame_joint",
+          "parent": -1,
+          "placement": [
+            [
+              2.220446049250313e-16,
+              2.220446049250313e-16,
+              1.0,
+              0.052
+            ],
+            [
+              -1.0,
+              0.0,
+              2.220446049250313e-16,
+              0.0
+            ],
+            [
+              0.0,
+              -1.0,
+              2.220446049250313e-16,
+              1.105782
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "waist_lidar_frame",
+          "parent": -1,
+          "placement": [
+            [
+              2.220446049250313e-16,
+              2.220446049250313e-16,
+              1.0,
+              0.052
+            ],
+            [
+              -1.0,
+              0.0,
+              2.220446049250313e-16,
+              0.0
+            ],
+            [
+              0.0,
+              -1.0,
+              2.220446049250313e-16,
+              1.105782
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "waist_up_camera_mount_joint",
+          "parent": -1,
+          "placement": [
+            [
+              0.8571683658599173,
+              0.0,
+              0.5150363021856217,
+              0.10026
+            ],
+            [
+              0.0,
+              1.0,
+              0.0,
+              0.0
+            ],
+            [
+              -0.5150363021856217,
+              0.0,
+              0.8571683658599173,
+              1.2196220000000002
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "waist_up_camera_base_link",
+          "parent": -1,
+          "placement": [
+            [
+              0.8571683658599173,
+              0.0,
+              0.5150363021856217,
+              0.10026
+            ],
+            [
+              0.0,
+              1.0,
+              0.0,
+              0.0
+            ],
+            [
+              -0.5150363021856217,
+              0.0,
+              0.8571683658599173,
+              1.2196220000000002
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "waist_up_camera_base_link_to_camera_link",
+          "parent": -1,
+          "placement": [
+            [
+              0.8571683658599173,
+              0.0,
+              0.5150363021856217,
+              0.11767241192662736
+            ],
+            [
+              0.0,
+              1.0,
+              0.0,
+              0.0475
+            ],
+            [
+              -0.5150363021856217,
+              0.0,
+              0.8571683658599173,
+              1.2258552862037169
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "waist_up_camera_link",
+          "parent": -1,
+          "placement": [
+            [
+              0.8571683658599173,
+              0.0,
+              0.5150363021856217,
+              0.11767241192662736
+            ],
+            [
+              0.0,
+              1.0,
+              0.0,
+              0.0475
+            ],
+            [
+              -0.5150363021856217,
+              0.0,
+              0.8571683658599173,
+              1.2258552862037169
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "waist_up_camera_color_screw_joint",
+          "parent": -1,
+          "placement": [
+            [
+              0.8571683658599173,
+              0.0,
+              0.5150363021856217,
+              0.10026
+            ],
+            [
+              0.0,
+              1.0,
+              0.0,
+              0.0
+            ],
+            [
+              -0.5150363021856217,
+              0.0,
+              0.8571683658599173,
+              1.2196220000000002
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "waist_up_camera_color_screw_frame",
+          "parent": -1,
+          "placement": [
+            [
+              0.8571683658599173,
+              0.0,
+              0.5150363021856217,
+              0.10026
+            ],
+            [
+              0.0,
+              1.0,
+              0.0,
+              0.0
+            ],
+            [
+              -0.5150363021856217,
+              0.0,
+              0.8571683658599173,
+              1.2196220000000002
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "waist_up_camera_depth_joint",
+          "parent": -1,
+          "placement": [
+            [
+              0.8571683658599173,
+              0.0,
+              0.5150363021856217,
+              0.11767241192662736
+            ],
+            [
+              0.0,
+              1.0,
+              0.0,
+              0.0475
+            ],
+            [
+              -0.5150363021856217,
+              0.0,
+              0.8571683658599173,
+              1.2258552862037169
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "waist_up_camera_depth_frame",
+          "parent": -1,
+          "placement": [
+            [
+              0.8571683658599173,
+              0.0,
+              0.5150363021856217,
+              0.11767241192662736
+            ],
+            [
+              0.0,
+              1.0,
+              0.0,
+              0.0475
+            ],
+            [
+              -0.5150363021856217,
+              0.0,
+              0.8571683658599173,
+              1.2258552862037169
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "waist_up_camera_color_joint",
+          "parent": -1,
+          "placement": [
+            [
+              0.8571683658599173,
+              0.0005231222821837141,
+              0.5150360365179478,
+              0.11767241192662736
+            ],
+            [
+              0.0,
+              0.9999994841767993,
+              -0.0010156998253594523,
+              0.02375
+            ],
+            [
+              -0.5150363021856217,
+              0.0008706257595075651,
+              0.8571679237125873,
+              1.2258552862037169
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "waist_up_camera_color_frame",
+          "parent": -1,
+          "placement": [
+            [
+              0.8571683658599173,
+              0.0005231222821837141,
+              0.5150360365179478,
+              0.11767241192662736
+            ],
+            [
+              0.0,
+              0.9999994841767993,
+              -0.0010156998253594523,
+              0.02375
+            ],
+            [
+              -0.5150363021856217,
+              0.0008706257595075651,
+              0.8571679237125873,
+              1.2258552862037169
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "waist_up_camera_color_optical_joint",
+          "parent": -1,
+          "placement": [
+            [
+              -0.0005262708373963388,
+              -0.5150391850696822,
+              0.8571664720938187,
+              0.11767241192662736
+            ],
+            [
+              -0.9999994841700531,
+              0.0010156998388449116,
+              -3.669472334853867e-06,
+              0.02375
+            ],
+            [
+              -0.0008687339255279447,
+              -0.8571660318728194,
+              -0.5150394539302517,
+              1.2258552862037169
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "waist_up_camera_color_optical_frame",
+          "parent": -1,
+          "placement": [
+            [
+              -0.0005262708373963388,
+              -0.5150391850696822,
+              0.8571664720938187,
+              0.11767241192662736
+            ],
+            [
+              -0.9999994841700531,
+              0.0010156998388449116,
+              -3.669472334853867e-06,
+              0.02375
+            ],
+            [
+              -0.0008687339255279447,
+              -0.8571660318728194,
+              -0.5150394539302517,
+              1.2258552862037169
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "waist_up_camera_imu_joint",
+          "parent": -1,
+          "placement": [
+            [
+              0.8571683658599173,
+              0.0,
+              0.5150363021856217,
+              0.1049077039423893
+            ],
+            [
+              0.0,
+              1.0,
+              0.0,
+              0.039634
+            ],
+            [
+              -0.5150363021856217,
+              0.0,
+              0.8571683658599173,
+              1.2322790976951237
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "waist_up_camera_imu_frame",
+          "parent": -1,
+          "placement": [
+            [
+              0.8571683658599173,
+              0.0,
+              0.5150363021856217,
+              0.1049077039423893
+            ],
+            [
+              0.0,
+              1.0,
+              0.0,
+              0.039634
+            ],
+            [
+              -0.5150363021856217,
+              0.0,
+              0.8571683658599173,
+              1.2322790976951237
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "waist_up_camera_left_ir_joint",
+          "parent": -1,
+          "placement": [
+            [
+              0.8571683658599173,
+              0.0,
+              0.5150363021856217,
+              0.11767241192662736
+            ],
+            [
+              0.0,
+              1.0,
+              0.0,
+              0.0475
+            ],
+            [
+              -0.5150363021856217,
+              0.0,
+              0.8571683658599173,
+              1.2258552862037169
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "waist_up_camera_left_ir_frame",
+          "parent": -1,
+          "placement": [
+            [
+              0.8571683658599173,
+              0.0,
+              0.5150363021856217,
+              0.11767241192662736
+            ],
+            [
+              0.0,
+              1.0,
+              0.0,
+              0.0475
+            ],
+            [
+              -0.5150363021856217,
+              0.0,
+              0.8571683658599173,
+              1.2258552862037169
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "waist_up_camera_left_ir_optical_joint",
+          "parent": -1,
+          "placement": [
+            [
+              -3.1485552161537877e-06,
+              -0.515039450737363,
+              0.8571664740143784,
+              0.11767241192662736
+            ],
+            [
+              -0.9999999999932538,
+              1.3492318373664602e-11,
+              -3.673205103360555e-06,
+              0.0475
+            ],
+            [
+              1.8918339737471258e-06,
+              -0.8571664740201611,
+              -0.5150394507338888,
+              1.2258552862037169
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "waist_up_camera_left_ir_optical_frame",
+          "parent": -1,
+          "placement": [
+            [
+              -3.1485552161537877e-06,
+              -0.515039450737363,
+              0.8571664740143784,
+              0.11767241192662736
+            ],
+            [
+              -0.9999999999932538,
+              1.3492318373664602e-11,
+              -3.673205103360555e-06,
+              0.0475
+            ],
+            [
+              1.8918339737471258e-06,
+              -0.8571664740201611,
+              -0.5150394507338888,
+              1.2258552862037169
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "waist_up_camera_right_ir_joint",
+          "parent": -1,
+          "placement": [
+            [
+              0.8571683658599173,
+              0.0,
+              0.5150363021856217,
+              0.11767241192662736
+            ],
+            [
+              0.0,
+              1.0,
+              0.0,
+              -0.0475
+            ],
+            [
+              -0.5150363021856217,
+              0.0,
+              0.8571683658599173,
+              1.2258552862037169
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "waist_up_camera_right_ir_frame",
+          "parent": -1,
+          "placement": [
+            [
+              0.8571683658599173,
+              0.0,
+              0.5150363021856217,
+              0.11767241192662736
+            ],
+            [
+              0.0,
+              1.0,
+              0.0,
+              -0.0475
+            ],
+            [
+              -0.5150363021856217,
+              0.0,
+              0.8571683658599173,
+              1.2258552862037169
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "waist_up_camera_right_ir_optical_joint",
+          "parent": -1,
+          "placement": [
+            [
+              -3.1485552161537877e-06,
+              -0.515039450737363,
+              0.8571664740143784,
+              0.11767241192662736
+            ],
+            [
+              -0.9999999999932538,
+              1.3492318373664602e-11,
+              -3.673205103360555e-06,
+              -0.0475
+            ],
+            [
+              1.8918339737471258e-06,
+              -0.8571664740201611,
+              -0.5150394507338888,
+              1.2258552862037169
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        },
+        {
+          "name": "waist_up_camera_right_ir_optical_frame",
+          "parent": -1,
+          "placement": [
+            [
+              -3.1485552161537877e-06,
+              -0.515039450737363,
+              0.8571664740143784,
+              0.11767241192662736
+            ],
+            [
+              -0.9999999999932538,
+              1.3492318373664602e-11,
+              -3.673205103360555e-06,
+              -0.0475
+            ],
+            [
+              1.8918339737471258e-06,
+              -0.8571664740201611,
+              -0.5150394507338888,
+              1.2258552862037169
+            ],
+            [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          ]
+        }
+      ]
+    }
+  },
+  "scene": {
+    "schema_version": "casbot_dvt2_scene_v1",
+    "synthetic_only": true,
+    "fixture_geometry_measured": false,
+    "installation_measured": false,
+    "coordinate_frame": "calib_world; source root mounted by explicit world_from_source",
+    "obstacles": [
+      {
+        "name": "dvt2_waist_clamp_proxy",
+        "center": [
+          0.09,
+          0.0,
+          1.0405820000000001
+        ],
+        "rotation": [
+          [
+            1.0,
+            0.0,
+            0.0
+          ],
+          [
+            0.0,
+            1.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.0,
+            1.0
+          ]
+        ],
+        "half_extents": [
+          0.08,
+          0.15,
+          0.025
+        ],
+        "attached_to_base": false
+      },
+      {
+        "name": "dvt2_floor_proxy",
+        "center": [
+          0,
+          0,
+          -0.03
+        ],
+        "half_extents": [
+          2,
+          2,
+          0.03
+        ],
+        "attached_to_base": false
+      }
+    ],
+    "floor_surface_z_m": 0.0
+  },
+  "default_model_changed": false,
+  "hardware_executable": false,
+  "tool_load_added": false,
+  "assembly_confirmed": false,
+  "friction_policy": "Source URDF dynamics retained as attributes; native runtime rigid model uses explicit zero friction, not calibrated values",
+  "bundle_sha256": "e47fac065a751c4ead901c4c13fdb21314f0117aede24109410b5c4770ff230a",
+  "viewer_sha256": "efa32a13a4b1c989bc398572a0a10b4eaa2fa547d8ad05dc5700178d001ec42a"
+}

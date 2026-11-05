@@ -15,6 +15,13 @@ int main() {
   if(!std::filesystem::is_regular_file(sources/"assets/collision/CASBOTHL12/base_link.obj"))return 6;
   std::cout<<"Installed DVT2 sources: five variants loaded from "<<sources<<'\n';
 #endif
+#ifdef CASBOT_CALIB_MODEL_DIRECTORY
+  const auto candidate=std::filesystem::path(CASBOT_CALIB_MODEL_DIRECTORY)/"casbot_hl12p1_dvt2"/"derived"/"a2ff_stock_hands_candidate_v1";
+  const auto reduced=casbot::ArmDynamics::from_urdf((candidate/"model.urdf").string());
+  if(reduced.model().joints.size()!=14 || reduced.model().model_id!="casbot_hl12p1_dvt2_a2ff_stock_hands_candidate_v1")return 7;
+  if(!std::filesystem::is_regular_file(candidate/"scene.xml") || !std::filesystem::is_regular_file(candidate/"collision.npz"))return 8;
+  std::cout<<"Installed DVT2 candidate: 14 axes loaded from "<<candidate<<'\n';
+#endif
   casbot::TricalCalibration calibration;casbot::ArmPose sensor;
   const Eigen::Vector3d displacement(.001,-.002,.003);
   if((casbot::trical_readings(sensor,displacement,calibration)-displacement).norm()>1e-14) return 1;

@@ -1,0 +1,24 @@
+{
+  "schema_version": "casbot_trical_1105_contact_policy_v1",
+  "ordinary_clearance_m": 0.01,
+  "near_clearance_m": 0.002,
+  "maximum_tip_stroke_m": 0.005,
+  "near_ball_parts": {
+    "left": [
+      "Part__Feature5150",
+      "Part__Feature5154",
+      "Part__Feature5156",
+      "Part__Feature5160"
+    ],
+    "right": [
+      "Part__Feature5130",
+      "Part__Feature5134",
+      "Part__Feature5136",
+      "Part__Feature5140"
+    ]
+  },
+  "near_stem_parts": "three flat tips of active tool, selected target neck only",
+  "scope": "near rules only during bounded local insertion/contact/withdrawal; all other pairs retain10mm",
+  "source": "review geometry: gauge bodies5mm and coupling6.3mm nominal selected-ball stand-off; selected neck tip gaps8.3--10mm",
+  "disabled_robot_pairs": "none beyond exact source adjacency and two previously audited wrist housing pairs"
+}

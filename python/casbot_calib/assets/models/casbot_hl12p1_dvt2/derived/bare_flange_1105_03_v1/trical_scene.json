@@ -1,0 +1,117 @@
+{
+  "schema_version": "casbot_trical_1105_scene_v1",
+  "scene_only": true,
+  "assets": "trical_1105_03",
+  "active_tools": [
+    "left",
+    "right"
+  ],
+  "one_tool_at_a_time": true,
+  "axes_sensor": {
+    "right": [
+      [
+        0.5773502691896187,
+        0.816496580927731,
+        4.941795453478057e-18
+      ],
+      [
+        0.5773502691896337,
+        -0.4082482904638641,
+        0.7071067811865407
+      ],
+      [
+        0.5773502691896313,
+        -0.40824829046386707,
+        -0.7071067811865408
+      ]
+    ],
+    "left": [
+      [
+        0.5773502691896182,
+        0.8164965809277314,
+        -1.0822115603741108e-17
+      ],
+      [
+        0.5773502691896334,
+        -0.40824829046386446,
+        0.7071067811865406
+      ],
+      [
+        0.5773502691896318,
+        -0.40824829046386657,
+        -0.7071067811865406
+      ]
+    ]
+  },
+  "balls": [
+    {
+      "id": "A",
+      "source_part": "Part__Feature5380",
+      "center_relative_waist_mm": [
+        328.6000000000039,
+        7.112704142249015,
+        87.64220215065154
+      ],
+      "center_height_from_table_mm": 140.0000000000001,
+      "outward": [
+        1.0,
+        0.0,
+        0.0
+      ],
+      "radius_mm": 12.7
+    },
+    {
+      "id": "B",
+      "source_part": "Part__Feature5377",
+      "center_relative_waist_mm": [
+        283.60000000000394,
+        7.112704142249015,
+        167.6422021506514
+      ],
+      "center_height_from_table_mm": 219.99999999999997,
+      "outward": [
+        0.0,
+        0.0,
+        1.0
+      ],
+      "radius_mm": 12.7
+    },
+    {
+      "id": "C",
+      "source_part": "Part__Feature5379",
+      "center_relative_waist_mm": [
+        283.60000000000394,
+        52.423234944948994,
+        87.64220215065154
+      ],
+      "center_height_from_table_mm": 140.0000000000001,
+      "outward": [
+        1.1158722454991961e-16,
+        1.0,
+        -5.735576358574208e-20
+      ],
+      "radius_mm": 12.7
+    },
+    {
+      "id": "D",
+      "source_part": "Part__Feature5378",
+      "center_relative_waist_mm": [
+        283.60000000000394,
+        -35.02799573995097,
+        87.64220215065154
+      ],
+      "center_height_from_table_mm": 140.0000000000001,
+      "outward": [
+        1.1158722454991961e-16,
+        -1.0,
+        -5.735576358574208e-20
+      ],
+      "radius_mm": 12.7
+    }
+  ],
+  "installation_clock_delta_deg": {
+    "left": 90,
+    "right": 0
+  },
+  "installation_status": "reviewed CAD mounting, not field metrology"
+}

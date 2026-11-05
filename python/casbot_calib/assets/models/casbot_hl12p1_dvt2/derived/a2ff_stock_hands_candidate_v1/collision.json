@@ -1,0 +1,912 @@
+{
+  "schema_version": "casbot_dvt2_collision_v1",
+  "urdf_sha256": "5915964040b1d1dd017d36ed5f529514adfabc7045ea3aa53e22700bc19b766e",
+  "joint_names": [
+    "left_shoulder_pitch_joint",
+    "left_shoulder_roll_joint",
+    "left_shoulder_yaw_joint",
+    "left_elbow_pitch_joint",
+    "left_wrist_yaw_joint",
+    "left_wrist_pitch_joint",
+    "left_wrist_roll_joint",
+    "right_shoulder_pitch_joint",
+    "right_shoulder_roll_joint",
+    "right_shoulder_yaw_joint",
+    "right_elbow_pitch_joint",
+    "right_wrist_yaw_joint",
+    "right_wrist_pitch_joint",
+    "right_wrist_roll_joint"
+  ],
+  "geometries": [
+    {
+      "name": "robot_base_link_0",
+      "parent_joint_index": -1,
+      "array_key": "g0",
+      "source_link": "base_link",
+      "source_shape": "BVHModelOBBRSS",
+      "source_vertices": 3610,
+      "hull_vertices": 3609,
+      "maximum_vertex_plane_violation_m": 1.1102230246251565e-16
+    },
+    {
+      "name": "robot_left_hip_pitch_link_0",
+      "parent_joint_index": -1,
+      "array_key": "g1",
+      "source_link": "left_hip_pitch_link",
+      "source_shape": "BVHModelOBBRSS",
+      "source_vertices": 627,
+      "hull_vertices": 617,
+      "maximum_vertex_plane_violation_m": 1.1102230246251565e-16
+    },
+    {
+      "name": "robot_left_hip_roll_link_0",
+      "parent_joint_index": -1,
+      "array_key": "g2",
+      "source_link": "left_hip_roll_link",
+      "source_shape": "BVHModelOBBRSS",
+      "source_vertices": 707,
+      "hull_vertices": 706,
+      "maximum_vertex_plane_violation_m": 1.1102230246251565e-16
+    },
+    {
+      "name": "robot_left_hip_yaw_link_0",
+      "parent_joint_index": -1,
+      "array_key": "g3",
+      "source_link": "left_hip_yaw_link",
+      "source_shape": "BVHModelOBBRSS",
+      "source_vertices": 1139,
+      "hull_vertices": 1139,
+      "maximum_vertex_plane_violation_m": 1.1102230246251565e-16
+    },
+    {
+      "name": "robot_left_knee_pitch_link_0",
+      "parent_joint_index": -1,
+      "array_key": "g4",
+      "source_link": "left_knee_pitch_link",
+      "source_shape": "BVHModelOBBRSS",
+      "source_vertices": 685,
+      "hull_vertices": 685,
+      "maximum_vertex_plane_violation_m": 1.1102230246251565e-16
+    },
+    {
+      "name": "robot_left_ankle_pitch_link_0",
+      "parent_joint_index": -1,
+      "array_key": "g5",
+      "source_link": "left_ankle_pitch_link",
+      "source_shape": "BVHModelOBBRSS",
+      "source_vertices": 511,
+      "hull_vertices": 511,
+      "maximum_vertex_plane_violation_m": 5.551115123125783e-17
+    },
+    {
+      "name": "robot_left_ankle_roll_link_0",
+      "parent_joint_index": -1,
+      "array_key": "g6",
+      "source_link": "left_ankle_roll_link",
+      "source_shape": "BVHModelOBBRSS",
+      "source_vertices": 1175,
+      "hull_vertices": 1173,
+      "maximum_vertex_plane_violation_m": 5.551115123125783e-17
+    },
+    {
+      "name": "robot_left_foot_forefoot_frame_0",
+      "parent_joint_index": -1,
+      "array_key": "g7",
+      "source_link": "left_foot_forefoot_frame",
+      "source_shape": "Sphere",
+      "source_vertices": 96,
+      "hull_vertices": 96,
+      "maximum_vertex_plane_violation_m": 2.7755575615628914e-17
+    },
+    {
+      "name": "robot_left_foot_heel_frame_0",
+      "parent_joint_index": -1,
+      "array_key": "g8",
+      "source_link": "left_foot_heel_frame",
+      "source_shape": "Sphere",
+      "source_vertices": 96,
+      "hull_vertices": 96,
+      "maximum_vertex_plane_violation_m": 2.7755575615628914e-17
+    },
+    {
+      "name": "robot_right_hip_pitch_link_0",
+      "parent_joint_index": -1,
+      "array_key": "g9",
+      "source_link": "right_hip_pitch_link",
+      "source_shape": "BVHModelOBBRSS",
+      "source_vertices": 612,
+      "hull_vertices": 611,
+      "maximum_vertex_plane_violation_m": 2.220446049250313e-16
+    },
+    {
+      "name": "robot_right_hip_roll_link_0",
+      "parent_joint_index": -1,
+      "array_key": "g10",
+      "source_link": "right_hip_roll_link",
+      "source_shape": "BVHModelOBBRSS",
+      "source_vertices": 712,
+      "hull_vertices": 711,
+      "maximum_vertex_plane_violation_m": 1.1102230246251565e-16
+    },
+    {
+      "name": "robot_right_hip_yaw_link_0",
+      "parent_joint_index": -1,
+      "array_key": "g11",
+      "source_link": "right_hip_yaw_link",
+      "source_shape": "BVHModelOBBRSS",
+      "source_vertices": 1076,
+      "hull_vertices": 1076,
+      "maximum_vertex_plane_violation_m": 1.1102230246251565e-16
+    },
+    {
+      "name": "robot_right_knee_pitch_link_0",
+      "parent_joint_index": -1,
+      "array_key": "g12",
+      "source_link": "right_knee_pitch_link",
+      "source_shape": "BVHModelOBBRSS",
+      "source_vertices": 680,
+      "hull_vertices": 680,
+      "maximum_vertex_plane_violation_m": 1.1102230246251565e-16
+    },
+    {
+      "name": "robot_right_ankle_pitch_link_0",
+      "parent_joint_index": -1,
+      "array_key": "g13",
+      "source_link": "right_ankle_pitch_link",
+      "source_shape": "BVHModelOBBRSS",
+      "source_vertices": 513,
+      "hull_vertices": 513,
+      "maximum_vertex_plane_violation_m": 5.551115123125783e-17
+    },
+    {
+      "name": "robot_right_ankle_roll_link_0",
+      "parent_joint_index": -1,
+      "array_key": "g14",
+      "source_link": "right_ankle_roll_link",
+      "source_shape": "BVHModelOBBRSS",
+      "source_vertices": 1175,
+      "hull_vertices": 1173,
+      "maximum_vertex_plane_violation_m": 5.551115123125783e-17
+    },
+    {
+      "name": "robot_right_foot_forefoot_frame_0",
+      "parent_joint_index": -1,
+      "array_key": "g15",
+      "source_link": "right_foot_forefoot_frame",
+      "source_shape": "Sphere",
+      "source_vertices": 96,
+      "hull_vertices": 96,
+      "maximum_vertex_plane_violation_m": 5.551115123125783e-17
+    },
+    {
+      "name": "robot_right_foot_heel_frame_0",
+      "parent_joint_index": -1,
+      "array_key": "g16",
+      "source_link": "right_foot_heel_frame",
+      "source_shape": "Sphere",
+      "source_vertices": 96,
+      "hull_vertices": 96,
+      "maximum_vertex_plane_violation_m": 5.551115123125783e-17
+    },
+    {
+      "name": "robot_waist_yaw_link_0",
+      "parent_joint_index": -1,
+      "array_key": "g17",
+      "source_link": "waist_yaw_link",
+      "source_shape": "BVHModelOBBRSS",
+      "source_vertices": 1168,
+      "hull_vertices": 1165,
+      "maximum_vertex_plane_violation_m": 2.220446049250313e-16
+    },
+    {
+      "name": "robot_head_yaw_link_0",
+      "parent_joint_index": -1,
+      "array_key": "g18",
+      "source_link": "head_yaw_link",
+      "source_shape": "BVHModelOBBRSS",
+      "source_vertices": 1236,
+      "hull_vertices": 1235,
+      "maximum_vertex_plane_violation_m": 2.220446049250313e-16
+    },
+    {
+      "name": "robot_head_pitch_link_0",
+      "parent_joint_index": -1,
+      "array_key": "g19",
+      "source_link": "head_pitch_link",
+      "source_shape": "BVHModelOBBRSS",
+      "source_vertices": 1507,
+      "hull_vertices": 1505,
+      "maximum_vertex_plane_violation_m": 2.220446049250313e-16
+    },
+    {
+      "name": "robot_head_camera_link_0",
+      "parent_joint_index": -1,
+      "array_key": "g20",
+      "source_link": "head_camera_link",
+      "source_shape": "BVHModelOBBRSS",
+      "source_vertices": 1139,
+      "hull_vertices": 1127,
+      "maximum_vertex_plane_violation_m": 2.220446049250313e-16
+    },
+    {
+      "name": "robot_left_shoulder_pitch_link_0",
+      "parent_joint_index": 0,
+      "array_key": "g21",
+      "source_link": "left_shoulder_pitch_link",
+      "source_shape": "BVHModelOBBRSS",
+      "source_vertices": 773,
+      "hull_vertices": 773,
+      "maximum_vertex_plane_violation_m": 2.7755575615628914e-17
+    },
+    {
+      "name": "robot_left_shoulder_roll_link_0",
+      "parent_joint_index": 1,
+      "array_key": "g22",
+      "source_link": "left_shoulder_roll_link",
+      "source_shape": "BVHModelOBBRSS",
+      "source_vertices": 1546,
+      "hull_vertices": 1546,
+      "maximum_vertex_plane_violation_m": 2.7755575615628914e-17
+    },
+    {
+      "name": "robot_left_shoulder_yaw_link_0",
+      "parent_joint_index": 2,
+      "array_key": "g23",
+      "source_link": "left_shoulder_yaw_link",
+      "source_shape": "BVHModelOBBRSS",
+      "source_vertices": 652,
+      "hull_vertices": 651,
+      "maximum_vertex_plane_violation_m": 3.469446951953614e-17
+    },
+    {
+      "name": "robot_left_elbow_pitch_link_0",
+      "parent_joint_index": 3,
+      "array_key": "g24",
+      "source_link": "left_elbow_pitch_link",
+      "source_shape": "BVHModelOBBRSS",
+      "source_vertices": 680,
+      "hull_vertices": 679,
+      "maximum_vertex_plane_violation_m": 2.7755575615628914e-17
+    },
+    {
+      "name": "robot_left_wrist_yaw_link_0",
+      "parent_joint_index": 4,
+      "array_key": "g25",
+      "source_link": "left_wrist_yaw_link",
+      "source_shape": "BVHModelOBBRSS",
+      "source_vertices": 1112,
+      "hull_vertices": 1112,
+      "maximum_vertex_plane_violation_m": 2.7755575615628914e-17
+    },
+    {
+      "name": "robot_left_wrist_pitch_link_0",
+      "parent_joint_index": 5,
+      "array_key": "g26",
+      "source_link": "left_wrist_pitch_link",
+      "source_shape": "BVHModelOBBRSS",
+      "source_vertices": 1481,
+      "hull_vertices": 1481,
+      "maximum_vertex_plane_violation_m": 2.7755575615628914e-17
+    },
+    {
+      "name": "robot_left_wrist_roll_link_0",
+      "parent_joint_index": 6,
+      "array_key": "g27",
+      "source_link": "left_wrist_roll_link",
+      "source_shape": "BVHModelOBBRSS",
+      "source_vertices": 1232,
+      "hull_vertices": 1232,
+      "maximum_vertex_plane_violation_m": 2.7755575615628914e-17
+    },
+    {
+      "name": "robot_left_flange_frame_0",
+      "parent_joint_index": 6,
+      "array_key": "g28",
+      "source_link": "left_flange_frame",
+      "source_shape": "Sphere",
+      "source_vertices": 96,
+      "hull_vertices": 96,
+      "maximum_vertex_plane_violation_m": 1.3877787807814457e-17
+    },
+    {
+      "name": "robot_left_palm_base_link_0",
+      "parent_joint_index": 6,
+      "array_key": "g29",
+      "source_link": "left_palm_base_link",
+      "source_shape": "BVHModelOBBRSS",
+      "source_vertices": 1867,
+      "hull_vertices": 1867,
+      "maximum_vertex_plane_violation_m": 8.326672684688674e-17
+    },
+    {
+      "name": "robot_left_index_mcp_link_0",
+      "parent_joint_index": 6,
+      "array_key": "g30",
+      "source_link": "left_index_mcp_link",
+      "source_shape": "BVHModelOBBRSS",
+      "source_vertices": 902,
+      "hull_vertices": 902,
+      "maximum_vertex_plane_violation_m": 2.7755575615628914e-17
+    },
+    {
+      "name": "robot_left_index_pip_link_0",
+      "parent_joint_index": 6,
+      "array_key": "g31",
+      "source_link": "left_index_pip_link",
+      "source_shape": "BVHModelOBBRSS",
+      "source_vertices": 1019,
+      "hull_vertices": 1019,
+      "maximum_vertex_plane_violation_m": 1.1102230246251565e-16
+    },
+    {
+      "name": "robot_left_index_tip_frame_0",
+      "parent_joint_index": 6,
+      "array_key": "g32",
+      "source_link": "left_index_tip_frame",
+      "source_shape": "Sphere",
+      "source_vertices": 96,
+      "hull_vertices": 96,
+      "maximum_vertex_plane_violation_m": 2.7755575615628914e-17
+    },
+    {
+      "name": "robot_left_little_mcp_link_0",
+      "parent_joint_index": 6,
+      "array_key": "g33",
+      "source_link": "left_little_mcp_link",
+      "source_shape": "BVHModelOBBRSS",
+      "source_vertices": 836,
+      "hull_vertices": 834,
+      "maximum_vertex_plane_violation_m": 2.7755575615628914e-17
+    },
+    {
+      "name": "robot_left_little_pip_link_0",
+      "parent_joint_index": 6,
+      "array_key": "g34",
+      "source_link": "left_little_pip_link",
+      "source_shape": "BVHModelOBBRSS",
+      "source_vertices": 1019,
+      "hull_vertices": 1019,
+      "maximum_vertex_plane_violation_m": 5.551115123125783e-17
+    },
+    {
+      "name": "robot_left_little_tip_frame_0",
+      "parent_joint_index": 6,
+      "array_key": "g35",
+      "source_link": "left_little_tip_frame",
+      "source_shape": "Sphere",
+      "source_vertices": 96,
+      "hull_vertices": 96,
+      "maximum_vertex_plane_violation_m": 5.551115123125783e-17
+    },
+    {
+      "name": "robot_left_middle_mcp_link_0",
+      "parent_joint_index": 6,
+      "array_key": "g36",
+      "source_link": "left_middle_mcp_link",
+      "source_shape": "BVHModelOBBRSS",
+      "source_vertices": 848,
+      "hull_vertices": 848,
+      "maximum_vertex_plane_violation_m": 2.7755575615628914e-17
+    },
+    {
+      "name": "robot_left_middle_pip_link_0",
+      "parent_joint_index": 6,
+      "array_key": "g37",
+      "source_link": "left_middle_pip_link",
+      "source_shape": "BVHModelOBBRSS",
+      "source_vertices": 1019,
+      "hull_vertices": 1019,
+      "maximum_vertex_plane_violation_m": 1.1102230246251565e-16
+    },
+    {
+      "name": "robot_left_middle_tip_frame_0",
+      "parent_joint_index": 6,
+      "array_key": "g38",
+      "source_link": "left_middle_tip_frame",
+      "source_shape": "Sphere",
+      "source_vertices": 96,
+      "hull_vertices": 96,
+      "maximum_vertex_plane_violation_m": 2.7755575615628914e-17
+    },
+    {
+      "name": "robot_left_ring_mcp_link_0",
+      "parent_joint_index": 6,
+      "array_key": "g39",
+      "source_link": "left_ring_mcp_link",
+      "source_shape": "BVHModelOBBRSS",
+      "source_vertices": 902,
+      "hull_vertices": 902,
+      "maximum_vertex_plane_violation_m": 4.163336342344337e-17
+    },
+    {
+      "name": "robot_left_ring_pip_link_0",
+      "parent_joint_index": 6,
+      "array_key": "g40",
+      "source_link": "left_ring_pip_link",
+      "source_shape": "BVHModelOBBRSS",
+      "source_vertices": 1019,
+      "hull_vertices": 1019,
+      "maximum_vertex_plane_violation_m": 3.608224830031759e-16
+    },
+    {
+      "name": "robot_left_ring_tip_frame_0",
+      "parent_joint_index": 6,
+      "array_key": "g41",
+      "source_link": "left_ring_tip_frame",
+      "source_shape": "Sphere",
+      "source_vertices": 96,
+      "hull_vertices": 96,
+      "maximum_vertex_plane_violation_m": 5.551115123125783e-17
+    },
+    {
+      "name": "robot_left_thumb_cmc_link_0",
+      "parent_joint_index": 6,
+      "array_key": "g42",
+      "source_link": "left_thumb_cmc_link",
+      "source_shape": "BVHModelOBBRSS",
+      "source_vertices": 1051,
+      "hull_vertices": 1050,
+      "maximum_vertex_plane_violation_m": 2.7755575615628914e-17
+    },
+    {
+      "name": "robot_left_thumb_pip_link_0",
+      "parent_joint_index": 6,
+      "array_key": "g43",
+      "source_link": "left_thumb_pip_link",
+      "source_shape": "BVHModelOBBRSS",
+      "source_vertices": 1058,
+      "hull_vertices": 1056,
+      "maximum_vertex_plane_violation_m": 2.7755575615628914e-17
+    },
+    {
+      "name": "robot_left_thumb_dip_link_0",
+      "parent_joint_index": 6,
+      "array_key": "g44",
+      "source_link": "left_thumb_dip_link",
+      "source_shape": "BVHModelOBBRSS",
+      "source_vertices": 1135,
+      "hull_vertices": 1134,
+      "maximum_vertex_plane_violation_m": 7.979727989493313e-17
+    },
+    {
+      "name": "robot_left_thumb_tip_frame_0",
+      "parent_joint_index": 6,
+      "array_key": "g45",
+      "source_link": "left_thumb_tip_frame",
+      "source_shape": "Sphere",
+      "source_vertices": 96,
+      "hull_vertices": 96,
+      "maximum_vertex_plane_violation_m": 2.7755575615628914e-17
+    },
+    {
+      "name": "robot_right_shoulder_pitch_link_0",
+      "parent_joint_index": 7,
+      "array_key": "g46",
+      "source_link": "right_shoulder_pitch_link",
+      "source_shape": "BVHModelOBBRSS",
+      "source_vertices": 773,
+      "hull_vertices": 773,
+      "maximum_vertex_plane_violation_m": 2.7755575615628914e-17
+    },
+    {
+      "name": "robot_right_shoulder_roll_link_0",
+      "parent_joint_index": 8,
+      "array_key": "g47",
+      "source_link": "right_shoulder_roll_link",
+      "source_shape": "BVHModelOBBRSS",
+      "source_vertices": 1550,
+      "hull_vertices": 1550,
+      "maximum_vertex_plane_violation_m": 2.7755575615628914e-17
+    },
+    {
+      "name": "robot_right_shoulder_yaw_link_0",
+      "parent_joint_index": 9,
+      "array_key": "g48",
+      "source_link": "right_shoulder_yaw_link",
+      "source_shape": "BVHModelOBBRSS",
+      "source_vertices": 647,
+      "hull_vertices": 645,
+      "maximum_vertex_plane_violation_m": 4.85722573273506e-17
+    },
+    {
+      "name": "robot_right_elbow_pitch_link_0",
+      "parent_joint_index": 10,
+      "array_key": "g49",
+      "source_link": "right_elbow_pitch_link",
+      "source_shape": "BVHModelOBBRSS",
+      "source_vertices": 682,
+      "hull_vertices": 682,
+      "maximum_vertex_plane_violation_m": 2.7755575615628914e-17
+    },
+    {
+      "name": "robot_right_wrist_yaw_link_0",
+      "parent_joint_index": 11,
+      "array_key": "g50",
+      "source_link": "right_wrist_yaw_link",
+      "source_shape": "BVHModelOBBRSS",
+      "source_vertices": 1117,
+      "hull_vertices": 1116,
+      "maximum_vertex_plane_violation_m": 2.7755575615628914e-17
+    },
+    {
+      "name": "robot_right_wrist_pitch_link_0",
+      "parent_joint_index": 12,
+      "array_key": "g51",
+      "source_link": "right_wrist_pitch_link",
+      "source_shape": "BVHModelOBBRSS",
+      "source_vertices": 1488,
+      "hull_vertices": 1488,
+      "maximum_vertex_plane_violation_m": 2.7755575615628914e-17
+    },
+    {
+      "name": "robot_right_wrist_roll_link_0",
+      "parent_joint_index": 13,
+      "array_key": "g52",
+      "source_link": "right_wrist_roll_link",
+      "source_shape": "BVHModelOBBRSS",
+      "source_vertices": 1232,
+      "hull_vertices": 1232,
+      "maximum_vertex_plane_violation_m": 2.7755575615628914e-17
+    },
+    {
+      "name": "robot_right_flange_frame_0",
+      "parent_joint_index": 13,
+      "array_key": "g53",
+      "source_link": "right_flange_frame",
+      "source_shape": "Sphere",
+      "source_vertices": 96,
+      "hull_vertices": 96,
+      "maximum_vertex_plane_violation_m": 1.3877787807814457e-17
+    },
+    {
+      "name": "robot_right_palm_base_link_0",
+      "parent_joint_index": 13,
+      "array_key": "g54",
+      "source_link": "right_palm_base_link",
+      "source_shape": "BVHModelOBBRSS",
+      "source_vertices": 1865,
+      "hull_vertices": 1865,
+      "maximum_vertex_plane_violation_m": 2.7755575615628914e-17
+    },
+    {
+      "name": "robot_right_index_mcp_link_0",
+      "parent_joint_index": 13,
+      "array_key": "g55",
+      "source_link": "right_index_mcp_link",
+      "source_shape": "BVHModelOBBRSS",
+      "source_vertices": 902,
+      "hull_vertices": 902,
+      "maximum_vertex_plane_violation_m": 8.326672684688674e-17
+    },
+    {
+      "name": "robot_right_index_pip_link_0",
+      "parent_joint_index": 13,
+      "array_key": "g56",
+      "source_link": "right_index_pip_link",
+      "source_shape": "BVHModelOBBRSS",
+      "source_vertices": 1021,
+      "hull_vertices": 1019,
+      "maximum_vertex_plane_violation_m": 3.0531133177191805e-16
+    },
+    {
+      "name": "robot_right_index_tip_frame_0",
+      "parent_joint_index": 13,
+      "array_key": "g57",
+      "source_link": "right_index_tip_frame",
+      "source_shape": "Sphere",
+      "source_vertices": 96,
+      "hull_vertices": 96,
+      "maximum_vertex_plane_violation_m": 5.551115123125783e-17
+    },
+    {
+      "name": "robot_right_little_mcp_link_0",
+      "parent_joint_index": 13,
+      "array_key": "g58",
+      "source_link": "right_little_mcp_link",
+      "source_shape": "BVHModelOBBRSS",
+      "source_vertices": 836,
+      "hull_vertices": 834,
+      "maximum_vertex_plane_violation_m": 2.7755575615628914e-17
+    },
+    {
+      "name": "robot_right_little_pip_link_0",
+      "parent_joint_index": 13,
+      "array_key": "g59",
+      "source_link": "right_little_pip_link",
+      "source_shape": "BVHModelOBBRSS",
+      "source_vertices": 1021,
+      "hull_vertices": 1019,
+      "maximum_vertex_plane_violation_m": 3.3306690738754696e-16
+    },
+    {
+      "name": "robot_right_little_tip_frame_0",
+      "parent_joint_index": 13,
+      "array_key": "g60",
+      "source_link": "right_little_tip_frame",
+      "source_shape": "Sphere",
+      "source_vertices": 96,
+      "hull_vertices": 96,
+      "maximum_vertex_plane_violation_m": 5.551115123125783e-17
+    },
+    {
+      "name": "robot_right_middle_mcp_link_0",
+      "parent_joint_index": 13,
+      "array_key": "g61",
+      "source_link": "right_middle_mcp_link",
+      "source_shape": "BVHModelOBBRSS",
+      "source_vertices": 848,
+      "hull_vertices": 848,
+      "maximum_vertex_plane_violation_m": 2.7755575615628914e-17
+    },
+    {
+      "name": "robot_right_middle_pip_link_0",
+      "parent_joint_index": 13,
+      "array_key": "g62",
+      "source_link": "right_middle_pip_link",
+      "source_shape": "BVHModelOBBRSS",
+      "source_vertices": 1021,
+      "hull_vertices": 1019,
+      "maximum_vertex_plane_violation_m": 3.608224830031759e-16
+    },
+    {
+      "name": "robot_right_middle_tip_frame_0",
+      "parent_joint_index": 13,
+      "array_key": "g63",
+      "source_link": "right_middle_tip_frame",
+      "source_shape": "Sphere",
+      "source_vertices": 96,
+      "hull_vertices": 96,
+      "maximum_vertex_plane_violation_m": 5.551115123125783e-17
+    },
+    {
+      "name": "robot_right_ring_mcp_link_0",
+      "parent_joint_index": 13,
+      "array_key": "g64",
+      "source_link": "right_ring_mcp_link",
+      "source_shape": "BVHModelOBBRSS",
+      "source_vertices": 902,
+      "hull_vertices": 902,
+      "maximum_vertex_plane_violation_m": 2.7755575615628914e-17
+    },
+    {
+      "name": "robot_right_ring_pip_link_0",
+      "parent_joint_index": 13,
+      "array_key": "g65",
+      "source_link": "right_ring_pip_link",
+      "source_shape": "BVHModelOBBRSS",
+      "source_vertices": 1021,
+      "hull_vertices": 1019,
+      "maximum_vertex_plane_violation_m": 3.3306690738754696e-16
+    },
+    {
+      "name": "robot_right_ring_tip_frame_0",
+      "parent_joint_index": 13,
+      "array_key": "g66",
+      "source_link": "right_ring_tip_frame",
+      "source_shape": "Sphere",
+      "source_vertices": 96,
+      "hull_vertices": 96,
+      "maximum_vertex_plane_violation_m": 5.551115123125783e-17
+    },
+    {
+      "name": "robot_right_thumb_cmc_link_0",
+      "parent_joint_index": 13,
+      "array_key": "g67",
+      "source_link": "right_thumb_cmc_link",
+      "source_shape": "BVHModelOBBRSS",
+      "source_vertices": 1051,
+      "hull_vertices": 1050,
+      "maximum_vertex_plane_violation_m": 1.8041124150158794e-16
+    },
+    {
+      "name": "robot_right_thumb_pip_link_0",
+      "parent_joint_index": 13,
+      "array_key": "g68",
+      "source_link": "right_thumb_pip_link",
+      "source_shape": "BVHModelOBBRSS",
+      "source_vertices": 1058,
+      "hull_vertices": 1057,
+      "maximum_vertex_plane_violation_m": 4.163336342344337e-17
+    },
+    {
+      "name": "robot_right_thumb_dip_link_0",
+      "parent_joint_index": 13,
+      "array_key": "g69",
+      "source_link": "right_thumb_dip_link",
+      "source_shape": "BVHModelOBBRSS",
+      "source_vertices": 1135,
+      "hull_vertices": 1135,
+      "maximum_vertex_plane_violation_m": 2.7755575615628914e-17
+    },
+    {
+      "name": "robot_right_thumb_tip_frame_0",
+      "parent_joint_index": 13,
+      "array_key": "g70",
+      "source_link": "right_thumb_tip_frame",
+      "source_shape": "Sphere",
+      "source_vertices": 96,
+      "hull_vertices": 96,
+      "maximum_vertex_plane_violation_m": 2.7755575615628914e-17
+    },
+    {
+      "name": "robot_waist_down_camera_link_0",
+      "parent_joint_index": -1,
+      "array_key": "g71",
+      "source_link": "waist_down_camera_link",
+      "source_shape": "BVHModelOBBRSS",
+      "source_vertices": 1139,
+      "hull_vertices": 1127,
+      "maximum_vertex_plane_violation_m": 4.440892098500626e-16
+    },
+    {
+      "name": "robot_waist_lidar_link_0",
+      "parent_joint_index": -1,
+      "array_key": "g72",
+      "source_link": "waist_lidar_link",
+      "source_shape": "BVHModelOBBRSS",
+      "source_vertices": 999,
+      "hull_vertices": 998,
+      "maximum_vertex_plane_violation_m": 2.220446049250313e-16
+    },
+    {
+      "name": "robot_waist_up_camera_link_0",
+      "parent_joint_index": -1,
+      "array_key": "g73",
+      "source_link": "waist_up_camera_link",
+      "source_shape": "BVHModelOBBRSS",
+      "source_vertices": 1359,
+      "hull_vertices": 1348,
+      "maximum_vertex_plane_violation_m": 2.220446049250313e-16
+    }
+  ],
+  "excluded_pairs": [
+    {
+      "first": "robot_waist_yaw_link_0",
+      "second": "robot_left_shoulder_pitch_link_0",
+      "source_links": [
+        "left_shoulder_pitch_link",
+        "waist_yaw_link"
+      ],
+      "reason": "nearest collision-bearing URDF parent assembly"
+    },
+    {
+      "first": "robot_waist_yaw_link_0",
+      "second": "robot_right_shoulder_pitch_link_0",
+      "source_links": [
+        "right_shoulder_pitch_link",
+        "waist_yaw_link"
+      ],
+      "reason": "nearest collision-bearing URDF parent assembly"
+    },
+    {
+      "first": "robot_left_shoulder_pitch_link_0",
+      "second": "robot_left_shoulder_roll_link_0",
+      "source_links": [
+        "left_shoulder_pitch_link",
+        "left_shoulder_roll_link"
+      ],
+      "reason": "nearest collision-bearing URDF parent assembly"
+    },
+    {
+      "first": "robot_left_shoulder_roll_link_0",
+      "second": "robot_left_shoulder_yaw_link_0",
+      "source_links": [
+        "left_shoulder_roll_link",
+        "left_shoulder_yaw_link"
+      ],
+      "reason": "nearest collision-bearing URDF parent assembly"
+    },
+    {
+      "first": "robot_left_shoulder_yaw_link_0",
+      "second": "robot_left_elbow_pitch_link_0",
+      "source_links": [
+        "left_elbow_pitch_link",
+        "left_shoulder_yaw_link"
+      ],
+      "reason": "nearest collision-bearing URDF parent assembly"
+    },
+    {
+      "first": "robot_left_elbow_pitch_link_0",
+      "second": "robot_left_wrist_yaw_link_0",
+      "source_links": [
+        "left_elbow_pitch_link",
+        "left_wrist_yaw_link"
+      ],
+      "reason": "nearest collision-bearing URDF parent assembly"
+    },
+    {
+      "first": "robot_left_wrist_yaw_link_0",
+      "second": "robot_left_wrist_pitch_link_0",
+      "source_links": [
+        "left_wrist_pitch_link",
+        "left_wrist_yaw_link"
+      ],
+      "reason": "nearest collision-bearing URDF parent assembly"
+    },
+    {
+      "first": "robot_left_wrist_yaw_link_0",
+      "second": "robot_left_wrist_roll_link_0",
+      "source_links": [
+        "left_wrist_roll_link",
+        "left_wrist_yaw_link"
+      ],
+      "reason": "explicitly audited source wrist housing overlap; exact links only"
+    },
+    {
+      "first": "robot_left_wrist_pitch_link_0",
+      "second": "robot_left_wrist_roll_link_0",
+      "source_links": [
+        "left_wrist_pitch_link",
+        "left_wrist_roll_link"
+      ],
+      "reason": "nearest collision-bearing URDF parent assembly"
+    },
+    {
+      "first": "robot_right_shoulder_pitch_link_0",
+      "second": "robot_right_shoulder_roll_link_0",
+      "source_links": [
+        "right_shoulder_pitch_link",
+        "right_shoulder_roll_link"
+      ],
+      "reason": "nearest collision-bearing URDF parent assembly"
+    },
+    {
+      "first": "robot_right_shoulder_roll_link_0",
+      "second": "robot_right_shoulder_yaw_link_0",
+      "source_links": [
+        "right_shoulder_roll_link",
+        "right_shoulder_yaw_link"
+      ],
+      "reason": "nearest collision-bearing URDF parent assembly"
+    },
+    {
+      "first": "robot_right_shoulder_yaw_link_0",
+      "second": "robot_right_elbow_pitch_link_0",
+      "source_links": [
+        "right_elbow_pitch_link",
+        "right_shoulder_yaw_link"
+      ],
+      "reason": "nearest collision-bearing URDF parent assembly"
+    },
+    {
+      "first": "robot_right_elbow_pitch_link_0",
+      "second": "robot_right_wrist_yaw_link_0",
+      "source_links": [
+        "right_elbow_pitch_link",
+        "right_wrist_yaw_link"
+      ],
+      "reason": "nearest collision-bearing URDF parent assembly"
+    },
+    {
+      "first": "robot_right_wrist_yaw_link_0",
+      "second": "robot_right_wrist_pitch_link_0",
+      "source_links": [
+        "right_wrist_pitch_link",
+        "right_wrist_yaw_link"
+      ],
+      "reason": "nearest collision-bearing URDF parent assembly"
+    },
+    {
+      "first": "robot_right_wrist_yaw_link_0",
+      "second": "robot_right_wrist_roll_link_0",
+      "source_links": [
+        "right_wrist_roll_link",
+        "right_wrist_yaw_link"
+      ],
+      "reason": "explicitly audited source wrist housing overlap; exact links only"
+    },
+    {
+      "first": "robot_right_wrist_pitch_link_0",
+      "second": "robot_right_wrist_roll_link_0",
+      "source_links": [
+        "right_wrist_pitch_link",
+        "right_wrist_roll_link"
+      ],
+      "reason": "nearest collision-bearing URDF parent assembly"
+    }
+  ],
+  "array_sha256": "8dc88c545bbffd165a9d194b9b45659a8d4fdf133958d8d7c8a550bb02db1d36",
+  "source_geometry_count": 74,
+  "builder": "Pinocchio geometry placement + SciPy/Qhull outer envelopes; source spheres circumscribed",
+  "exclusions_policy": "Exact source-link adjacency and two checked source wrist housing pairs only; no blanket MJCF/SRDF suppression"
+}
