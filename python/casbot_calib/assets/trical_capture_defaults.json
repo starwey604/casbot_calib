@@ -1,0 +1,83 @@
+{
+  "workflow": {
+    "clearance_m": 0.01,
+    "allowed_tip_stroke_m": 0.005,
+    "geometry_allowance_rad": 0.00105,
+    "transition_s": 5.0,
+    "insertion_s": 1.5,
+    "correction_s": 0.4,
+    "settle_s": 0.4,
+    "stable_window_s": 0.14,
+    "measurement_timeout_s": 8.0,
+    "maximum_corrections": 12,
+    "centering_tolerance_m": 3e-05,
+    "maximum_cartesian_step_m": 0.0015,
+    "maximum_joint_step_rad": 0.02,
+    "maximum_velocity_rad_s": 0.5,
+    "maximum_acceleration_rad_s2": 2.0,
+    "maximum_jerk_rad_s3": 15.0,
+    "max_joint_age_ns": 6000000,
+    "max_indicator_age_ns": 65000000,
+    "stable_velocity_rad_s": 0.0005,
+    "stable_joint_span_rad": 3e-05,
+    "stable_indicator_span_m": 8e-06
+  },
+  "drive": {
+    "integration_ns": 50000,
+    "sample_period_ns": 1000000,
+    "current_tau": 0.001,
+    "command_delay_ns": 1350000,
+    "feedback_delay_ns": 700000,
+    "torque_limit_nm": 100.0,
+    "gain_nm_a": 2.0,
+    "kp": [
+      300,
+      300,
+      150,
+      150,
+      40,
+      30,
+      20,
+      300,
+      300,
+      150,
+      150,
+      40,
+      30,
+      20
+    ],
+    "kd": [
+      25,
+      25,
+      12,
+      12,
+      3,
+      3,
+      2,
+      25,
+      25,
+      12,
+      12,
+      3,
+      3,
+      2
+    ],
+    "position_noise_rad": 1e-07,
+    "current_noise_a": 0.0002
+  },
+  "sensor": {
+    "period_ns": 20000000,
+    "phase_ns": [
+      0,
+      1000000,
+      2000000
+    ],
+    "delay_ns": 3000000,
+    "jitter_ns": 500000,
+    "noise_std": 1e-06,
+    "quantum": 1e-06,
+    "face_radius": 0.002,
+    "drop_probability": 0.0,
+    "expose_sample_time": true
+  }
+}

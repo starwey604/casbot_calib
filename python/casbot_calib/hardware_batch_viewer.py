@@ -19,6 +19,9 @@ class BatchReplaySource:
         self.config = dict(model_id='casbot_20251015_dual_nominal_unverified',
             joint_names=protocol['joint_names'], stale_after_ns=protocol['profile']['max_feedback_age_ns'],
             viewer_collision_scene=protocol['profile']['scene'])
+        if 'model_context' in protocol['profile']:
+            from .model_runtime import context_for
+            self.config.update(model_id=context_for(protocol['profile']).model_id, model_context=protocol['profile']['model_context'])
         self.scope = 'localhost_contract_mock' if protocol['connection_scope'] != 'hardware' else 'hardware_read_only'
         self.segments = []; self.skipped = []; self.fingerprints = {
             'protocol/manifest.json': sha256(self.root / 'protocol/manifest.json')}

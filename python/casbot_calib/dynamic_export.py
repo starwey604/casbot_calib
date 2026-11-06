@@ -17,6 +17,7 @@ from .data import write_json
 from .dual_model import nominal_dual_arm
 from .rigid_identification import model_from_parameters
 from .vendor_identity import sha256
+from .urdf_resources import rebase_resources,canonical_resources
 
 SCHEMA='casbot_dynamic_urdf_export_v1'
 ATOL=1e-10
@@ -36,7 +37,7 @@ def _manifest(root,required=()):
             raise ValueError('Sealed export/analysis input changed: '+name)
 
 
-def _snapshot(analysis,stage):
+def _snapshot(analysis,stage,context=None):
     root=Path(analysis).resolve();_manifest(root,('analysis.json',stage+'/report.json'));summary=_read(root/'analysis.json')
     if summary.get('schema_version')!='casbot_vendor_s4_analysis_v1' or not summary['passed'] or not summary['stages'].get(stage,{}).get('passed'):
         raise ValueError('Accepted S4 analysis and requested stage required')
@@ -45,7 +46,7 @@ def _snapshot(analysis,stage):
     if not required<=manifest.keys():raise ValueError('S4 manifest does not seal requested stage')
     report=_read(root/stage/'report.json')
     if not report['passed']:raise ValueError('Requested stage was rejected')
-    nominal,source=nominal_dual_arm();inputs={str(root/'manifest.json'):sha256(root/'manifest.json')}
+    nominal,source=nominal_dual_arm(context);inputs={str(root/'manifest.json'):sha256(root/'manifest.json')}
     source_digest=summary.get('source_model_sha256')
     if source_digest is None and 'inertia/candidate.json' in manifest and summary['stages'].get('inertia',{}).get('passed'):
         source_digest=_read(root/'inertia/candidate.json')['source_sha256']
@@ -53,7 +54,7 @@ def _snapshot(analysis,stage):
     if stage=='inertia':
         if 'inertia/candidate.json' not in manifest:raise ValueError('Candidate is not sealed by S4 analysis')
         from .staged_control import load_candidate
-        bundle=_read(root/'inertia/candidate.json');engine=load_candidate(root/'inertia/candidate.json')
+        bundle=_read(root/'inertia/candidate.json');engine=load_candidate(root/'inertia/candidate.json',context=context)
         fit=report['joint_refinement']
         if not np.array_equal(bundle['parameters'],fit['parameters']) or not np.array_equal(bundle['viscous']+bundle['coulomb'],fit['auxiliary_parameters']):
             raise ValueError('Candidate differs from accepted fit')
@@ -78,6 +79,7 @@ def _snapshot(analysis,stage):
         source_stage_report_sha256=sha256(root/stage/'report.json'),hardware_executable=False,
         semantics='Moving-joint aggregate body representative, not separately measured hand/link component masses',
         units=dict(mass='kg',com='m',inertia='kg m^2',torque='Nm'))
+    if context is not None:metadata['model_context']=context.identity
     return engine,metadata
 
 
@@ -135,6 +137,7 @@ def write_inertial_urdf(source,engine,path):
         members=[link for link in links if parsed.frames[parsed.getFrameId(link)].parentJoint==index+1]
         mapping.append(dict(joint=name,inertial_link=child,aggregate_links=members,mass_kg=float(body.mass),
             com_link_m=np.asarray(body.lever).tolist(),inertia_com_link_kg_m2=inertia.tolist()))
+    rebase_resources(root,source,path)
     ET.indent(root,space='  ');path.write_text(ET.tostring(root,encoding='unicode')+'\n',encoding='utf-8')
     return dict(bodies=mapping,fixed_root_links_unchanged=root_links,
         fixed_descendant_inertials_collapsed=[name for name in removed if name not in children.values()],
@@ -151,16 +154,20 @@ def _restore_runtime(engine,runtime):
     return _core.ArmDynamics(model)
 
 
-def _expected(metadata):
-    nominal,source=nominal_dual_arm()
+def _expected(metadata,context=None):
+    if 'model_context' in metadata:
+        from .model_context import resolve_context
+        context=resolve_context(metadata['model_context'],context)
+    nominal,source=nominal_dual_arm(context)
     if metadata['schema_version']!=SCHEMA or metadata['source_urdf_sha256']!=source['sha256'] or metadata['joint_names']!=[j.name for j in nominal.model.joints]:
         raise ValueError('Export source/version/joint identity differs')
     rigid=model_from_parameters(nominal,metadata['parameters'])
     return _restore_runtime(rigid,metadata['runtime'])
 
 
-def _without_inertials(root):
+def _without_inertials(root,source=None):
     result=copy.deepcopy(root)
+    if source is not None:canonical_resources(result,source)
     for link in result.findall('link'):
         for item in link.findall('inertial'):link.remove(item)
     # Ignore indentation introduced by serialization, not model attributes.
@@ -185,7 +192,7 @@ def check_reload(path,expected,source,*,samples=32,seed=20261029):
         errors[name]=max(errors.get(name,0.),float(np.max(abs(a-b),initial=0)))
         checks[name]=checks.get(name,True) and bool(np.allclose(a,b,rtol=RTOL,atol=ATOL))
     checks['joint_order']=list(parsed.names)[1:]==names and [j.name for j in plain.model.joints]==names
-    checks['geometry_xml_unchanged']=_without_inertials(ET.parse(path).getroot())==_without_inertials(ET.parse(source).getroot())
+    checks['geometry_xml_unchanged']=_without_inertials(ET.parse(path).getroot(),path)==_without_inertials(ET.parse(source).getroot(),source)
     compare('rigid_parameters',np.concatenate([x.toDynamicParameters() for x in parsed.inertias[1:]]),expected.rigid_parameters())
     for new,old in zip(loaded.model.joints,expected.model.joints):
         compare('mass_kg',[new.body.mass],[old.body.mass]);compare('com_m',new.body.com,old.body.com)
@@ -209,9 +216,9 @@ def check_reload(path,expected,source,*,samples=32,seed=20261029):
         scope='serialization/coordinate/runtime consistency only; not new parameter identification or physical validation')
 
 
-def export_dynamics_urdf(analysis,output,stage='inertia'):
-    engine,metadata=_snapshot(analysis,stage);output=Path(output);output.mkdir(parents=True,exist_ok=False)
-    source=files('casbot_calib').joinpath('assets/casbot_dual_arm_benchmark_nominal.urdf')
+def export_dynamics_urdf(analysis,output,stage='inertia',context=None):
+    engine,metadata=_snapshot(analysis,stage,context);output=Path(output);output.mkdir(parents=True,exist_ok=False)
+    source=context.urdf if context is not None else files('casbot_calib').joinpath('assets/casbot_dual_arm_benchmark_nominal.urdf')
     metadata['aggregation']=write_inertial_urdf(source,engine,output/'candidate.urdf')
     metadata['urdf_sha256']=sha256(output/'candidate.urdf')
     write_json(output/'calibration.json',metadata)
@@ -228,13 +235,16 @@ def export_dynamics_urdf(analysis,output,stage='inertia'):
     return report
 
 
-def load_exported_dynamics(folder):
+def load_exported_dynamics(folder,context=None):
     root=Path(folder);_manifest(root,('candidate.urdf','calibration.json','report.json','bodies.csv'));metadata=_read(root/'calibration.json')
     if not _read(root/'report.json')['passed']:raise ValueError('URDF reload verification rejected')
-    expected=_expected(metadata)
+    if 'model_context' in metadata:
+        from .model_context import resolve_context
+        context=resolve_context(metadata['model_context'],context)
+    expected=_expected(metadata,context)
     if sha256(root/'candidate.urdf')!=metadata['urdf_sha256']:raise ValueError('URDF differs from calibration sidecar')
-    source=files('casbot_calib').joinpath('assets/casbot_dual_arm_benchmark_nominal.urdf')
-    if _without_inertials(ET.parse(root/'candidate.urdf').getroot())!=_without_inertials(ET.parse(source).getroot()):
+    source=context.urdf if context is not None else files('casbot_calib').joinpath('assets/casbot_dual_arm_benchmark_nominal.urdf')
+    if _without_inertials(ET.parse(root/'candidate.urdf').getroot(),root/'candidate.urdf')!=_without_inertials(ET.parse(source).getroot(),source):
         raise ValueError('Exported geometry differs from bound source')
     loaded=_restore_runtime(_core.ArmDynamics.from_urdf(str(root/'candidate.urdf')),metadata['runtime'])
     if not np.allclose(loaded.rigid_parameters(),expected.rigid_parameters(),rtol=RTOL,atol=ATOL):
@@ -242,10 +252,13 @@ def load_exported_dynamics(folder):
     return loaded,metadata
 
 
-def verify_dynamics_export(folder,output):
-    loaded,metadata=load_exported_dynamics(folder)
-    source=files('casbot_calib').joinpath('assets/casbot_dual_arm_benchmark_nominal.urdf')
-    result=check_reload(Path(folder)/'candidate.urdf',_expected(metadata),source)
+def verify_dynamics_export(folder,output,context=None):
+    loaded,metadata=load_exported_dynamics(folder,context)
+    if 'model_context' in metadata:
+        from .model_context import resolve_context
+        context=resolve_context(metadata['model_context'],context)
+    source=context.urdf if context is not None else files('casbot_calib').joinpath('assets/casbot_dual_arm_benchmark_nominal.urdf')
+    result=check_reload(Path(folder)/'candidate.urdf',_expected(metadata,context),source)
     result['export_manifest_sha256']=sha256(Path(folder)/'manifest.json')
     output=Path(output);output.mkdir(parents=True,exist_ok=False);write_json(output/'report.json',result)
     return result

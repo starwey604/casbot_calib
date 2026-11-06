@@ -1,13 +1,12 @@
 """H4 frozen H3 -> SDK excitation -> physically consistent inertial candidate."""
 import csv
-from importlib.resources import files
 from pathlib import Path
 import shutil
 import numpy as np
 import yaml
 from . import hardware_field as field
 from .data import write_json
-from .dual_model import nominal_dual_arm
+from .model_runtime import model_for, urdf_for, check_same_context
 from .hardware_friction import read,center,holding_gains,gravity_engine,plateau_pairs
 from .staged_motion import periodic_motion,derivative_bounds
 from .rigid_identification import fit_rigid,model_from_parameters
@@ -61,7 +60,8 @@ def snapshot_prior(source,profile,c,output):
         not report['breakaway'].get('available') or not report['breakaway'].get('passed')):
         raise ValueError('Accepted H3 gravity/moving/onset commissioning required')
     names=p['joint_names'];calibration=read(root/'protocol/gravity/calibration.json')
-    _,model_source=nominal_dual_arm()
+    _,model_source=model_for(profile)
+    check_same_context(p['profile'],profile)
     if p['source_model_sha256']!=model_source['sha256']:raise ValueError('H3 model changed')
     for key in ('effort_gain','effort_zero_nm','gravity_world'):
         if not np.allclose(calibration[key],profile[key],rtol=0,atol=1e-12):raise ValueError('H4 gravity/effort scale changed: '+key)
@@ -72,7 +72,8 @@ def snapshot_prior(source,profile,c,output):
     for axis in report['breakaway']['axes']:
         j=names.index(axis['joint']);fs[j]=max(v['estimate_nm'] for v in axis['directions'].values())
     if np.any(fs<fc):raise ValueError('H3 onset is below moving Coulomb friction; inspect earlier stages')
-    output=Path(output);output.mkdir();shutil.copytree(root/'protocol/gravity',output/'gravity')
+    from .hardware_friction import copy_gravity
+    output=Path(output);output.mkdir();copy_gravity(root/'protocol/gravity',output/'gravity')
     frozen=dict(parameters=calibration['parameters'],joint_names=names,source_model_sha256=p['source_model_sha256'],
         gravity_world=calibration['gravity_world'],viscous=b.tolist(),coulomb=fc.tolist(),static_friction=fs.tolist(),
         identified_joints=p['h3']['joints'],holding=p['h3']['breakaway'],h3=p['h3'],profile=p['profile'],
@@ -102,7 +103,7 @@ def plan_inertia(config_path,profile_path,prior,output,*,domain_id):
     from .sdk_connection import connection_remaps
     if type(domain_id) is not int or not 0<=domain_id<=232:raise ValueError('Explicit H4 ROS domain required')
     profile=field.load_profile(profile_path);connection_remaps(profile,domain_id)
-    engine,source=nominal_dual_arm();names=[j.name for j in engine.model.joints];c=settings(config_path,names)
+    engine,source=model_for(profile);names=[j.name for j in engine.model.joints];c=settings(config_path,names)
     root=field.output_outside(output,prior);root.mkdir(parents=True,exist_ok=False);protocol=root/'protocol';protocol.mkdir()
     snapshot_prior(prior,profile,c,protocol/'prior')
     jobs=[]
@@ -149,11 +150,12 @@ def prepare_trial(root,protocol,job,profile_path,snapshot,output):
     if np.max(derivative_bounds(curve,2))>c['maximum_acceleration_rad_s2'] or np.max(derivative_bounds(curve,3))>c['maximum_jerk_rad_s3']:raise ValueError('H4 continuous acceleration/jerk envelope exceeded')
     out=field.output_outside(output,root/'protocol',snapshot);out.mkdir(parents=True,exist_ok=False)
     write_json(out/'h4.json',c);write_json(out/'friction.json',prior)
-    kp,kd=holding_gains(pose,c['holding']);factor=control_factor(root,job)
+    kp,kd=holding_gains(pose,c['holding'],profile);factor=control_factor(root,job)
     kp,kd=scale_pd(kp,kd,factor)
     extra=dict(command_kp=kp.tolist(),command_kd=kd.tolist())
     if job['kind']=='inertia':
-        shutil.copytree(root/'protocol/prior/gravity',out/'gravity')
+        from .hardware_friction import copy_gravity
+        copy_gravity(root/'protocol/prior/gravity',out/'gravity')
         extra.update(gravity_feedforward_enabled=True,gravity_model_path=str(out/'gravity/candidate_exploratory.urdf'),gravity_world=profile['gravity_world'])
     else:
         bundle=read(root/'inertia_checkpoint/candidate.json') if job['feedforward']=='identified' else None
@@ -262,7 +264,8 @@ def inertia_result(root,protocol,history):
     bundle=dict(schema_version='casbot_h4_inertia_candidate_v1',parameters=theta.tolist(),source_model_sha256=protocol['source_model_sha256'],
         joint_names=protocol['joint_names'],identified_joint_scope=c['joints'],viscous=prior['viscous'],coulomb=prior['coulomb'],
         static_friction=prior['static_friction'],gravity_world=prior['gravity_world'],source_prior_manifest_sha256=sha256(root/'protocol/prior/manifest.json'),
-        individual_body_parameters_unique=False,formal_hardware_calibration_accepted=False,auto_deploy=False,fit_band_hz=[0,c['harmonics']/c['period_s']])
+        individual_body_parameters_unique=False,formal_hardware_calibration_accepted=False,auto_deploy=False,fit_band_hz=[0,c['harmonics']/c['period_s']],
+        **({'model_context':protocol['profile']['model_context']} if 'model_context' in protocol['profile'] else {}))
     return report,bundle
 
 
@@ -284,7 +287,7 @@ def write_inertia_output(root,folder,report,bundle):
     folder=Path(folder);write_json(folder/'report.json',report)
     if bundle is None:return
     write_json(folder/'candidate.json',bundle);engine=candidate_engine(root,bundle)
-    source=files('casbot_calib').joinpath('assets/casbot_dual_arm_benchmark_nominal.urdf')
+    source=urdf_for(read(Path(root)/'protocol/profile.json'))
     write_inertial_urdf(source,engine,folder/'candidate_exploratory.urdf')
     reload_report=check_reload(folder/'candidate_exploratory.urdf',engine,source)
     if not reload_report['passed']:raise ValueError('H4 URDF reload failed')

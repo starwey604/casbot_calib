@@ -13,7 +13,10 @@ from .arm_viewer import _pose_attributes
 from .telemetry import StateFrame,TelemetryAdapter
 
 
-def scene(engine,config,path):
+def scene(engine,config,path,active_arm=None):
+    if 'model_context' in config:
+        from .model_runtime import context_for
+        return context_for(config).write_view_scene(path,active_tool=active_arm or 'left')
     profile=fixture_profile(engine,config);adapter=write_scene(profile,path)
     tree=ET.parse(path);world=tree.getroot().find('worldbody');model=engine.model
     tree.getroot().set('model',model.model_id+'_trical_view')
@@ -82,12 +85,34 @@ def storyboard(cache):
             if not accepted:raise ValueError('Correction playback has no subsequent accepted stable measurement')
             end=min(accepted)
         result.append(dict(source=source,stage=stage,title=title,seconds=seconds,start_ns=row['start_ns'],end_ns=end,**row['target']))
-    motion('reference','left','approach',0,'六球基准与左臂接近',6.)
+    actual=any(e['state']=='manual_remount_at_home' for e in cache['reference']['events'])
+    motion('reference','left','approach',0,'四球台架／左腕安装三表' if actual else '六球基准与左臂接近',6.)
     motion('reference','left','insert',1,'左臂入量程与三表接触',4.)
     motion('reference','left','correct',2,'读表修正与稳定采样',5.)
     motion('reference','left','withdraw',2,'退出目标球与测点切换',3.)
-    motion('reference','right','approach',0,'完整双臂模型／右臂接近',6.)
+    if actual:
+        rows=[r for r in cache['reference']['motions'] if r['target']==dict(frame='left_trical_tcp',ball_id='D') and r.get('route_phase')=='released' and r['label'].startswith('withdraw')]
+        if rows:
+            first=rows[0]
+            end=rows[0]['end_ns']
+            for r in rows[1:]:
+                if r['start_ns']!=end:break
+                end=r['end_ns']
+            result.append(dict(source='reference',stage=2,title='左臂D／测头正间隙后再转向',seconds=5.,start_ns=first['start_ns'],end_ns=end,**first['target']))
+    if actual:
+        e=next(e for e in cache['reference']['events'] if e['state']=='manual_remount_at_home')
+        m=next(m for m in cache['reference']['measurements'] if m['frame'].startswith('right'))
+        result.append(dict(source='reference',stage=0,title='回位停稳／同一三表人工换装右腕',seconds=3.,start_ns=e['time_ns'],end_ns=e['time_ns'],frame=m['frame'],ball_id=m['ball_id']))
+    motion('reference','right','approach',0,'右腕三表／另一臂裸法兰停放' if actual else '完整双臂模型／右臂接近',6.)
     motion('reference','right','correct',2,'右臂自动对中与稳定窗口',5.)
+    if actual:
+        rows=[r for r in cache['reference']['motions'] if r['target']==dict(frame='right_trical_tcp',ball_id='C') and r.get('route_phase')=='released' and r['label'].startswith('withdraw')]
+        if rows:
+            first=rows[0];end=first['end_ns']
+            for r in rows[1:]:
+                if r['start_ns']!=end:break
+                end=r['end_ns']
+            result.append(dict(source='reference',stage=2,title='右臂C／释放后转向并退出台架',seconds=5.,start_ns=first['start_ns'],end_ns=end,**first['target']))
     for stage,title,seconds in [(3,'训练选参、零位层与几何层求解',5.),(4,'独立批次验证／参数保持冻结',5.)]:
         source='validation';m=cache[source]['measurements'][0]
         result.append(dict(source=source,stage=stage,title=title,seconds=seconds,start_ns=m['accepted_ns']-140_000_000,end_ns=m['accepted_ns'],frame=m['frame'],ball_id=m['ball_id']))
@@ -113,6 +138,8 @@ def render_kinematic(folder,analysis,output,*,fps=12,video=True):
     sealed={str(path/'manifest.json'):file_hash(path/'manifest.json') for path in paths.values()}
     sealed[str(analysis/'report.json')]=file_hash(analysis/'report.json');sealed[str(root/'protocol.json')]=file_hash(root/'protocol.json')
     output.mkdir(parents=True,exist_ok=False);adapter=scene(engine,config,output/'scene.xml')
+    actual='model_context' in config
+    if actual:scene(engine,config,output/'scene_right.xml',active_arm='right')
     fonts={n:_font(n) for n in (12,14,16,18,22,26)};bg=(10,17,27);text=(226,235,243);muted=(147,168,189);teal=(62,218,189);gold=(245,194,91)
     tabs=['工装接近','三表接触','对中采样','分层辨识','独立验证','批次重复','验收边界']
     writer=None;frames=0;errors=[];snapshots=set();stats=accepted['repeatability'];fit=accepted['fits'][0]
@@ -121,11 +148,18 @@ def render_kinematic(folder,analysis,output,*,fps=12,video=True):
         writer=imageio_ffmpeg.write_frames(str(output/'kinematic_workflow.mp4'),(1280,720),fps=fps,codec='libx264',pix_fmt_out='yuv420p',macro_block_size=1,output_params=['-crf','22','-preset','fast']);writer.send(None)
     status_names={0:'有效',1:'无接触',2:'超量程',3:'旧反馈',4:'失联'}
     try:
-        with JointView(adapter,output/'scene.xml',width=808,height=424) as view:
-            view.camera.lookat[:]=[.2,0,.18];view.camera.distance=1.55;view.camera.azimuth=190;view.camera.elevation=-12
-            original_colors=view.model.geom_rgba.copy()
+        from contextlib import ExitStack
+        with ExitStack() as stack:
+            left=stack.enter_context(JointView(adapter,output/'scene.xml',width=808,height=424))
+            views={'left':left,'right':stack.enter_context(JointView(adapter,output/'scene_right.xml',width=808,height=424)) if actual else left}
+            original={}
+            for v in {id(v):v for v in views.values()}.values():
+                v.camera.lookat[:]=[.2,0,.18];v.camera.distance=1.55;v.camera.azimuth=190;v.camera.elevation=-12
+                if actual:v.camera.lookat[:]=[0,0,1.];v.camera.distance=3.1
+                original[id(v)]=v.model.geom_rgba.copy()
             for clip in story:
-                view.model.geom_rgba[:]=original_colors
+                view=views[clip['frame'].split('_')[0]]
+                view.model.geom_rgba[:]=original[id(view)]
                 ball_geom=view.mj.mj_name2id(view.model,view.mj.mjtObj.mjOBJ_GEOM,clip['ball_id']+'_mesh')
                 if ball_geom>=0:view.model.geom_rgba[ball_geom]=[1.,.9,.25,1.]
                 data=cache[clip['source']];count=max(1,round(clip['seconds']*fps)) if video else 1
@@ -147,7 +181,7 @@ def render_kinematic(folder,analysis,output,*,fps=12,video=True):
                         view.camera.azimuth=230 if clip['frame'].startswith('left') else 145;view.camera.elevation=-25
                         closeup=Image.fromarray(view.render(frame)).resize((280,147),Image.Resampling.LANCZOS)
                         view.camera.lookat[:]=look;view.camera.distance=distance;view.camera.azimuth=azimuth;view.camera.elevation=elevation
-                    for name in ('left_trical_tcp','right_trical_tcp'):
+                    for name in ([clip['frame']] if actual else ('left_trical_tcp','right_trical_tcp')):
                         index=view.mj.mj_name2id(view.model,view.mj.mjtObj.mjOBJ_SITE,name);expected=engine.frame_pose(frame.q,name)
                         errors.append(max(float(np.max(abs(view.data.site_xpos[index]-expected[:3,3]))),float(np.max(abs(view.data.site_xmat[index].reshape(3,3)-expected[:3,:3])))))
                     if np.any(view.data.qacc):raise RuntimeError('Viewer computed accelerations')
@@ -177,7 +211,7 @@ def render_kinematic(folder,analysis,output,*,fps=12,video=True):
                         metrics[1]=('零位层 / 几何层拟合参数',f"14 / {len(protocol['selected_parameters'])}")
                         metrics[4]=('训练选参后缩放条件数',f"{fit['fit_condition']:.2f} / 200")
                     if clip['stage']==5:
-                        metrics[1]=('独立训练批次 / 公共验证点','3 批 / 12 点')
+                        metrics[1]=('独立训练批次 / 公共验证点',f"3 批 / {len(stats['prediction_std_m'])} 点")
                         metrics[2]=('选中参数最大标准差（无量纲）',f"{stats['maximum_selected_parameter_std_scaled']:.5f} / 0.15")
                     for i,(label,value) in enumerate(metrics):
                         y=383+i*48;draw.text((858,y),label,font=fonts[12],fill=muted);draw.text((858,y+18),value,font=fonts[16],fill=gold if i==5 else text)
@@ -186,7 +220,7 @@ def render_kinematic(folder,analysis,output,*,fps=12,video=True):
                     speed=(clip['end_ns']-clip['start_ns'])*1e-9/clip['seconds']
                     draw.text((26,643),f"原始记录选段 / {speed:.2f} 倍速 / 记录时刻 {stamp*1e-9:.3f}s / 真实角度未放大",font=fonts[14],fill=muted)
                     draw.text((26,673),'合成测量闭环；微米差异仅以数字展示；不是实机绝对或姿态精度验收。',font=fonts[14],fill=gold)
-                    draw.text((26,699),'MuJoCo 只显示几何 / Pinocchio 核对 TCP / 不推进物理、不发送控制 / 腰部夹具为代理',font=fonts[12],fill=muted)
+                    draw.text((26,699),'MuJoCo 只显示几何 / 单工具左右换装 / 自由测杆外形与实物负载待核验' if actual else 'MuJoCo 只显示几何 / Pinocchio 核对 TCP / 不推进物理、不发送控制 / 腰部夹具为代理',font=fonts[12],fill=muted)
                     if clip['stage'] not in snapshots and (not video or k>=count//2):canvas.save(output/f"{clip['stage']+1:02}_{clip['stage']}.png");snapshots.add(clip['stage'])
                     if writer:writer.send(np.asarray(canvas))
                     frames+=1

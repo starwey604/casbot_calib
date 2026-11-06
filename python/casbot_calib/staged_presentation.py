@@ -4,8 +4,7 @@ from pathlib import Path
 import xml.etree.ElementTree as ET
 import numpy as np
 from .arm_viewer import _values,_pose_attributes
-from .collision import nominal_profile
-from .dual_model import nominal_dual_arm
+from .model_runtime import model_for, collision_for, context_for
 from .telemetry import JointMapping,TelemetryAdapter,StateFrame
 from .data import write_json
 from .staged_collection import load_trial
@@ -79,7 +78,9 @@ def render_staged(folder,output=None,fps=12,video=True,ros_report=None):
     if not workflow['passed']:raise ValueError('An accepted staged calibration/control workflow is required')
     read=lambda path:json.loads((root/path).read_text())
     reports={name:read(value['report']) for name,value in workflow['stages'].items()};control=read('control_comparison.json');direction=read('direction_check.json');timing=read('driver_timing.json')
-    session=read('session.json');engine,_=nominal_dual_arm();profile=nominal_profile(scene=session['collision']['scene']);adapter=write_scene(profile,output/'scene.xml')
+    session=read('session.json');config=session['config'];engine,_=model_for(config);profile=collision_for(config,scene=session['collision']['scene'])
+    context=context_for(config)
+    adapter=context.write_view_scene(output/'scene.xml') if context else write_scene(profile,output/'scene.xml')
     external={};ros_case=None
     if ros_report is not None:
         ros_path=Path(ros_report).resolve();external[str(ros_path)]=hashlib.sha256(ros_path.read_bytes()).hexdigest()
@@ -106,6 +107,8 @@ def render_staged(folder,output=None,fps=12,video=True,ros_report=None):
     try:
         with JointView(adapter,output/'scene.xml',width=800,height=420) as view:
             view.camera.lookat[:]=[0.,0.,.18];view.camera.distance=1.35;view.camera.azimuth=190;view.camera.elevation=-12
+            if context:
+                view.camera.lookat[:]=view.model.stat.center;view.camera.distance=2.8*view.model.stat.extent
             original=view.model.geom_rgba.copy()
             for row in story:
                 obs,meta,curve=cache[row['run']];j=row['joint'];start,end=row['start_s'],row['end_s'];mask=(obs['sample_ns']*1e-9>=start)&(obs['sample_ns']*1e-9<=end);t=obs['sample_ns'][mask]*1e-9

@@ -5,7 +5,7 @@ import numpy as np
 from scipy.signal import butter,sosfiltfilt
 from scipy.interpolate import CubicSpline
 from .data import write_json
-from .dual_model import nominal_dual_arm
+from .model_runtime import model_for
 from .dual_identification import periodic_observations
 from .rigid_identification import fit_rigid,model_from_parameters
 from .staged_identification import recordings,session_config,_windows,_residual,friction_pairs
@@ -133,7 +133,7 @@ def _preserve_prior_stages(root,candidate,friction,static,original_gravity,accep
 
 
 def identify_inertia(root,output,gravity_report,friction_report,breakaway_report,gravity_constraints,*,records=None,config=None,periodic_builder=None):
-    root=Path(root);output=Path(output);output.mkdir(parents=True,exist_ok=False);config=session_config(root) if config is None else config;nominal,source=nominal_dual_arm()
+    root=Path(root);output=Path(output);output.mkdir(parents=True,exist_ok=False);config=session_config(root) if config is None else config;nominal,source=model_for(config)
     reader=(lambda stage:recordings(root,stage)) if records is None else records
     if not all(r['passed'] for r in (gravity_report,friction_report,breakaway_report)):raise ValueError('Earlier independent stage acceptance failed')
     theta_g=np.asarray(gravity_report['fit']['parameters']);b=np.asarray(friction_report['viscous']);fc=np.asarray(friction_report['coulomb']);fs=np.asarray(breakaway_report['static_friction'])
@@ -202,6 +202,7 @@ def identify_inertia(root,output,gravity_report,friction_report,breakaway_report
         drive=config['drive'],periodic_fit_band_hz=training['preprocessing']['frequency_band_hz'],
         wrist_probe_frequency_hz=config['wrist_probe']['frequency_hz'],
         observable_combinations_only=True,individual_body_parameters_unique=refined['unique_body_parameters'])
+    if 'model_context' in config:bundle['model_context']=config['model_context']
     write_json(output/'candidate.json',bundle);write_json(output/'report.json',report)
     predictions={}
     for name,p in problems.items():

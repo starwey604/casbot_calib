@@ -5,14 +5,15 @@ from time import perf_counter
 import numpy as np
 import yaml
 from .data import write_json
-from .collision import nominal_profile
+from .model_runtime import collision_for
 from .staged_motion import build_recipes,gate_motion,derivative_bounds
 from .rigid_identification import parameter_scales
 
 
 def plan_session(folder,config,development_reference=None,contract_only=False):
     if config.get('schema_version')==2:
-        from .staged_protocol import prepare_protocol
+        from .staged_protocol import prepare_protocol,require_p0_model_support
+        require_p0_model_support(config)
         if contract_only and development_reference is not None:raise ValueError('Contract-only planning does not bind predecessor observations')
         if config['p0'].get('planning_round')=='R1' and not contract_only:
             from .staged_multiconfiguration import plan_references
@@ -23,7 +24,7 @@ def plan_session(folder,config,development_reference=None,contract_only=False):
     if config.get('schema_version')!=1 or config.get('mode')!='mock_only':raise ValueError('Only versioned mock plans are supported')
     folder=Path(folder);folder.mkdir(parents=True,exist_ok=False)
     scene=yaml.safe_load(Path(config['collision_scene']).read_text(encoding='utf-8'))
-    profile=nominal_profile(scene=scene);motions=build_recipes(config)
+    profile=collision_for(config,scene=scene);motions=build_recipes(config)
     candidates=[m for m in motions if m.stage=='inertia' and m.conditions['batch']=='train'];design=[];selected=None
     for m in candidates:
         gate=gate_motion(profile,m,scene['clearance_m']);curve=m.polynomial();period=m.conditions['period_s']

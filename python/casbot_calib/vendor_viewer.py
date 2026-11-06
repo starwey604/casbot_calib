@@ -84,7 +84,14 @@ class VendorLiveSource:
         if self._stream is not None: self._stream.close()
 
 
-def scene_for_vendor(config, output):
+def scene_for_vendor(config, output,context=None):
+    if 'model_context' in config:
+        from .model_context import resolve_context
+        context=resolve_context(config['model_context'],context)
+    if context is not None:
+        if config['model_id']!=context.model_id or config['joint_names']!=list(context.joint_names):raise ValueError('Vendor viewer/context model identity mismatch')
+        adapter=context.write_view_scene(output,active_tool=config.get('active_tool'))
+        return adapter,context.engine
     from .staged_presentation import write_scene
     from .collision import nominal_profile
     profile = nominal_profile(scene=config.get('viewer_collision_scene'))
@@ -136,6 +143,8 @@ def present_pose_source(source, output, *, live=False, window=False, fps=12, dur
         with JointView(adapter, output/'scene.xml', width=900, height=560) as view:
             view.camera.lookat[:] = [0., 0., .18]; view.camera.distance = 1.4
             view.camera.azimuth = 210; view.camera.elevation = -12
+            if 'model_context' in source.config:
+                view.camera.lookat[:]=view.model.stat.center;view.camera.distance=2.8*view.model.stat.extent
             begin = monotonic()
             for k in range(count):
                 at = min(duration_ns, round(k/fps*1e9))
@@ -157,7 +166,7 @@ def present_pose_source(source, output, *, live=False, window=False, fps=12, dur
                     displayed.append(dict(presentation_ns=at, receive_ns=frame.receive_ns, sample_ns=frame.sample_ns,
                                           sequence=frame.sequence, q=frame.q.tolist(), current_available=frame.current is not None))
                 labels = [('显示状态', '反馈陈旧，保持最后姿态' if source.is_stale() else '已收到有效位置'),
-                          ('记录时间', f'{at*1e-9:.3f} 秒'), ('位置映射', 'nominal名称映射，实机方向待验证'),
+                          ('记录时间', f'{at*1e-9:.3f} 秒'), ('位置映射', 'DVT2关节映射，实机方向待验证' if 'model_context' in source.config else 'nominal名称映射，实机方向待验证'),
                           ('原始电流 / 采样时间', ('有观测' if frame is not None and frame.current is not None else '未知')+' / '+
                            ('来源声明已知' if frame is not None and frame.sample_ns>=0 else '未知')),
                           ('实机控制', '不发命令，不切换模式'), ('消息诊断', source.error or '位置与其他字段独立校验')]

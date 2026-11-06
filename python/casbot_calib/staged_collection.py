@@ -8,7 +8,7 @@ from scipy.interpolate import BPoly
 from . import _core
 from .data import write_json
 from .collision import certify_polyline
-from .dual_model import nominal_dual_arm
+from .model_runtime import model_for, context_for
 
 NATIVE_BINARY_SHA256=hashlib.sha256(Path(_core.__file__).read_bytes()).hexdigest()
 
@@ -26,7 +26,7 @@ def preserve_incomplete_trial(root,name):
 
 
 def synthetic_plant(config):
-    nominal,_=nominal_dual_arm();model=nominal.model;joints=model.joints;mock=config['mock'];rng=np.random.default_rng(mock['seed'])
+    nominal,_=model_for(config);model=nominal.model;joints=model.joints;mock=config['mock'];rng=np.random.default_rng(mock['seed'])
     for k,joint in enumerate(joints):
         body=joint.body;body.mass*=mock['mass_scales'][k];body.com=body.com+rng.uniform(-1,1,3)*mock['com_offset_m']
         body.inertia_com=body.inertia_com*mock['mass_scales'][k]*mock['inertia_shape_scale'];joint.body=body
@@ -79,6 +79,9 @@ def collect_trial(folder,name,plant,feedforward,config,profile,*,command_transfo
                 p0_identity['final_protocol_sha256']=final['final_protocol_sha256']
     if profile.metadata['geometry_sha256']!=session['collision']['geometry_sha256'] or profile.metadata['scene']!=session['collision']['scene']:
         raise ValueError('Collision geometry/scene changed after planning')
+    context=context_for(config)
+    if context is not None and any(e.model.model_id!=context.model_id or [j.name for j in e.model.joints]!=list(context.joint_names) for e in (plant,feedforward)):
+        raise ValueError('Collection plant/feedforward model differs from workflow context')
     command_period=metadata['conditions'].get('command_period_ns',config['control_period_ns'])
     times=np.arange(0,round(duration*1e9),command_period,dtype=np.int64);t=times*1e-9
     q,v,a=(curve(t,nu=d) for d in range(3));ff=feedforward.evaluate_batch(q,v,a)['total']
@@ -109,6 +112,7 @@ def collect_trial(folder,name,plant,feedforward,config,profile,*,command_transfo
     write_json(target/'collision_actual.json',actual)
     report=dict(schema_version=3,stage=metadata['stage'],conditions=metadata['conditions'],synthetic_only=True,hardware_executable=False,
         **p0_identity,
+        **({'model_context':context.identity} if context else {}),
         raw_sha256=hashlib.sha256((target/'observations.npz').read_bytes()).hexdigest(),command_sha256=hashlib.sha256((target/'commands.npz').read_bytes()).hexdigest(),
         sample_clock='synthetic acquisition integer nanoseconds; receive timestamp separately retained',joint_names=[j.name for j in plant.model.joints],
         units=dict(q='rad',dq='rad/s',current='A',time='int64 ns',effort='Nm'),torque_source='output current times declared gain; not independent torque measurement',

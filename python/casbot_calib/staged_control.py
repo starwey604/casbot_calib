@@ -4,13 +4,18 @@ from pathlib import Path
 import numpy as np
 from .data import write_json
 from .dual_model import nominal_dual_arm
+from .model_runtime import model_for, context_for
 from .rigid_identification import model_from_parameters
 from .staged_collection import collect_trial,load_trial
 from .control_policy import pd_multipliers,scale_pd,select_pd_factor,comparison_reductions
 
 
-def load_candidate(path):
-    bundle=json.loads(Path(path).read_text());nominal,source=nominal_dual_arm()
+def load_candidate(path,context=None):
+    bundle=json.loads(Path(path).read_text())
+    if 'model_context' in bundle:
+        from .model_context import resolve_context
+        context=resolve_context(bundle['model_context'],context)
+    nominal,source=nominal_dual_arm(context)
     if bundle['model_version']!='tree_full_physical_inertia_v1' or bundle['source_sha256']!=source['sha256'] or bundle['joint_names']!=[j.name for j in nominal.model.joints]:
         raise ValueError('Calibrated model version/source/order mismatch')
     if bundle['gain_status'] not in ('synthetic_declared','independently_validated'):raise ValueError('Candidate torque scale is not anchored')
@@ -61,7 +66,7 @@ def run_control(root,plant,config,profile,inertia_folder,resume=False):
     require_legacy_execution(config)
     root=Path(root);inertia_folder=Path(inertia_folder);inertia=json.loads((inertia_folder/'report.json').read_text())
     if not inertia['passed']:raise ValueError('Control validation requires accepted inertia and previous stages')
-    candidate=load_candidate(inertia_folder/'candidate.json');nominal,_=nominal_dual_arm()
+    candidate=load_candidate(inertia_folder/'candidate.json',context_for(config));nominal,_=model_for(config)
     return _run_control(root,plant,config,profile,candidate,nominal,resume)
 
 

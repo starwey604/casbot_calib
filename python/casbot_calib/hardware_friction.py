@@ -11,7 +11,7 @@ import numpy as np
 import yaml
 from . import hardware_field as field
 from .data import write_json
-from .dual_model import nominal_dual_arm
+from .model_runtime import model_for, check_same_context
 from .rigid_identification import model_from_parameters
 from .staged_motion import Motion,add_friction_sweep
 from .static_field import _move as bounded_move
@@ -54,7 +54,8 @@ def gravity_source(path,profile):
         root=report_root/'gravity'
     field.check_seal(root);report=read(root/'report.json');calibration=read(root/'calibration.json')
     if not report['passed'] or not report['commissioning_validation_passed']:raise ValueError('Frozen gravity commissioning validation must pass')
-    engine,source=nominal_dual_arm()
+    check_same_context(calibration,profile)
+    engine,source=model_for(profile)
     if calibration['source_model_sha256']!=source['sha256'] or calibration['joint_names']!=[j.name for j in engine.model.joints]:raise ValueError('Gravity source/model mismatch')
     for key in ('effort_gain','effort_zero_nm','gravity_world'):
         if not np.allclose(np.asarray(calibration[key]),np.asarray(profile[key]),rtol=0,atol=1e-12):raise ValueError('H3 gravity/effort scale changed: '+key)
@@ -62,7 +63,7 @@ def gravity_source(path,profile):
 
 
 def gravity_engine(folder):
-    c=read(Path(folder)/'calibration.json');nominal,_=nominal_dual_arm()
+    c=read(Path(folder)/'calibration.json');nominal,_=model_for(c)
     model=nominal.model;model.gravity_world=np.asarray(c['gravity_world']);nominal=type(nominal)(model)
     return model_from_parameters(nominal,c['parameters'])
 
@@ -72,9 +73,9 @@ def center(config,offset):
     return np.asarray(config['home_rad'])+offset*direction
 
 
-def holding_gains(pose,b):
+def holding_gains(pose,b,profile=None):
     from .control_gains import nominal_pd_gains
-    nominal,_=nominal_dual_arm()
+    nominal,_=model_for({} if profile is None else profile)
     return nominal_pd_gains(nominal,pose,b['hold_natural_frequency_rad_s'],b['hold_damping_ratio'],b['hold_minimum_kp'],b['hold_minimum_kd'])
 
 
@@ -83,7 +84,7 @@ def plan_friction(config_path,profile_path,gravity,output,*,domain_id):
     from .sdk_connection import connection_remaps
     profile=field.load_profile(profile_path);connection_remaps(profile,domain_id)
     if type(domain_id) is not int or not 0<=domain_id<=232:raise ValueError('Explicit H3 ROS domain required')
-    engine,source=nominal_dual_arm();names=[j.name for j in engine.model.joints];c=settings(config_path,names)
+    engine,source=model_for(profile);names=[j.name for j in engine.model.joints];c=settings(config_path,names)
     origin,calibration,report=gravity_source(gravity,profile)
     jobs=[]
     for role in ('train','validation'):
@@ -96,8 +97,7 @@ def plan_friction(config_path,profile_path,gravity,output,*,domain_id):
     jobs.extend(ramp_jobs(c,profile['command_hz']))
     root=field.output_outside(output,origin);root.mkdir(parents=True,exist_ok=False);protocol=root/'protocol';protocol.mkdir()
     source_gravity=protocol/'gravity';source_gravity.mkdir()
-    for name in ('calibration.json','report.json','candidate_exploratory.urdf','urdf_reload.json'):
-        shutil.copyfile(origin/name,source_gravity/name)
+    copy_gravity(origin,source_gravity,created=True)
     write_json(source_gravity/'source_binding.json',dict(source_manifest_sha256=sha256(origin/'manifest.json'),
         files={name:sha256(origin/name) for name in ('calibration.json','report.json','candidate_exploratory.urdf','urdf_reload.json')}))
     field.seal(source_gravity)
@@ -130,15 +130,24 @@ def prepare_trial(root,protocol,job,profile_path,snapshot,output):
     out=field.output_outside(output,Path(root)/'protocol',snapshot);out.mkdir(parents=True,exist_ok=False)
     copy_gravity(Path(root)/'protocol/gravity',out/'gravity')
     write_json(out/'h3.json',c)
-    kp,kd=holding_gains(pose,c['breakaway'])
+    kp,kd=holding_gains(pose,c['breakaway'],profile)
     profile=dict(profile,breakaway_parameters=dict(gravity_feedforward_enabled=True,
         gravity_model_path=str(out/'gravity/candidate_exploratory.urdf'),gravity_world=profile['gravity_world'],
         command_kp=kp.tolist(),command_kd=kd.tolist()))
     return field.finish_plan(out,profile,m,[],dict(**binding,h3=True,job=job))
 
 
-def copy_gravity(source,target):
-    shutil.copytree(source,target)
+def copy_gravity(source,target,*,created=False):
+    from .urdf_resources import rebase_resources
+    import xml.etree.ElementTree as ET
+    source,target=Path(source),Path(target)
+    if created:
+        for name in ('calibration.json','report.json','candidate_exploratory.urdf','urdf_reload.json'):
+            shutil.copyfile(source/name,target/name)
+    else:shutil.copytree(source,target)
+    path=target/'candidate_exploratory.urdf'
+    tree=ET.parse(path);rebase_resources(tree.getroot(),source/path.name,path);tree.write(path,encoding='unicode')
+    field.seal(target)
 
 
 def plateau_pairs(obs,elapsed,motion,gravity,c,profile):

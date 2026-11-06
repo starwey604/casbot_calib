@@ -18,7 +18,7 @@ import numpy as np
 import yaml
 from . import hardware_field as field
 from .data import write_json, jsonable
-from .dual_model import nominal_dual_arm
+from .model_runtime import model_for
 from .vendor_identity import sha256
 
 
@@ -80,7 +80,7 @@ def implementation():
     binary, sdk = field.executor_binary()
     base = Path(__file__).parent
     names = ['hardware_batch.py', 'hardware_field.py', 'sdk_connection.py', 'control_gains.py','hardware_friction.py','hardware_breakaway.py','staged_identification.py','staged_motion.py', 'collision.py',
-             'rigid_identification.py', 'dynamic_export.py','hardware_inertia.py','hardware_periodic.py','hardware_control.py','dynamics_problem.py','control_policy.py','sdk_process.py']
+             'rigid_identification.py', 'dynamic_export.py','hardware_inertia.py','hardware_periodic.py','hardware_control.py','dynamics_problem.py','control_policy.py','sdk_process.py','model_runtime.py','model_context.py','dual_model.py','dvt2_bundle.py','urdf_resources.py']
     return dict(sources={name: sha256(base / name) for name in names},
                 executor_sha256=sha256(binary), sdk=sdk, core_sha256=sha256(_core.__file__),
                 numpy_version=np.__version__)
@@ -127,8 +127,9 @@ def settings(path, joint_names):
 
 def plan_batch(config_path, profile_path, output, *, preset=None, domain_id, connection_scope=None):
     if type(domain_id) is not int or not 0 <= domain_id <= 232: raise ValueError('Explicit ROS domain required')
-    engine, source = nominal_dual_arm(); names = [j.name for j in engine.model.joints]
-    config = settings(config_path, names); profile = field.load_profile(profile_path); jobs = []
+    profile = field.load_profile(profile_path)
+    engine, source = model_for(profile); names = [j.name for j in engine.model.joints]
+    config = settings(config_path, names); jobs = []
     inferred = profile.get('connection', {}).get('scope', 'hardware')
     if connection_scope is None: connection_scope = inferred
     if connection_scope not in ('hardware', 'localhost_contract_mock'): raise ValueError('Unknown batch connection scope')
@@ -197,7 +198,7 @@ def load_batch(root, *, for_run=False):
     journal = events(root)
     if not journal or journal[0]['event'] != 'planned' or journal[0]['protocol_sha256'] != sha256(root / 'protocol/manifest.json'):
         raise ValueError('Frozen protocol differs from its planning event')
-    _, source = nominal_dual_arm()
+    _, source = model_for(protocol['profile'])
     if source['sha256'] != protocol['source_model_sha256']: raise ValueError('Batch source geometry changed')
     if for_run and protocol['implementation'] != implementation():
         raise ValueError('Batch implementation/SDK changed; start a new session')

@@ -5,7 +5,7 @@ from .kinematics import calibration
 
 
 def make_mock(engine, config, hidden):
-    if np.max(np.abs(hidden['encoder_offset_rad']))+6*config['drive']['position_noise_rad']>config['workflow']['geometry_allowance_rad']:
+    if np.max(np.abs(hidden['encoder_offset_rad']))+6*config['drive']['position_noise_rad']>config['workflow'].get('encoder_allowance_rad',config['workflow']['geometry_allowance_rad']):
         raise ValueError('Mock encoder/noise exceeds declared geometric uncertainty envelope')
     plant=engine
     if 'geometry_scaled' in hidden:
@@ -16,9 +16,11 @@ def make_mock(engine, config, hidden):
         if hidden.get('geometry_chart_sha256',parameters.chart['sha256'])!=parameters.chart['sha256']:
             raise ValueError('Hidden geometry chart does not match the frozen nominal parameter convention')
         profile=fixture_profile(engine,config);nominal=engine.model;actual=plant.model
+        geometries=list(profile.geometry)
+        if 'model_context' in config:geometries+=fixture_profile(engine,config,active_arm='right').geometry
         changes=[inverse(a.origin.matrix())@b.origin.matrix() for a,b in zip(nominal.joints,actual.joints,strict=True)]
         maximum=0.
-        for geometry in profile.geometry:
+        for geometry in geometries:
             if geometry.parent<0:continue
             radius=float(np.linalg.norm(geometry.vertices@geometry.placement.rotation.T+geometry.placement.translation,axis=1).max());error=0.
             j=geometry.parent
@@ -27,6 +29,9 @@ def make_mock(engine, config, hidden):
                 error+=float(np.linalg.norm(delta[:3,3])+2*radius*np.sin(angle/2))
                 radius+=np.linalg.norm(nominal.joints[j].origin.translation);j=nominal.parents[j]
             maximum=max(maximum,error)
+        if 'model_context' in config:
+            angle=max(sum(Rotation.from_matrix(changes[j][:3,:3]).magnitude() for j in range(start,start+7)) for start in (0,7))
+            if angle>config['workflow'].get('geometry_rotation_budget_rad',0.)+1e-12:raise ValueError('Mock rotation exceeds declared geometry family budget')
         if maximum>config['workflow'].get('geometry_error_budget_m',0.):
             raise ValueError('Mock rigid geometry exceeds the declared all-configuration displacement budget')
     drive=config['drive'];arm=_core.ArmSimulationConfig()

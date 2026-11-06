@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "indicators": {
+    "channel_names": [
+      "x",
+      "y",
+      "z"
+    ],
+    "centered_readings_m": [
+      0,
+      0,
+      0
+    ],
+    "minimum_readings_m": [
+      -0.005,
+      -0.005,
+      -0.005
+    ],
+    "maximum_readings_m": [
+      0.005,
+      0.005,
+      0.005
+    ],
+    "provenance": "Synthetic zero and range; axes supplied by the selected CAD assembly, not field mastering."
+  },
+  "parameter_policy": {
+    "root_transform": "fixed_gauge",
+    "indicator_axes_and_zero": "CAD_axes_and_synthetic_zero_for_Mock_only",
+    "joint_offsets": "candidate_only_not_all_observable",
+    "origin_translation": "parent_axes_additive_metres",
+    "origin_tilt": "local_rotation_vector_perpendicular_to_joint_axis",
+    "tool_orientation": "fixed_in_centered_position_only_experiment",
+    "fit_enabled": false,
+    "mdh_hayati": "available_in_kinematic_parameters_not_fitted_by_K1"
+  }
+}

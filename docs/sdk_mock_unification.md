@@ -4,6 +4,8 @@
 
 SDK Mock现在只启动一个sdk_mock_server进程，直接持有共享的C++ SimulatedArmDevice，由既有ArmSimulationSession推进物理、本地PD及驱动响应。内部不再经过ROS命令/反馈转发；位置插值、反馈缓存与公开SDK话题保留。通用通信基准的mock_host复用同一设备组件，仍可独立运行。MuJoCo只显示几何，快速虚拟时间实验继续直接使用原内核。
 
+**DVT2模型迁移准备期**：使用`configs/dvt2/sdk_mock.yaml`与`configs/dvt2/hardware_field.yaml`成对启动，后续H1–H4使用生成的客户端profile。新模型的身份、场景与前馈一起切换，不只替换服务端URDF。用法和本轮验证见[N3接入](dvt2_n3_integration.md#第二轮接入动力学采集与sdk-mock2026-11-06)。默认入口整体切换仍待K2–K4完成。
+
 ## 🧭 一、已经对齐的内容
 
 | 项目 | 统一方式 |

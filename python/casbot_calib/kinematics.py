@@ -51,6 +51,9 @@ def calibration(config):
 
 
 def workflow_config(path=None):
+    if path is not None and isinstance((selected:=yaml.safe_load(Path(path).read_text(encoding='utf-8'))),dict) and selected.get('profile')=='dvt2_trical_geometry_v1':
+        from .dvt2_trical import configuration
+        return configuration(path)
     config=default_config(path) if path is not None else json.loads(files('casbot_calib').joinpath('assets/trical_workflow_v1.json').read_text(encoding='utf-8'))
     validate_config(config)
     if 'workflow' not in config or 'sensor' not in config or 'drive' not in config:
@@ -74,7 +77,7 @@ def validate_config(config):
     if type(period) is not int or period <= 0:
         raise ValueError('control_period_ns must be a positive integer')
     fit_enabled=config['parameter_policy']['fit_enabled']
-    if fit_enabled is not False and not (fit_enabled is True and config.get('profile_id')=='nominal_dual_arm_trical_k3_v1' and isinstance(config.get('k3'),dict)):
+    if fit_enabled is not False and not (fit_enabled is True and (config.get('profile_id')=='nominal_dual_arm_trical_k3_v1' or (config.get('profile_id')=='dvt2_trical_geometry_v1' and 'model_context' in config)) and isinstance(config.get('k3'),dict)):
         raise ValueError('Only the K3 geometry workflow enables identification; K1 remains candidate-only')
     tools = config['tools']
     if len(tools) != 2 or {t['name'] for t in tools} != {'left_trical_tcp', 'right_trical_tcp'}:
@@ -137,16 +140,30 @@ def geometry_manifest(engine, geometry_version):
         geometry=geometry)
 
 
-def nominal_kinematics(config=None):
-    config = default_config() if config is None else deepcopy(config); validate_config(config)
-    engine, source = nominal_dual_arm()
+def ensure_tools(engine,tools):
+    """Reuse matching source TCPs; never silently discard a changed tool config."""
+    names=set(engine.frame_names());missing=[];q=np.zeros(len(engine.model.joints))
+    for tool in tools:
+        if tool['name'] not in names:missing.append(tool);continue
+        expected=engine.frame_pose(q,tool['parent_frame'])@pose(tool['translation_m'],tool['rotation_vector_rad']).matrix()
+        if not np.allclose(expected,engine.frame_pose(q,tool['name']),atol=1e-12,rtol=0):raise ValueError('Configured tool differs from source frame: '+tool['name'])
+    return add_tools(engine,missing) if missing else engine
+
+
+def nominal_kinematics(config=None,context=None):
+    if config is not None and 'model_context' in config:
+        from .model_context import resolve_context
+        context=resolve_context(config['model_context'],context)
+    config = (context.kinematic_config() if context is not None else default_config()) if config is None else deepcopy(config); validate_config(config)
+    engine, source = nominal_dual_arm(context)
     if config['urdf_sha256'] != source['sha256'] or config['robot_model_id'] != engine.model.model_id:
         raise ValueError('Kinematics profile does not match nominal dual-arm source')
-    engine = add_tools(engine, config['tools'])
+    engine = ensure_tools(engine, config['tools'])
     if config['root_frame'] not in engine.frame_names():
         raise ValueError('Unknown canonical robot root')
     manifest = geometry_manifest(engine, config['geometry_version'])
     manifest.update(urdf_sha256=source['sha256'], profile_sha256=digest(config), synthetic_only=True, hardware_executable=False)
+    if context is not None:manifest['model_context']=context.identity
     return engine, manifest
 
 

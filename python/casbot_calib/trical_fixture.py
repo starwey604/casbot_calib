@@ -26,12 +26,15 @@ def sphere_envelope(name, center, radius, *, samples=96):
     return result
 
 
-def fixture_profile(engine, config, target=None, contact=False, *, base_profile=None):
+def fixture_profile(engine, config, target=None, contact=False, *, base_profile=None, active_arm=None, phase=None):
     """Only three exact tip/selected-ball pairs may use the bounded-stroke margin.
 
     All balls, supports, housings and stems remain present, including the other arm.
     Nominal body cache may be reused only after its geometry validation succeeds.
     """
+    if 'model_context' in config:
+        from .dvt2_trical import geometric_profile
+        return geometric_profile(engine,config,target,contact,active_arm=active_arm,phase=phase)
     scene=deepcopy(config['workflow']['collision_scene']);base=nominal_profile(engine,scene) if base_profile is None else base_profile
     if base.engine.model.model_id!=engine.model.model_id:raise ValueError('Fixture/base model identities differ')
     if base_profile is not None and geometry_manifest(engine,'fixture_input')['geometry_sha256']!=geometry_manifest(base.engine,'fixture_input')['geometry_sha256']:

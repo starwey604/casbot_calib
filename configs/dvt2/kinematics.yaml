@@ -1,0 +1,4 @@
+profile: dvt2_trical_geometry_v1
+routes: ../trical_1105_release_turn_reference.json
+route_settings: ../trical_1105_release_turn_settings.json
+design: {}

@@ -71,7 +71,7 @@ def capture_repeat(folder, index):
     # Correct informational K1 flags without changing any measured geometry.
     config['parameter_policy'].update(fit_enabled=True,mdh_hayati='K3_exact_chart_Pinocchio_geometry_regressor')
     config['mock']=hidden
-    result=run_mock(root/'batches'/f'repeat_{index:02}',config)
+    result=run_mock(root/'batches'/f'repeat_{index:02}',config,**({'reference_proofs':reference/'train'} if 'model_context' in config else {}))
     if not result['passed']:return result
     gate=analyse(root/'batches'/f'repeat_{index:02}',root/'gates'/f'repeat_{index:02}')
     result=dict(passed=gate['passed'],acquisition=result,gate=gate)

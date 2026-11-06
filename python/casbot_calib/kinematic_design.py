@@ -14,6 +14,9 @@ from .data import write_json
 
 
 def k3_config(path=None):
+    if path is not None and isinstance((selected:=yaml.safe_load(Path(path).read_text(encoding='utf-8'))),dict) and selected.get('profile')=='dvt2_trical_geometry_v1':
+        from .dvt2_trical import configuration
+        return configuration(path)
     config=workflow_config();config['profile_id']='nominal_dual_arm_trical_k3_v1'
     config['workflow'].update(geometry_allowance_rad=.00025,geometry_error_budget_m=.0007,transition_s=1.5,insertion_s=.6,correction_s=.35)
     # Three noncollinear metric targets per arm remove the unobserved rigid
@@ -84,7 +87,11 @@ def _schedule(selected, engine, config, free, split):
 def plan(folder,config=None):
     root=Path(folder)
     if root.exists():raise FileExistsError(root)
-    config=k3_config() if config is None else deepcopy(config);hidden=config.pop('mock')
+    config=k3_config() if config is None else deepcopy(config)
+    if 'model_context' in config:
+        from .dvt2_trical import plan as actual_plan
+        return actual_plan(root,config)
+    hidden=config.pop('mock')
     engine,geometry=nominal_kinematics(config);parameters=KinematicParameters(engine);settings=config['k3'];home=np.array(config['workflow']['home_rad'])
     free=fixture_profile(engine,config);candidates=[];rejected=[]
     root.mkdir(parents=True,exist_ok=False);(root/'evaluation').mkdir();write_json(root/'profile.json',config);write_json(root/'geometry.json',geometry)

@@ -5,10 +5,11 @@ from scipy.spatial.transform import Rotation
 from .staged_motion import Motion, derivative_bounds, gate_motion
 
 
-def solve_position(engine, frame, point, seed, orientation=None):
+def solve_position(engine, frame, point, seed, orientation=None, *, joint_margin_rad=.02):
+    if not np.isfinite(joint_margin_rad) or joint_margin_rad<0:raise ValueError('Nonnegative IK joint margin required')
     active=np.arange(7) if frame.startswith('left_') else np.arange(7,14)
     seed=np.asarray(seed,dtype=float);point=np.asarray(point,dtype=float);reference=engine.frame_pose(seed,frame)[:3,:3] if orientation is None else orientation
-    limits=np.array([[j.lower+.02,j.upper-.02] for j in engine.model.joints])[active]
+    limits=np.array([[j.lower+joint_margin_rad,j.upper-joint_margin_rad] for j in engine.model.joints])[active]
     def residual(values):
         q=seed.copy();q[active]=values;actual=engine.frame_pose(q,frame)
         return np.r_[actual[:3,3]-point,(.1 if orientation is not None else .0002)*Rotation.from_matrix(reference.T@actual[:3,:3]).as_rotvec(),.000005*(values-seed[active])]
@@ -19,14 +20,23 @@ def solve_position(engine, frame, point, seed, orientation=None):
     return q
 
 
-def segment(profile,start,end,config,label,duration=None):
-    settings=config['workflow'];duration=duration or settings['transition_s']
+def segment(profile,start,end,config,label,duration=None,*,gate_cache=None):
+    settings=config['workflow']
+    if 'model_context' in config and duration is None:
+        from .dvt2_trical import motion_gate
+        from .trical_paths import timed_motion
+        motion=timed_motion(label,[start,end],[label],config['route_settings'])
+        return motion,motion_gate(profile,start,end,config,gate_cache)
+    duration=duration or settings['transition_s']
     motion=Motion(label,'trical',np.asarray(start)).add(duration,end,label=label)
     curve=motion.polynomial()
     limits=[settings['maximum_velocity_rad_s'],settings['maximum_acceleration_rad_s2'],settings['maximum_jerk_rad_s3']]
     peaks=[float(np.max(derivative_bounds(curve,order))) for order in (1,2,3)]
     if any(a>b for a,b in zip(peaks,limits)):
         factor=max(a/b for a,b in zip(peaks,limits));return segment(profile,start,end,config,label,duration*max(1.2,factor**1.01))
+    if 'model_context' in config:
+        from .dvt2_trical import motion_gate
+        return motion,motion_gate(profile,start,end,config,gate_cache)
     # Account for declared unknown zero/tracking envelope, not fitted hidden values.
     motion.conditions['position_allowance_rad']=[settings['geometry_allowance_rad']]*14
     travel=np.array([[j.lower,j.upper] for j in profile.engine.model.joints]);allowance=settings['geometry_allowance_rad']

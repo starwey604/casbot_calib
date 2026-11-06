@@ -32,13 +32,18 @@ def collect_and_identify(plan_folder,output):
     started=perf_counter();root=Path(output)
     if root.exists():raise FileExistsError(root)
     config,plan_sha=_verified_plan(plan_folder);root.mkdir(parents=True,exist_ok=False)
+    if 'model_context' in config:
+        w=config['workflow'];w.setdefault('encoder_allowance_rad',.00005)
+        w.setdefault('tracking_allowance_rad',w['geometry_allowance_rad']-w['encoder_allowance_rad'])
+        write_json(root/'capture_protocol.json',dict(source_plan_sha256=plan_sha,reference_joint_tube_rad=w['geometry_allowance_rad'],encoder_allowance_rad=w['encoder_allowance_rad'],tracking_allowance_rad=w['tracking_allowance_rad'],
+            reference_geometry_and_total_tube_unchanged=True,scope='Synthetic declared encoder prior, checked by Mock factory; not hardware qualification'))
     # Only the Mock factory receives these hidden physical parameters.
     hidden=json.loads((Path(plan_folder)/'evaluation/mock.json').read_text());captures={}
     native=sha256(Path(_core.__file__).read_bytes()).hexdigest()
     for index,split in enumerate(('train','validation')):
         profile=deepcopy(config);profile['workflow']['visits']=json.loads((Path(plan_folder)/(split+'_visits.json')).read_text())
         profile['k3']['batch_id']='k3_'+split+'_'+plan_sha[:12];profile['mock']=deepcopy(hidden);profile['mock']['seed']+=index*1000
-        captures[split]=run_mock(root/split,profile)
+        captures[split]=run_mock(root/split,profile,**({'reference_proofs':plan_folder} if 'model_context' in profile else {}))
         if not captures[split]['passed']:
             report=dict(passed=False,stage='K3',reason='measurement_batch_rejected',split=split,captures=captures)
             write_json(root/'report.json',report);return report

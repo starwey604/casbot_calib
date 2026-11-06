@@ -218,8 +218,14 @@ def validate_split_manifest(manifest, config):
     return rows
 
 
+def require_p0_model_support(config):
+    if 'model_context' in config:
+        raise ValueError('DVT2 P0 protocol migration is pending; use the DVT2 schema-1 development workflow')
+
+
 def prepare_protocol(folder, config, *, planner=None):
     """Seal R0 identities, optionally with R1 certified references before sealing."""
+    require_p0_model_support(config)
     from . import _core
     from .collision import nominal_profile
     from .dual_model import nominal_dual_arm

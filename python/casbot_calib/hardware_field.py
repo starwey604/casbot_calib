@@ -5,15 +5,14 @@ start, seals inputs, records raw feedback and fits via the existing PSD solver.
 Publication/receive times never become acquisition timestamps or S3 evidence.
 """
 import csv
-from importlib.resources import files
 import json
 import os
 from pathlib import Path
 import numpy as np
 import yaml
-from .collision import nominal_profile, certify_polyline
+from .collision import certify_polyline
 from .data import write_json
-from .dual_model import nominal_dual_arm
+from .model_runtime import model_for, collision_for, urdf_for, check_same_context
 from .staged_motion import Motion, gate_motion
 from .static_field import _move as add_bounded_move
 from .vendor_identity import sha256
@@ -49,6 +48,7 @@ def load_profile(path):
     if gravity.shape != (3,) or not np.isfinite(gravity).all() or np.linalg.norm(gravity) <= 0:
         raise ValueError('Finite nonzero installation gravity vector required')
     config['scene'] = yaml.safe_load((path.parent / config['collision_scene']).read_text(encoding='utf-8'))
+    if 'model_context' in config:collision_for(config)
     if 'connection' in config:
         from .sdk_connection import validate_connection
         validate_connection(config['connection'])
@@ -84,7 +84,7 @@ def params(config, names):
     experiment={}
     if config.get('gravity_feedforward')=='nominal':
         experiment=dict(gravity_feedforward_enabled=True,
-            gravity_model_path=str(files('casbot_calib').joinpath('assets/casbot_dual_arm_benchmark_nominal.urdf')),
+            gravity_model_path=str(urdf_for(config)),
             gravity_world=config['gravity_world'])
     extra=config.get('breakaway_parameters',{})
     allowed=('gravity_feedforward_enabled','gravity_model_path','gravity_world','command_kp','command_kd','feedforward_plan_file','feedforward_limit_nm')
@@ -102,7 +102,7 @@ def run_executor(config, output, domain_id, *, snapshot=False, plan=None, timeou
         raise ValueError('Explicit ROS domain 0..232 required')
     from .sdk_connection import connection_remaps
     local_remaps = connection_remaps(config, domain_id, local_remaps)
-    engine, _ = nominal_dual_arm(); binary, identity = executor_binary()
+    engine, _ = model_for(config); binary, identity = executor_binary()
     values = params(config, [j.name for j in engine.model.joints]); values['snapshot_only'] = snapshot
     root = Path(output).resolve(); root.mkdir(parents=True, exist_ok=False)
     values['output'] = str(root / 'execution')
@@ -119,6 +119,8 @@ def run_executor(config, output, domain_id, *, snapshot=False, plan=None, timeou
         physical_semantics_verified=False, disconnect_protection_verified=False))
     environment = dict(os.environ, ROS_DOMAIN_ID=str(domain_id), ROS_LOCALHOST_ONLY='1' if local_remaps else '0')
     observation = yaml.safe_load(Path('configs/vendor_s1.yaml').read_text())
+    if 'model_context' in config:
+        observation.update(model_id=engine.model.model_id,joint_names=[j.name for j in engine.model.joints],model_context=config['model_context'])
     observation.update(joint_topic=(local_remaps or {}).get(config['joint_topic'], config['joint_topic']),
         joint_type=config['feedback_type'], mode_topic=(local_remaps or {}).get(config['mode_topic'], config['mode_topic']),
         robot_state_topic='', debug_topic='')
@@ -159,6 +161,7 @@ def snapshot_binding(snapshot, config=None):
     root = Path(snapshot); request = root / 'request.json'
     source = json.loads(request.read_text()) if request.exists() else {}
     observed_connection = source.get('config', {}).get('connection')
+    if config is not None:check_same_context(source.get('config',{}),config)
     if config is not None and observed_connection != config.get('connection'):
         raise ValueError('Snapshot and plan use different SDK connections')
     return dict(snapshot_manifest_sha256=sha256(root / 'manifest.json'),
@@ -172,7 +175,7 @@ def prepare_field(profile, static_plan, snapshot, output, *, max_poses_per_split
     source_report = json.loads((static_plan / 'report.json').read_text())
     if not source_report['passed']:
         raise ValueError('Accepted static reference preset required')
-    engine, source = nominal_dual_arm(); names = [j.name for j in engine.model.joints]
+    engine, source = model_for(config); names = [j.name for j in engine.model.joints]
     if source_report['source_model_sha256'] != source['sha256'] or source_report['joint_names'] != names:
         raise ValueError('Static preset model identity mismatch')
     preset = json.loads((static_plan / 'config.json').read_text())
@@ -218,7 +221,7 @@ def prepare_field(profile, static_plan, snapshot, output, *, max_poses_per_split
 
 
 def prepare_jog(profile, snapshot, output, joint_name, amplitude_deg=1., *, anchor_rad=None):
-    config = load_profile(profile); start = _read_snapshot(snapshot); engine, _ = nominal_dual_arm()
+    config = load_profile(profile); start = _read_snapshot(snapshot); engine, _ = model_for(config)
     binding = snapshot_binding(snapshot, config)
     names = [j.name for j in engine.model.joints]
     if joint_name not in names or not np.isfinite(amplitude_deg) or not 0 < amplitude_deg <= 5:
@@ -253,8 +256,8 @@ def prepare_jog(profile, snapshot, output, joint_name, amplitude_deg=1., *, anch
 
 
 def finish_plan(root, config, motion, trials, bindings):
-    engine, source = nominal_dual_arm(); names = [j.name for j in engine.model.joints]
-    profile_collision = nominal_profile(engine, config['scene'])
+    engine, source = model_for(config); names = [j.name for j in engine.model.joints]
+    profile_collision = collision_for(config,engine)
     gate = gate_motion(profile_collision, motion, config['scene']['clearance_m'])
     write_json(root / 'collision_reference.json', gate)
     if not gate['passed']:
@@ -295,7 +298,7 @@ def execute_field(plan, output, domain_id, *, local_remaps=None):
     binary, sdk = executor_binary()
     if sha256(binary) != metadata['executor_sha256'] or sdk != metadata['sdk_identity']:
         raise ValueError('Replan after executor/SDK changes')
-    engine, source = nominal_dual_arm()
+    engine, source = model_for(metadata['config'])
     if source['sha256'] != metadata['source_model_sha256'] or metadata['joint_names'] != [j.name for j in engine.model.joints]:
         raise ValueError('Field model changed')
     return run_executor(metadata['config'], output, domain_id, plan=root / 'position_plan.csv',
@@ -354,9 +357,9 @@ def field_observations(plan, capture):
         raise ValueError('Field command clock origin changed')
     obs = read_feedback(capture / 'execution/feedback.csv', require_effort=metadata.get('stage') != 'position'); config = metadata['config']
     elapsed = (obs['receive_ns'] - np.int64(origin)) * 1e-9
-    engine, _ = nominal_dual_arm()
+    engine, _ = model_for(config)
     model = engine.model; model.gravity_world = np.asarray(config.get('gravity_world', model.gravity_world)); engine = type(engine)(model)
-    actual_collision = certify_polyline(nominal_profile(engine, config['scene']), obs['q'],
+    actual_collision = certify_polyline(collision_for(config,engine), obs['q'],
         (obs['receive_ns'] - obs['receive_ns'][0]) * 1e-9, clearance_m=config['scene']['clearance_m'],
         max_gap_s=config['static_max_gap_s'])
     if not actual_collision['passed']: raise ValueError('Received field path interpolant failed collision gate')
@@ -422,7 +425,7 @@ def write_gravity_candidate(means, config, output, metadata):
     """Shared H1/H2 PSD fit and export; caller owns output creation/sealing."""
     from .rigid_identification import fit_rigid, model_from_parameters
     from .dynamic_export import write_inertial_urdf, check_reload
-    output = Path(output); engine, _ = nominal_dual_arm()
+    output = Path(output); engine, _ = model_for(config)
     model = engine.model; model.gravity_world = np.asarray(config.get('gravity_world', model.gravity_world)); engine = type(engine)(model)
     batches = {'train': [], 'validation': []}; by_pose = {}; spreads = []
     for row in means:
@@ -447,11 +450,12 @@ def write_gravity_candidate(means, config, output, metadata):
         joint_names=metadata['joint_names'], gravity_world=np.asarray(engine.model.gravity_world),
         source_model_sha256=metadata['source_model_sha256'], effort_gain=config['effort_gain'], effort_zero_nm=config['effort_zero_nm'],
         source_assumptions=config['assumptions'], friction_identified=False, inertias_identified=False,
-        sdk_compensation_modified=False, auto_deploy=False))
+        sdk_compensation_modified=False, auto_deploy=False,
+        **({'model_context':config['model_context']} if 'model_context' in config else {})))
     with (output / 'bodies.csv').open('w', newline='', encoding='utf-8') as stream:
         writer = csv.writer(stream); writer.writerow(['joint', 'mass_kg', 'com_x_m', 'com_y_m', 'com_z_m', 'status'])
         writer.writerows([j.name, j.body.mass, *j.body.com, 'aggregate representative; not uniquely measured'] for j in candidate.model.joints)
-    source_path = files('casbot_calib').joinpath('assets/casbot_dual_arm_benchmark_nominal.urdf')
+    source_path = urdf_for(config)
     aggregation = write_inertial_urdf(source_path, candidate, output / 'candidate_exploratory.urdf')
     reload_report = check_reload(output / 'candidate_exploratory.urdf', candidate, source_path)
     write_json(output / 'urdf_reload.json', reload_report)

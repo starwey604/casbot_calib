@@ -10,9 +10,8 @@ from pathlib import Path
 from time import perf_counter
 import numpy as np
 import yaml
-from .collision import nominal_profile
 from .data import write_json
-from .dual_model import nominal_dual_arm
+from .model_runtime import model_for, collision_for
 from .rigid_identification import parameter_scales
 from .staged_motion import Motion, derivative_bounds, gate_motion
 from .vendor_identity import sha256
@@ -217,11 +216,11 @@ def _select_arm(rows, config, engine, profile, margin):
 
 def plan_static_field(config_path, output):
     started = perf_counter(); config_path = Path(config_path).resolve()
-    config = yaml.safe_load(config_path.read_text(encoding='utf-8')); engine, source = nominal_dual_arm()
+    config = yaml.safe_load(config_path.read_text(encoding='utf-8')); engine, source = model_for(config)
     validate_config(config, engine, source)
     scene_path = (config_path.parent / config['collision_scene']).resolve()
     scene = yaml.safe_load(scene_path.read_text(encoding='utf-8'))
-    profile = nominal_profile(engine, scene); margin = float(scene['clearance_m'])
+    profile = collision_for(config,engine,scene); margin = float(scene['clearance_m'])
     home_gate = gate_motion(profile, Motion('home', 'gravity', config['home_rad']).add(1., config['home_rad']), margin)
     if not home_gate['passed']:
         raise ValueError('Configured home fails nominal collision gate')
@@ -288,8 +287,8 @@ def verify_static_field(folder, output):
         if sha256(root / name) != digest:
             raise ValueError('Static plan input changed: ' + name)
     config = json.loads((root / 'config.json').read_text()); report = json.loads((root / 'report.json').read_text())
-    scene = json.loads((root / 'scene.json').read_text()); engine, source = nominal_dual_arm()
-    validate_config(config, engine, source); profile = nominal_profile(engine, scene)
+    scene = json.loads((root / 'scene.json').read_text()); engine, source = model_for(config)
+    validate_config(config, engine, source); profile = collision_for(config,engine,scene)
     if report['hardware_executable'] or report['observations_qualified'] or report['parameters_identified']:
         raise ValueError('A static reference plan cannot qualify hardware or observations')
     rows = json.loads((root / 'candidates.json').read_text()); selected = [r for r in rows if r['status'] == 'selected']

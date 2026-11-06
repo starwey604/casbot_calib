@@ -42,27 +42,56 @@ def analyse(folder, output):
     if (folder/'raw/joint_packets.npz').exists():
         with np.load(folder/'raw/joint_packets.npz',allow_pickle=False) as raw:joints={k:raw[k] for k in raw.files}
     else:joints=dict(q=np.empty((0,14)),sample_ns=np.empty(0,dtype=np.int64),receive_ns=np.empty(0,dtype=np.int64))
-    free=fixture_profile(engine,config);profiles={};gates=[]
-    for motion in motions:
+    free=fixture_profile(engine,config);profiles={};gates=[];gate_cache={}
+    reference_evidence=None
+    if 'model_context' in config and json.loads((folder/'report.json').read_text())['passed']:
+        from types import SimpleNamespace
+        from .dvt2_trical import seed_reference_cache
+        reference_evidence=seed_reference_cache(SimpleNamespace(config=config,engine=engine,route_cache=gate_cache),folder)
+    for index,motion in enumerate(motions):
+        if 'model_context' in config and index%50==0:
+            print(f'TriCal observation reanalysis {index}/{len(motions)}: {folder.name}',flush=True)
         if not motion['reference']['passed']:continue
         target=motion['target'];key=(target['frame'],target['ball_id'])
-        contact=bool(motion['collision']['exact_contact_pairs'])
-        if key not in profiles:profiles[key]=fixture_profile(engine,config,key,True)
-        profile=profiles[key] if contact else free
+        if 'model_context' in config:
+            phase=motion['route_phase'];full_key=(*key,phase)
+            if full_key not in profiles:profiles[full_key]=fixture_profile(engine,config,key,phase=phase)
+            profile=profiles[full_key]
+        else:
+            contact=bool(motion['collision']['exact_contact_pairs'])
+            if key not in profiles:profiles[key]=fixture_profile(engine,config,key,True)
+            profile=profiles[key] if contact else free
+
         if profile.metadata['pair_clearances_sha256']!=motion['collision']['pair_clearances_sha256']:raise ValueError('Collision pair policy changed')
         if profile.metadata['geometry_sha256']!=motion['collision']['geometry_sha256']:raise ValueError('Collision scene identity changed')
         metadata=motion['motion'];start=np.array(metadata['states'][0][0]);end=np.array(metadata['states'][-1][0])
-        _,reference=segment(profile,start,end,config,motion['label'],metadata['duration_s'])
+        _,reference=segment(profile,start,end,config,motion['label'],metadata['duration_s'],gate_cache=gate_cache)
         if 'end_ns' not in motion:
             gates.append(dict(label=motion['label'],reference=reference['passed'],observed=False));continue
         chosen=(joints['sample_ns']>=motion['start_ns'])&(joints['receive_ns']<=motion['end_ns'])
-        actual=certify_polyline(observed_profile(profile,config['workflow']['geometry_allowance_rad']),joints['q'][chosen],joints['sample_ns'][chosen]*1e-9,
-            clearance_m=config['workflow']['clearance_m'],max_gap_s=config['drive']['sample_period_ns']*1.5e-9)
-        gates.append(dict(label=motion['label'],reference=reference['passed'],observed=actual['passed']))
+        domain_ok=True;orientation_ok=True
+        if 'model_context' in config and np.any(chosen):
+            from scipy.interpolate import BPoly
+            from scipy.spatial.transform import Rotation
+            curve=BPoly.from_derivatives(metadata['knots_s'],[np.asarray(v) for v in metadata['states']])
+            relative=(joints['sample_ns'][chosen]-motion['start_ns'])*1e-9
+            domain_ok=bool(np.max(abs(joints['q'][chosen]-curve(np.clip(relative,0,metadata['duration_s']))))<=config['workflow'].get('tracking_allowance_rad',config['workflow']['geometry_allowance_rad']))
+            if motion['route_phase']=='contact':
+                poses=engine.frame_batch(joints['q'][chosen],target['frame'])['poses']
+                angles=Rotation.from_matrix(np.array(profile.metadata['orientation_reference']).T@poses[:,:3,:3]).magnitude()
+                orientation_ok=bool(np.max(angles)+7*config['workflow'].get('encoder_allowance_rad',config['workflow']['geometry_allowance_rad'])<=profile.metadata['orientation_tolerance_rad'])
+        if 'model_context' in config:
+            from .dvt2_trical import observed_gate
+            actual=observed_gate(profile,joints['q'][chosen],joints['sample_ns'][chosen]*1e-9,config)
+        else:
+            actual=certify_polyline(observed_profile(profile,config['workflow']['geometry_allowance_rad']),joints['q'][chosen],joints['sample_ns'][chosen]*1e-9,
+                clearance_m=config['workflow']['clearance_m'],max_gap_s=config['drive']['sample_period_ns']*1.5e-9)
+        gates.append(dict(label=motion['label'],reference=reference['passed'],observed=actual['passed'] and domain_ok and orientation_ok,tracking_box=domain_ok,contact_orientation=orientation_ok))
     passed=not failed and bool(windows) and all(g['reference'] and g['observed'] for g in gates)
     result=dict(schema_version=1,passed=passed,rejected_session=failed,measurements=windows,gates=gates,truth_read=False,
         source_manifest_sha256=sha256((folder/'manifest.json').read_bytes()).hexdigest(),
         original_native_sha256=manifest['native_sha256'],analysis_native_sha256=sha256(Path(_core.__file__).read_bytes()).hexdigest(),
         configured_command_hz=1e9/config['control_period_ns'],measured_command_hz=float(1e9/np.median(np.diff(command_times))) if len(command_times)>1 else None,
-        scope='K2 stable observations and collision interpolants; not geometry identification or absolute robot accuracy')
+        reference_evidence=reference_evidence,
+        scope='K2 stable observations and fresh raw-path proofs; sealed identical reference proofs may be consumed; not absolute robot accuracy')
     output.mkdir(parents=True,exist_ok=False);write_json(output/'report.json',result);return result

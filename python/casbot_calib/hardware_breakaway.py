@@ -40,7 +40,6 @@ def jobs(c,hz):
 
 def prepare_trial(root,protocol,job,profile,start,pose,snapshot,output):
     from .hardware_friction import copy_gravity
-    from .dual_model import nominal_dual_arm
     c=protocol['h3'];b=c['breakaway'];j=protocol['joint_names'].index(job['joint'])
     allowance=np.full(14,b['other_hold_allowance_rad']);allowance[j]=b['maximum_departure_rad']
     conditions=dict(**job,joint_index=j,position_allowance_rad=allowance.tolist(),
@@ -58,7 +57,7 @@ def prepare_trial(root,protocol,job,profile,start,pose,snapshot,output):
     out=field.output_outside(output,Path(root)/'protocol',snapshot);out.mkdir(parents=True,exist_ok=False)
     copy_gravity(Path(root)/'protocol/gravity',out/'gravity');write_json(out/'h3.json',c)
     from .hardware_friction import holding_gains
-    kp,kd=holding_gains(pose,b)
+    kp,kd=holding_gains(pose,b,profile)
     if np.max(kp)>1000 or np.max(kd)>100:raise ValueError('Nominal holding gains outside declared commissioning range')
     p=dict(breakaway_enabled=True,breakaway_joint=j,breakaway_direction=job['direction'],
         breakaway_free_begin_ns=round(free*1e9),breakaway_ramp_begin_ns=round(begin*1e9),breakaway_ramp_end_ns=round(end*1e9),

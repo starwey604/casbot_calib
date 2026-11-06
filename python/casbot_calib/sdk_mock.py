@@ -1,6 +1,5 @@
 """Single SDK-shaped Mock launcher over the existing native physical host."""
 from contextlib import AbstractContextManager
-from importlib.resources import files
 import json
 import os
 from pathlib import Path
@@ -10,7 +9,7 @@ import uuid
 import numpy as np
 import yaml
 from .data import write_json
-from .dual_model import nominal_dual_arm
+from .model_runtime import model_for, collision_for, context_for, dynamics_scene, urdf_for, check_same_context
 from .hardware_field import load_profile, seal
 from .sdk_connection import mock_connection
 from .vendor_identity import sha256
@@ -29,10 +28,10 @@ def mock_config(path):
     if not np.isfinite(config['effort_limit_nm']) or not 0 < config['effort_limit_nm'] <= 100: raise ValueError('Invalid Mock effort limit')
     q = np.asarray(config['initial_q'], dtype=float)
     if q.shape != (14,) or not np.isfinite(q).all(): raise ValueError('Finite14-axis initial pose required')
-    engine, _ = nominal_dual_arm()
+    engine, _ = model_for(config)
     if any(not j.lower <= x <= j.upper for x, j in zip(q, engine.model.joints)): raise ValueError('Initial pose outside nominal limits')
-    from .collision import nominal_profile
-    scene = nominal_profile()
+    context=context_for(config)
+    scene = collision_for(config,scene=dynamics_scene(context) if context else None)
     if np.min(scene.check(q[None, :])['distances']) <= .01: raise ValueError('Initial SDK Mock pose collides or lacks10mm clearance')
     for key in ('servo_natural_frequency_rad_s', 'servo_damping_ratio','servo_minimum_kp','servo_minimum_kd'):
         if not np.isfinite(config[key]) or config[key] <= 0: raise ValueError('Positive synthetic servo parameter required')
@@ -70,15 +69,17 @@ class SDKMockSession(AbstractContextManager):
         self.domain_id = domain_id; self.endpoint = endpoint_root or '/casbot_calib_s2_sdk_' + uuid.uuid4().hex[:10]
         mock_connection(self.endpoint, domain_id, '0'*64)  # Validate before filesystem/process actions.
         self.profile = load_profile(profile); self.processes = []; self.logs = []
-        from .collision import nominal_profile
+        check_same_context(self.config,self.profile)
         clearance = self.profile['scene']['clearance_m']
-        if np.min(nominal_profile(scene=self.profile['scene']).check(self.config['initial_q'])['distances']) <= clearance:
+        if np.min(collision_for(self.profile).check(self.config['initial_q'])['distances']) <= clearance:
             raise ValueError('Initial SDK Mock pose violates the configured collision scene')
+        if 'model_context' in self.config and not np.allclose(self.profile['gravity_world'],model_for(self.config)[0].model.gravity_world,rtol=0,atol=1e-12):
+            raise ValueError('SDK Mock and client installation gravity differ')
         self.client_profile = self.root / 'client_profile.yaml'
 
     def __enter__(self):
         self.root.mkdir(parents=True, exist_ok=False)
-        engine, source = nominal_dual_arm(); model = engine.model
+        engine, source = model_for(self.config); model = engine.model
         q = np.asarray(self.config['initial_q'])
         omega = self.config['servo_natural_frequency_rad_s']; damping = self.config['servo_damping_ratio']
         from .control_gains import nominal_pd_gains
@@ -88,8 +89,9 @@ class SDKMockSession(AbstractContextManager):
         if not server.is_file(): raise FileNotFoundError('Build optional SDK packages first: ' + str(server))
         protocol = self.root/'protocol'; protocol.mkdir(); plant_dir = self.root/'evaluation/plant'; plant_dir.mkdir(parents=True)
         server_dir = self.root/'evaluation/server'; server_dir.mkdir()
-        model_path = str(files('casbot_calib').joinpath('assets/casbot_dual_arm_benchmark_nominal.urdf'))
-        model_id = 'casbot_20251015_nominal:' + source['sha256'][:12]
+        model_path = str(urdf_for(self.config))
+        context=context_for(self.config)
+        model_id = context.model_id if context else 'casbot_20251015_nominal:' + source['sha256'][:12]
         device_params = dict(self.config['plant'])
         device_params['plant_control_hz'] = device_params.pop('control_hz')
         device_params['plant_feedback_hz'] = device_params.pop('feedback_hz')
@@ -101,6 +103,7 @@ class SDKMockSession(AbstractContextManager):
         write_json(protocol/'behavior.json', dict(schema_version='casbot_sdk_mock_backend_v2',config=self.config,
             backend='in_process_shared_SimulatedArmDevice',internal_ros_bridge=False,source_model_sha256=source['sha256'],
             server_sha256=sha256(server),server_params=server_params,
+            **({'model_context':context.identity} if context else {}),
             assumptions=self.config['assumptions'],physical_device_semantics_verified=False,
             public_feedback_sample_time_known=False,stop_service_available=False,
             internal_diagnostics_not_for_identification=True))

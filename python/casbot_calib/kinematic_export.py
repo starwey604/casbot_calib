@@ -10,6 +10,7 @@ from scipy.spatial.transform import Rotation
 from . import _core
 from .kinematic_parameters import inverse
 from .data import write_json
+from .urdf_resources import rebase_resources
 
 
 def export_table(parameters,scaled,output):
@@ -32,8 +33,15 @@ def export_table(parameters,scaled,output):
             values=data['mount_corrections'];writer.writerow(dict(side=side,**{key+('_m' if key.startswith('t') else '_rad'):value for key,value in values.items()}))
 
 
-def export_urdf(nominal,candidate,config,path):
-    raw=files('casbot_calib').joinpath('assets/casbot_dual_arm_benchmark_nominal.urdf').read_bytes();root=ET.fromstring(raw)
+def export_urdf(nominal,candidate,config,path,context=None):
+    from .kinematics import ensure_tools
+    if 'model_context' in config:
+        from .model_context import resolve_context
+        context=resolve_context(config['model_context'],context)
+    source_path=context.urdf if context is not None else Path(str(files('casbot_calib').joinpath('assets/casbot_dual_arm_benchmark_nominal.urdf')))
+    if context is not None and (config['robot_model_id']!=context.model_id or config['urdf_sha256']!=context.source['sha256']):raise ValueError('Kinematic export/context source mismatch')
+    nominal=ensure_tools(nominal,config['tools']);candidate=ensure_tools(candidate,config['tools'])
+    root=ET.fromstring(source_path.read_bytes())
     source=nominal.model;model=candidate.model;zero=np.zeros(14);poses=nominal.fk(zero)
     by_name={joint.get('name'):joint for joint in root.findall('joint')}
     for i,joint in enumerate(model.joints):
@@ -45,11 +53,15 @@ def export_urdf(nominal,candidate,config,path):
         origin.set('xyz',' '.join(f'{x:.17g}' for x in local[:3,3]))
         origin.set('rpy',' '.join(f'{x:.17g}' for x in Rotation.from_matrix(local[:3,:3]).as_euler('xyz')))
     for tool in config['tools']:
+        if tool['name'] in {link.get('name') for link in root.findall('link')}:continue
         ET.SubElement(root,'link',name=tool['name']);element=ET.SubElement(root,'joint',name=tool['name']+'_mount',type='fixed')
         ET.SubElement(element,'parent',link=tool['parent_frame']);ET.SubElement(element,'child',link=tool['name'])
         ET.SubElement(element,'origin',xyz=' '.join(f'{x:.17g}' for x in tool['translation_m']),
             rpy=' '.join(f'{x:.17g}' for x in Rotation.from_rotvec(tool['rotation_vector_rad']).as_euler('xyz')))
-    ET.indent(root,space='  ');path=Path(path);path.write_text(ET.tostring(root,encoding='unicode')+'\n',encoding='utf-8')
+    path=Path(path)
+    if path.exists() or path.resolve()==source_path.resolve():raise FileExistsError('A new kinematic URDF output is required')
+    rebase_resources(root,source_path,path)
+    ET.indent(root,space='  ');path.write_text(ET.tostring(root,encoding='unicode')+'\n',encoding='utf-8')
     imported=_core.ArmDynamics.from_urdf(str(path));rng=np.random.default_rng(20261030);worst=0.;mass_error=0.
     for q in rng.uniform(-.5,.5,(8,14)):
         for tool in config['tools']:worst=max(worst,float(np.max(abs(imported.frame_pose(q,tool['name'])-candidate.frame_pose(q,tool['name'])))))

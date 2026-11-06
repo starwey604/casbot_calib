@@ -61,13 +61,18 @@ class MeasurementController:
             print(f'K2 {state} @ {self.device.now*1e-9:.3f}s {details}',flush=True)
 
     def execute(self, goal, profile, label, duration=None, monitor=True):
-        motion,gate=segment(profile,self.commanded,goal,self.config,label,duration)
+        motion,gate=segment(profile,self.commanded,goal,self.config,label,duration,gate_cache=getattr(self,'route_cache',None))
         record=dict(label=label,start_ns=self.device.now,reference=gate,motion=motion.metadata(),
             target=dict(frame=self.device.frame,ball_id=self.device.target),
             collision=dict(geometry_sha256=profile.metadata['geometry_sha256'],exact_contact_pairs=profile.metadata['exact_contact_pairs'],
                 pair_clearances_sha256=profile.metadata['pair_clearances_sha256']))
+        if 'model_context' in self.config:record['route_phase']=profile.metadata['route_phase']
         self.motions.append(record)
         if not gate['passed']:raise MeasurementFailure('collision_reference_rejected:'+label)
+        if 'model_context' in self.config:self.current_profile=profile
+        if 'model_context' in self.config and 'encoder_allowance_rad' not in self.config['workflow']:
+            from .dvt2_trical import local_profile
+            profile=local_profile(profile,self.commanded,goal,self.config)
         self.event(label);curve=motion.polynomial();begin=self.device.now
         duration_ns=int(np.ceil(motion.duration*1e9/self.period))*self.period;end=begin+duration_ns
         raw_begin=len(self.device.raw)
@@ -85,18 +90,37 @@ class MeasurementController:
                     raise MeasurementFailure('joint_feedback_invalid')
                 if np.max(abs(latest['dq']))>self.config['workflow']['maximum_velocity_rad_s']*1.2:
                     raise MeasurementFailure('observed_velocity_limit')
+                if 'model_context' in self.config:
+                    from scipy.spatial.transform import Rotation
+                    at=np.clip((int(latest['sample_ns'])-begin)*1e-9,0,motion.duration)
+                    if np.max(abs(latest['q']-curve(at)))>self.config['workflow'].get('tracking_allowance_rad',self.config['workflow']['geometry_allowance_rad']):raise MeasurementFailure('observed_tracking_tube_rejected')
+                    if profile.metadata['route_phase']=='contact':
+                        angle=Rotation.from_matrix(np.array(profile.metadata['orientation_reference']).T@self.engine.frame_pose(latest['q'],self.device.frame)[:3,:3]).magnitude()
+                        if angle+7*self.config['workflow'].get('encoder_allowance_rad',self.config['workflow']['geometry_allowance_rad'])>profile.metadata['orientation_tolerance_rad']:raise MeasurementFailure('observed_contact_orientation_rejected')
+                if 'model_context' in self.config and 'encoder_allowance_rad' in self.config['workflow']:
+                    record['online_tracking_checks']=record.get('online_tracking_checks',0)+1
+                    record['online_proof']='frozen continuous reference tube; fresh tracking + declared encoder bounds; full raw-path proof after motion'
+                    continue
                 distances=profile.check(latest['q'])['distances'][0]
-                surplus=distances-profile.pair_clearance_m-profile.radii@np.full(14,self.config['workflow']['geometry_allowance_rad'])
+                surplus=distances-profile.pair_clearance_m
+                if 'model_context' not in self.config:surplus-=profile.radii@np.full(14,self.config['workflow']['geometry_allowance_rad'])
+                else:record['online_proof']='complete reference tube; tracking + encoder bounds separately declared and checked'
                 record['online_distance_checks']=record.get('online_distance_checks',0)+1
                 record['minimum_online_surplus_m']=min(record.get('minimum_online_surplus_m',float('inf')),float(surplus.min()))
-                if np.any(surplus<=0):raise MeasurementFailure('online_observed_clearance_rejected')
+                if np.any(surplus<=0):
+                    if 'model_context' not in self.config:raise MeasurementFailure('online_observed_clearance_rejected')
+                    raise MeasurementFailure('online_observed_clearance_rejected')
         self.commanded=np.asarray(goal).copy();record['end_ns']=self.device.now
         chunks=self.device.raw[max(0,raw_begin-1):]
         positions=np.concatenate([x['q'] for x in chunks]);times=np.concatenate([x['sample_ns'] for x in chunks])*1e-9
         receives=np.concatenate([x['receive_ns'] for x in chunks]);selected=(times>=begin*1e-9)&(receives<=self.device.now)
         positions=positions[selected];times=times[selected]
-        result=certify_polyline(observed_profile(profile,self.config['workflow']['geometry_allowance_rad']),positions,times,
-            clearance_m=self.config['workflow']['clearance_m'],max_gap_s=self.config['drive']['sample_period_ns']*1.5e-9)
+        if 'model_context' in self.config:
+            from .dvt2_trical import observed_gate
+            result=observed_gate(self.current_profile,positions,times,self.config)
+        else:
+            result=certify_polyline(observed_profile(profile,self.config['workflow']['geometry_allowance_rad']),positions,times,
+                clearance_m=self.config['workflow']['clearance_m'],max_gap_s=self.config['drive']['sample_period_ns']*1.5e-9)
         record['observed']=result
         if not result['passed']:raise MeasurementFailure('collision_observed_rejected:'+label)
 
@@ -128,6 +152,14 @@ class MeasurementController:
             if not gate['passed']:raise MeasurementFailure('complete_visit_preflight_rejected:'+label)
         self.execute(self.stage,self.free,'approach')
         self.execute(goal,self.contact,'insert',self.config['workflow']['insertion_s'])
+        self.center(visit,self.stage)
+        self.execute(self.stage,self.contact,'withdraw')
+        self.contact=None
+        if visit.get('return_home',True):self.execute(self.home,self.free,'return_home')
+        self.stage=None
+
+    def center(self,visit,escape_goal):
+        frame,ball=visit['frame'],visit['ball_id']
         after=self.device.now;self.hold(self.config['workflow']['settle_s'])
         for iteration in range(self.config['workflow']['maximum_corrections']+1):
             window=self.wait_window(after)
@@ -143,14 +175,10 @@ class MeasurementController:
             # Replacing it with observed q would reintroduce the same steady servo
             # error on every iteration and prevent convergence.
             corrected=self.commanded+(local_correction(self.engine,frame,observed,offset,self.config)-observed)
-            _,escape=segment(self.contact,corrected,self.stage,self.config,'correction_escape')
+            _,escape=segment(self.contact,corrected,escape_goal,self.config,'correction_escape',gate_cache=getattr(self,'route_cache',None))
             if not escape['passed']:raise MeasurementFailure('correction_escape_rejected')
             self.execute(corrected,self.contact,'correct',self.config['workflow']['correction_s'])
             after=self.device.now;self.hold(self.config['workflow']['settle_s'])
-        self.execute(self.stage,self.contact,'withdraw')
-        self.contact=None
-        if visit.get('return_home',True):self.execute(self.home,self.free,'return_home')
-        self.stage=None
 
     def recover(self):
         self.event('abort_hold')
@@ -169,14 +197,27 @@ class MeasurementController:
             self.event('latched_hold_manual_recovery_required',reason=str(error));return False
 
 
-def run_mock(folder, config=None, *, fault=None, first_only=False):
+def run_mock(folder, config=None, *, fault=None, first_only=False, reference_proofs=None):
     started=perf_counter()
     folder=Path(folder)
     if folder.exists():raise FileExistsError(folder)
     config=workflow_config() if config is None else deepcopy(config)
+    if 'model_context' in config and 'encoder_allowance_rad' in config['workflow']:
+        w=config['workflow']
+        if min(w['encoder_allowance_rad'],w['tracking_allowance_rad'])<=0 or w['encoder_allowance_rad']+w['tracking_allowance_rad']>w['geometry_allowance_rad']+1e-15:
+            raise ValueError('Encoder + tracking allocation must fit the frozen reference joint tube')
     hidden=config.pop('mock');engine,manifest=nominal_kinematics(config)
     folder.mkdir(parents=True,exist_ok=False);write_json(folder/'profile.json',config);write_json(folder/'geometry.json',manifest)
-    device=make_mock(engine,config,hidden);device.journal=folder/'journal';controller=MeasurementController(engine,config,device)
+    device=make_mock(engine,config,hidden);device.journal=folder/'journal'
+    controller_type=MeasurementController
+    if 'model_context' in config:
+        from .dvt2_trical import routed_controller
+        controller_type=routed_controller(MeasurementController)
+    controller=controller_type(engine,config,device)
+    if reference_proofs is not None:
+        if 'model_context' not in config:raise ValueError('Frozen CAD proof reuse requires a DVT2 context')
+        from .dvt2_trical import seed_reference_cache
+        write_json(folder/'reference_reuse.json',seed_reference_cache(controller,reference_proofs))
     visits=config['workflow']['visits'][:1] if first_only else config['workflow']['visits'];failure=None;recovered=None
     if fault is not None:
         if fault not in ('disconnected','frozen','out_of_range','no_contact'):raise ValueError('Unknown instrument fault')

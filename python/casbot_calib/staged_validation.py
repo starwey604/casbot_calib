@@ -5,11 +5,11 @@ from time import perf_counter
 import numpy as np
 from . import _core
 from .data import write_json
-from .collision import nominal_profile,certify_polyline
+from .collision import certify_polyline
 from .staged_collection import load_trial
 from .staged_control import load_candidate
 from .staged_motion import Motion,gate_motion
-from .dual_model import nominal_dual_arm
+from .model_runtime import model_for, collision_for, context_for
 
 
 def numerical_replays(root,model,config,names,model_scope='frozen fitted model'):
@@ -36,13 +36,13 @@ def numerical_replays(root,model,config,names,model_scope='frozen fitted model')
     return rows
 
 
-def energy_oracle():
-    nominal,_=nominal_dual_arm();model=nominal.model;model.gravity_world=np.zeros(3);joints=model.joints
+def energy_oracle(config=None):
+    nominal,_=model_for({} if config is None else config);model=nominal.model;model.gravity_world=np.zeros(3);joints=model.joints
     for joint in joints:
         f=joint.friction;f.viscous=.035;f.coulomb=.04;f.static_friction=.07;f.stribeck_velocity=.002;joint.friction=f
     model.joints=joints;plant=_core.ArmDynamics(model);workspace=plant.workspace()
     c=_core.ArmSimulationConfig();c.gain=np.ones(14);c.current_tau=0.;c.command_delay_ns=0;c.position_noise=0.;c.current_noise=0.;c.stiction_enabled=True;c.sample_period_ns=c.integration_ns
-    times=np.array([0],dtype=np.int64);commands=np.zeros((1,14,5));q=np.array([0,.45,0,-.9,0,0,0,0,-.45,0,-.9,0,0,0])
+    times=np.array([0],dtype=np.int64);commands=np.zeros((1,14,5));q=np.array(config['home_rad'] if config is not None else [0,.45,0,-.9,0,0,0,0,-.45,0,-.9,0,0,0])
     obs,_=_core.ArmSimulationRunner(plant,c).run(times,commands,200000000,q,np.linspace(-.2,.2,14))
     energy=np.array([workspace.energy(q,v).kinetic for q,v in zip(obs['q'],obs['dq'])]);increase=float(np.max(np.diff(energy)))
     return dict(passed=bool(increase<1e-10 and energy[-1]<energy[0]),initial_joule=float(energy[0]),final_joule=float(energy[-1]),
@@ -105,7 +105,7 @@ def verify_staged(folder,output,stability_analysis=None,attribution_analysis=Non
     require_legacy_execution(config)
     output=Path(output);output.mkdir(parents=True,exist_ok=False);workflow=json.loads((root/'workflow.json').read_text())
     if not workflow['passed']:raise ValueError('Calibration/control workflow has not passed')
-    session=json.loads((root/'session.json').read_text());config=session['config'];profile=nominal_profile(scene=session['collision']['scene'])
+    session=json.loads((root/'session.json').read_text());config=session['config'];profile=collision_for(config,scene=session['collision']['scene'])
     plan=json.loads((root/'plan_report.json').read_text());rows=[]
     for index,name in enumerate(plan['selected_trials']):
         meta,_=load_trial(root,name);record=json.loads((root/'runs'/name/'metadata.json').read_text())
@@ -117,9 +117,9 @@ def verify_staged(folder,output,stability_analysis=None,attribution_analysis=Non
         rows.append(dict(trial=name,reference_passed=reference['passed'],observed_interpolant_passed=actual['passed'],
             minimum_sampled_distance_m=actual['minimum_sampled_distance_m'],scope=actual['path_model']))
         if (index+1)%25==0:print(f'复核碰撞 {index+1}/{len(plan["selected_trials"])}',flush=True)
-    model=load_candidate(root/workflow['inertia_folder']/'candidate.json')
+    model=load_candidate(root/workflow['inertia_folder']/'candidate.json',context_for(config))
     replay=numerical_replays(root,model,config,['direction_00','timing_train','friction_validation_00_03_0.14','breakaway_0_03_+1_0.5_0.24_0','wrist_probe_1_04_+1','inertia_validation'])
-    energy=energy_oracle();components=component_audit(root,model)
+    energy=energy_oracle(config);components=component_audit(root,model)
     isolated=truth_isolation(root,output/'without_evaluation',root/workflow['inertia_folder']/'candidate.json')
     checks=dict(all_trials_collected=len(rows)==len(plan['selected_trials']),all_reference_gates=all(r['reference_passed'] for r in rows),
         all_recorded_interpolants=all(r['observed_interpolant_passed'] for r in rows),step_halving=all(r['passed'] for r in replay),

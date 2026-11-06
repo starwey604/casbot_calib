@@ -6,8 +6,8 @@ checkpoint is a partial result and never reported as completion of the plan.
 import json
 from pathlib import Path
 from .data import write_json
-from .collision import nominal_profile
-from .dual_model import nominal_dual_arm
+from .model_runtime import collision_for
+from .model_runtime import model_for
 from .staged_plan import plan_session
 from .staged_collection import synthetic_plant,collect_trial,load_trial,preserve_incomplete_trial
 from .staged_preflight import collect_preflight
@@ -35,7 +35,7 @@ def run_staged(folder,config,through='all',resume=False,development_reference=No
     if declared!={k:v for k,v in config.items() if k!='mock'}:raise ValueError('Configuration changed after planning')
     mock=json.loads((root/'evaluation'/'plant_config.json').read_text())
     if mock!=config.get('mock'):raise ValueError('Synthetic plant changed after planning')
-    session=json.loads((root/'session.json').read_text());profile=nominal_profile(scene=session['collision']['scene']);nominal,_=nominal_dual_arm()
+    session=json.loads((root/'session.json').read_text());profile=collision_for(declared,scene=session['collision']['scene']);nominal,_=model_for(declared)
     plant=synthetic_plant({**declared,'mock':mock})
     plan=json.loads((root/'plan_report.json').read_text());results={};gravity=nominal
     if resume:

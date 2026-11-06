@@ -5,7 +5,8 @@ import numpy as np
 from . import _core
 
 
-def nominal_dual_arm():
+def nominal_dual_arm(context=None):
+    if context is not None:return context.engine,context.source
     asset=files('casbot_calib').joinpath('assets/casbot_dual_arm_benchmark_nominal.urdf')
     with as_file(asset) as path:engine=_core.ArmDynamics.from_urdf(str(path))
     names=[j.name for j in engine.model.joints]
@@ -19,7 +20,7 @@ def nominal_dual_arm():
 def physical_model(nominal,scales,viscous,coulomb,smoothing_velocity=.03):
     """Positive body scales retain each body's COM/shape and scale mass and inertia.
 
-    Includes already-aggregated hand once. This is a restricted physical candidate,
+    Retains the source fixed-body aggregates once. This is a restricted physical candidate,
     not recovery of every independent COM/inertia component.
     """
     model=nominal.model;n=len(model.joints)

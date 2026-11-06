@@ -5,7 +5,7 @@ import numpy as np
 from scipy.optimize import least_squares
 from scipy.signal import savgol_filter
 from .data import write_json
-from .dual_model import nominal_dual_arm
+from .model_runtime import model_for
 from .rigid_identification import fit_rigid,model_from_parameters
 from .staged_collection import load_trial
 from .torque_observations import output_torque
@@ -56,12 +56,14 @@ def recordings(root,stage,*,split=None,purpose=None):
         raise ValueError('Legacy records do not provide P0 train/selection/test evidence')
     plan=json.loads((root/'plan_report.json').read_text())
     if not plan['passed']:raise ValueError('Complete plan has not passed')
-    nominal,_=nominal_dual_arm();names=[j.name for j in nominal.model.joints]
+    nominal,_=model_for(config);names=[j.name for j in nominal.model.joints]
     if json.loads((root/'session.json').read_text())['joint_names']!=names:raise ValueError('Session joint order mismatch')
     for name in plan['selected_trials']:
         meta,_=load_trial(root,name)
         if meta['stage']!=stage:continue
-        _,obs=read_record(root,name,meta,names)
+        record,obs=read_record(root,name,meta,names)
+        if 'model_context' in config and record.get('model_context')!=config['model_context']:
+            raise ValueError('Observation model context differs from its workflow')
         yield name,meta,obs
 
 
@@ -76,7 +78,7 @@ def _residual(prediction,target,floor=.2):
 
 def identify_gravity(root,output,*,records=None,config=None):
     root=Path(root);output=Path(output);output.mkdir(parents=True,exist_ok=False)
-    config=session_config(root) if config is None else config;nominal,_=nominal_dual_arm();gain=config['drive'].get('gain_nm_a');batches=dict(train=[],validation=[])
+    config=session_config(root) if config is None else config;nominal,_=model_for(config);gain=config['drive'].get('gain_nm_a');batches=dict(train=[],validation=[])
     source=(lambda stage:recordings(root,stage)) if records is None else records
     for name,meta,obs in source('gravity'):
         a,b=_windows(meta,'static_measure')[0];t=obs['sample_ns']*1e-9
