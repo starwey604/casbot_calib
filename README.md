@@ -117,7 +117,7 @@ conda env create -f environment-viewer.yml
 针对需要运行 ROS 2 实时传输节点（`casbot_calib_transport`）或进行完整里程碑验证的场景，仓库在 `scripts/humble/` 目录下提供了一键式配置脚本。
 
 #### 1. 原生 Ubuntu 22.04 (ROS 2 Humble) 配置
-在已安装 ROS 2 Humble、配置好 ROS 软件源的 Ubuntu 22.04 系统上，按顺序执行以下脚本；从空白系统准备及已有容器的安装方式见 [启动指南](docs/dynamics_getting_started.md)：
+在已安装 ROS 2 Humble、配置好 ROS 软件源的 Ubuntu 22.04 **原生系统**上，按顺序执行以下脚本；容器环境请改用下一节的 `setup.sh`，不要在此处混用两套入口。从空白系统准备见 [启动指南](docs/dynamics_getting_started.md)：
 ```bash
 # 1. 安装项目系统级依赖
 bash scripts/humble/install_system.sh
@@ -135,7 +135,17 @@ bash scripts/humble/run.sh bash scripts/humble/build_ros.sh
 
 #### 2. 使用已有 Docker/distrobox 环境
 
-当前包装脚本使用已有容器 `ros2-humble`，要求与宿主共享仓库绝对路径；不自动创建容器或安装基础环境，也不提供交互式终端。首次安装后，调用形式为：
+环境安装与构建统一入口，在宿主仓库根目录执行：
+
+```bash
+bash scripts/humble/setup.sh --dry-run   # 只打印命令，不接触容器
+bash scripts/humble/setup.sh             # 前置检查 → 系统依赖 → venv → 构建 → 验证
+bash scripts/humble/setup.sh --doctor    # 只体检并输出 JSON
+```
+
+`setup.sh` 按阶段执行并跳过已完成阶段；检测到既有 `.venv-humble` 时不会重建 venv。它要求容器已存在且与宿主共享仓库绝对路径，但**不创建容器、不安装基础 ROS**。阶段状态在 `build/humble-setup/`，参数与手动分步写法见 [Humble 环境说明](docs/humble_environment.md)。
+
+首次安装完成后，日常调用形式为：
 ```bash
 bash scripts/humble/container.sh casbot-calib --help
 ```

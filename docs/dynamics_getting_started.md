@@ -48,40 +48,36 @@ H2重力候选通过联调验证后，按[H3指南](hardware_friction_h3.md)继�
 cd ~/codings/casbot_calib
 ```
 
-本机使用已有的 Docker 后端 distrobox 容器 `ros2-humble`，容器与宿主共享相同仓库绝对路径。`container.sh` 会启动并调用已有容器，**不会创建容器、安装基础 ROS，也不是交互式终端入口**。
+本机使用已有的 Docker/podman 后端 distrobox 容器 `ros2-humble`，容器与宿主共享相同仓库绝对路径。环境安装与构建统一走 `scripts/humble/setup.sh`；`container.sh` 只负责在**已就绪**的环境中执行命令，**不会创建容器、安装基础 ROS，也不是交互式终端入口**。
 
 ```bash
 # 确认已有容器；未启动也可以，后续脚本会启动它
 docker inspect ros2-humble
 ```
 
-全新机器应先准备已配置 ROS 软件源、安装 ROS 2 Humble 的 Ubuntu 22.04 环境，可从 [ROS 官方安装入口](https://docs.ros.org/en/humble/Installation/Ubuntu-Install-Debs.html) 开始，再使用下列项目安装步骤。不同容器名可设置 `CALIB_HUMBLE_CONTAINER`；容器仍须满足共享路径和用户访问条件。本仓库的包装脚本直接使用 Docker，不自动兼容 Podman。
+全新机器应先准备已配置 ROS 软件源、安装 ROS 2 Humble 的 Ubuntu 22.04 环境，可从 [ROS 官方安装入口](https://docs.ros.org/en/humble/Installation/Ubuntu-Install-Debs.html) 开始，再使用下列项目安装步骤。不同容器名可设置 `CALIB_HUMBLE_CONTAINER`；容器仍须满足共享路径和用户访问条件。包装脚本通过 `scripts/humble/exec.sh` 自动探测 `podman` / `docker`（可用 `CALIB_CONTAINER_RUNTIME` 指定），因此 podman-docker 兼容层与原生 Podman 都可使用。
 
 ### 2. 首次安装项目依赖
 
-这一步仅首次安装或依赖更新时需要执行。先在容器中安装系统依赖，再以当前用户创建 Python 环境：
+这一步仅首次安装或依赖更新时需要执行。使用单一入口，先预览再执行：
 
 ```bash
-docker start ros2-humble
-docker exec --user root --workdir "$PWD" ros2-humble \
-  bash scripts/humble/install_system.sh
-
-docker exec --user "$(id -u):$(id -g)" --workdir "$PWD" ros2-humble \
-  bash scripts/humble/setup_python.sh
+bash scripts/humble/setup.sh --dry-run
+bash scripts/humble/setup.sh
 ```
 
-上例容器名为 `ros2-humble`；如果使用其他名称，请同时替换直接调用 `docker` 的容器参数。系统安装脚本要求已有 ROS 软件源；它不负责从空白 Ubuntu 配置基础 ROS。不要在项目仿真或采集中替换正在使用的环境。
+脚本依次完成前置检查（容器运行时、Ubuntu 22.04、`/opt/ros/humble`、Python 3.10、仓库路径与写权限）、root 系统依赖、当前用户 venv、C++ 绑定构建和 CLI 冒烟验证；阶段状态记录在 `build/humble-setup/`，重复运行会跳过已完成阶段。检测到既有 `.venv-humble` 时不会重建它；需要重装用 `--force system` 或 `--no-skip`。
 
-### 3. 编译 C++ 绑定并检查 CLI
+参数与等价的手动分步命令见 [Humble 环境说明](humble_environment.md)。要点：**创建 venv 的两步不能用 `container.sh` 包装**（它会经过要求 venv 的 `run.sh`），系统安装脚本必须以 root 运行；`setup.sh` 已按此拆分，`run.sh` 在 venv 缺失时也会给出明确提示。
+
+系统安装脚本要求已有 ROS 软件源；它不负责从空白 Ubuntu 配置基础 ROS。不同容器名用 `CALIB_HUMBLE_CONTAINER`。不要在项目仿真或采集中替换正在使用的环境。
+
+### 3. 检查 CLI（构建已由 setup.sh 完成）
+
+`setup.sh` 的 `build`/`verify` 阶段已包含可编辑安装、CMake 配置与编译、ctest 以及 CLI 调用。若只装了环境（`--stage python`）、修改了 C++ 源码，或需要单独重跑构建：
 
 ```bash
-bash scripts/humble/container.sh python -m pip install -e . --no-deps --no-build-isolation \
-  --config-settings=build-dir=build/humble \
-  --config-settings=cmake.define.CALIB_BUILD_PYTHON=ON
-
-bash scripts/humble/container.sh cmake --preset humble -DCALIB_BUILD_PYTHON=ON
-bash scripts/humble/container.sh cmake --build --preset humble
-bash scripts/humble/container.sh ctest --preset humble
+bash scripts/humble/setup.sh --only build
 bash scripts/humble/container.sh casbot-calib --help
 ```
 
