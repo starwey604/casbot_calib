@@ -47,7 +47,7 @@ assumptions:
   vel_scale: accepted_range_only_not_a_verified_speed_multiplier
   watchdog: synthetic_gravity_and_pd_hold_not_a_vendor_stop_guarantee
   mode_first_frame: user_confirmed_preserve_prior_target_output_until_first_valid_command
-  cache: synthetic_3ms_refresh_not_a_measured_device_rate
+  cache: synthetic_3ms_cache_copy_latest_plant_frame_publication_continues_not_a_measured_sampling_rate
   effort: synthetic_total_output_estimate_from_plant_current
   debug: published_in_upper_body_mock_mode_actual_device_availability_unknown
 model_context:

@@ -25,6 +25,8 @@ def read_record(root,name,meta,names):
     root=Path(root)
     target=root/'runs'/name;record=json.loads((target/'metadata.json').read_text());payload=target/'observations.npz'
     if not record['passed'] or record['schema_version']!=3:raise ValueError('Invalid/rejected acquisition')
+    config=json.loads((root/'session.json').read_text())['config']
+    if record.get('model_context')!=config.get('model_context'):raise ValueError('Observation model context differs from its workflow')
     if record['joint_names']!=names or any(record['units'].get(k)!=v for k,v in dict(q='rad',dq='rad/s',current='A',time='int64 ns').items()):
         raise ValueError('Observation joint order/units mismatch')
     if hashlib.sha256(payload.read_bytes()).hexdigest()!=record['raw_sha256']:raise ValueError('Raw observations changed')
@@ -62,8 +64,6 @@ def recordings(root,stage,*,split=None,purpose=None):
         meta,_=load_trial(root,name)
         if meta['stage']!=stage:continue
         record,obs=read_record(root,name,meta,names)
-        if 'model_context' in config and record.get('model_context')!=config['model_context']:
-            raise ValueError('Observation model context differs from its workflow')
         yield name,meta,obs
 
 

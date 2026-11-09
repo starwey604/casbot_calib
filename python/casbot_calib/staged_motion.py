@@ -199,6 +199,8 @@ def build_recipes(config):
                             allowance[j]+=config.get('breakaway_motion_allowance_rad',.003)
                             conditions=dict(pose=p,joint=j,direction=sign,dwell_s=dwell,slope_nm_s=slope,repeat=repeat,
                                 acquisition_seed=config.get('acquisition_seed',27)+repeat*101,position_allowance_rad=allowance.tolist())
+                            if 'breakaway_probe_kd_nm_s_rad' in config:
+                                conditions.update(probe_kp=0.,probe_kd_nm_s_rad=config['breakaway_probe_kd_nm_s_rad'])
                             m=_trial(f'breakaway_{p}_{j:02}_{sign:+}_{dwell:g}_{slope:g}_{repeat}','breakaway',home,pose,config,conditions)
                             m.add(dwell,pose,label='static_dwell').add(config['breakaway_ramp_s'],pose,label='torque_ramp')
                             result.append(_finish(m,config))

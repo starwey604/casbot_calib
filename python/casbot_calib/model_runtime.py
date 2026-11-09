@@ -1,18 +1,18 @@
 """Resolve a frozen workflow model, scene and resource source together.
 
-During N3 preparation untagged existing profiles retain their original contract.
-Tagged DVT2 profiles never fall back to those legacy assets.
+DVT2 is the sole default. Explicit historical model identities are rejected;
+no downloaded or legacy asset fallback exists.
 """
-from importlib.resources import files
-from pathlib import Path
 import numpy as np
 from .dual_model import nominal_dual_arm
 
 
 def context_for(config):
-    if 'model_context' not in config:return None
-    from .model_context import resolve_context
-    return resolve_context(config['model_context'])
+    from .model_context import load_context,resolve_context
+    context=resolve_context(config['model_context']) if 'model_context' in config else load_context()
+    if 'model' in config and config['model']!=context.model_id:
+        raise ValueError('Workflow model differs from DVT2 default; historical records require their original code version')
+    return context
 
 
 def model_for(config):
@@ -24,7 +24,7 @@ def model_for(config):
 
 def urdf_for(config):
     context=context_for(config)
-    return context.urdf if context else Path(str(files('casbot_calib').joinpath('assets/casbot_dual_arm_benchmark_nominal.urdf')))
+    return context.urdf
 
 
 def dynamics_scene(context):
@@ -36,10 +36,7 @@ def dynamics_scene(context):
 
 def collision_for(config,engine=None,scene=None):
     context=context_for(config)
-    if context is None:
-        from .collision import nominal_profile
-        return nominal_profile(engine,scene if scene is not None else config.get('scene'))
-    scene=config.get('scene') if scene is None else scene
+    scene=config.get('scene',dynamics_scene(context)) if scene is None else scene
     if scene!=dynamics_scene(context):raise ValueError('DVT2 workflow collision scene differs from its frozen model context')
     profile=context.collision_profile(engine=engine)
     from . import _core
@@ -51,3 +48,4 @@ def collision_for(config,engine=None,scene=None):
 def check_same_context(first,second):
     if first.get('model_context')!=second.get('model_context'):
         raise ValueError('Workflow model contexts differ; regenerate the profile/plan, do not mix model generations')
+    context_for(first);context_for(second)  # Validate explicit identities; never auto-tag serialized inputs.

@@ -45,6 +45,7 @@ def make_inputs(root):
     seal(preset)
     snap = root / 'snapshot'; (snap / 'execution').mkdir(parents=True)
     write_json(snap / 'result.json', dict(passed=True, snapshot_only=True))
+    write_json(snap / 'request.json', dict(config=load_profile(ROOT/'configs/hardware_field.yaml')))
     with (snap / 'execution/snapshot.csv').open('w', newline='') as stream:
         w = csv.writer(stream); w.writerow(['receive_ns', *['q'+str(j) for j in range(14)], *['v'+str(j) for j in range(14)]])
         w.writerow([123456789, *c['home_rad'], *([0.] * 14)])
@@ -147,7 +148,7 @@ def test_review_cannot_mutate_inputs_and_unlisted_files_are_rejected(planned):
 
 def test_changed_ros_domain_is_rejected_before_executor_start(planned, profile, tmp_path):
     from casbot_calib.hardware_field import execute_field
-    snapshot = tmp_path / 'snapshot'; write_json(snapshot / 'request.json', dict(domain_id=21)); seal(snapshot)
+    snapshot = tmp_path / 'snapshot'; write_json(snapshot / 'request.json', dict(config=load_profile(profile),domain_id=21)); seal(snapshot)
     plan = tmp_path / 'bound_jog'; prepare_jog(profile, snapshot, plan, 'left_shoulder_pitch_joint')
     with pytest.raises(ValueError, match='same ROS domain'): execute_field(plan, tmp_path / 'run', 22)
     assert not (tmp_path / 'run').exists()

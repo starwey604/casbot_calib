@@ -13,6 +13,7 @@ template<class T,class... Guards>
 void bind_computations(py::class_<T>& cls,const Guards&... guards) {
   cls.def("mass_matrix",&T::mass_matrix,guards...)
     .def("gravity",&T::gravity,guards...)
+    .def("nonlinear_effects",&T::nonlinear_effects,guards...)
     .def("velocity_bias",&T::velocity_bias,guards...)
     .def("friction",&T::friction,guards...)
     .def("rotor_torque",&T::rotor_torque,guards...)

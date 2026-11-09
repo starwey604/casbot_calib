@@ -105,6 +105,8 @@ def validate_config(config):
     for key in ('home_rad', 'pose_amplitude_rad'):
         if np.asarray(config[key]).shape != (14,) or not np.isfinite(config[key]).all():
             raise ValueError('Finite 14-axis geometry required')
+    from .staged_acceleration import validate_design
+    validate_design(config)
     # Reject non-finite settings even when they are not used until a later round.
     digest(config)
     return p0
@@ -141,6 +143,8 @@ def build_split_manifest(config):
                         center_rad=None, reference_sha256=None,
                         config_sha256=config_sha256,
                         reference_status='pending_R1_collision_certified_motion')
+                    if stage=='inertia' and 'acceleration_tone' in p0:
+                        row['excitation_harmonics'].append(p0['acceleration_tone']['harmonic_by_split'][split])
                     if joint is not None:
                         row.update(joint=joint, direction=direction)
                     rows.append(row)
@@ -219,23 +223,27 @@ def validate_split_manifest(manifest, config):
 
 
 def require_p0_model_support(config):
+    from .model_context import MODEL_ID
+    if config.get('model')==MODEL_ID and 'model_context' not in config:
+        raise ValueError('DVT2 P0 requires its explicit model context')
     if 'model_context' in config:
-        raise ValueError('DVT2 P0 protocol migration is pending; use the DVT2 schema-1 development workflow')
+        from .model_runtime import context_for
+        context=context_for(config)
+        if config.get('model')!=context.model_id:raise ValueError('P0 declared model differs from its model context')
 
 
 def prepare_protocol(folder, config, *, planner=None):
     """Seal R0 identities, optionally with R1 certified references before sealing."""
     require_p0_model_support(config)
     from . import _core
-    from .collision import nominal_profile
-    from .dual_model import nominal_dual_arm
+    from .model_runtime import collision_for,model_for
     from .staged_frequency_contract import qualify_frequency
     p0 = validate_config(config); manifest = build_split_manifest(config)
     root = Path(folder)
     if root.exists():
         raise FileExistsError(root)
-    profile = nominal_profile(scene=yaml.safe_load(Path(config['collision_scene']).read_text()))
-    nominal, source = nominal_dual_arm()
+    profile = collision_for(config,scene=yaml.safe_load(Path(config['collision_scene']).read_text()))
+    nominal, source = model_for(config)
     root.mkdir(parents=True, exist_ok=False)
     public = {k: deepcopy(v) for k, v in config.items() if k != 'mock'}
     write_json(root / 'session.json', dict(config=public, collision=profile.metadata,
@@ -304,9 +312,11 @@ def load_protocol(root):
     for path, expected in protocol['input_sha256'].items():
         if file_hash(_local(root, path)) != expected:
             raise ValueError('P0 input digest changed: ' + path)
-    config = _read(Path(root) / 'session.json')['config']
+    session=_read(Path(root)/'session.json');config=session['config']
     if 'mock' in config or digest(config['p0']) != protocol['policy_sha256']:
         raise ValueError('Changed policy or plant truth in public configuration')
+    if config.get('model_context')!=protocol['model'].get('model_context') or config.get('model_context')!=session['collision'].get('model_context'):
+        raise ValueError('P0 protocol/session model contexts differ')
     manifest = _read(Path(root) / 'split_manifest.json')
     validate_split_manifest(manifest, config)
     if protocol['schema_version']==2:
@@ -415,7 +425,8 @@ def freeze_candidate(root, candidate, selection_report):
         if file_hash(_local(root, row['candidate'])) != row['candidate_sha256']:
             raise ValueError('Candidate changed after selection')
         from .staged_control import load_candidate
-        load_candidate(_local(root, row['candidate']))
+        from .model_runtime import context_for
+        load_candidate(_local(root, row['candidate']),context_for(config))
         scores = np.asarray(row['selection_axis_nrmse'], dtype=float)
         count = sum(r['split'] == 'selection' and r['stage'] == 'inertia' for r in _read(root / 'split_manifest.json')['trials'])
         if scores.shape != (count, 14) or not np.isfinite(scores).all() or np.any(scores < 0):
@@ -475,4 +486,4 @@ def p0_status(config):
 
 def require_legacy_execution(config):
     if config.get('schema_version', 1) != 1 or 'p0' in config:
-        raise ValueError('P0 R0 is contract-only: use plan-staged; R1-R4 execution is not implemented')
+        raise ValueError('Legacy execution cannot run P0: R0 is contract-only; use the role-scoped R1-R4 entry points')

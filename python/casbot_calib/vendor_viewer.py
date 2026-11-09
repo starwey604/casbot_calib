@@ -88,19 +88,12 @@ def scene_for_vendor(config, output,context=None):
     if 'model_context' in config:
         from .model_context import resolve_context
         context=resolve_context(config['model_context'],context)
-    if context is not None:
-        if config['model_id']!=context.model_id or config['joint_names']!=list(context.joint_names):raise ValueError('Vendor viewer/context model identity mismatch')
-        adapter=context.write_view_scene(output,active_tool=config.get('active_tool'))
-        return adapter,context.engine
-    from .staged_presentation import write_scene
-    from .collision import nominal_profile
-    profile = nominal_profile(scene=config.get('viewer_collision_scene'))
-    model_names = [j.name for j in profile.engine.model.joints]
-    if config['joint_names'] != model_names:
-        raise ValueError('Viewer requires explicit nominal joint names/order; it does not guess a model mapping')
-    write_scene(profile, output)
-    adapter = TelemetryAdapter(config['model_id'], [JointMapping(n, n) for n in model_names])
-    return adapter, profile.engine
+    if context is None:
+        from .model_context import load_context
+        context=load_context()
+    if config['model_id']!=context.model_id or config['joint_names']!=list(context.joint_names):raise ValueError('Vendor viewer/context model identity mismatch')
+    adapter=context.write_view_scene(output,active_tool=config.get('active_tool'))
+    return adapter,context.engine
 
 
 def view_vendor(folder, output, *, live=False, window=False, fps=12):

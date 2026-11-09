@@ -1,3 +1,4 @@
-# K2离线双臂测量闭环；未接实机。
-profile: trical_workflow_v1
-control_period_ns: 2000000
+profile: dvt2_trical_geometry_v1
+routes: trical_1105_release_turn_reference.json
+route_settings: trical_1105_release_turn_settings.json
+design: {}

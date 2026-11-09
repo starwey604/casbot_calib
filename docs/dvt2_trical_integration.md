@@ -1,6 +1,6 @@
 # 用实际四球装配运行K2–K4
 
-使用`configs/dvt2/kinematics.yaml`可以在同一套三表采集、几何辨识和复测代码中选择1105_03装配。球架位置和平台高度沿用N2冻结方案；同一工具先装左腕（相对STEP +90°），双臂回位停稳后再人工换装右腕（0°），另一臂始终裸法兰停放。
+默认K2–K4或使用`configs/dvt2/kinematics.yaml`可以在同一套三表采集、几何辨识和复测代码中选择1105_03装配。球架位置和平台高度沿用N2冻结方案；同一工具先装左腕（相对STEP +90°），双臂回位停稳后再人工换装右腕（0°），另一臂始终裸法兰停放。
 
 本入口是原生Mock实验。球位、工具安装和测量轴使用CAD注册，仪表零位/量程为合成配置；真实mastering、工具负载与自由测杆全行程外形还需现场核验。
 
@@ -66,4 +66,4 @@ CAD几何的刚体误差族另加0.1mm位移预算，并由Mock工厂在左右�
 
 K4三批复测及新进程真值隔离通过，公共验证TCP预测标准差最大0.856µm。66秒中文只读回放位于`artifacts/dvt2_n3_k4_v1/presentation/kinematic_workflow.mp4`，展示左D/右C释放后转向和同一工具回位换装；已解码查看。汇总为`artifacts/dvt2_n3_kinematics_delivery_v1/delivery.json`。
 
-完整本轮结果与限制汇总在[N3接入进度](dvt2_n3_integration.md)。默认CLI仍未整体切换；P0协议消费者及N4整体验证继续按[模型替换计划](dvt2_model_migration_plan.md)推进。
+完整本轮结果与限制汇总在[N3接入进度](dvt2_n3_integration.md)。默认CLI已整体切换为同一模型与实际装配；无需`--config`也会使用四球和冻结路线。N4及P0后续进展见[N4收尾](dvt2_n4_closeout.md)。

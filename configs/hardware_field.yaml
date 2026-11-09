@@ -27,10 +27,13 @@ vel_scale: 0.1
 static_velocity_rad_s: 0.01
 static_position_range_rad: 0.003
 static_max_gap_s: 0.1
-gravity_validation_rmse_nm: 0.5  # commissioning threshold, not the synthetic P0 acceptance
+gravity_validation_rmse_nm: 0.5
 effort_gain: 1.0
 effort_zero_nm: 0.0
-gravity_world: [0.0, 0.0, -9.81]  # assumed installation; update from measured mounting
+gravity_world:
+- 0.0
+- 0.0
+- -9.81
 assumptions:
   arm_subset: user_confirmed_14_arm_axes_leave_waist_head_hands_unchanged
   disconnect: user_assumed_robot_self_protection_when_stream_stops
@@ -40,7 +43,7 @@ assumptions:
   effort_filter: unknown
   feedback_stamp: vendor_declared_publication_time_not_acquisition
   feedback_cache: may_repeat_latest_sample
-  limits_and_geometry: nominal_assumed_pending_site_check
+  limits_and_geometry: DVT2_CAD_bare_flange_prior_and_limits_pending_site_check
   pd: user_confirmed_module_local_pd_host_forwards_five_fields
   pd_gain_defaults: sdk_default_values_pending_site_readback
   pd_loop_hz: unknown
@@ -50,7 +53,12 @@ assumptions:
   time_ref: zero_as_sdk_example
   mode_exit: sdk_service_disable_after_return_rest_assumed_then_observe_rest_again
 notes:
-  - This profile enables actual SDK position commands when explicitly executed.
-  - Runtime failures stop publishing; no unprovided vendor stop service is invented.
-  - Device protection, actual geometry/limits and effort scale need commissioning checks.
-  - Fits using publish/receive-time cache windows remain exploratory, not S3/P0 acceptance.
+- This profile enables actual SDK position commands when explicitly executed.
+- Runtime failures stop publishing; no unprovided vendor stop service is invented.
+- Device protection, actual geometry/limits and effort scale need commissioning checks.
+- Fits using publish/receive-time cache windows remain exploratory, not S3/P0 acceptance.
+model_context:
+  schema_version: casbot_model_context_v1
+  model_id: casbot_hl12p1_dvt2_bare_flange_1105_03_gauge_v2
+  bundle_sha256: 0b441d3068069cec7201f2d36015079e356069bf49082335ebd733680a0a643a
+  urdf_sha256: ec5eee7144d1d90ba2cc4032e397786eb55f3d0c0540fac912a9cb3122a07efe

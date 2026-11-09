@@ -1,4 +1,5 @@
 // SDK-shaped device: one in-process shared simulator, public SDK endpoints only.
+#include "sdk_mock_policy.hpp"
 #include "vendor_common.hpp"
 #include "async_csv.hpp"
 #include "sdk_position_ramp.hpp"
@@ -108,9 +109,8 @@ class SdkMockServer final:public rclcpp::Node {
       auto next=std::chrono::steady_clock::now();
       try {
         while(!plant_stop_) {
-          advance_device();next+=period;
-          const auto now=std::chrono::steady_clock::now();
-          if(next<now)next=now+period;
+          advance_device();
+          next=casbot::sdk::next_physics_deadline(next,period,std::chrono::steady_clock::now());
           std::this_thread::sleep_until(next);
         }
       } catch(...) {std::lock_guard<std::mutex> lock(feedback_mutex_);plant_error_=std::current_exception();}
@@ -155,7 +155,8 @@ class SdkMockServer final:public rclcpp::Node {
     const auto now=vendor::now();
     if(active_&&now-last_command_>watchdog_)hold("assumed_watchdog_hold");
     if(active_&&get_parameter("lose_mode").as_bool())hold("injected_mode_loss");
-    if(now-state_at_>20000000)return; // Do not drive from an unboundedly old plant state.
+    const bool needs_pose=casbot::sdk::needs_plant_pose(active_,awaiting_first_command_,gravity_);
+    if(needs_pose&&now-state_at_>20000000)return; // Only synthetic protection/gravity uses host pose.
     if(!initial_ready_) {
       double speed=0;for(auto value:v_)speed=std::max(speed,std::abs(value));
       if(speed<.003) {
@@ -166,7 +167,7 @@ class SdkMockServer final:public rclcpp::Node {
     const auto reference=ramp_->at(now);
     casbot::ArmCommand cmd{now-epoch_,Eigen::VectorXd(14),Eigen::VectorXd(14),Eigen::VectorXd(14),Eigen::VectorXd(14),Eigen::VectorXd(14)};
     Eigen::Map<const Eigen::VectorXd> q(q_.data(),14);
-    const Eigen::VectorXd g=(!active_||awaiting_first_command_||gravity_)?workspace_->gravity(q):Eigen::VectorXd::Zero(14);
+    const Eigen::VectorXd g=needs_pose?workspace_->gravity(q):Eigen::VectorXd::Zero(14);
     for(int j=0;j<14;++j) {
       cmd.q[j]=reference[j];cmd.dq[j]=target_v_[j];cmd.kp[j]=custom_pd_?custom_kp_[j]:kp_[j];cmd.kd[j]=custom_pd_?custom_kd_[j]:kd_[j];
       cmd.torque[j]=std::clamp(g[j]+feedforward_[j],-effort_limit_,effort_limit_);
@@ -180,7 +181,9 @@ class SdkMockServer final:public rclcpp::Node {
   }
   void publish() {
     const auto now=vendor::now();
-    if(!have_cache_||now-state_at_>20000000||!get_parameter("feedback_enabled").as_bool())return;
+    // Keep vendor publication/cache semantics even while virtual physics catches
+    // up. Acquisition age stays in private diagnostics, never header.stamp.
+    if(!casbot::sdk::publishes_cached_feedback(have_cache_,get_parameter("feedback_enabled").as_bool()))return;
     sensor_msgs::msg::JointState msg;msg.header.stamp=this->now();msg.name=names_;
     msg.position.assign(cache_.sample.q.data(),cache_.sample.q.data()+14);msg.velocity.assign(cache_.sample.dq.data(),cache_.sample.dq.data()+14);
     msg.effort.assign(cache_.sample.current.data(),cache_.sample.current.data()+14);

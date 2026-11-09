@@ -67,7 +67,7 @@ def tiny_records(root, splits):
         np.savez_compressed(run / 'commands.npz', send_ns=np.array([0], dtype=np.int64), commands=np.zeros((1, 14, 5)))
         write_json(run / 'feedforward.json', {})
         write_json(run / 'collision_actual.json', dict(passed=True, scope='TEST FIXTURE ONLY'))
-        meta = dict(schema_version=3, passed=True, stage=slot['stage'], conditions=conditions,
+        meta = dict(schema_version=3, passed=True, model_context=config['model_context'], stage=slot['stage'], conditions=conditions,
             sample_period_ns=config['inertia_sample_period_ns'], control_period_ns=config['control_period_ns'],
             native_binary_sha256=protocol['native_binary_sha256'], joint_names=names,
             units=dict(q='rad', dq='rad/s', current='A', time='int64 ns'),

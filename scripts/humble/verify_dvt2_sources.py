@@ -28,12 +28,12 @@ def main():
     source=dvt2_source('a2_ff');assets=[p for p in source.asset_root.rglob('*') if p.is_file()]
     inventory=dict(files=len(assets),bytes=sum(p.stat().st_size for p in assets))
     from casbot_calib.dual_model import nominal_dual_arm
-    default,old=nominal_dual_arm()
+    default,selected=nominal_dual_arm()
     checks=dict(all_five_variants=all(r['passed'] for r in results.values()),
         complete_asset_inventory=all(inventory[k]==catalog['asset_inventory'][k] for k in inventory),
-        existing_default_unchanged=len(default.model.joints)==14 and 'benchmark_nominal.urdf' in old['source'])
+        dvt2_is_default=len(default.model.joints)==14 and 'bare_flange_1105_03_gauge_v2' in selected['source'])
     write_json(root/'verification.json',dict(passed=all(checks.values()),checks=checks,variants=results,asset_inventory=inventory,
-        source_only=True,default_model_changed=False,hardware_tested=False,
+        source_only=True,default_model_changed=True,hardware_tested=False,
         scope='Source and geometry parsing only; no reduction, scene collision qualification or robot execution'))
     return 0 if all(checks.values()) else 1
 

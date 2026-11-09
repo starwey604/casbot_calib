@@ -14,46 +14,8 @@ from .data import write_json
 
 
 def k3_config(path=None):
-    if path is not None and isinstance((selected:=yaml.safe_load(Path(path).read_text(encoding='utf-8'))),dict) and selected.get('profile')=='dvt2_trical_geometry_v1':
-        from .dvt2_trical import configuration
-        return configuration(path)
-    config=workflow_config();config['profile_id']='nominal_dual_arm_trical_k3_v1'
-    config['workflow'].update(geometry_allowance_rad=.00025,geometry_error_budget_m=.0007,transition_s=1.5,insertion_s=.6,correction_s=.35)
-    # Three noncollinear metric targets per arm remove the unobserved rigid
-    # rotation about the line joining only two target balls.
-    engine,_=nominal_kinematics(config)
-    for side,pitch,roll,elbow in [('left',-.8,.65,-.8),('right',-1.3,-.35,-.7)]:
-        q=np.array(config['workflow']['home_rad']);index=0 if side=='left' else 7;q[index]=pitch;q[index+1]=roll;q[index+3]=elbow
-        frame=side+'_trical_tcp';pose=engine.frame_pose(q,frame);ball_id='ball_'+str(len(config['fixture']['balls'])+1)
-        config['fixture']['balls'].append(dict(id=ball_id,center_m=pose[:3,3].tolist(),stem_direction_world=pose[:3,2].tolist()))
-        config['workflow']['visits'].append(dict(id=side+'_'+ball_id,frame=frame,ball_id=ball_id,nominal_q_rad=q.tolist()))
-    config['fixture']['id']='synthetic_six_ball_k3_v1'
-    config['k3']=dict(design_seed=20261030,training_per_ball=4,validation_per_ball=2,pool_per_ball=12,
-        maximum_attempts_per_ball=100,variation_rad=.22,sigma_m=2e-6,maximum_condition=200.,validation_limit_m=20e-6)
-    if path is not None:
-        settings=yaml.safe_load(Path(path).read_text(encoding='utf-8'))
-        if not isinstance(settings,dict) or set(settings)-{'profile','design'} or settings.get('profile')!='trical_geometry_v1':raise ValueError('Unknown K3 profile')
-        overrides=settings.get('design',{})
-        if not isinstance(overrides,dict) or set(overrides)-set(config['k3']):raise ValueError('Unknown K3 design setting')
-        config['k3'].update(overrides)
-    for key in ('training_per_ball','validation_per_ball','pool_per_ball','maximum_attempts_per_ball','design_seed'):
-        if type(config['k3'][key]) is not int or config['k3'][key]<0:raise ValueError('K3 design counts/seeds must be nonnegative integers')
-    if config['k3']['training_per_ball']<2 or config['k3']['validation_per_ball']<1 or config['k3']['pool_per_ball']<config['k3']['training_per_ball']:raise ValueError('Insufficient design counts')
-    for key in ('variation_rad','sigma_m','maximum_condition','validation_limit_m'):
-        value=config['k3'][key]
-        if isinstance(value,bool) or not isinstance(value,(int,float)) or not np.isfinite(value) or value<=0:
-            raise ValueError('K3 numeric settings must be finite and positive: '+key)
-    if config['k3']['maximum_condition']<=1:raise ValueError('K3 condition limit must exceed one')
-    config['parameter_policy'].update(fit_enabled=True,mdh_hayati='K3_exact_chart_Pinocchio_geometry_regressor',
-        joint_offsets='K3_training_selected_effective_zero_layer',origin_translation='K3_MDH_length_in_frozen_axis_chart',
-        origin_tilt='K3_MDH_alpha_and_Hayati_beta_in_frozen_axis_chart')
-    config['mock']['encoder_offset_rad']=(np.array(config['mock']['encoder_offset_rad'])*.15).tolist()
-    engine,_=nominal_kinematics(config);parameters=KinematicParameters(engine);hidden=np.zeros(parameters.size)
-    values={'left.mount_1.tx':.08,'left.mount_1.ty':-.05,'left.mount_1.rx':.04,'left.row_3.d':.12,
-        'left.row_4.a':-.1,'left.row_5.alpha':.03,'right.mount_1.tx':-.06,'right.mount_1.tz':.07,
-        'right.mount_1.ry':-.03,'right.row_3.d':-.1,'right.row_4.a':.08,'right.row_6.alpha':-.04}
-    for i,definition in enumerate(parameters.definitions):hidden[i]=values.get(definition['name'],0.)
-    config['mock']['geometry_scaled']=hidden.tolist();config['mock']['geometry_chart_sha256']=parameters.chart['sha256'];return config
+    from .dvt2_trical import configuration
+    return configuration(path)
 
 
 def _d_optimal(candidates, count_per_ball, size, sigma):

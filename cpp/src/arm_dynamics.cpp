@@ -191,6 +191,7 @@ std::vector<std::string> ArmDynamics::rigid_parameter_names() const {
 // explicitly retain a workspace instead of hiding mutable Data in a shared engine.
 Eigen::MatrixXd ArmDynamics::mass_matrix(const Eigen::VectorXd& q) const {return workspace().mass_matrix(q);}
 Eigen::VectorXd ArmDynamics::gravity(const Eigen::VectorXd& q) const {return workspace().gravity(q);}
+Eigen::VectorXd ArmDynamics::nonlinear_effects(const Eigen::VectorXd& q,const Eigen::VectorXd& dq) const {return workspace().nonlinear_effects(q,dq);}
 Eigen::VectorXd ArmDynamics::velocity_bias(const Eigen::VectorXd& q,const Eigen::VectorXd& dq) const {return workspace().velocity_bias(q,dq);}
 Eigen::VectorXd ArmDynamics::inverse(const Eigen::VectorXd& q,const Eigen::VectorXd& dq,const Eigen::VectorXd& ddq) const {return workspace().inverse(q,dq,ddq);}
 Eigen::VectorXd ArmDynamics::forward(const Eigen::VectorXd& q,const Eigen::VectorXd& dq,const Eigen::VectorXd& torque) const {return workspace().forward(q,dq,torque);}
@@ -221,6 +222,10 @@ Eigen::MatrixXd ArmWorkspace::mass_matrix(const Eigen::VectorXd& q) {
 Eigen::VectorXd ArmWorkspace::gravity(const Eigen::VectorXd& q) {
   engine_.check_vector(q,"q");auto& data=impl_->data;
   return pinocchio::computeGeneralizedGravity(engine_.backend_->model,data,q);
+}
+Eigen::VectorXd ArmWorkspace::nonlinear_effects(const Eigen::VectorXd& q,const Eigen::VectorXd& dq) {
+  engine_.check_vector(q,"q");engine_.check_vector(dq,"dq");
+  return pinocchio::nonLinearEffects(engine_.backend_->model,impl_->data,q,dq);
 }
 Eigen::VectorXd ArmWorkspace::velocity_bias(const Eigen::VectorXd& q,const Eigen::VectorXd& dq) {
   engine_.check_vector(q,"q");engine_.check_vector(dq,"dq");auto& data=impl_->data;

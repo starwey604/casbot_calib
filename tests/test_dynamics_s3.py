@@ -18,10 +18,11 @@ def write(path,obj):Path(path).write_text(json.dumps(obj)+'\n')
 def fixture(tmp_path):
     """Analytic sensor/time contract fixture, not a new robot mechanics model."""
     n=56001;t=np.arange(n,dtype=np.int64)*250000;seconds=t*1e-9
-    source=json.loads(files('casbot_calib').joinpath('assets/casbot_dual_arm_source.json').read_text())
+    from casbot_calib.model_context import load_context
+    source=load_context().source
     names=[side+'_'+axis+'_joint' for side in ('left','right') for axis in
            ('shoulder_pitch','shoulder_roll','shoulder_yaw','elbow_pitch','wrist_yaw','wrist_pitch','wrist_roll')]
-    home=np.array([0,.45,0,-.9,0,0,0,0,-.45,0,-.9,0,0,0])
+    home=load_context().home
     raw=dict(q=home+.02*np.sin(2*np.pi*seconds[:,None]/6)*np.ones((1,14)),
              dq=.02*2*np.pi/6*np.cos(2*np.pi*seconds[:,None]/6)*np.ones((1,14)),
              current=.3*np.sin(2*np.pi*seconds[:,None]/6)*np.ones((1,14)),sample_ns=t,receive_ns=t+1234,

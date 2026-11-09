@@ -80,9 +80,14 @@ def truth_isolation(root,output,reference_candidate):
         protocol='entire evaluation directory physically moved outside session; new Python process; restored in finally; no latent plant passed to inference')
 
 
-def verify_staged(folder,output,stability_analysis=None,attribution_analysis=None,freeze=False,final_analysis=None):
+def verify_staged(folder,output,stability_analysis=None,attribution_analysis=None,freeze=False,final_analysis=None,development_analysis=None):
     from .staged_protocol import require_legacy_execution,p0_status
     root=Path(folder);config=json.loads((root/'session.json').read_text())['config']
+    if development_analysis is not None:
+        if any(x is not None for x in (stability_analysis,attribution_analysis,final_analysis)) or freeze or config.get('schema_version')!=2:
+            raise ValueError('Development reanalysis verification requires exclusive P0 R1 input')
+        from .staged_development_validation import verify_development
+        return verify_development(root,output,analysis=development_analysis)
     if final_analysis is not None:
         if stability_analysis is not None or attribution_analysis is not None or freeze or config.get('schema_version')!=2:raise ValueError('R4 verification requires exclusive final analysis and P0 parent')
         from .staged_final_validation import verify_final

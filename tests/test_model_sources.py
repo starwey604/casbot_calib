@@ -18,7 +18,7 @@ def test_all_sources_and_meshes_load_without_changing_the_default(variant,count)
     assert len(report['files'])==report['referenced_files']
     from casbot_calib.dual_model import nominal_dual_arm
     engine,old=nominal_dual_arm()
-    assert len(engine.model.joints)==14 and 'benchmark_nominal.urdf' in old['source']
+    assert len(engine.model.joints)==14 and 'bare_flange_1105_03_gauge_v2' in old['source']
 
 
 def test_source_paths_are_independent_of_cwd_and_accept_an_explicit_install_root(tmp_path,monkeypatch):

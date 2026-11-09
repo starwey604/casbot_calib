@@ -31,7 +31,7 @@ def main():
     args=parser.parse_args();root=args.output.resolve();root.mkdir(parents=True,exist_ok=False)
     os.environ['ROS_LOCALHOST_ONLY']='1';domain=180+int(uuid.uuid4().hex[:2],16)%25;os.environ['ROS_DOMAIN_ID']=str(domain)
     baseline=position_config('configs/vendor_s2.yaml');engine,source=nominal_dual_arm();names=[j.name for j in engine.model.joints]
-    model_id='casbot_20251015_nominal:'+source['sha256'][:12];model_path=str(files('casbot_calib').joinpath('assets/casbot_dual_arm_benchmark_nominal.urdf'))
+    model_id=engine.model.model_id;model_path=str(__import__('casbot_calib.model_context',fromlist=['load_context']).load_context().urdf)
     native=Path('install/humble-ros/casbot_calib_transport/lib/casbot_calib_transport/mock_host').resolve()
     vendor=Path(os.environ.get('CASBOT_VENDOR_INSTALL','install/vendor'))/'casbot_calib_vendor/lib/casbot_calib_vendor'
     rng=np.random.default_rng(20261029);cases=[dict(name=f'normal_{hz}_{rep}',hz=hz,fault='',repeat=rep) for rep in range(2) for hz in (100,250,500)]
@@ -44,7 +44,7 @@ def main():
     for case in cases:
         folder=root/case['name'];folder.mkdir();endpoint='/casbot_calib_s2_'+uuid.uuid4().hex[:10]
         if case['fault']=='start_changed':endpoint=saved_endpoint
-        home=np.array([0,.45,0,-.9,0,0,0,0,-.45,0,-.9,0,0,0],dtype=float);home[0]=.01*case['repeat']
+        home=__import__('casbot_calib.model_context',fromlist=['load_context']).load_context().home;home[0]=.01*case['repeat']
         if case['fault']=='start_changed':home[0]=.06
         # Public nominal model selects fixed synthetic servo gains, not a second
         # mechanics implementation or calibration truth. Same rule at all rates.

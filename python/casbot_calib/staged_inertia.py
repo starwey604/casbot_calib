@@ -10,6 +10,7 @@ from .dual_identification import periodic_observations
 from .rigid_identification import fit_rigid,model_from_parameters
 from .staged_identification import recordings,session_config,_windows,_residual,friction_pairs
 from .torque_observations import output_torque
+from .static_intervals import observation_problem as static_observations, metrics as static_metrics
 
 
 def _project(values,harmonics):
@@ -57,7 +58,7 @@ def periodic_problem(nominal,obs,meta,gain,static,harmonics=40,phase_points=1024
     target=data['current']*gain-fixed-rotor
     moving=abs(v)>.015
     return dict(regression=regression,extra=extra,fixed_friction=fixed,rotor=rotor,target=target,current_torque=data['current']*gain,
-        moving=moving,**data,preprocessing=dict(harmonics=harmonics,phase_points=phase_points,discard_periods=2,
+        moving=moving,static_observations=static_observations(nominal,obs,gain),**data,preprocessing=dict(harmonics=harmonics,phase_points=phase_points,discard_periods=2,
             frequency_band_hz=[0,harmonics/meta['conditions']['period_s']],
             source='actual acquired position/current Fourier regression; analytic position derivatives; identical projection of model terms',
             friction_order='acquired velocity -> nonlinear dry/Stribeck features -> same Fourier projection as current',
@@ -82,10 +83,15 @@ def _metrics(problem,theta,friction,static,floor):
         # Static reaction is set-valued; no unique zero-speed friction torque is
         # inferred from position alone. Test the independently measured interval.
         held_excess.append(float(np.max(np.maximum(abs(rigid[quiet,j]-observed[quiet,j])-static[j],0),initial=0.)))
-    return dict(rmse_nm=rmse,normalized_rmse=normalized,moving_samples=counts,
+    result=dict(rmse_nm=rmse,normalized_rmse=normalized,moving_samples=counts,
         maximum_normalized_rmse=max((v for v in normalized if v is not None),default=float('inf')),
         stationary_interval_excess_nm=held_excess,maximum_stationary_interval_excess_nm=max(held_excess),
-        stationary_convention='rigid predicted effort +/- frozen operational static-friction bound; no false unique hold prediction')
+        stationary_convention='legacy projected low-speed diagnostic, not a physical raw static interval')
+    if 'static_observations' in problem:
+        result['filtered_stationary_diagnostic']=dict(interval_excess_nm=held_excess,maximum_excess_nm=max(held_excess),
+            used_for_acceptance=False,reason='Fourier truncation does not preserve pointwise friction bounds')
+        result.update(static_metrics(problem['static_observations'],theta,static))
+    return result
 
 
 def probe_metrics(p,candidate,theta,friction):
@@ -180,7 +186,7 @@ def identify_inertia(root,output,gravity_report,friction_report,breakaway_report
     checks=dict(physical_candidate=True,gravity_and_friction_preserved=preserved['passed'],
         all_axes_excited=bool(np.all(minimum_speed>.01) and np.all(minimum_acceleration>.02)),
         dedicated_wrist_prediction=bool(probe_validation and all(p['passed'] for p in probe_validation.values())),
-        independent_prediction=all(r['maximum_normalized_rmse']<=config['acceptance']['dynamic_normalized_rmse'] and r['maximum_stationary_interval_excess_nm']<=.01 for r in validation.values()))
+        independent_prediction=all(r.get('stationary_qualified',True) and r['maximum_normalized_rmse']<=config['acceptance']['dynamic_normalized_rmse'] and r['maximum_stationary_interval_excess_nm']<=.01 for r in validation.values()))
     report=dict(stage='inertia',passed=all(checks.values()),checks=checks,initial_fit=initial,joint_refinement=refined,
         refinement_band=dict(lower=lower.tolist(),upper=upper.tolist(),selection='one predeclared bounded fit; validation trajectories never used for selection'),
         validation=validation,initial_validation=initial_validation,prior_stage_acceptance=preserved,

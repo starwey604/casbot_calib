@@ -4,7 +4,9 @@
 
 本项目采用 **C++ 高性能底层计算 + Python 灵活工作流编排 + ROS 2 Humble 实时通信** 的混合架构，支持从离线激励轨迹生成、安全边界与自碰撞预检（Preflight Check）、真机/仿真数据采集，到摩擦、重力与惯量参数分步辨识及可视化报告生成的完整闭环。
 
-**模型替换进行中**：整体迁移到`casbot_hl12p1_dvt2`，大型资源用Git LFS；完成后不保留旧nominal运行选项。N1已提交（`10fb5be`），N2已提交（`cfe855e`），当前工作状态CAD模型已完成[8/8组进退参考与中文回放](docs/trical_1105_release_then_turn.md)，左D、右C采用脱离后转向。[N3前三轮](docs/dvt2_n3_integration.md)已接入共享上下文、候选导出、动力学/SDK及[实际四球装配K2–K4](docs/dvt2_trical_integration.md)；`configs/dvt2/`可显式演练新模型；默认入口尚未整体切换，N3后续/N4继续按[替换计划](docs/dvt2_model_migration_plan.md)推进；源模型见[导入指南](docs/dvt2_model_sources.md)。实机自由测杆包络仍待量测。
+**默认模型已统一为DVT2**：动力学、运动学、SDK Mock、碰撞、导出和只读显示使用`casbot_hl12p1_dvt2_bare_flange_1105_03_gauge_v2`。普通手已拆除，动力学使用裸法兰整机＋地面；运动学使用同一个三表工具左右依次换装和实际四球。原命令/配置文件名保留，旧模型不再是运行选项；历史记录不得改绑。迁移与验证见[N4收尾](docs/dvt2_n4_closeout.md)，源资源通过Git LFS取得。实机工具负载、自由测杆包络和安装计量仍待核验。
+
+**DVT2 P0与N4进展**：SDK H4代表性合成验证已通过；[004开发实验](docs/dvt2_acceleration_development.md)的60条新数据与独立R1复核通过，但R2删构型腕部惯量差仍达23.8–24.0%，超过10%门槛。N4尚未整体验收，不进入R3/R4、不采正式test；下一步针对左腕yaw做可辨识性与激励设计。完整结果见[N4收尾](docs/dvt2_n4_closeout.md)。
 
 **首次使用请从 [🚀 动力学标定启动指南](docs/dynamics_getting_started.md) 开始**：环境安装、第一次 Mock 标定、逐阶段推进、静态现场预设、SDK 只读采集和候选 URDF 导出，附可执行命令与报告位置。
 

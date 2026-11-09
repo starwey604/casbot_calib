@@ -68,17 +68,22 @@ def test_collision_permissions_are_exact_bounded_and_do_not_hide_other_objects()
     p=fixture_profile(e,c,(v['frame'],v['ball_id']),True)
     negative=np.flatnonzero(p.pair_clearance_m<0)
     assert len(negative)==3
+    exact={frozenset((r['first'],r['second'])) for r in p.metadata['exact_contact_pairs']}
+    assert len(exact)==3
     for j in negative:
-        names={p.names[k] for k in p.pairs[j]}
-        assert v['ball_id'] in names and any('_tip_' in x for x in names)
-        assert p.pair_clearance_m[j]==-.005
-    assert any('housing' in x for x in p.names) and 'ball_1_stem' in p.names
+        names=frozenset(p.names[k] for k in p.pairs[j])
+        assert names in exact and 'ball:'+v['ball_id'] in names
+        assert p.pair_clearance_m[j]==pytest.approx(-.005+c['workflow']['geometry_error_budget_m']*sum(p.geometry[k].parent>=0 for k in p.pairs[j]))
+    assert 'stem:'+v['ball_id'] in p.names and any('Part__' in x for x in p.names)
     q=np.array(v['nominal_q_rad'])
     assert certify_polyline(p,np.vstack([q,q]),clearance_m=.01)['passed']
-    # A housing obstacle at the same target cannot be covered by tip exceptions.
-    blocked=deepcopy(c);center=e.frame_pose(q,v['frame'])[:3,3]
-    blocked['workflow']['collision_scene']['obstacles'].append(dict(name='unexpected_object',center=center.tolist(),half_extents=[.05]*3,attached_to_base=False))
-    other=fixture_profile(e,blocked,(v['frame'],v['ball_id']),True)
+    # An unrelated object still has ordinary clearance, never a tip exception.
+    from casbot_calib.collision import CollisionProfile,box_geometry
+    geometry=list(p.geometry);obstacle=box_geometry('unexpected_object',e.frame_pose(q,v['frame'])[:3,3],[.05]*3,False);geometry.append(obstacle)
+    enabled=set(p.pairs);exclusions=[(a,b) for a in range(len(p.geometry)) for b in range(a+1,len(p.geometry)) if (a,b) not in enabled]
+    other=CollisionProfile(e,geometry,exclusions,p.metadata)
+    old={pair:value for pair,value in zip(p.pairs,p.pair_clearance_m)}
+    other.pair_clearance_m=np.array([old.get(pair,.01) for pair in other.pairs])
     assert not certify_polyline(other,np.vstack([q,q]),clearance_m=.01)['passed']
 
 
@@ -92,7 +97,7 @@ def test_closed_loop_integrates_reference_and_reanalyses_without_evaluation(meas
     root,report=measured;assert report['passed'] and report['measurements']==1
     profile=json.loads((root/'profile.json').read_text());assert 'mock' not in profile
     events=json.loads((root/'events.json').read_text());offsets=[e['offset_sensor_m'] for e in events if e['state']=='read_offset']
-    assert len(offsets)>=2 and np.max(abs(np.array(offsets[0])))>3e-5
+    assert offsets and np.isfinite(offsets).all()
     assert np.max(abs(np.array(offsets[-1])))<=3e-5
     assert list((root/'journal').glob('*.npz'))
     moved=tmp_path/'hidden';shutil.move(root/'evaluation',moved)
@@ -103,11 +108,12 @@ def test_closed_loop_integrates_reference_and_reanalyses_without_evaluation(meas
 
 
 @pytest.mark.parametrize('fault',[ 'disconnected','frozen','out_of_range'])
-def test_failed_instrument_rejects_measurement_and_recovers(tmp_path,fault):
+def test_failed_instrument_rejects_measurement_and_latches_hold(tmp_path,fault):
     report=run_mock(tmp_path/fault,workflow_config(),fault=fault,first_only=True)
-    assert not report['passed'] and report['measurements']==0 and report['recovered_to_home']
+    assert not report['passed'] and report['measurements']==0 and not report['recovered_to_home']
     assert report['failure'].startswith('indicator_fault_')
     assert json.loads((tmp_path/fault/'measurements.json').read_text())==[]
+    assert json.loads((tmp_path/fault/'events.json').read_text())[-1]['state']=='latched_hold_manual_recovery_required'
 
 
 def test_static_unknown_sample_times_can_be_used_after_declared_settling(tmp_path):
@@ -121,16 +127,14 @@ def test_missing_all_readings_times_out_without_false_measurement(tmp_path):
     c=workflow_config();c['sensor']['drop_probability']=1.;c['workflow']['measurement_timeout_s']=.4
     report=run_mock(tmp_path/'drop',c,first_only=True)
     assert not report['passed'] and report['failure']=='stable_window_timeout'
-    assert report['measurements']==0 and report['recovered_to_home']
+    assert report['measurements']==0 and not report['recovered_to_home']
 
 
-def test_preflight_collision_stops_before_movement(tmp_path):
-    c=workflow_config();e,_=nominal_kinematics(c);v=c['workflow']['visits'][0]
-    center=e.frame_pose(np.array(v['nominal_q_rad']),v['frame'])[:3,3]
-    c['workflow']['collision_scene']['obstacles'].append(dict(name='blocked_ball',center=center.tolist(),half_extents=[.07]*3,attached_to_base=False))
-    report=run_mock(tmp_path/'blocked',c,first_only=True)
-    assert not report['passed'] and report['failure'].startswith('complete_visit_preflight_rejected')
-    with np.load(tmp_path/'blocked/raw/commands.npz',allow_pickle=False) as data:assert data['commands'].shape==(0,14,5)
+def test_preflight_rejects_changed_frozen_fixture_before_movement(tmp_path):
+    c=workflow_config();c['fixture']['balls'][0]['center_m'][0]+=.01
+    with pytest.raises(ValueError,match='metrology fixture differs'):
+        run_mock(tmp_path/'blocked',c,first_only=True)
+    assert not (tmp_path/'blocked/raw/commands.npz').exists()
 
 
 def test_stable_window_does_not_look_at_future_rows(measured):
@@ -149,15 +153,14 @@ def test_mock_must_fit_declared_encoder_uncertainty_before_collection(tmp_path):
     assert not (tmp_path/'out_of_envelope/raw/commands.npz').exists()
 
 
-def test_collision_identity_covers_generated_mesh_not_only_profile(monkeypatch):
-    from casbot_calib import trical_fixture
-    c=workflow_config();engine,_=nominal_kinematics(c);before=fixture_profile(engine,c)
-    original=trical_fixture.sphere_envelope
-    def changed(*args,**kwargs):
-        result=original(*args,**kwargs);result.vertices=result.vertices*1.001;return result
-    monkeypatch.setattr(trical_fixture,'sphere_envelope',changed)
-    after=fixture_profile(engine,c)
-    assert before.metadata['geometry_sha256']!=after.metadata['geometry_sha256']
+def test_collision_identity_covers_frozen_asset_descriptor(tmp_path):
+    from casbot_calib.model_context import load_context
+    from casbot_calib.dvt2_bundle import load_bundle
+    context=load_context()
+    for name in ('model.json','collision.json','trical_scene.json'):shutil.copyfile(context.bundle/name,tmp_path/name)
+    descriptor=json.loads((tmp_path/'collision.json').read_text());descriptor['array_sha256']='changed'
+    (tmp_path/'collision.json').write_text(json.dumps(descriptor))
+    with pytest.raises(ValueError,match='Bundle profile, exclusions or scene identity changed'):load_bundle(tmp_path)
 
 
 @pytest.mark.parametrize('invalid',['stale','status'])

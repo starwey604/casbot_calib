@@ -24,7 +24,7 @@ class FakeBackend(batch.SDKBatchBackend):
 
     def snapshot(self, profile, output, domain_id):
         self.snapshots += 1; shutil.copytree(self.seed_snapshot, output)
-        write_json(Path(output)/'request.json',dict(domain_id=domain_id))
+        write_json(Path(output)/'request.json',dict(config=field.load_profile(profile),domain_id=domain_id))
         field.seal(output)
         return dict(passed=True)
 

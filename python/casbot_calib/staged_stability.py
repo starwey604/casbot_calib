@@ -5,7 +5,7 @@ import csv
 import numpy as np
 from . import _core
 from .data import write_json
-from .dual_model import nominal_dual_arm
+from .model_runtime import model_for
 from .rigid_identification import fit_rigid, parameter_scales, model_from_parameters
 from .staged_protocol import load_protocol, file_hash, _read, _seal, _unseal
 from .staged_development import frozen_predecessors, collection_lock
@@ -65,8 +65,8 @@ def _snapshot_sources():
     return {p.name:file_hash(p) for p in sorted(root.glob('*.py'))}
 
 
-def prepare_analysis(root,output,config,parent):
-    nominal,source=nominal_dual_arm()
+def prepare_analysis(root,output,config,parent,development=None):
+    nominal,source=model_for(config)
     if source['sha256']!=parent['model']['sha256']:raise ValueError('Nominal geometry differs from the recorded model')
     prior=frozen_predecessors(root)
     g,f,s=(_read(prior/stage/'report.json') for stage in ('gravity','friction','breakaway'))
@@ -91,7 +91,7 @@ def prepare_analysis(root,output,config,parent):
     protocol=dict(schema_version=1,round='R2',parent=str(Path(root).resolve()),parent_protocol_sha256=file_hash(Path(root)/'protocol.json'),
         train_manifest_sha256=file_hash(Path(root)/'role_inputs/train.json'),predecessor_freeze_sha256=file_hash(Path(root)/'predecessor_freeze.json'),
         native_binary_sha256=file_hash(_core.__file__),model_source=source,source_sha256=_snapshot_sources(),policy=policy,
-        settings=config['p0']['stability'],ridge_candidates=config['p0']['selection']['ridge_candidates'],
+        development_qualification=development,settings=config['p0']['stability'],ridge_candidates=config['p0']['selection']['ridge_candidates'],
         inputs={name:file_hash(output/name) for name in files},truth_read=False,test_consumed=False)
     _seal(output,'analysis_protocol.json',protocol)
     return protocol
@@ -103,6 +103,10 @@ def load_analysis(root,output):
         raise ValueError('R2 frozen parent inputs changed')
     if protocol['source_sha256']!=_snapshot_sources() or protocol['native_binary_sha256']!=file_hash(_core.__file__):
         raise ValueError('R2 implementation changed; use a new analysis directory')
+    if protocol.get('development_qualification') is not None:
+        from .staged_development import accepted_development
+        evidence=protocol['development_qualification']
+        if accepted_development(root,evidence.get('verification'))!=evidence:raise ValueError('R1 development qualification changed')
     for path,expected in protocol['inputs'].items():
         if file_hash(output/path)!=expected:raise ValueError('R2 fixed coordinates/probes/priors changed')
     return protocol,config
@@ -127,16 +131,18 @@ def _train_summary(problems,model,theta,friction,static,config):
         scope='all train only, including omitted groups as held-group diagnostics; not selection or final test')
 
 
-def run_stability(root,output,resume=False):
+def run_stability(root,output,resume=False,development_verification=None):
     root=Path(root);output=Path(output);started=perf_counter();parent,config,_=load_protocol(root)
     if parent['schema_version']!=2:raise ValueError('R2 needs a certified R1 session')
+    from .staged_development import accepted_development
+    development=accepted_development(root,development_verification)
     if output.exists() and not resume:raise FileExistsError(output)
     if not output.exists():
-        output.mkdir(parents=True,exist_ok=False);prepare_analysis(root,output,config,parent)
+        output.mkdir(parents=True,exist_ok=False);prepare_analysis(root,output,config,parent,development)
     protocol,config=load_analysis(root,output)
     with collection_lock(output):
         coordinates=_arrays(output/'coordinates.npz');probes=_arrays(output/'operator_probe_set.npz')
-        nominal,source=nominal_dual_arm();training=load_problems(root,'train',coordinates['static'])
+        nominal,source=model_for(config);training=load_problems(root,'train',coordinates['static'])
         y,x,target,weights=assemble_training(training,config)
         if not (output/'training_setup.json').exists():
             basis=comparison_basis(np.column_stack([y,x]),coordinates['scales'],coordinates['equality'])

@@ -202,8 +202,9 @@ def run_suite(folder,config):
     folder=Path(folder).resolve();folder.mkdir(parents=True,exist_ok=False)
     model,source=nominal_dual_arm();names=[j.name for j in model.model.joints]
     from importlib.resources import files
-    model_path=folder/'nominal.urdf';model_path.write_bytes(files('casbot_calib').joinpath('assets/casbot_dual_arm_benchmark_nominal.urdf').read_bytes())
-    session={**config,'joint_names':names,'model_id':'casbot_20251015_nominal:'+source['sha256'][:12],
+    from .model_context import load_context
+    context=load_context();model_path=context.urdf
+    session={**config,'joint_names':names,'model_id':context.model_id,'model_context':context.identity,
              'rmw':get_rmw_implementation_identifier(),
              'instrumentation':'inline C++ CSV; ROS event diagnostics', 'zero_gravity':True}
     write_json(folder/'session.json',session)

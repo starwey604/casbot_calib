@@ -217,8 +217,10 @@ def check_reload(path,expected,source,*,samples=32,seed=20261029):
 
 
 def export_dynamics_urdf(analysis,output,stage='inertia',context=None):
+    from .model_context import load_context
+    context=load_context() if context is None else context
     engine,metadata=_snapshot(analysis,stage,context);output=Path(output);output.mkdir(parents=True,exist_ok=False)
-    source=context.urdf if context is not None else files('casbot_calib').joinpath('assets/casbot_dual_arm_benchmark_nominal.urdf')
+    source=context.urdf
     metadata['aggregation']=write_inertial_urdf(source,engine,output/'candidate.urdf')
     metadata['urdf_sha256']=sha256(output/'candidate.urdf')
     write_json(output/'calibration.json',metadata)
@@ -236,6 +238,8 @@ def export_dynamics_urdf(analysis,output,stage='inertia',context=None):
 
 
 def load_exported_dynamics(folder,context=None):
+    from .model_context import load_context
+    context=load_context() if context is None else context
     root=Path(folder);_manifest(root,('candidate.urdf','calibration.json','report.json','bodies.csv'));metadata=_read(root/'calibration.json')
     if not _read(root/'report.json')['passed']:raise ValueError('URDF reload verification rejected')
     if 'model_context' in metadata:
@@ -243,7 +247,7 @@ def load_exported_dynamics(folder,context=None):
         context=resolve_context(metadata['model_context'],context)
     expected=_expected(metadata,context)
     if sha256(root/'candidate.urdf')!=metadata['urdf_sha256']:raise ValueError('URDF differs from calibration sidecar')
-    source=context.urdf if context is not None else files('casbot_calib').joinpath('assets/casbot_dual_arm_benchmark_nominal.urdf')
+    source=context.urdf
     if _without_inertials(ET.parse(root/'candidate.urdf').getroot(),root/'candidate.urdf')!=_without_inertials(ET.parse(source).getroot(),source):
         raise ValueError('Exported geometry differs from bound source')
     loaded=_restore_runtime(_core.ArmDynamics.from_urdf(str(root/'candidate.urdf')),metadata['runtime'])
@@ -253,11 +257,13 @@ def load_exported_dynamics(folder,context=None):
 
 
 def verify_dynamics_export(folder,output,context=None):
+    from .model_context import load_context
+    context=load_context() if context is None else context
     loaded,metadata=load_exported_dynamics(folder,context)
     if 'model_context' in metadata:
         from .model_context import resolve_context
         context=resolve_context(metadata['model_context'],context)
-    source=context.urdf if context is not None else files('casbot_calib').joinpath('assets/casbot_dual_arm_benchmark_nominal.urdf')
+    source=context.urdf
     result=check_reload(Path(folder)/'candidate.urdf',_expected(metadata,context),source)
     result['export_manifest_sha256']=sha256(Path(folder)/'manifest.json')
     output=Path(output);output.mkdir(parents=True,exist_ok=False);write_json(output/'report.json',result)

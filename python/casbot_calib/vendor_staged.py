@@ -156,8 +156,14 @@ class StagedObservations:
             exp.get('end_ns')!=origin+round(motion['knots_s'][windows[-1]+1]*1e9) or exp.get('harmonics')!=40 or
             exp.get('period_s')!=motion['conditions']['period_s']):raise ValueError('S4 periodic window/band differs from frozen motion')
         arrays,details=periodic_observation_problem(meta,data,report)
+        from .static_intervals import observation_problem
+        from .dual_model import nominal_dual_arm
+        raw=dict(q=data['q'],dq=data['dq'],torque_nm=data['torque_nm'],sample_ns=data['aligned_position_time_ns'],status=data['status_raw'])
+        stationary=observation_problem(nominal_dual_arm()[0],raw)
+        if not np.array_equal(data['aligned_position_time_ns'],data['signal_time_ns']):
+            stationary.update(eligible=False,reason='raw position and torque acquisition clocks are not synchronized')
         basis=arrays['friction_basis'];fixed=basis[:,:,28:]@np.asarray(static)
-        return dict(regression=arrays['regression'],extra=basis[:,:,:28],fixed_friction=fixed,rotor=arrays['rotor'],
+        return dict(static_observations=stationary,regression=arrays['regression'],extra=basis[:,:,:28],fixed_friction=fixed,rotor=arrays['rotor'],
                     target=arrays['target']-fixed,observed_torque_nm=arrays['torque_nm'],q=arrays['q'],dq=arrays['dq'],ddq=arrays['ddq'],
                     moving=abs(arrays['dq'])>.015,preprocessing=dict(frequency_band_hz=[0,details['fit_band_hz']],
                         source='S3 qualified output torque and Pinocchio; no current alias',harmonics=details['harmonics']))

@@ -30,7 +30,7 @@ def regularization_path(analysis,settings,reference_ridge=1e-4):
 def verify_stability(root,analysis,output):
     from .staged_identification import recordings
     from .rigid_identification import model_from_parameters
-    from .dual_model import nominal_dual_arm
+    from .model_runtime import model_for
     root=Path(root).resolve();analysis=Path(analysis).resolve();output=Path(output)
     parent,config,manifest=load_protocol(root);protocol=_unseal(analysis,'analysis_protocol.json')
     if protocol['parent_protocol_sha256']!=file_hash(root/'protocol.json') or protocol['train_manifest_sha256']!=file_hash(root/'role_inputs/train.json'):
@@ -52,7 +52,7 @@ def verify_stability(root,analysis,output):
     if len(results)!=30 or len({r['label'] for r in results})!=30:raise ValueError('Incomplete R2 analysis')
     with np.load(analysis/'coordinates.npz',allow_pickle=False) as data:coordinates={k:data[k] for k in data.files}
     with np.load(analysis/'operator_probe_set.npz',allow_pickle=False) as data:probes={k:data[k] for k in data.files}
-    nominal,source=nominal_dual_arm()
+    nominal,source=model_for(config)
     if source['sha256']!=parent['model']['sha256']:raise ValueError('Nominal geometry changed')
     identity=[]
     for row in results:

@@ -5,6 +5,7 @@ import sys
 import tempfile
 import numpy as np
 from .data import write_json
+from .model_runtime import collision_for,context_for
 from .staged_protocol import file_hash,_read,_seal
 from .staged_final import load_final_protocol
 from .staged_attribution import check_manifest
@@ -12,7 +13,7 @@ from .staged_attribution_validation import equivalent
 
 
 def verify_final(root,analysis,output):
-    from .collision import nominal_profile,certify_polyline
+    from .collision import certify_polyline
     from .staged_collection import load_trial,synthetic_plant
     from .staged_motion import Motion,gate_motion
     from .staged_validation import numerical_replays,energy_oracle
@@ -40,7 +41,7 @@ def verify_final(root,analysis,output):
         maximum_friction_relative_error=.05,query_references=protocol['replay_trials'][:3],points_per_reference=128,
         source='unchanged 5% limits from staged_delivery.evaluate_synthetic; fixed planned reference probes, not residual-selected poses',
         used_by_identification=False,used_for_selection=False))
-    profile=nominal_profile(scene=_read(root/'session.json')['collision']['scene']);collision=[]
+    profile=collision_for(config,scene=_read(root/'session.json')['collision']['scene']);collision=[]
     for i,name in enumerate(protocol['all_calibration_trials']):
         meta,_=load_trial(root,name);motion=Motion(name,meta['stage'],np.asarray(config['home_rad']),meta['conditions'])
         motion.knots=meta['knots_s'];motion.states=[np.asarray(s) for s in meta['states']];motion.labels=meta['labels']
@@ -58,9 +59,9 @@ def verify_final(root,analysis,output):
     manifest=load_protocol(root)[2]
     expected=manifest['planned_execution_order']['train']+manifest['planned_execution_order']['selection']+protocol['acquisition_order']
     if completed!=expected:raise ValueError('Acquisition order/duplicates differ from frozen block order')
-    model=load_candidate(analysis/'models/D.json')
+    model=load_candidate(analysis/'models/D.json',context_for(config))
     numerical=numerical_replays(root,model,config,protocol['replay_trials'],model_scope='R4 frozen candidate')
-    energy=energy_oracle()
+    energy=energy_oracle(config)
     before={name:file_hash(root/'runs'/name/'observations.npz') for name in protocol['all_calibration_trials']}
     # Every current and externally reused truth directory is physically moved.
     source=load_development_reference(root);moved=[]
@@ -139,14 +140,14 @@ def _read_json(line):
 
 def audit_final_control(analysis,output):
     """Post-capture control audit; independent of both gain choice and rendering."""
-    from .collision import nominal_profile,certify_polyline
-    from .dual_model import nominal_dual_arm
+    from .collision import certify_polyline
+    from .model_runtime import model_for,collision_for,context_for
     from .staged_collection import load_trial
     from .staged_control import load_candidate,_metrics,_verify_reused_controller
     from .staged_motion import Motion,gate_motion
     analysis=Path(analysis);control=analysis/'control';session=_read(control/'session.json');config=session['config']
     check_manifest(control,'results_manifest.json');selection=_read(control/'controller_selection.json');result=_read(control/'control_comparison.json')
-    profile=nominal_profile(scene=session['collision']['scene']);nominal,_=nominal_dual_arm();candidate=load_candidate(analysis/'models/D.json');rows=[]
+    profile=collision_for(config,scene=session['collision']['scene']);nominal,_=model_for(config);candidate=load_candidate(analysis/'models/D.json',context_for(config));rows=[]
     for name in _read(control/'plan_report.json')['selected_trials']:
         meta,_=load_trial(control,name);conditions=meta['conditions'];is_tuning=meta['stage']=='control_tuning'
         factor=conditions['kp_factor'] if is_tuning else selection['selected_kp_factor'] if conditions['gain_strategy']=='tuned' else 1.

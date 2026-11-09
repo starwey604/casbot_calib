@@ -52,19 +52,22 @@ assert len(viewer_adapter(candidate).mappings)==14
 assert robot_profile(candidate).check(descriptor["profile"]["home_rad"])["distances"].min()>.01
 assert all((candidate/mesh.get("file")).resolve().is_file() for mesh in __import__("xml.etree.ElementTree",fromlist=["parse"]).parse(candidate/"scene.xml").findall("./asset/mesh") if mesh.get("file"))
 engine,source=nominal_dual_arm();q=np.zeros(14)
+assert "model_context" in source
+np.testing.assert_allclose(engine.workspace().nonlinear_effects(q,np.ones(14)*.2),engine.gravity(q)+engine.velocity_bias(q,np.ones(14)*.2),atol=1e-13)
+assert not (Path(casbot_calib.__file__).parent/"assets/casbot_dual_arm_benchmark_nominal.urdf").exists()
 kinematics,manifest=nominal_kinematics()
 assert "left_trical_tcp" in kinematics.frame_names() and "right_trical_tcp" in kinematics.frame_names()
 assert kinematics.frame_batch(np.zeros((2,14)),"left_trical_tcp")["jacobians"].shape==(2,6,14)
 sensor=_core.ArmPose();delta=np.array([.001,-.002,.003]);cal=calibration(default_config())
-assert np.max(np.abs(_core.trical_readings(sensor,delta,cal)-delta))<1e-14
+assert np.max(np.abs(_core.trical_readings(sensor,delta,cal)-(cal.axes@delta+cal.zero)))<1e-14
 workflow=workflow_config();measurement,_=nominal_kinematics(workflow)
 scene=fixture_profile(measurement,workflow)
-assert "ball_1_stem" in scene.names
+assert scene.metadata["route_phase"]=="free"
 geometry=measurement.point_geometry_batch(q[None,:],"left_trical_tcp",np.zeros((1,3)))
 assert geometry["placement_jacobians"].shape==(1,3,84)
 parameters=KinematicParameters(measurement);assert parameters.size==60
 assert np.max(np.abs(parameters.build(np.zeros(60)).frame_pose(q,"left_trical_tcp")-measurement.frame_pose(q,"left_trical_tcp")))<1e-12
-geometric_profile=k3_config();assert len(geometric_profile["fixture"]["balls"])==6
+geometric_profile=k3_config();assert len(geometric_profile["fixture"]["balls"])==4
 assert geometric_profile["parameter_policy"]["fit_enabled"] is True
 geometric_engine,_=nominal_kinematics(geometric_profile)
 assert np.max(np.abs(geometric_engine.frame_pose(q,"left_trical_tcp")-measurement.frame_pose(q,"left_trical_tcp")))<1e-12
@@ -81,12 +84,12 @@ commands=np.zeros((1,14,5));commands[0,:,2]=engine.gravity(q)
 observations,_=_core.ArmSimulationRunner(engine,config).run(np.array([0],dtype=np.int64),commands,2_000_000,q,q)
 assert observations["q"].shape==(3,14) and np.isfinite(observations["q"]).all()
 assert np.max(np.abs(observations["q"]))<1e-10
-print(json.dumps(dict(passed=True,core_path=_core.__file__,backend=engine.backend_version(),joints=14,dvt2_source_variants=list(source_variants),dvt2_default_changed=False,dvt2_candidate_loaded=True,python_physics_imports_disabled=True,editable_disabled=True)))
+print(json.dumps(dict(passed=True,core_path=_core.__file__,backend=engine.backend_version(),joints=14,dvt2_source_variants=list(source_variants),dvt2_default_changed=True,dvt2_candidate_loaded=True,python_physics_imports_disabled=True,editable_disabled=True)))
 '''
     result = json.loads(subprocess.check_output([sys.executable, '-I', '-c', probe, str(unpacked)], text=True))
     result.update(wheel=wheel.name, wheel_bytes=wheel.stat().st_size)
     (output / 'verification.json').write_text(json.dumps(result, indent=2) + '\n', encoding='utf-8')
-    print('Independent wheel import, five DVT2 sources, derived candidate, existing default and 14-axis native Mock: PASS')
+    print('Independent wheel import, five DVT2 sources, derived candidate, DVT2 default and 14-axis native Mock: PASS')
 
 
 if __name__ == '__main__':

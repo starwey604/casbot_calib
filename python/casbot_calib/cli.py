@@ -164,9 +164,12 @@ def main(argv=None):
     staged_analysis.add_argument('--through',choices=('gravity','friction','breakaway','inertia','stability','attribution','final'),default='inertia')
     staged_analysis.add_argument('--final-protocol',type=Path,help='R4: preregistered final analysis directory; no fits or device access')
     staged_analysis.add_argument('--stability-verification',type=Path,help='R3: independently verified R2 directory')
+    staged_analysis.add_argument('--reuse-development-fit',action='store_true',help='R1: rescore a sealed fit without mechanical refitting, collection or raw edits')
+    staged_analysis.add_argument('--development-verification',type=Path,help='Explicit accepted R1 revalidation evidence for R2; preserves original checkpoint')
     staged_analysis.add_argument('--resume',action='store_true',help='Continue only an unchanged R2 stability analysis')
     staged_verify=sub.add_parser('staged-verify',help='Recheck all collision gates, numerical convergence and truth-isolated inference')
     staged_verify.add_argument('folder',type=Path);staged_verify.add_argument('--output',type=Path,required=True)
+    staged_verify.add_argument('--development-analysis',type=Path,help='R1: verify a new observation-only development reanalysis without changing the old checkpoint')
     staged_verify.add_argument('--stability-analysis',type=Path,help='R2: verify sealed sensitivity fits and compare the regularization path')
     staged_verify.add_argument('--attribution-analysis',type=Path,help='R3: verify matched-band component/selection evidence')
     staged_verify.add_argument('--final-analysis',type=Path,help='R4: accepted frozen test analysis for comprehensive verification')
@@ -377,7 +380,7 @@ def main(argv=None):
         return 0 if result['passed'] else 1
     if args.command=='staged-verify':
         from .staged_validation import verify_staged
-        result=verify_staged(args.folder,args.output,args.stability_analysis,args.attribution_analysis,args.freeze_candidate,args.final_analysis)
+        result=verify_staged(args.folder,args.output,args.stability_analysis,args.attribution_analysis,args.freeze_candidate,args.final_analysis,args.development_analysis)
         print(f"Comprehensive staged verification: {'PASS' if result['passed'] else 'FAIL'} -> {args.output}",flush=True)
         return 0 if result['passed'] else 1
     if args.command=='staged-suite':
@@ -387,7 +390,7 @@ def main(argv=None):
         return 0 if result['passed'] else 1
     if args.command=='staged-identify':
         from .staged_analysis import identify_staged
-        result=identify_staged(args.folder,args.output,args.through,args.resume,args.stability_verification,args.final_protocol)
+        result=identify_staged(args.folder,args.output,args.through,args.resume,args.stability_verification,args.final_protocol,args.reuse_development_fit,args.development_verification)
         print(f"Staged analysis: {'PASS' if result['passed'] else 'FAIL'} -> {args.output}",flush=True)
         return 0 if result['passed'] else 1
     if args.command=='staged-calibrate':

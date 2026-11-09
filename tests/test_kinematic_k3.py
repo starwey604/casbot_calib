@@ -19,7 +19,7 @@ def test_nominal_and_nonzero_mdh_native_frames_and_inertias_are_equivalent():
     for values in (np.zeros(p.size),rng.uniform(-.1,.1,p.size)):
         original=p.build(values);mdh=p.equivalent_mdh_engine(values)
         for q in rng.uniform(-.5,.5,(6,14)):
-            for frame in ('left_trical_tcp','right_trical_tcp','left_palm_base_link','right_palm_base_link'):
+            for frame in ('left_trical_tcp','right_trical_tcp','left_flange_frame','right_flange_frame'):
                 np.testing.assert_allclose(original.frame_pose(q,frame),mdh.frame_pose(q,frame),atol=2e-14)
             np.testing.assert_allclose(original.mass_matrix(q),mdh.mass_matrix(q),atol=2e-13)
             if not np.any(values):np.testing.assert_allclose(original.mass_matrix(q),native.mass_matrix(q),atol=2e-13)
@@ -152,7 +152,7 @@ def test_k3_profile_has_three_noncollinear_metric_targets_per_arm():
     assert manifest['geometry_sha256']==old_manifest['geometry_sha256']
     for frame in ('left_trical_tcp','right_trical_tcp'):
         points=np.array([ball_world(config,v['ball_id']) for v in config['workflow']['visits'] if v['frame']==frame])
-        assert len(points)==3 and np.linalg.matrix_rank(points-points.mean(axis=0),tol=1e-9)==2
+        assert len(points)==4 and np.linalg.matrix_rank(points-points.mean(axis=0),tol=1e-9)==3
     assert config['control_period_ns']==2_000_000
 
 
@@ -160,8 +160,10 @@ def test_design_rejects_invalid_uncertainty_frequency_and_condition_settings(tmp
     from casbot_calib.kinematic_design import k3_config
     import yaml
     path=tmp_path/'profile.yaml'
-    for key,value in [('sigma_m',0.),('variation_rad',float('nan')),('maximum_condition',1.),('validation_limit_m',-1.),('pool_per_ball',True)]:
-        path.write_text(yaml.safe_dump(dict(profile='trical_geometry_v1',design={key:value})))
+    for key,value in [('sigma_m',0.),('variation_rad',float('nan')),('maximum_condition',0.),('validation_limit_m',-1.),('pool_per_ball',True)]:
+        from pathlib import Path
+        root=Path(__file__).resolve().parents[1]
+        path.write_text(yaml.safe_dump(dict(profile='dvt2_trical_geometry_v1',routes=str(root/'configs/trical_1105_release_turn_reference.json'),route_settings=str(root/'configs/trical_1105_release_turn_settings.json'),design={key:value})))
         with pytest.raises(ValueError):k3_config(path)
 
 

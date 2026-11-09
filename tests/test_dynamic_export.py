@@ -11,7 +11,7 @@ from casbot_calib.rigid_identification import model_from_parameters
 from casbot_calib.dynamic_export import export_dynamics_urdf,load_exported_dynamics,verify_dynamics_export,check_reload,write_inertial_urdf
 from casbot_calib.vendor_identity import sha256
 
-SOURCE=files('casbot_calib').joinpath('assets/casbot_dual_arm_benchmark_nominal.urdf')
+SOURCE=__import__('casbot_calib.model_context',fromlist=['load_context']).load_context().urdf
 
 
 def write(path,data):Path(path).write_text(json.dumps(data)+'\n')
@@ -62,17 +62,16 @@ def test_export_is_lossless_and_inputs_immutable(accepted,tmp_path):
 def test_fixed_hand_aggregate_not_counted_twice_and_xml_has_com_inertia(accepted,tmp_path):
     analysis,expected=accepted;export_dynamics_urdf(analysis,tmp_path/'export')
     root=ET.parse(tmp_path/'export/candidate.urdf').getroot()
-    assert root.find("link[@name='left_palm_base_link']/inertial") is None
-    assert root.find("joint[@name='left_hand_joint']") is not None
+    assert root.find("link[@name='left_flange_frame']/inertial") is None
+    assert root.find("link[@name='left_palm_base_link']") is None
     inertial=root.find("link[@name='left_wrist_roll_link']/inertial")
     assert float(inertial.find('mass').get('value'))==pytest.approx(.4)
     np.testing.assert_allclose(np.fromstring(inertial.find('origin').get('xyz'),sep=' '),[.01,-.015,.02],atol=1e-15)
     assert inertial.find('origin').get('rpy')=='0 0 0'
     assert float(inertial.find('inertia').get('ixy'))==pytest.approx(.0001)
-    assert root.find("link[@name='waist_yaw_link']/inertial/mass").get('value')=='11.255'
-    assert root.find("link[@name='left_palm_base_link']/visual") is not None
     original=ET.parse(SOURCE).getroot()
-    root.find("link[@name='left_palm_base_link']").append(copy.deepcopy(original.find("link[@name='left_palm_base_link']/inertial")))
+    assert ET.tostring(root.find("link[@name='left_hip_pitch_link']/inertial"))==ET.tostring(original.find("link[@name='left_hip_pitch_link']/inertial"))
+    root.find("link[@name='left_flange_frame']").append(copy.deepcopy(inertial))
     wrong=tmp_path/'double_hand.urdf';ET.ElementTree(root).write(wrong)
     report=check_reload(wrong,expected,SOURCE,samples=2)
     assert not report['passed'] and not report['checks']['rigid_parameters']

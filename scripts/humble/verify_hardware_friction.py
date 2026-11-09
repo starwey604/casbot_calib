@@ -84,7 +84,7 @@ def main():
     args=parser.parse_args();root=args.output.resolve();root.mkdir(parents=True,exist_ok=False)
     domain=220+int(uuid.uuid4().hex[:2],16)%10;os.environ.update(ROS_DOMAIN_ID=str(domain),ROS_LOCALHOST_ONLY='1')
     mock=yaml.safe_load(Path('configs/sdk_mock.yaml').read_text())
-    mock['plant'].update(stiction_enabled=True,sample_period_ns=1000000,integration_ns=100000,
+    mock['plant'].update(stiction_enabled=True,sample_period_ns=1000000,integration_ns=50000,
         friction_viscous=[.08]+[.01]*13,friction_coulomb=[.03]+[.005]*13,friction_static=[.06]+[.01]*13)
     mock_path=root/'mock.yaml';mock_path.write_text(yaml.safe_dump(mock))
     c=yaml.safe_load(Path('configs/hardware_friction.yaml').read_text())
@@ -92,9 +92,10 @@ def main():
         speeds_rad_s=dict(train=[.03,.06],validation=[.045]),transition_s=4.,settle_s=3.,speed_ramp_s=.75,
         plateau_trim_s=.5,inter_job_pause_s=.1)
     c['breakaway'].update(dwell_s=[.4],slopes_nm_s=[.12],ramp_s=1.3,recovery_hold_s=.8)
-    # Background joints have synthetic static friction .01 Nm. Kp >= 5
-    # bounds its static PD offset to .002 rad, inside the unchanged .003 guard.
-    c['breakaway']['hold_minimum_kp']=5.
+    # In this N4 fixture the active axis has .06 Nm static friction. Kp >=30
+    # bounds the holding deadband to2 mrad without relaxing the5 mrad return
+    # tolerance; target-axis probing still switches to the original zero PD.
+    c['breakaway']['hold_minimum_kp']=30.
     config_path=root/'h3.yaml';config_path.write_text(yaml.safe_dump(c))
     profile=yaml.safe_load(Path('configs/hardware_field.yaml').read_text())
     profile.update(collision_scene=str(Path('configs/collision_scene.yaml').resolve()),initial_hold_s=.15,final_hold_s=.15)

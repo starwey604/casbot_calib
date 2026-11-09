@@ -13,12 +13,13 @@ from .staged_breakaway import onset_record
 from .staged_collection import load_trial
 from .staged_multifit import load_problems,score_problems,measured_center_coverage
 from .staged_residuals import MODELS,frequency_budget,aggregate_benefit,raw_period_spectra,raw_residual_budget,residual_statistics
-from .dual_model import nominal_dual_arm
+from .model_runtime import model_for,collision_for,context_for
 from .staged_control import load_candidate
 
 EXECUTION_FILES=('staged_final.py','staged_residuals.py','staged_inertia.py','staged_multifit.py',
     'staged_identification.py','staged_breakaway.py','staged_collection.py','staged_control.py',
-    'staged_development.py','dual_identification.py','rigid_identification.py','staged_protocol.py')
+    'staged_development.py','dual_identification.py','rigid_identification.py','staged_protocol.py',
+    'model_runtime.py','model_context.py','static_intervals.py')
 
 
 def prepare_control(root,config,profile):
@@ -42,7 +43,6 @@ def prepare_control(root,config,profile):
 
 
 def prepare_final(root,attribution,output):
-    from .collision import nominal_profile
     from .staged_attribution import formal_test_untouched
     root=Path(root).resolve();attribution=Path(attribution).resolve();output=Path(output).resolve()
     parent,config,manifest=load_protocol(root);frozen=load_frozen_candidate(root);formal_test_untouched(root)
@@ -63,7 +63,7 @@ def prepare_final(root,attribution,output):
     prior=frozen_predecessors(root);(model/'prior_friction.json').write_bytes((prior/'friction/report.json').read_bytes())
     source=Path(__file__).parent;archive=output/'source';archive.mkdir()
     for p in source.glob('*.py'):(archive/p.name).write_bytes(p.read_bytes())
-    profile=nominal_profile(scene=_read(root/'session.json')['collision']['scene'])
+    profile=collision_for(config,scene=_read(root/'session.json')['collision']['scene'])
     control_files=prepare_control(output/'control',config,profile)
     motion=_read(root/'motion_plan.json');names=manifest['planned_execution_order']['test']+motion['final_prior_execution_order']
     all_names=manifest['planned_execution_order']['train']+manifest['planned_execution_order']['selection']+names
@@ -170,9 +170,9 @@ def score_predecessors(root,analysis,model,config,protocol):
 
 def score_final(root,analysis,output):
     started=perf_counter();root=Path(root).resolve();analysis=Path(analysis).resolve();output=Path(output).resolve()
-    protocol,config=load_final_protocol(root,analysis);frozen=load_frozen_candidate(root);nominal,_=nominal_dual_arm()
+    protocol,config=load_final_protocol(root,analysis);frozen=load_frozen_candidate(root);nominal,_=model_for(config)
     c=arrays(analysis/'models/coordinates.npz');d=_read(analysis/'models/D.json');b=_read(analysis/'models/B.json')
-    model=load_candidate(analysis/'models/D.json');static=c['static'];fa=c['friction'];fd=np.r_[d['viscous'],d['coulomb']]
+    model=load_candidate(analysis/'models/D.json',context_for(config));static=c['static'];fa=c['friction'];fd=np.r_[d['viscous'],d['coulomb']]
     theta=dict(A=c['gravity_theta'],B=np.asarray(b['parameters']),C=np.asarray(d['parameters']),D=np.asarray(d['parameters']))
     fric=dict(A=fa,B=fa,C=fa,D=fd);h=config['p0']['preprocessing']['harmonics']
     problems=load_problems(root,'test',static);metrics,probes=score_problems(problems,model,theta['D'],fd,static,config)
@@ -247,10 +247,9 @@ def run_final(root,attribution,output,config,*,resume=False,fps=12):
     if not checked['passed']:raise RuntimeError('R4 comprehensive verification rejected; controls blocked')
     from .staged_control import run_frozen_control
     from .staged_collection import synthetic_plant
-    from .collision import nominal_profile
     if not (output/'control/control_comparison.json').exists():
         legacy=_read(output/'control/session.json')['config'];plant=synthetic_plant(config)
-        profile=nominal_profile(scene=_read(root/'session.json')['collision']['scene'])
+        profile=collision_for(config,scene=_read(root/'session.json')['collision']['scene'])
         run_frozen_control(output/'control',plant,legacy,profile,root,output/'acceptance/report.json',resume=resume)
         _seal(output/'control','results_manifest.json',dict(files={str(p.relative_to(output/'control')):file_hash(p) for p in (output/'control').rglob('*') if p.is_file() and 'evaluation' not in p.parts}))
     check_manifest(output/'control','results_manifest.json')
@@ -280,7 +279,7 @@ def finalize_final(root,output,started=None):
         checks=dict(model_acceptance=accepted['model_acceptance_passed'],comprehensive=checked['passed'],control=control['passed'],presentation=view['passed']),
         seconds=None if started is None else perf_counter()-started,
         input_sha256={str(p):file_hash(p) for p in (output/'final_protocol.json',output/'acceptance/report.json',output/'verification/verification.json',output/'control/results_manifest.json',output/'presentation/presentation.json')},
-        limitations=['Nominal fixed-waist synthetic model; fixture and real limits remain unmeasured','Current-derived torque and declared scale; no independent torque sensor',
+        limitations=['Fixed-waist synthetic model bound to parent protocol; fixture and real limits remain unmeasured','Current-derived torque and declared scale; no independent torque sensor',
             '40-harmonic validation with explicit outside-band residual; not full-band performance','No new physical network, real device, cross-day thermal or Windows acceptance'])
     write_json(output/'delivery.json',result)
     return result

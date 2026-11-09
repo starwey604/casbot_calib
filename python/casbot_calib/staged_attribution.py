@@ -5,7 +5,7 @@ import csv
 import numpy as np
 from . import _core
 from .data import write_json
-from .dual_model import nominal_dual_arm
+from .model_runtime import model_for
 from .rigid_identification import model_from_parameters
 from .staged_protocol import load_protocol, file_hash, _read, _seal, _unseal
 from .staged_identification import recordings
@@ -98,7 +98,7 @@ def generate_attribution(root,output,verified):
     output.mkdir(parents=True,exist_ok=False)
     protocol,config=prepare_attribution(root,verified,output);analysis=Path(protocol['stability_analysis'])
     coordinates=arrays(analysis/'coordinates.npz');cache=arrays(analysis/'predecessor_cache.npz')
-    nominal,source=nominal_dual_arm();theta_a=coordinates['gravity_theta'];friction_a=coordinates['friction'];static=coordinates['static']
+    nominal,source=model_for(config);theta_a=coordinates['gravity_theta'];friction_a=coordinates['friction'];static=coordinates['static']
     if source['sha256']!=load_protocol(root)[0]['model']['sha256']:raise ValueError('Nominal source changed')
     h=config['p0']['preprocessing']['harmonics'];threshold=np.asarray(_read(root/'qualification/report.json')['threshold_bin_rms_nm'])
     problems={};raw={};baseline={}

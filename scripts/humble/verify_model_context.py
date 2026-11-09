@@ -18,7 +18,10 @@ from casbot_calib.telemetry import StateFrame
 
 def verify(output):
     output=Path(output);output.mkdir(parents=True,exist_ok=False)
-    context=load_context();engine=context.engine;home=context.home
+    context=load_context()
+    from casbot_calib.dual_model import nominal_dual_arm
+    engine,default_source=nominal_dual_arm();home=context.home
+    if default_source['model_context']!=context.identity:raise ValueError('Default model is not the shared DVT2 context')
     config=_core.ArmSimulationConfig()
     config.gain=np.full(14,2.);config.torque_limit=100.
     config.current_tau=0.;config.command_delay_ns=0
@@ -27,7 +30,7 @@ def verify(output):
     observations,_=_core.ArmSimulationRunner(engine,config).run(np.array([0],dtype=np.int64),commands,10_000_000,home,np.zeros(14))
     hold_error=float(np.max(abs(observations['q']-home)))
     np.savez(output/'mock_observations.npz',**observations)
-    nominal,_=nominal_kinematics(context=context);chart=KinematicParameters(nominal)
+    nominal,_=nominal_kinematics();chart=KinematicParameters(nominal)
     candidate=chart.build(np.linspace(-.15,.15,chart.size))
     kinematics=export_urdf(nominal,candidate,context.kinematic_config(),output/'kinematic_candidate.urdf')
     loaded=_core.ArmDynamics.from_urdf(str(output/'kinematic_candidate.urdf'))
@@ -37,7 +40,7 @@ def verify(output):
     reload=check_reload(output/'dynamic_candidate.urdf',dynamics,context.urdf)
     # The same model identity/order enters the transport-facing viewer adapter.
     scene=output/'scene.xml'
-    adapter,_=scene_for_vendor(dict(model_id=context.model_id,joint_names=list(context.joint_names)),scene,context)
+    adapter,_=scene_for_vendor(dict(model_id=context.model_id,joint_names=list(context.joint_names)),scene)
     os.environ.setdefault('MUJOCO_GL','egl')
     import mujoco
     from PIL import Image
@@ -74,7 +77,7 @@ def verify(output):
         mock_hold_duration_ns=10_000_000,mock_hold_error_rad=hold_error,kinematic_frame_error=all_frame_error,
         viewer_frame_error=frame_error,viewer_acceleration=acceleration,dynamic_reload=reload,kinematic_export=kinematics,
         scope='synthetic source/serialization/native Mock/viewer integration; not a new identification experiment',
-        default_model_changed=False,hardware_executable=False)
+        default_model_changed=True,hardware_executable=False)
     (output/'report.json').write_text(json.dumps(report,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
     if not report['passed']:raise ValueError('N3 source integration rejected; see report.json')
     return report

@@ -6,13 +6,13 @@ fixture:
   transform_known: false
   geometry_policy: 保留nominal固定腰部姿态，不从截图推测毫米坐标
 motion:
-  center: [0, 0.2, 0, -0.65, 0, 0, 0, 0, -0.2, 0, -0.65, 0, 0, 0]
+  center: [0, 1.2217304763960306, 0, -1.0471975511965976, 0, 0, 0, 0, -1.2217304763960306, 0, -1.0471975511965976, 0, 0, 0]
   period_s: 6.0
   periods: 6
   discard_periods: 2
   amplitude: [0.45, 0.4, 0.45, 0.55, 0.6, 0.5, 0.6, 0.45, 0.4, 0.45, 0.55, 0.6, 0.5, 0.6]
   candidate_seeds: [27, 28, 29, 30, 31]
-  control_period_ns: 1000000
+  control_period_ns: 2000000
   gravity_hold_s: 5.0
   gravity_poses: 8
   kp: [80, 80, 40, 40, 10, 8, 5, 80, 80, 40, 40, 10, 8, 5]

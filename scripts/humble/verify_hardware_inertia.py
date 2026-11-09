@@ -57,11 +57,13 @@ raise SystemExit(0 if passed else 1)
 
 def main():
     p=argparse.ArgumentParser(description=__doc__);p.add_argument('--prior',type=Path,required=True)
-    p.add_argument('--output',type=Path,required=True);p.add_argument('--render',action='store_true');a=p.parse_args()
+    p.add_argument('--output',type=Path,required=True);p.add_argument('--render',action='store_true')
+    p.add_argument('--dynamic-fixture',action='store_true',help='New independent synthetic fixture:5s period,0.10rad amplitude; original limits unchanged')
+    a=p.parse_args()
     root=a.output.resolve();root.mkdir(parents=True,exist_ok=False)
     domain=220+int(uuid.uuid4().hex[:2],16)%10;os.environ.update(ROS_DOMAIN_ID=str(domain),ROS_LOCALHOST_ONLY='1')
     mock=yaml.safe_load(Path('configs/sdk_mock.yaml').read_text())
-    mock['plant'].update(stiction_enabled=True,sample_period_ns=1000000,integration_ns=100000,
+    mock['plant'].update(stiction_enabled=True,sample_period_ns=1000000,integration_ns=50000,
         friction_viscous=[.08]+[.01]*13,friction_coulomb=[.03]+[.005]*13,friction_static=[.06]+[.01]*13,
         inertia_scales=[1.8]*14)
     mock_path=root/'mock.yaml';mock_path.write_text(yaml.safe_dump(mock))
@@ -69,7 +71,13 @@ def main():
     c.update(joints=['left_shoulder_pitch_joint'],pose_offsets_rad=dict(train=[-.01],validation=[.01]),
         train_seeds=[401,402],validation_seeds=[501],period_s=8.,periods=3,discard_periods=1,
         amplitude_rad=[.08]*14,harmonics=12,settle_s=3.,transition_s=4.,inter_job_pause_s=.1)
-    c['holding']['hold_minimum_kp']=5. # Same background-friction fixture as H3.
+    if a.dynamic_fixture:
+        # Preregister a new data set, not a refit/retune of the completed v4
+        # controls. The low-frequency fixture had only0.005-0.007Nm nominal
+        # inertial RMS against about2.3Nm total effort. Do not weaken its check.
+        c.update(period_s=5.,amplitude_rad=[.10]*14,train_seeds=[10401,10402],validation_seeds=[10501])
+        c['control'].update(tuning_seed=10601,validation_seed=10701)
+    c['holding']['hold_minimum_kp']=30. # Same background-friction fixture as H3.
     config=root/'h4.yaml';config.write_text(yaml.safe_dump(c))
     profile=yaml.safe_load(Path('configs/hardware_field.yaml').read_text())
     profile.update(collision_scene=str(Path('configs/collision_scene.yaml').resolve()),initial_hold_s=.15,final_hold_s=.15)

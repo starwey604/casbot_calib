@@ -70,8 +70,8 @@ def test_root_base_rotation_and_offset_in_named_frame_jacobian():
     engine, _ = nominal_kinematics(); model = engine.model
     model.base.rotation = Rotation.from_rotvec([.2, -.3, .1]).as_matrix(); model.base.translation = [.4, -.2, .7]
     placed = _core.ArmDynamics(model); q = np.linspace(-.3, .2, 14)
-    np.testing.assert_allclose(placed.frame_pose(q, 'base_link'), model.base.matrix(), atol=1e-14)
-    np.testing.assert_allclose(placed.frame_jacobian(q, 'base_link'), 0., atol=0.)
+    np.testing.assert_allclose(placed.frame_pose(q, 'calib_world'), model.base.matrix(), atol=1e-14)
+    np.testing.assert_allclose(placed.frame_jacobian(q, 'calib_world'), 0., atol=0.)
     nominal_pose = engine.frame_pose(q, 'left_trical_tcp')
     np.testing.assert_allclose(placed.frame_pose(q, 'left_trical_tcp'), model.base.matrix() @ nominal_pose, atol=1e-14)
     original_j = engine.frame_jacobian(q, 'left_trical_tcp')
@@ -84,7 +84,7 @@ def test_zero_offsets_are_applied_once_and_share_fk_dynamics_convention():
     corrected = apply_joint_corrections(engine, {name: {'zero_offset_rad': offset}
         for name, offset in zip(manifest['joint_names'], offsets, strict=True)})
     q, v, a = np.random.default_rng(42).uniform(-.3, .3, (3, 14))
-    for frame in ('left_trical_tcp', 'right_trical_tcp', 'left_palm_base_link', 'right_palm_base_link'):
+    for frame in ('left_trical_tcp', 'right_trical_tcp', 'left_flange_frame', 'right_flange_frame'):
         np.testing.assert_allclose(corrected.frame_pose(q, frame), engine.frame_pose(q + offsets, frame), atol=1e-13)
         np.testing.assert_allclose(corrected.frame_jacobian(q, frame), engine.frame_jacobian(q + offsets, frame), atol=1e-13)
     np.testing.assert_allclose(corrected.inverse(q, v, a), engine.inverse(q + offsets, v, a), atol=1e-12)
@@ -125,8 +125,8 @@ def test_mastered_indicator_sign_radius_and_nonorthogonal_axes():
 def test_profile_provenance_fixed_ball_frame_and_invalid_overrides(tmp_path):
     config = default_config(Path(__file__).parents[1] / 'configs/kinematics_trical.yaml')
     assert config['control_period_ns'] == 2_000_000
-    np.testing.assert_allclose(ball_world(config, 'ball_2'), [.35, .15, .25], atol=1e-15)
-    bad = deepcopy(config); bad['fixture']['balls'][3]['center_m'][0] = 0.
+    np.testing.assert_allclose(ball_world(config, 'B'), config['fixture']['balls'][1]['center_m'], atol=1e-15)
+    bad = deepcopy(config); bad['fixture']['balls'][3]['center_m'] = bad['fixture']['balls'][0]['center_m'].copy()
     with pytest.raises(ValueError, match='span'): validate_config(bad)
     bad = deepcopy(config); bad['urdf_sha256'] = 'wrong'
     with pytest.raises(ValueError, match='source'): nominal_kinematics(bad)
@@ -145,7 +145,7 @@ def example():
         indicator_readings_m=np.zeros((count, 3)), indicator_sequence=np.tile(np.arange(count, dtype=np.int64)[:, None], (1, 3)),
         indicator_sample_ns=np.full((count, 3), -1, dtype=np.int64), indicator_receive_ns=np.tile((t + 200_000)[:, None], (1, 3)),
         indicator_sample_known=np.zeros((count, 3), dtype=bool), indicator_status=np.zeros((count, 3), dtype=np.uint8),
-        ball_id=np.array(['ball_1'] * count), tool_frame=np.array(['left_trical_tcp'] * count))
+        ball_id=np.array(['A'] * count), tool_frame=np.array(['left_trical_tcp'] * count))
     metadata = observation_metadata(manifest, config, run_id='protocol_test', source='test_fixture_not_acquisition',
         clocks=dict(joint_sample='host', indicator_sample=['unknown'] * 3, receive='host'))
     return arrays, metadata

@@ -45,10 +45,9 @@ def render_final(folder,output=None,*,fps=12,video=True):
     from .staged_presentation import write_scene
     from .dual_presentation import _trace
     from .telemetry import StateFrame
-    from .collision import nominal_profile
-    from .dual_model import nominal_dual_arm
+    from .model_runtime import model_for,collision_for,context_for
     analysis=Path(folder).resolve();protocol=_read(analysis/'final_protocol.json');root=Path(protocol['parent'])
-    load_final_protocol(root,analysis)
+    _,config=load_final_protocol(root,analysis)
     accepted=_read(analysis/'acceptance/report.json');control=_read(analysis/'control/control_comparison.json')
     if not accepted['model_acceptance_passed']:raise ValueError('R4 playback requires an accepted frozen model')
     output=Path(output) if output else analysis/'presentation';output.mkdir(parents=True,exist_ok=False)
@@ -56,8 +55,10 @@ def render_final(folder,output=None,*,fps=12,video=True):
     from .staged_final_validation import audit_final_control
     audit=audit_final_control(analysis,output/'control_audit.json')
     plot_final_diagnostics(accepted,output/'final_diagnostics.png')
-    profile=nominal_profile(scene=_read(root/'session.json')['collision']['scene']);engine,_=nominal_dual_arm()
-    adapter=write_scene(profile,output/'scene.xml');story=final_story(root,analysis);cache={};paths={analysis/'final_protocol.json',analysis/'acceptance/report.json',analysis/'acceptance/frequency_budget.json',analysis/'control/control_comparison.json',root/'candidate_freeze.json'}
+    profile=collision_for(config,scene=_read(root/'session.json')['collision']['scene']);engine,_=model_for(config)
+    context=context_for(config)
+    adapter=context.write_view_scene(output/'scene.xml') if context else write_scene(profile,output/'scene.xml')
+    story=final_story(root,analysis);cache={};paths={analysis/'final_protocol.json',analysis/'acceptance/report.json',analysis/'acceptance/frequency_budget.json',analysis/'control/control_comparison.json',root/'candidate_freeze.json'}
     for row in story:
         folder=Path(row['folder']);key=(row['folder'],row['run'])
         if key in cache:continue
@@ -80,6 +81,7 @@ def render_final(folder,output=None,*,fps=12,video=True):
     try:
         with JointView(adapter,output/'scene.xml',width=800,height=420) as view:
             view.camera.lookat[:]=[0.,0.,.18];view.camera.distance=1.35;view.camera.elevation=-12
+            if context:view.camera.lookat[:]=[0.,0.,1.];view.camera.distance=3.1
             names=tuple(_read(root/'session.json')['joint_names'])
             for row in story:
                 obs,curve=cache[(row['folder'],row['run'])];j=row['joint'];stage=row['stage'];active=keys.index(stage)
@@ -111,7 +113,7 @@ def render_final(folder,output=None,*,fps=12,video=True):
                     elif stage=='timing':metrics += [('默认命令 / 控制 / 发布','500 / 500 / 500 赫兹'),('电流响应时间常数',f'{timing["axes"][0]["fit"]["current_tau_s"]*1000:.3f} 毫秒'),('物理网络 / 实机时序','待独立实测')]
                     elif stage=='gravity':metrics += [('新配对重力最大误差',f'{accepted["prior_holdout"]["gravity"]["paired_approaches"]["maximum_absolute_rmse_nm"]:.6f} 牛米'),('新独立观测','16组静态保持；未重新辨识')]
                     elif stage=='friction':metrics += [('新匀速摩擦最大轴误差',f'{max(accepted["prior_holdout"]["friction"]["axis_rmse_nm"]):.6f} 牛米'),('采样资格','4千赫兹；复用已有4/8千赫兹对照')]
-                    elif stage=='breakaway':metrics += [('冻结起动阈值最大差',f'{accepted["prior_holdout"]["breakaway"]["maximum_frozen_prediction_error_nm"]:.6f} 牛米'),('448条完整起动专项','位移与持续速度确认，回溯起动区间')]
+                    elif stage=='breakaway':metrics += [('起动控制',f"Kp=0，Kd={config.get('breakaway_probe_kd_nm_s_rad',0.):g} 牛米秒/弧度"),('冻结起动阈值最大差',f'{accepted["prior_holdout"]["breakaway"]["maximum_frozen_prediction_error_nm"]:.6f} 牛米'),('448条完整起动专项','位移与持续速度确认，回溯起动区间')]
                     elif stage=='inertia':metrics += [('稳定性证据','复用 R2 三档路径、删组与先验检查'),('模型范围','同一140参数物理代表；非逐参数唯一')]
                     elif stage=='attribution':metrics += [('新 test 的 B/A 频段改善',f'{benefit["improvement_fraction"]["B"]:.2%}'),('新 test 的 D/A 频段改善',f'{benefit["improvement_fraction"]["D"]:.2%}'),('偏置与带外残差','单独报告，不用于选参')]
                     elif stage=='control':metrics += [('固定PD，前馈误差下降',f'{control["fixed_pd_feedforward_rmse_reduction"]:.2%}'),('五档PD比例选择',f'{control["selected_kp_factor"]:.2f}；使用独立调参轨迹'),('控制约束验收','通过' if control['passed'] else '未通过，保留结果')]
@@ -120,7 +122,7 @@ def render_final(folder,output=None,*,fps=12,video=True):
                         y=183+n*56;draw.text((868,y),label,font=fonts[14],fill=muted);draw.text((868,y+22),value,font=fonts[16],fill=text)
                     _trace(draw,(24,548,824,658),time,traces,frame.sample_ns*1e-9,unit,fonts[12])
                     draw.text((24,671),f'真实角度未放大 / 记录选段 {(end-start)/row["seconds"]:.2f} 倍速 / 采样时刻 {frame.sample_ns*1e-9:.3f} 秒',font=fonts[14],fill=muted)
-                    draw.text((24,696),'合成验收 / nominal双臂、腰部固定 / MuJoCo仅显示几何 / 未连接实机 / 未验收全频带',font=fonts[12],fill=gold)
+                    draw.text((24,696),'合成验收 / '+('DVT2整机' if context else 'nominal双臂')+'、腰部固定 / MuJoCo仅显示几何 / 未连接实机 / 未验收全频带',font=fonts[12],fill=gold)
                     if stage not in snapshots and (not video or k>=count//2):canvas.save(output/f'{active+1:02}_{stage}.png');snapshots.add(stage)
                     if writer:writer.send(np.asarray(canvas))
                     frames+=1

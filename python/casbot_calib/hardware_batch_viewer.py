@@ -16,7 +16,8 @@ class BatchReplaySource:
         if not np.isfinite(max_seconds_per_attempt) or max_seconds_per_attempt <= 0:
             raise ValueError('Positive replay time cap required')
         self.root, protocol = load_batch(folder); history, _ = outcomes(self.root, protocol)
-        self.config = dict(model_id='casbot_20251015_dual_nominal_unverified',
+        from .model_runtime import context_for
+        self.config = dict(model_id=context_for(protocol['profile']).model_id,
             joint_names=protocol['joint_names'], stale_after_ns=protocol['profile']['max_feedback_age_ns'],
             viewer_collision_scene=protocol['profile']['scene'])
         if 'model_context' in protocol['profile']:

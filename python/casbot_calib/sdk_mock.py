@@ -54,6 +54,7 @@ def mock_config(path):
             values=np.asarray(plant[key])
             if values.shape!=(14,) or not np.isfinite(values).all() or np.any(values<0): raise ValueError('14 nonnegative synthetic friction parameters required')
     if np.any(np.asarray(plant.get('friction_static',[0]*14))<plant.get('friction_coulomb',[0]*14)): raise ValueError('Static friction must exceed Coulomb friction')
+    config['model_context']=context.identity
     return config
 
 
@@ -91,7 +92,7 @@ class SDKMockSession(AbstractContextManager):
         server_dir = self.root/'evaluation/server'; server_dir.mkdir()
         model_path = str(urdf_for(self.config))
         context=context_for(self.config)
-        model_id = context.model_id if context else 'casbot_20251015_nominal:' + source['sha256'][:12]
+        model_id = context.model_id
         device_params = dict(self.config['plant'])
         device_params['plant_control_hz'] = device_params.pop('control_hz')
         device_params['plant_feedback_hz'] = device_params.pop('feedback_hz')

@@ -39,7 +39,7 @@ def write_dual_scene(engine,path):
             ET.SubElement(body,'geom',type='box',pos='.02 0 -.09',size='.035 .018 .008',rgba=color)
             ET.SubElement(body,'geom',type='box',pos='.05 .025 -.09',size='.025 .006 .008',rgba='1 .75 .25 1')
     ET.indent(root,space='  ');Path(path).write_text(ET.tostring(root,encoding='unicode')+'\n',encoding='utf-8')
-    return TelemetryAdapter('casbot_20251015_dual_mock',[JointMapping(j.name,j.name) for j in model.joints])
+    return TelemetryAdapter(model.model_id,[JointMapping(j.name,j.name) for j in model.joints])
 
 
 def _legacy_storyboard(folder,session,clip_seconds):

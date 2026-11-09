@@ -103,7 +103,9 @@ def collect_trial(folder,name,plant,feedforward,config,profile,*,command_transfo
         write_json(target/'guard_events.json',dict(events=list(events),policy='delivered position + velocity sustained; stop ramp and restore PD hold',
             joint=guard.joint,begin_ns=guard.begin_ns,end_ns=guard.end_ns,displacement_threshold_rad=guard.displacement_threshold,
             speed_threshold_rad_s=guard.speed_threshold,sustain_ns=guard.sustain_ns,max_sample_age_ns=guard.max_sample_age_ns,
-            maximum_displacement_rad=guard.maximum_displacement,maximum_speed_rad_s=guard.maximum_speed))
+            maximum_displacement_rad=guard.maximum_displacement,maximum_speed_rad_s=guard.maximum_speed,
+            restore_kp=guard.restore_kp,restore_kd=guard.restore_kd,
+            probe_kp=0.,probe_kd_nm_s_rad=config.get('breakaway_probe_kd_nm_s_rad',0.)))
     elapsed=perf_counter()-started
     # Raw observations are written before processing and never overwritten.
     np.savez_compressed(target/'observations.npz',**obs);np.savez_compressed(target/'commands.npz',send_ns=times,commands=commands)
@@ -135,5 +137,8 @@ def collect_trial(folder,name,plant,feedforward,config,profile,*,command_transfo
         report['position_allowance_passed']=bool(np.all(abs(obs['q'][mask]-curve(t[mask]))<=np.asarray(metadata['conditions']['position_allowance_rad'])))
     report['passed']=actual['passed'] and not report['saturated'] and report['nominal_travel_limits_passed'] and report['feedback_guard_passed'] and report['position_allowance_passed'];write_json(target/'metadata.json',report)
     print(f"采集 {name}: {'PASS' if report['passed'] else 'REJECT'} (C++ {elapsed:.2f}s, collision {actual['wall_s']:.2f}s)",flush=True)
-    if not report['passed']:raise RuntimeError(f'Trial {name} failed actual collision/saturation gate; data retained, next stage blocked')
+    if not report['passed']:
+        rejected=[key for key in ('actual_interpolant_gate_passed','nominal_travel_limits_passed','feedback_guard_passed','position_allowance_passed') if not report[key]]
+        if report['saturated']:rejected.append('saturated')
+        raise RuntimeError(f'Trial {name} rejected: '+', '.join(rejected)+'; data retained, next stage blocked')
     return obs,report

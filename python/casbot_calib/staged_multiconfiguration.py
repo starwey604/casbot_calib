@@ -24,8 +24,10 @@ def motion_for_slot(slot, center, config):
     if slot['stage'] == 'inertia_probe':
         return wrist_probe_motion(slot['trial_id'], config['home_rad'], center, config,
                                   slot['joint'], slot['direction'], conditions)
-    return periodic_motion(slot['trial_id'], 'inertia', config['home_rad'], center, config,
+    motion=periodic_motion(slot['trial_id'], 'inertia', config['home_rad'], center, config,
                            slot['reference_seed'], slot['split'] != 'train', slot['active_arm_group'], conditions)
+    from .staged_acceleration import add_tone
+    return add_tone(motion,config,slot['split'],slot['reference_seed'])
 
 
 def motion_coverage(motion, config):
@@ -89,11 +91,14 @@ def bind_development_reference(root, source, config, profile):
     """Pin external immutable *development* observations without duplicating GBs."""
     from .staged_identification import recordings
     source = Path(source).resolve(); session = _read(source / 'session.json')
+    from .model_runtime import check_same_context
+    check_same_context(config,session['config'])
     if session['config'].get('schema_version') != 1 or session['collision'] != profile.metadata:
         raise ValueError('Development reference must use the same nominal geometry/scene and legacy protocol')
     keys = ('model', 'control_period_ns', 'sample_period_ns', 'integration_ns', 'timing_integration_ns', 'home_rad',
             'pose_amplitude_rad', 'drive', 'acceptance', 'friction_sample_period_ns', 'friction_convergence_sample_period_ns',
-            'friction_speeds_rad_s', 'inertia_sample_period_ns')
+            'friction_speeds_rad_s', 'inertia_sample_period_ns',
+            'breakaway_probe_kd_nm_s_rad','breakaway_restore_kd_multiplier')
     if any(session['config'].get(k) != config.get(k) for k in keys):
         raise ValueError('Development reference acquisition/model conditions changed')
     paths = [source / 'session.json', source / 'plan_report.json']; counts = {}
@@ -135,7 +140,9 @@ def plan_references(root, config, manifest, profile, development_reference=None)
     for center_id in center_ids:
         slots = [s for s in manifest['trials'] if s['center_id'] == center_id and s['repeat_id'] == 0]
         accepted = None
-        for index, center in enumerate(pool):
+        from .staged_acceleration import center_pool
+        candidates=center_pool(pool,home,center_id,policy)
+        for index, center in enumerate(candidates):
             if index in candidates_used:
                 continue
             separations = {name: center_separation(center, other, amplitude, policy) for name, other in centers.items()}

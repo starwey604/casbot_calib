@@ -1,6 +1,6 @@
 # 读取已导入的DVT2源模型
 
-N1已经导入五套源模型和公共资源。可以从Python、独立C++安装或ROS安装读取同一来源；当前默认标定模型尚未切换。N2先生成[普通手14轴候选](dvt2_model_candidate.md)，现已按1105_03 STEP导入[实际裸法兰三表装配](trical_1105_hole_trials.md)，八组路径尚未闭合；默认切换依照[替换计划](dvt2_model_migration_plan.md)继续推进。
+N1已导入五套源模型和公共资源；Python、独立C++安装和ROS安装读取同一来源。当前默认为`derived/bare_flange_1105_03_gauge_v2`：固定腰部、14轴双臂、普通手拆除；千分计使用1105_03实际四球装配及已闭合的八组进退参考。下述五套源API仍用于来源检查，不是五套默认运行选项。[普通手候选](dvt2_model_candidate.md)保留为前序技术证据；当前状态见[N4收尾](dvt2_n4_closeout.md)。
 
 ## 先取得实际网格，不要构建LFS指针
 

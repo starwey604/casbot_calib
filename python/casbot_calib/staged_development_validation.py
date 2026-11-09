@@ -6,11 +6,12 @@ import sys
 import tempfile
 import numpy as np
 from .data import write_json
+from .model_runtime import collision_for,context_for
 from .staged_protocol import file_hash, load_protocol, _read
 
 
-def verify_development(root, output):
-    from .collision import nominal_profile, certify_polyline
+def verify_development(root, output,*,analysis=None):
+    from .collision import certify_polyline
     from .staged_collection import load_trial
     from .staged_motion import Motion, gate_motion
     from .staged_validation import numerical_replays
@@ -19,11 +20,21 @@ def verify_development(root, output):
     from .staged_development import frozen_predecessors
     root=Path(root).resolve();output=Path(output).resolve()
     protocol,config,manifest=load_protocol(root);workflow=_read(root/'workflow.json')
+    reuse=False
+    if analysis is not None:
+        from .staged_attribution import check_manifest
+        analysis=Path(analysis).resolve();check_manifest(analysis,'manifest.json');workflow=_read(analysis/'analysis.json')
+        if workflow.get('protocol_sha256')!=file_hash(root/'protocol.json'):raise ValueError('Development reanalysis belongs to another protocol')
+        fit_folder=analysis/workflow['inertia_folder'];report=_read(fit_folder/'report.json');reuse=workflow.get('reuse_development_fit',False)
+        expected={k:file_hash(root/f'role_inputs/{k}.json') for k in ('train','selection')}
+        if report['protocol_sha256']!=workflow['protocol_sha256'] or report['input_manifests']!=expected or not report['development_passed']:
+            raise ValueError('Rejected or stale development reanalysis')
+    else:fit_folder=root/workflow.get('inertia_folder','identification_development');report=_read(fit_folder/'report.json')
     if workflow.get('round')!='R1' or not workflow['passed']:
-        raise ValueError('An accepted R1 development checkpoint is required')
+        raise ValueError('An accepted R1 development checkpoint or explicit accepted reanalysis is required')
     if output.exists():raise FileExistsError(output)
     output.mkdir(parents=True,exist_ok=False);load_development_reference(root);frozen_predecessors(root)
-    profile=nominal_profile(scene=_read(root/'session.json')['collision']['scene'])
+    profile=collision_for(config,scene=_read(root/'session.json')['collision']['scene'])
     names=manifest['planned_execution_order']['train']+manifest['planned_execution_order']['selection'];rows=[]
     for name in names:
         meta,_=load_trial(root,name)
@@ -36,7 +47,7 @@ def verify_development(root, output):
             actual=certify_polyline(profile,arrays['q'],arrays['sample_ns']*1e-9,
                 clearance_m=profile.metadata['scene']['clearance_m'],max_gap_s=record['sample_period_ns']*1.5e-9)
         rows.append(dict(trial=name,reference_passed=reference['passed'],observed_interpolant_passed=actual['passed'],minimum_distance_m=actual['minimum_sampled_distance_m']))
-    model=load_candidate(root/'identification_development/candidate.json')
+    model=load_candidate(fit_folder/'candidate.json',context_for(config))
     selected=[next(r['trial_id'] for r in manifest['trials'] if r['split']==split and r['stage']=='inertia' and r['repeat_id']==0) for split in ('train','selection')]
     selected += [next(r['trial_id'] for r in manifest['trials'] if r['split']=='selection' and r['stage']=='inertia_probe' and r['joint']==j and r['repeat_id']==0) for j in (4,11)]
     numerical=numerical_replays(root,model,config,selected,model_scope='R1 development fitted model; no plant truth')
@@ -47,17 +58,22 @@ def verify_development(root, output):
             for i,path in enumerate((root/'evaluation',source/'evaluation')):
                 if path.exists():
                     archive=Path(temp)/str(i);path.rename(archive);moved.append((path,archive))
-            process=subprocess.run([sys.executable,'-m','casbot_calib.cli','staged-identify',str(root),'--output',str(output/'without_evaluation')],text=True,capture_output=True)
+            args=[sys.executable,'-m','casbot_calib.cli','staged-identify',str(root),'--output',str(output/'without_evaluation')]
+            if reuse:args.append('--reuse-development-fit')
+            process=subprocess.run(args,text=True,capture_output=True)
         finally:
             for path,archive in reversed(moved):archive.rename(path)
     (output/'truth_isolation_process.txt').write_text(process.stdout+'\n'+process.stderr,encoding='utf-8')
     if process.returncode!=0:raise RuntimeError('R1 truth-isolated reanalysis failed; see process log')
-    other=load_candidate(output/'without_evaluation/inertia/candidate.json');difference=0.
+    other=load_candidate(output/'without_evaluation/inertia/candidate.json',context_for(config));difference=0.
     for name in selected[:2]:
         _,curve=load_trial(root,name)
         for t in np.linspace(3.,25.,16):
             q,v,a=(curve(t,nu=k) for k in range(3))
             difference=max(difference,float(np.max(abs(model.mass_matrix(q)-other.mass_matrix(q)))),float(np.max(abs(model.inverse(q,v,a)-other.inverse(q,v,a)))))
+    from .staged_attribution_validation import equivalent
+    reproduced=_read(output/'without_evaluation/inertia/report.json')
+    equivalent(report['validation'],reproduced['validation']);equivalent(report['checks'],reproduced['checks'])
     # Explicit evaluator: plant parameters enter only this numerical replay, not
     # inference, weighting, diagnostics or model/candidate selection.
     from .staged_collection import synthetic_plant
@@ -71,7 +87,8 @@ def verify_development(root, output):
         formal_test_untouched=not any((root/'runs'/name).exists() for name in test_names))
     result=dict(round='R1',passed=all(checks.values()),development_verified=all(checks.values()),p0_acceptance_passed=False,
         formal_test_consumed=False,checks=checks,collision=rows,numerical_replays=numerical,evaluation_plant_numerical_replays=plant_numerical,
-        truth_isolation_maximum_operator_difference=difference,protocol_sha256=file_hash(root/'protocol.json'),
+        truth_isolation_maximum_operator_difference=difference,development_analysis=None if analysis is None else str(analysis),
+        development_report_sha256=file_hash(fit_folder/'report.json'),stationary_metric_reproduced=True,protocol_sha256=file_hash(root/'protocol.json'),
         scope='R1 development references/observed interpolation, representative integration convergence and fresh-process reanalysis; no formal test, R2/R3 stability/attribution or hardware')
     write_json(output/'verification.json',result)
     return result

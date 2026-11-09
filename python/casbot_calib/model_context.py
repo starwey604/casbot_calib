@@ -1,7 +1,7 @@
 """The selected DVT2 source shared by dynamics, geometry, resources and transport.
 
-N3 migration callers pass this context explicitly until the atomic default
-switch. No alternate/legacy model selection or download-directory fallback.
+This is the sole default for all dual-arm workflows. No alternate/legacy model
+selection or download-directory fallback.
 """
 from copy import deepcopy
 from dataclasses import dataclass

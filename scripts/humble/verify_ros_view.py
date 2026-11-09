@@ -22,11 +22,11 @@ def main():
     root=args.output.resolve(); root.mkdir(parents=True,exist_ok=False)
     os.environ['ROS_LOCALHOST_ONLY']='1'; os.environ['ROS_DOMAIN_ID']=str(150+int(uuid.uuid4().hex[:2],16)%25)
     namespace='/casbot_calib_bench/view_'+uuid.uuid4().hex[:10]
-    _, identity=nominal_dual_arm(); model_id='casbot_20251015_nominal:'+identity['sha256'][:12]
-    path=Path(str(files('casbot_calib').joinpath('assets/casbot_dual_arm_benchmark_nominal.urdf')))
+    _, identity=nominal_dual_arm(); model_id=__import__('casbot_calib.model_context',fromlist=['load_context']).load_context().model_id
+    path=Path(str(__import__('casbot_calib.model_context',fromlist=['load_context']).load_context().urdf))
     prefix=Path('install/humble-ros/casbot_calib_transport/lib/casbot_calib_transport').resolve()
     t=np.arange(0,2_000_000_000,2_000_000,dtype=np.int64)
-    home=np.tile([0.,.4,0.,-.8,0.,0.,0.],2); home[8]=-.4
+    home=__import__('casbot_calib.model_context',fromlist=['load_context']).load_context().home
     phase=t[:,None]*1e-9*np.pi
     q=home+.035*np.sin(phase)*np.ones((1,14)); dq=.035*np.pi*np.cos(phase)*np.ones((1,14))
     zeros=np.zeros_like(q)

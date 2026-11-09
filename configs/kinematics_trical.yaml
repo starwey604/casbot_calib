@@ -1,3 +1,2 @@
-# K1基础检查，未生成机器人运动指令。详细合成工装在随包profile中。
-profile: trical_nominal_v1
-control_period_ns: 2000000  # 500 Hz；不是千分计采样能力声明。
+profile: dvt2_trical_k1_context_v1
+control_period_ns: 2000000

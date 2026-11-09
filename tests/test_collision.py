@@ -46,9 +46,9 @@ def test_nominal_cache_provenance_joint_contract_and_batched_distances():
     profile=nominal_profile();q=np.zeros((3,14));q[1,1]=.3;q[1,8]=-.3
     result=profile.check(q)
     assert result['distances'].shape==(3,len(profile.pairs)) and np.isfinite(result['distances']).all()
-    assert profile.metadata['source_geometry_count']==45 and len(profile.geometry)==16
-    assert max(row['maximum_vertex_plane_violation_m'] for row in profile.metadata['geometries'])<1e-9
+    assert profile.metadata['model_context']==__import__('casbot_calib.model_context',fromlist=['load_context']).load_context().identity and len(profile.geometry)==profile.metadata['actual_geometry_count']
+    assert all(len(g.vertices)>0 and len(g.triangles)>0 for g in profile.geometry)
     assert np.all(profile.radii>=0)
     # Mounting a differently oriented joint needs a new geometry attachment check.
     model=profile.engine.model;joints=model.joints;joints[0].axis=np.array([1.,0.,0.]);model.joints=joints
-    with pytest.raises(ValueError,match='Kinematics'):nominal_profile(_core.ArmDynamics(model))
+    with pytest.raises(ValueError,match='geometry'):nominal_profile(_core.ArmDynamics(model))

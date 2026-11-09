@@ -11,14 +11,22 @@ from .model_context import load_context
 from .trical_paths import gate_chord,gate_orientation
 
 
-def configuration(path):
-    path=Path(path);settings=yaml.safe_load(path.read_text(encoding='utf-8'))
+def configuration(path=None):
+    from importlib.resources import files
+    if path is None:
+        settings=dict(profile='dvt2_trical_geometry_v1',design={})
+        asset=files('casbot_calib').joinpath('assets')
+        reference=json.loads(asset.joinpath('trical_1105_release_turn_reference.json').read_text())
+        rules=json.loads(asset.joinpath('trical_1105_release_turn_settings.json').read_text())
+    else:
+        path=Path(path);settings=yaml.safe_load(path.read_text(encoding='utf-8'))
+        reference=json.loads((path.parent/settings['routes']).read_text());rules=json.loads((path.parent/settings['route_settings']).read_text())
     if settings.get('profile')!='dvt2_trical_geometry_v1':raise ValueError('Explicit DVT2 TriCal profile required')
     context=load_context();config=context.kinematic_config()
     from importlib.resources import files
     defaults=json.loads(files('casbot_calib').joinpath('assets/trical_capture_defaults.json').read_text())
     config.update(defaults);config['profile_id']='dvt2_trical_geometry_v1'
-    reference=json.loads((path.parent/settings['routes']).read_text());rules=json.loads((path.parent/settings['route_settings']).read_text())
+    config['control_period_ns']=settings.get('control_period_ns',config['control_period_ns'])
     if reference['bundle_sha256']!=context.identity['bundle_sha256'] or reference.get('fixture_layout') is not None:raise ValueError('TriCal route source/layout differs from selected model')
     rows=reference['results']
     if {(r['arm'],r['ball']) for r in rows}!={(s,b) for s in ('left','right') for b in 'ABCD'} or len(rows)!=8:raise ValueError('Eight actual tool/ball routes required')

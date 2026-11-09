@@ -12,7 +12,7 @@ import numpy as np
 import yaml
 from .collision import certify_polyline
 from .data import write_json
-from .model_runtime import model_for, collision_for, urdf_for, check_same_context
+from .model_runtime import model_for, collision_for, urdf_for, check_same_context, context_for
 from .staged_motion import Motion, gate_motion
 from .static_field import _move as add_bounded_move
 from .vendor_identity import sha256
@@ -48,7 +48,8 @@ def load_profile(path):
     if gravity.shape != (3,) or not np.isfinite(gravity).all() or np.linalg.norm(gravity) <= 0:
         raise ValueError('Finite nonzero installation gravity vector required')
     config['scene'] = yaml.safe_load((path.parent / config['collision_scene']).read_text(encoding='utf-8'))
-    if 'model_context' in config:collision_for(config)
+    collision_for(config)
+    config['model_context']=context_for(config).identity
     if 'connection' in config:
         from .sdk_connection import validate_connection
         validate_connection(config['connection'])

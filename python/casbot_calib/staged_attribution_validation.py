@@ -3,7 +3,7 @@ from pathlib import Path
 import numpy as np
 from . import _core
 from .data import write_json
-from .dual_model import nominal_dual_arm
+from .model_runtime import model_for
 from .staged_protocol import load_protocol, file_hash, _read, _seal, _unseal, freeze_candidate
 from .staged_attribution import arrays, check_manifest, formal_test_untouched, raw_diagnostics, candidate_gate
 from .staged_multifit import load_problems, score_problems
@@ -42,7 +42,7 @@ def verify_attribution(root,analysis,output,*,freeze=False):
     if report['protocol_sha256']!=file_hash(analysis/'analysis_protocol.json'):raise ValueError('R3 protocol/report mismatch')
     settings={**config['p0']['frequency_qualification'],**config['p0']['acceptance'],'minimum_qualified_bins':1}
     equivalent(settings,protocol['settings']);equivalent(config['p0']['selection'],protocol['selection_policy'])
-    nominal,source=nominal_dual_arm()
+    nominal,source=model_for(config)
     if source['sha256']!=parent['model']['sha256']:raise ValueError('Nominal changed')
     c=arrays(r2/'coordinates.npz');cache=arrays(r2/'predecessor_cache.npz');static=c['static'];fa=c['friction'];h=config['p0']['preprocessing']['harmonics']
     threshold=np.asarray(_read(root/'qualification/report.json')['threshold_bin_rms_nm'])

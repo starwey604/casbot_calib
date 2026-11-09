@@ -45,10 +45,10 @@ def frozen_predecessors(root):
     return Path(root) / seal['analysis_folder']
 
 
-def predecessor_model(folder):
-    from .dual_model import nominal_dual_arm
+def predecessor_model(folder,config=None):
+    from .model_runtime import model_for
     from .rigid_identification import model_from_parameters
-    folder = Path(folder); nominal, _ = nominal_dual_arm()
+    folder = Path(folder); nominal, _ = model_for({} if config is None else config)
     g,f,s = (_read(folder / stage / 'report.json') for stage in ('gravity', 'friction', 'breakaway'))
     return model_from_parameters(nominal, g['fit']['parameters'], f['viscous'], f['coulomb'], s['static_friction'])
 
@@ -89,7 +89,7 @@ def _collect_order(root, order, plant, feedforward, config, profile, resume):
 def run_development(folder, config, *, resume=False, development_reference=None):
     from .staged_plan import plan_session
     from .staged_collection import synthetic_plant
-    from .collision import nominal_profile
+    from .model_runtime import collision_for,context_for
     from .staged_multifit import identify_development
     root = Path(folder); started = perf_counter()
     if not root.exists():
@@ -118,8 +118,8 @@ def run_development(folder, config, *, resume=False, development_reference=None)
             files = {str(p.relative_to(root)):file_hash(p) for p in prior.rglob('*') if p.is_file()}
             _seal(root,'predecessor_freeze.json',dict(schema_version=1,protocol_sha256=file_hash(root/'protocol.json'),
                 analysis_folder=str(prior.relative_to(root)),files=files,scope='development only; final independent predecessor holdout remains uncollected'))
-        model = predecessor_model(prior); plant = synthetic_plant(config)
-        profile = nominal_profile(scene=_read(root/'session.json')['collision']['scene'])
+        model = predecessor_model(prior,public); plant = synthetic_plant(config)
+        profile = collision_for(public,scene=_read(root/'session.json')['collision']['scene'])
         for split in ('train','selection'):
             _collect_order(root,manifest['planned_execution_order'][split],plant,model,public,profile,resume)
             index = root / f'role_inputs/{split}.json'
@@ -159,16 +159,20 @@ def run_development(folder, config, *, resume=False, development_reference=None)
         return result
 
 
-def analyse_development(root, output):
-    from .staged_multifit import identify_development
+def analyse_development(root, output,*,reuse_fit=False):
+    from .staged_multifit import identify_development,rescore_development
     root=Path(root);output=Path(output);load_protocol(root)
     if output.exists():raise FileExistsError(output)
     output.mkdir(parents=True,exist_ok=False)
-    prepare_predecessors(root,output/'predecessors')
-    report=identify_development(root,output/'inertia',output/'predecessors')
+    if reuse_fit:report=rescore_development(root,output/'inertia')
+    else:
+        prepare_predecessors(root,output/'predecessors')
+        report=identify_development(root,output/'inertia',output/'predecessors')
     result=dict(round='R1',passed=report['development_passed'],truth_read=False,formal_test_consumed=False,
+        protocol_sha256=file_hash(root/'protocol.json'),inertia_folder='inertia',reuse_development_fit=reuse_fit,
         p0_acceptance_passed=False,scope='fresh read-only development reanalysis; no R2/R3 candidate selection or final-test acceptance')
     write_json(output/'analysis.json',result)
+    _seal(output,'manifest.json',dict(files={str(p.relative_to(output)):file_hash(p) for p in output.rglob('*') if p.is_file()}))
     return result
 
 
@@ -176,7 +180,7 @@ def collect_final_test(root, config, *, resume=False):
     """R4 collection hook. Authorization is checked before even constructing Mock."""
     from .staged_collection import synthetic_plant
     from .staged_control import load_candidate
-    from .collision import nominal_profile
+    from .model_runtime import collision_for,context_for
     root=Path(root);frozen=load_frozen_candidate(root);_,public,manifest=load_protocol(root)
     if public != {k:v for k,v in config.items() if k != 'mock'}:
         raise ValueError('Final test configuration changed after candidate freeze')
@@ -184,8 +188,8 @@ def collect_final_test(root, config, *, resume=False):
         raise ValueError('Final test Mock plant differs from the declared development plant')
     motion_plan=_read(root/'motion_plan.json')
     with collection_lock(root):
-        plant=synthetic_plant(config);candidate=load_candidate(root/frozen['candidate'])
-        profile=nominal_profile(scene=_read(root/'session.json')['collision']['scene'])
+        plant=synthetic_plant(config);candidate=load_candidate(root/frozen['candidate'],context_for(public))
+        profile=collision_for(public,scene=_read(root/'session.json')['collision']['scene'])
         _collect_order(root,manifest['planned_execution_order']['test'],plant,candidate,public,profile,resume)
         if not (root/'role_inputs/test.json').exists():seal_role_records(root,'test')
         _collect_order(root,motion_plan['final_prior_execution_order'],plant,candidate,public,profile,resume)
@@ -217,3 +221,28 @@ def seal_final_predecessors(root):
         previous=_unseal(root,'final_prior_inputs.json')
         if previous['records']!=rows:raise ValueError('Final predecessor inputs changed after sealing')
     return dict(collected_trials=len(rows),p0_acceptance_passed=False)
+
+
+def accepted_development(root, verification=None):
+    """Select accepted R1 evidence without rewriting its historical checkpoint."""
+    root=Path(root).resolve()
+    if verification is None:
+        state=_read(root/'workflow.json')
+        if state.get('round')!='R1' or not state.get('passed'):
+            raise ValueError('R2 requires accepted R1; supply --development-verification for a corrected analysis')
+        return dict(source='original accepted R1 checkpoint',workflow_sha256=file_hash(root/'workflow.json'))
+    from .staged_attribution import check_manifest,formal_test_untouched
+    formal_test_untouched(root)
+    path=Path(verification).resolve();path=path/'verification.json' if path.is_dir() else path
+    result=_read(path)
+    if result.get('round')!='R1' or not result.get('passed') or not result.get('development_verified') or not result.get('stationary_metric_reproduced') or not all(result.get('checks',{}).values()):
+        raise ValueError('Rejected R1 development verification')
+    if result.get('protocol_sha256')!=file_hash(root/'protocol.json') or result.get('formal_test_consumed') is not False:
+        raise ValueError('R1 verification belongs to another/consumed parent')
+    analysis=Path(result['development_analysis']);check_manifest(analysis,'manifest.json')
+    summary=_read(analysis/'analysis.json');report_path=analysis/summary['inertia_folder']/'report.json';report=_read(report_path)
+    expected={k:file_hash(root/f'role_inputs/{k}.json') for k in ('train','selection')}
+    if summary['protocol_sha256']!=result['protocol_sha256'] or not summary['passed'] or not report['development_passed'] or report['input_manifests']!=expected or file_hash(report_path)!=result['development_report_sha256']:
+        raise ValueError('R1 corrected analysis inputs/report changed')
+    return dict(source='explicit accepted R1 reanalysis',verification=str(path),verification_sha256=file_hash(path),
+        report=str(report_path),report_sha256=file_hash(report_path),analysis_manifest=str(analysis/'manifest.json'),analysis_manifest_sha256=file_hash(analysis/'manifest.json'))

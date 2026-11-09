@@ -15,19 +15,19 @@ from casbot_calib.data import write_json
 def verify(output,domain):
     root=Path(output);root.mkdir(parents=True,exist_ok=False)
     context=load_context()
-    base=yaml.safe_load(Path('configs/dvt2/hardware_field.yaml').read_text())
-    base['collision_scene']=str(Path('configs/dvt2/collision_scene.yaml').resolve())
+    base=yaml.safe_load(Path('configs/hardware_field.yaml').read_text())
+    base['collision_scene']=str(Path('configs/collision_scene.yaml').resolve())
     base.update(initial_hold_s=.2,final_hold_s=.2,anchor_transition_s=.3)
     profile=root/'field.yaml';profile.write_text(yaml.safe_dump(base))
     results=[]
-    with SDKMockSession('configs/dvt2/sdk_mock.yaml',root/'mock',domain,profile=profile) as session:
+    with SDKMockSession('configs/sdk_mock.yaml',root/'mock',domain,profile=profile) as session:
         config=field.load_profile(session.client_profile)
         initial=field.run_executor(config,root/'initial',domain,snapshot=True)
         if not initial['passed']:raise ValueError('Read-only SDK snapshot failed')
         anchor=field._read_snapshot(root/'initial')
         write_json(root/'initial_binding.json',dict(model_context=context.identity,observed_q=anchor))
-        for joint in ('left_shoulder_pitch_joint','right_shoulder_pitch_joint'):
-            for hz in (100,250,500):
+        for joint in ('left_shoulder_pitch_joint','right_shoulder_pitch_joint','left_wrist_roll_joint','right_wrist_roll_joint'):
+            for hz in ((100,250,500) if 'shoulder' in joint else (500,)):
                 name=joint+'_'+str(hz);target=root/name;target.mkdir()
                 c=yaml.safe_load(session.client_profile.read_text());c['command_hz']=hz
                 c['collision_scene']=str(root.resolve()/'mock/scene.yaml')
@@ -53,11 +53,11 @@ def verify(output,domain):
         paired_profile=config['model_context']==context.identity,
         all_source_bindings=all(r['source_model_sha256']==source['sha256'] for r in results),
         same_reference_across_rates=all(len({r['comparison_reference_sha256'] for r in results if r['joint']==joint})==1 for joint in context.joint_names if any(r['joint']==joint for r in results)),
-        both_arms_three_rates=len(results)==6 and all(r['passed'] for r in results),
+        both_arms_and_light_wrists=len(results)==8 and all(r['passed'] for r in results),
         sample_time_remains_unknown=all(not r['actual_sample_rate_known'] for r in results),
         shutdown=json.loads((root/'mock/shutdown.json').read_text())['returncodes']==[0])
     report=dict(passed=all(checks.values()),checks=checks,model_context=context.identity,results=results,
-        scope='localhost SDK messages; two shoulder axes at 100/250/500 Hz; not full dynamics acceptance or physical network',
+        scope='localhost SDK messages; default model/configs, shoulders at 100/250/500 Hz and both wrist-roll axes at500 Hz; not full H3/H4 dynamics acceptance or physical network',
         physical_device_tested=False,hardware_executable=False)
     write_json(root/'report.json',report)
     if not report['passed']:raise ValueError('DVT2 SDK probe rejected')

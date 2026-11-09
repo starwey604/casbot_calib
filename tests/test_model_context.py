@@ -1,4 +1,4 @@
-"""N3 explicit DVT2 integration, without changing legacy default consumers."""
+"""N3 explicit DVT2 integration, including the atomic default consumers."""
 import copy
 import json
 from pathlib import Path
@@ -33,7 +33,7 @@ def assert_resources(path):
 def test_context_is_explicit_fresh_and_source_bound(context):
     engine,source=nominal_dual_arm(context)
     assert engine.model.model_id==MODEL_ID
-    assert nominal_dual_arm()[1]['sha256']!=source['sha256']
+    assert nominal_dual_arm()[1]['sha256']==source['sha256']
     assert tuple(j.name for j in engine.model.joints)==context.joint_names
     assert len(engine.frame_names())==155
     model=engine.model;model.model_id='changed';engine=_core.ArmDynamics(model)
@@ -119,9 +119,8 @@ def synthetic_analysis(context,path):
 def test_dynamics_export_reload_uses_bound_source_without_caller_context(context,tmp_path):
     analysis=tmp_path/'analysis';candidate=synthetic_analysis(context,analysis)
     output=tmp_path/'export'
-    with pytest.raises(ValueError,match='source'):export_dynamics_urdf(analysis,output)
-    assert not output.exists()
-    result=export_dynamics_urdf(analysis,output,context=context)
+    result=export_dynamics_urdf(analysis,output)
+    assert export_dynamics_urdf(analysis,tmp_path/'explicit_export',context=context)['passed']
     assert result['passed'] and result['checks']['geometry_xml_unchanged']
     loaded,metadata=load_exported_dynamics(output)
     assert metadata['model_context']==context.identity
@@ -169,10 +168,10 @@ assert len(context.collision_profile().pairs)>0
     subprocess.run([sys.executable,'-c',code],check=True,capture_output=True,text=True)
 
 
-def test_export_can_add_missing_legacy_tcp_without_mutating_caller(tmp_path):
+def test_default_export_reuses_tcp_without_mutating_caller(tmp_path):
     nominal,_=nominal_dual_arm();config=default_config()
     before=nominal.frame_names()
-    assert all(tool['name'] not in before for tool in config['tools'])
+    assert all(tool['name'] in before for tool in config['tools'])
     path=tmp_path/'legacy_candidate.urdf'
     assert export_urdf(nominal,nominal,config,path)['passed']
     assert nominal.frame_names()==before

@@ -7,9 +7,12 @@ from .staged_breakaway import identify_breakaway
 from .staged_inertia import identify_inertia
 
 
-def identify_staged(folder,output,through='inertia',resume=False,stability_verification=None,final_protocol=None):
+def identify_staged(folder,output,through='inertia',resume=False,stability_verification=None,final_protocol=None,reuse_development_fit=False,development_verification=None):
     from .staged_protocol import require_legacy_execution,p0_status
     root=Path(folder);config=session_config(root)
+    if reuse_development_fit and (config.get('schema_version')!=2 or through!='inertia' or resume or stability_verification is not None or final_protocol is not None):
+        raise ValueError('Reuse development fit requires P0 R1 inertia reanalysis only')
+    if development_verification is not None and (through!='stability' or reuse_development_fit):raise ValueError('Development verification input is for R2 stability only')
     if stability_verification is not None and through!='attribution':raise ValueError('R2 verification input is for R3 attribution only')
     if final_protocol is not None and through!='final':raise ValueError('Final protocol input is for R4 final scoring only')
     if config.get('schema_version')==2:
@@ -25,10 +28,10 @@ def identify_staged(folder,output,through='inertia',resume=False,stability_verif
             return generate_attribution(root,output,stability_verification)
         if protocol['schema_version']==2 and through=='stability':
             from .staged_stability import run_stability
-            return run_stability(root,output,resume=resume)
+            return run_stability(root,output,resume=resume,development_verification=development_verification)
         if protocol['schema_version']==2 and through=='inertia':
             from .staged_development import analyse_development
-            return analyse_development(root,output)
+            return analyse_development(root,output,reuse_fit=reuse_development_fit)
     if through in ('stability','attribution','final') or resume:raise ValueError('Stability/attribution/final/resume analysis requires P0')
     require_legacy_execution(config)
     output=Path(output);output.mkdir(parents=True,exist_ok=False);stages={}

@@ -128,7 +128,7 @@ def identify_dual_session(folder,output):
         all_axes_dynamically_excited=bool(np.all(speed_rms>=minimum_speed) and np.all(acceleration_rms>=minimum_acceleration)),
         solvers_converged=all(r['success'] for r in (gravity_fit,friction_fit,dynamic_fit)),
         independent_prediction=all(v['maximum_normalized_rmse']<=session['identification']['maximum_validation_nrmse'] for v in validation.values()))
-    bundle=dict(schema_version=1,model_version='tree_rigid_v1',robot_model_id='casbot_20251015_nominal_fixed_waist_dual_mock',
+    bundle=dict(schema_version=1,model_version='tree_rigid_v1',robot_model_id=nominal.model.model_id,
         joint_names=names,source_sha256=source['sha256'],fixture=session['fixture'],geometry_status='frozen nominal, not kinematically calibrated',
         gain_source=session['drive_assumptions']['gain_status'],gain_nm_a=session['drive_assumptions']['gain_nm_a'],
         parameterization=dynamic_fit['parameterization'],body_scales=parameters[:n].tolist(),viscous=parameters[n:2*n].tolist(),coulomb=parameters[2*n:].tolist(),

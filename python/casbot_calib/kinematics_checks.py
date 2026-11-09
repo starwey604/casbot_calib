@@ -12,7 +12,8 @@ from .trical_data import IndicatorStatus, observation_metadata, save_observation
 
 def urdf_reference(q, joint_names):
     """Independent XML transform oracle, confined to verification (not runtime FK)."""
-    source = files('casbot_calib').joinpath('assets/casbot_dual_arm_benchmark_nominal.urdf')
+    from .model_context import load_context
+    source=load_context().urdf
     root = ET.fromstring(source.read_bytes()); positions = dict(zip(joint_names, q, strict=True))
     links = {link.get('name') for link in root.findall('link')}
     joints = root.findall('joint'); children = {j.find('child').get('link') for j in joints}
@@ -49,7 +50,7 @@ def run_checks(folder, config=None):
     batches = {t['name']: engine.frame_batch(q, t['name']) for t in tools}
     for index, position in enumerate(q):
         oracle = urdf_reference(position, manifest['joint_names'])
-        for frame in ('base_link', 'waist_yaw_link', 'left_palm_base_link', 'right_palm_base_link'):
+        for frame in oracle:
             reference_error = max(reference_error, float(np.max(np.abs(engine.frame_pose(position, frame) - oracle[frame]))))
         for tool in tools:
             relative = np.eye(4); relative[:3, 3] = tool['translation_m']
@@ -68,7 +69,7 @@ def run_checks(folder, config=None):
     # Analytic 90-degree rotation, independent of the robot's FK.
     sensor = _core.ArmPose(); sensor.translation = [1., 2., 3.]
     sensor.rotation = [[0., -1., 0.], [1., 0., 0.], [0., 0., 1.]]
-    cal = calibration(config); expected = np.array([.001, -.002, -.003])
+    cal = calibration(config); expected = cal.axes @ np.array([.001, -.002, -.003])
     readings = _core.trical_readings(sensor, np.array([1.002, 2.001, 2.997]), cal)
     sensor_error = float(np.max(np.abs(readings - cal.zero - expected)))
     checks = dict(urdf_fk=reference_error < 1e-12, frame_jacobian=jacobian_error < 1e-8,
@@ -81,7 +82,7 @@ def run_checks(folder, config=None):
         indicator_readings_m=np.full((count, 3), np.nan), indicator_sequence=np.tile(np.arange(count, dtype=np.int64)[:, None], (1, 3)),
         indicator_sample_ns=np.full((count, 3), -1, dtype=np.int64), indicator_receive_ns=np.tile((times + 200_000)[:, None], (1, 3)),
         indicator_sample_known=np.zeros((count, 3), dtype=bool), indicator_status=np.full((count, 3), IndicatorStatus.NO_CONTACT, dtype=np.uint8),
-        ball_id=np.array(['ball_1', 'ball_2', 'ball_3', 'ball_4']), tool_frame=np.array(['left_trical_tcp', 'right_trical_tcp'] * 2))
+        ball_id=np.array([b['id'] for b in config['fixture']['balls'][:4]]), tool_frame=np.array(['left_trical_tcp', 'right_trical_tcp'] * 2))
     metadata = observation_metadata(manifest, config, run_id='k1_protocol_example', source='schema_example_no_contact_no_acquisition',
         clocks=dict(joint_sample='virtual_ns', indicator_sample=['unknown'] * 3, receive='virtual_ns'))
     summary = save_observations(folder / 'protocol_example', arrays, metadata); loaded, _ = load_observations(folder / 'protocol_example')

@@ -81,27 +81,9 @@ class CollisionProfile:
 
 
 def nominal_profile(engine=None,scene=None):
-    reference,source=nominal_dual_arm();engine=engine or reference
-    root=files('casbot_calib').joinpath('assets');metadata=json.loads(root.joinpath('nominal_collision.json').read_text())
-    payload=root.joinpath('nominal_collision.npz').read_bytes()
-    if hashlib.sha256(payload).hexdigest()!=metadata['array_sha256'] or source['sha256']!=metadata['source_urdf_sha256']:
-        raise ValueError('Collision asset/source digest mismatch')
-    actual=engine.model;expected=reference.model
-    if actual.parents!=expected.parents or [j.name for j in actual.joints]!=metadata['joint_names']:
-        raise ValueError('Collision profile joint order/tree mismatch')
-    for first,second in zip(actual.joints,expected.joints,strict=True):
-        if not np.allclose(first.origin.matrix(),second.origin.matrix(),atol=1e-12,rtol=0) or not np.allclose(first.axis,second.axis,atol=1e-12,rtol=0):
-            raise ValueError('Kinematics changed; rebuild and verify the collision geometry profile')
-    geometry=[]
-    with np.load(BytesIO(payload),allow_pickle=False) as arrays:
-        for item in metadata['geometries']:
-            g=_core.CollisionGeometry();g.name=item['name'];g.parent=item['parent_joint_index'];g.vertices=arrays[item['array_key']+'_vertices'];g.triangles=arrays[item['array_key']+'_triangles'];geometry.append(g)
-    names=[g.name for g in geometry];excluded=[(names.index(item['first']),names.index(item['second'])) for item in metadata['excluded_pairs']]
-    if scene:
-        for obstacle in scene.get('obstacles',[]):geometry.append(box_geometry(obstacle['name'],obstacle['center'],obstacle['half_extents'],obstacle.get('attached_to_base',True)))
-    metadata={**metadata,'scene':scene or {},'geometry_sha256':hashlib.sha256(payload).hexdigest(),
-        'backend':_core.CollisionChecker.backend_version(),'actual_geometry_count':len(geometry)}
-    return CollisionProfile(engine,geometry,excluded,metadata)
+    """Compatibility entry point for the current fixed-waist CAD scene."""
+    from .model_runtime import collision_for
+    return collision_for({},engine=engine,scene=scene)
 
 
 def _certify(profile,evaluate,variation,intervals,margin,max_depth,time_map=None):

@@ -46,14 +46,13 @@ def test_server_client_and_ff_bind_same_new_model(profile,tmp_path):
     assert collision_for(profile).metadata['backend']==_core.CollisionChecker.backend_version()
     assert c['initial_q']==context.home.tolist()
     assert not (tmp_path/'not_started').exists()
-    with pytest.raises(ValueError,match='contexts differ'):
-        SDKMockSession(CONFIG/'sdk_mock.yaml',tmp_path/'bad',227,profile=ROOT/'configs/hardware_field.yaml')
-    with pytest.raises(ValueError,match='contexts differ'):
-        SDKMockSession(ROOT/'configs/sdk_mock.yaml',tmp_path/'bad2',227,profile=CONFIG/'hardware_field.yaml')
+    # Compatibility config names and explicit DVT2 paths resolve identically.
+    assert SDKMockSession(CONFIG/'sdk_mock.yaml',tmp_path/'bad',227,profile=ROOT/'configs/hardware_field.yaml').profile['model_context']==context.identity
+    assert SDKMockSession(ROOT/'configs/sdk_mock.yaml',tmp_path/'bad2',227,profile=CONFIG/'hardware_field.yaml').config['model_context']==context.identity
     changed=copy.deepcopy(profile);changed['scene']['obstacles'][0]['center'][2]=100
     with pytest.raises(ValueError,match='collision scene differs'):collision_for(changed)
     snap=snapshot(tmp_path/'snap',profile)
-    with pytest.raises(ValueError,match='contexts differ'):field.snapshot_binding(snap,field.load_profile(ROOT/'configs/hardware_field.yaml'))
+    assert field.snapshot_binding(snap,field.load_profile(ROOT/'configs/hardware_field.yaml'))
 
 
 def test_h2_protocol_reloads_new_model_without_extra_selectors(tmp_path,profile,monkeypatch):
@@ -96,7 +95,7 @@ def test_h2_gravity_export_h3_load_and_relocation_use_same_source(gravity,tmp_pa
     resources=resource_elements(ET.parse(new/'candidate_exploratory.urdf').getroot());assert resources
     assert all(Path(resolved_resource(r.get('filename'),new/'candidate_exploratory.urdf')).exists() for r in resources)
     np.testing.assert_allclose(friction.gravity_engine(new).gravity(context_for(profile).home),e.gravity(context_for(profile).home),atol=1e-12)
-    with pytest.raises(ValueError,match='contexts differ'):friction.gravity_source(gravity,field.load_profile(ROOT/'configs/hardware_field.yaml'))
+    assert friction.gravity_source(gravity,field.load_profile(ROOT/'configs/hardware_field.yaml'))
 
 
 @pytest.mark.parametrize('joint',[0,7])
@@ -163,19 +162,22 @@ def test_staged_collection_records_new_source_and_rejects_mixed_engine(tmp_path,
     write_json(plan/'manifest.json',dict(motion_sha256=sha256(plan/'motion.json'),reference_sha256=sha256(plan/'reference.npz'),reference_gate_passed=True))
     write_json(root/'plan_report.json',dict(passed=True,selected_trials=['hold']))
     write_json(root/'session.json',dict(config=config,collision=collision.metadata,joint_names=list(context_for(config).joint_names)))
+    wrong=_core.ArmDynamics.from_urdf(str(ROOT/'tests/fixtures/legacy_nominal/casbot_dual_arm_benchmark_nominal.urdf'))
     with pytest.raises(ValueError,match='plant/feedforward model differs'):
-        collect_trial(root,'hold',nominal_dual_arm()[0],engine,config,collision)
+        collect_trial(root,'hold',wrong,engine,config,collision)
     obs,report=collect_trial(root,'hold',engine,engine,config,collision)
     assert report['passed'] and report['model_context']==config['model_context']
     name,meta,loaded=next(recordings(root,'gravity'))
     np.testing.assert_array_equal(loaded['q'],obs['q'])
+    raw_path=root/'runs/hold/metadata.json';saved=json.loads(raw_path.read_text());saved.pop('model_context');write_json(raw_path,saved)
+    with pytest.raises(ValueError,match='model context differs'):next(recordings(root,'gravity'))
 
 
-def test_unmigrated_p0_cannot_silently_load_legacy_model(tmp_path,profile):
+def test_p0_cannot_silently_load_a_model_different_from_its_context(tmp_path,profile):
     from casbot_calib.staged_protocol import prepare_protocol
     from casbot_calib.staged_plan import plan_session
     config=dict(schema_version=2,model_context=profile['model_context'])
     for entry in (prepare_protocol,plan_session):
-        with pytest.raises(ValueError,match='DVT2 P0 protocol migration is pending'):
+        with pytest.raises(ValueError,match='P0 declared model differs'):
             entry(tmp_path/'unsupported',config)
     assert not (tmp_path/'unsupported').exists()

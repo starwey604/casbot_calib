@@ -35,7 +35,7 @@ def write_scene(profile,path):
         ET.SubElement(parent,'geom',name=g.name+'_mesh',type='mesh',mesh=name,rgba=color,
             **_pose_attributes(dict(rotation=g.placement.rotation,translation=g.placement.translation)))
     ET.indent(root,space='  ');Path(path).write_text(ET.tostring(root,encoding='unicode')+'\n',encoding='utf-8')
-    return TelemetryAdapter('casbot_20251015_dual_mock',[JointMapping(j.name,j.name) for j in model.joints])
+    return TelemetryAdapter(model.model_id,[JointMapping(j.name,j.name) for j in model.joints])
 
 
 def _story(root):

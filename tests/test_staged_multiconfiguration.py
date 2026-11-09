@@ -99,8 +99,8 @@ def test_reference_mutation_rejected_even_if_local_digest_is_updated(fake_gated_
 
 def test_analysis_rejects_changed_nominal_geometry_before_reading_data(fake_gated_plan,monkeypatch):
     import casbot_calib.staged_multifit as module
-    engine,source=module.nominal_dual_arm();source={**source,'sha256':'0'*64}
-    monkeypatch.setattr(module,'nominal_dual_arm',lambda:(engine,source))
+    engine,source=module.model_for({});source={**source,'sha256':'0'*64}
+    monkeypatch.setattr(module,'model_for',lambda config:(engine,source))
     with pytest.raises(ValueError,match='nominal model changed'):module.load_problems(fake_gated_plan,'train',np.zeros(14))
 
 

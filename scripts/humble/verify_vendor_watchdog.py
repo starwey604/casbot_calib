@@ -24,14 +24,14 @@ def main():
     from sensor_msgs.msg import JointState
     from crb_ros_msg.msg import UpperJointData
     from std_srvs.srv import SetBool
-    model,identity=nominal_dual_arm();names=[j.name for j in model.model.joints];model_id='casbot_20251015_nominal:'+identity['sha256'][:12]
-    home=np.array([0,.45,0,-.9,0,0,0,0,-.45,0,-.9,0,0,0])
+    model,identity=nominal_dual_arm();names=[j.name for j in model.model.joints];model_id=model.model.model_id
+    home=__import__('casbot_calib.model_context',fromlist=['load_context']).load_context().home
     profile=nominal_profile(scene=yaml.safe_load(Path('configs/collision_scene.yaml').read_text()))
     reference=certify_reference(profile,lambda t:np.broadcast_to(home,(len(t),14)),1.,np.zeros(14))
     if not reference['passed']:raise ValueError('Stationary watchdog reference rejected')
     endpoint='/casbot_calib_s2_watchdog_'+uuid.uuid4().hex[:8]
     prefix=Path(os.environ['CASBOT_VENDOR_INSTALL'])/'casbot_calib_vendor/lib/casbot_calib_vendor'
-    source=str(files('casbot_calib').joinpath('assets/casbot_dual_arm_benchmark_nominal.urdf'))
+    source=str(__import__('casbot_calib.model_context',fromlist=['load_context']).load_context().urdf)
     commands=[['install/humble-ros/casbot_calib_transport/lib/casbot_calib_transport/mock_host','--ros-args',
         '-r','__ns:='+endpoint+'/plant','-p','model_id:='+model_id,'-p','experiment_id:=watchdog',
         '-p','model_path:='+source,'-p','output_dir:='+str(root),'-p','initial_q:='+json.dumps(home.tolist())],

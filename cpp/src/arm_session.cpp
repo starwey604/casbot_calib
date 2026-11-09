@@ -88,8 +88,10 @@ struct ArmSimulationSession::Impl {
   }
   Eigen::VectorXd residual(const Eigen::VectorXd& x) {
     const Eigen::VectorXd current=c.current_tau>0?Eigen::VectorXd(x.tail(n)):target(x);
-    return c.gain.cwiseProduct(current)-dynamics.gravity(x.head(n))-
-      dynamics.velocity_bias(x.head(n),x.segment(n,n))-dry_friction(x.segment(n,n));
+    // One Pinocchio pass for C*dq + g, rather than recomputing gravity
+    // before and inside velocity_bias. The contact/friction law is unchanged.
+    return c.gain.cwiseProduct(current)-dynamics.nonlinear_effects(x.head(n),x.segment(n,n))-
+      dry_friction(x.segment(n,n));
   }
   // For active sticking coordinates a_s=0. Solve the free block of Pinocchio's
   // mass matrix, then recover the coupled reaction at every sticking axis.

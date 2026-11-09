@@ -36,7 +36,7 @@ def test_tree_matches_independent_complete_pinocchio_parser():
     pin=pytest.importorskip('pinocchio')
     from importlib.resources import files,as_file
     engine,_=nominal_dual_arm()
-    with as_file(files('casbot_calib').joinpath('assets/casbot_dual_arm_benchmark_nominal.urdf')) as path:
+    with as_file(__import__('casbot_calib.model_context',fromlist=['load_context']).load_context().urdf) as path:
         model=pin.buildModelFromUrdf(str(path))
     data=model.createData();rng=np.random.default_rng(32)
     assert [j.name for j in engine.model.joints]==list(model.names)[1:]

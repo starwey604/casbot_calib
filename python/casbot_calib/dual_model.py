@@ -1,20 +1,12 @@
 """Nominal fixed-waist tree and explicit synthetic physical variations."""
-from importlib.resources import files,as_file
-import hashlib,json
 import numpy as np
 from . import _core
 
 
 def nominal_dual_arm(context=None):
-    if context is not None:return context.engine,context.source
-    asset=files('casbot_calib').joinpath('assets/casbot_dual_arm_benchmark_nominal.urdf')
-    with as_file(asset) as path:engine=_core.ArmDynamics.from_urdf(str(path))
-    names=[j.name for j in engine.model.joints]
-    if len(names)!=14 or sum(n.startswith('left_') for n in names)!=7 or sum(n.startswith('right_') for n in names)!=7:
-        raise ValueError('Expected nominal fixed-waist 7+7 model')
-    source=json.loads(files('casbot_calib').joinpath('assets/casbot_dual_arm_source.json').read_text(encoding='utf-8'))
-    if hashlib.sha256(asset.read_bytes()).hexdigest()!=source['sha256']:raise ValueError('Nominal URDF digest mismatch')
-    return engine,source
+    from .model_context import load_context
+    context=load_context() if context is None else context
+    return context.engine,context.source
 
 
 def physical_model(nominal,scales,viscous,coulomb,smoothing_velocity=.03):

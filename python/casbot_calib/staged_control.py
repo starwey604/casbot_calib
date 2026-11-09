@@ -78,7 +78,7 @@ def run_frozen_control(root,plant,config,profile,parent,acceptance,resume=False)
     frozen=load_frozen_candidate(parent);report=_read(acceptance)
     if not report['model_acceptance_passed'] or report['candidate_sha256']!=file_hash(Path(parent)/frozen['candidate']) or report['final_protocol_sha256']!=file_hash(analysis/'final_protocol.json'):
         raise ValueError('Control requires the accepted frozen final-test model')
-    candidate=load_candidate(Path(parent)/frozen['candidate']);nominal,_=nominal_dual_arm()
+    candidate=load_candidate(Path(parent)/frozen['candidate'],context_for(config));nominal,_=model_for(config)
     return _run_control(Path(root),plant,config,profile,candidate,nominal,resume)
 
 

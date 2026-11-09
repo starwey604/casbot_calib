@@ -4,7 +4,7 @@ from pathlib import Path
 from time import perf_counter
 import numpy as np
 from .data import write_json
-from .dual_model import nominal_dual_arm
+from .model_runtime import model_for
 from .rigid_identification import fit_rigid, model_from_parameters
 from .staged_identification import recordings
 from .staged_inertia import periodic_problem, probe_problem, probe_metrics, _metrics, _preserve_prior_stages
@@ -12,7 +12,7 @@ from .staged_protocol import file_hash, load_protocol, _read
 
 
 def load_problems(root, split, static):
-    protocol, config, _ = load_protocol(root); nominal, source = nominal_dual_arm()
+    protocol, config, _ = load_protocol(root); nominal, source = model_for(config)
     if source['sha256'] != protocol['model']['sha256']:
         raise ValueError('R1 nominal model changed since acquisition; revalidate geometry/model before analysis')
     purpose = {'train': 'fit', 'selection': 'select', 'test': 'final_test'}[split]
@@ -84,7 +84,7 @@ def score_problems(problems, candidate, theta, friction, static, config):
             predicted = p['regression']@theta+p['extra']@friction+p['fixed_friction']+p['rotor']
             metric.update(identity, actual_coverage=coverage, active_joints=active,
                 mean_full_period_residual_nm=np.mean(predicted-p['current_torque'],axis=0).tolist(),
-                passed=bool(excited and metric['maximum_normalized_rmse'] <= threshold['dynamic_axis_nrmse'] and
+                passed=bool(excited and metric.get('stationary_qualified',True) and metric['maximum_normalized_rmse'] <= threshold['dynamic_axis_nrmse'] and
                     metric['maximum_stationary_interval_excess_nm'] <= threshold['stationary_excess_nm']))
             rows[name] = metric
         else:
@@ -152,13 +152,14 @@ def candidate_bundle(theta, friction, static, nominal, source, config, fit, trai
     return dict(model_version='tree_full_physical_inertia_v1', source_sha256=source['sha256'], parameters=np.asarray(theta).tolist(),
         viscous=np.asarray(friction[:14]).tolist(), coulomb=np.asarray(friction[14:]).tolist(), static_friction=np.asarray(static).tolist(),
         gain_status=config['drive']['gain_status'], gain_nm_a=config['drive']['gain_nm_a'], joint_names=[j.name for j in nominal.model.joints],
+        **({'model_context':config['model_context']} if 'model_context' in config else {}),
         hardware_executable=False, parameter_status=fit['identifiability'], training=list(training), validation=[],
         development_only=True, p0_acceptance_passed=False, publishable=False)
 
 
 def identify_development(root, output, prior_analysis):
     started=perf_counter();root=Path(root);output=Path(output)
-    _,config,_=load_protocol(root);nominal,source=nominal_dual_arm();prior_analysis=Path(prior_analysis)
+    _,config,_=load_protocol(root);nominal,source=model_for(config);prior_analysis=Path(prior_analysis)
     if output.exists():raise FileExistsError(output)
     g,f,s=(_read(prior_analysis/stage/'report.json') for stage in ('gravity','friction','breakaway'))
     if not all(r['passed'] for r in (g,f,s)):raise ValueError('Predecessor development gates failed')
@@ -181,12 +182,7 @@ def identify_development(root, output, prior_analysis):
     prior_root=load_development_reference(root)
     preserved=_preserve_prior_stages(prior_root,candidate,friction,static,model_from_parameters(nominal,theta_g),
         {**config['acceptance'],'gain_nm_a':config['drive']['gain_nm_a'],'control_period_ns':config['control_period_ns']})
-    repeat=batch_repeatability(metrics,config['p0']['acceptance']['repeat_residual_mean_difference_nm'])
-    repeat['wrist']=wrist_repeatability(probes,config['p0']['acceptance']['repeat_residual_mean_difference_nm'])
-    repeat['passed']=repeat['passed'] and repeat['wrist']['passed']
-    observed_centers=measured_center_coverage(metrics,config)
-    checks=dict(prior_development=preserved['passed'],all_primary_predictions=all(r['passed'] for r in metrics.values()),
-        all_wrist_predictions=bool(probes and all(r['passed'] for r in probes.values())),independent_batches=repeat['passed'],measured_center_separation=observed_centers['passed'])
+    checks,repeat,observed_centers=development_summary(metrics,probes,config,preserved)
     output.mkdir(parents=True,exist_ok=False)
     report=dict(schema_version=1,round='R1',development_passed=all(checks.values()),passed=all(checks.values()),checks=checks,
         p0_acceptance_passed=False,formal_test_consumed=False,publishable=False,truth_read=False,
@@ -198,10 +194,62 @@ def identify_development(root, output, prior_analysis):
         scope='predeclared 1e-4 development fit; selection diagnostics, no R2/R3 candidate selection or final-test acceptance')
     write_json(output/'candidate_initial.json',candidate_bundle(initial['parameters'],frozen,static,nominal,source,config,initial,training))
     write_json(output/'candidate.json',candidate_bundle(theta,friction,static,nominal,source,config,refined,training))
+    write_development_scores(output,report,repeat,training,selection,observed_centers)
+    return report
+
+
+def development_summary(metrics,probes,config,preserved):
+    repeat=batch_repeatability(metrics,config['p0']['acceptance']['repeat_residual_mean_difference_nm'])
+    repeat['wrist']=wrist_repeatability(probes,config['p0']['acceptance']['repeat_residual_mean_difference_nm'])
+    repeat['passed']=repeat['passed'] and repeat['wrist']['passed']
+    observed_centers=measured_center_coverage(metrics,config)
+    checks=dict(prior_development=preserved['passed'],all_primary_predictions=all(r['passed'] for r in metrics.values()),
+        all_wrist_predictions=bool(probes and all(r['passed'] for r in probes.values())),independent_batches=repeat['passed'],measured_center_separation=observed_centers['passed'])
+    return checks,repeat,observed_centers
+
+
+def write_development_scores(output,report,repeat,training,selection,observed_centers):
+    metrics=report['validation']
     write_json(output/'batch_repeatability.json',repeat);write_json(output/'report.json',report)
     write_json(output/'configuration_coverage.json',dict(schema_version=1,trials={name:row['coverage'] for name,row in {**training,**selection}.items()},measured_centers=observed_centers,source='measured, not reference coverage'))
     with (output/'axis_metrics.csv').open('w',encoding='utf-8-sig',newline='') as stream:
         writer=csv.writer(stream);writer.writerow(['trial','split','center','batch','joint','rmse_Nm','nrmse','stationary_excess_Nm','passed'])
         for name,row in metrics.items():
             for j in range(14):writer.writerow([name,row['split'],row['center_id'],row['acquisition_batch_id'],j,row['rmse_nm'][j],row['normalized_rmse'][j],row['stationary_interval_excess_nm'][j],row['passed']])
+
+
+def rescore_development(root,output):
+    """Revalidate one sealed R1 fit; no collection, mechanical fitting or parameter changes."""
+    from .staged_protocol import _unseal,_local
+    from .staged_development import frozen_predecessors
+    from .staged_multiconfiguration import load_development_reference
+    from .staged_attribution import formal_test_untouched
+    from .staged_control import load_candidate
+    from .model_runtime import context_for
+    root=Path(root);output=Path(output);_,config,_=load_protocol(root)
+    if output.exists():raise FileExistsError(output)
+    formal_test_untouched(root)
+    seal=_unseal(root,'development_fit_freeze.json')
+    for path,expected in seal['files'].items():
+        if file_hash(_local(root,path))!=expected:raise ValueError('Frozen R1 fit changed: '+path)
+    folder=root/'identification_development';original=_read(folder/'report.json')
+    manifests={k:file_hash(root/f'role_inputs/{k}.json') for k in ('train','selection')}
+    if original['protocol_sha256']!=file_hash(root/'protocol.json') or original['input_manifests']!=manifests:
+        raise ValueError('R1 fit belongs to other observations/protocol')
+    frozen_predecessors(root);load_development_reference(root)
+    bundle=_read(folder/'candidate.json');model=load_candidate(folder/'candidate.json',context_for(config))
+    theta=np.asarray(bundle['parameters']);friction=np.r_[bundle['viscous'],bundle['coulomb']];static=np.asarray(bundle['static_friction'])
+    training=load_problems(root,'train',static);selection=load_problems(root,'selection',static)
+    if list(training)!=original['training_trials'] or list(selection)!=original['selection_trials']:
+        raise ValueError('R1 rescore trial coverage changed')
+    metrics,probes=score_problems({**training,**selection},model,theta,friction,static,config)
+    checks,repeat,centers=development_summary(metrics,probes,config,original['prior_stage_acceptance'])
+    report={**original,'passed':all(checks.values()),'development_passed':all(checks.values()),'checks':checks,
+        'validation':metrics,'probe_validation':probes,'grouped_prediction':grouped_prediction_summary(metrics,probes),
+        'parameter_refit':False,'rigid_fit_calls':0,'scope':'Observation-only physical stationary revalidation of sealed R1 fit; Fourier motion scores unchanged',
+        'source_fit_freeze_sha256':file_hash(root/'development_fit_freeze.json'),'source_candidate_sha256':file_hash(folder/'candidate.json'),
+        'source_report_passed':original['passed'],'wall_s':None}
+    output.mkdir(parents=True,exist_ok=False)
+    for name in ('candidate.json','candidate_initial.json'):(output/name).write_bytes((folder/name).read_bytes())
+    write_development_scores(output,report,repeat,training,selection,centers)
     return report

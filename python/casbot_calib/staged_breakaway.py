@@ -15,10 +15,15 @@ def ramp_policy(meta,curve,gravity,config):
     baseline=float(gravity.gravity(curve(begin))[j]);guard=_core.ArmGuardConfig()
     guard.joint=j;guard.begin_ns=round(begin*1e9);guard.end_ns=round(end*1e9)
     guard.baseline_torque=baseline;guard.restore_kp=config['drive']['kp'][j];guard.restore_kd=config['drive']['kd'][j]
+    multiplier=config.get('breakaway_restore_kd_multiplier',1.)
+    if not np.isfinite(multiplier) or multiplier<=0:raise ValueError('Positive breakaway recovery damping multiplier required')
+    guard.restore_kd*=multiplier
     guard.maximum_displacement=.002;guard.maximum_speed=.4
+    probe_kd=config.get('breakaway_probe_kd_nm_s_rad',0.)
+    if not np.isfinite(probe_kd) or probe_kd<0:raise ValueError('Nonnegative local probe damping required')
     def transform(t,commands,metadata):
         off=(t>=dwell_begin)&(t<end);ramp=np.maximum(t-begin,0)
-        commands[off,j,2]=baseline+direction*slope*ramp[off];commands[off,j,3:]=0.
+        commands[off,j,2]=baseline+direction*slope*ramp[off];commands[off,j,3]=0.;commands[off,j,4]=probe_kd
         return commands
     return transform,guard
 
@@ -52,7 +57,8 @@ def identify_breakaway(root,output,gravity,*,records=None,config=None,guard_read
             passed=all(d['passed'] for d in directions.values())))
     report=dict(stage='breakaway',passed=all(r['passed'] for r in axes),axes=axes,ramps=rows,
         static_friction=[r['equivalent_symmetric_static_nm'] for r in axes],
-        onset_velocity_resolution_rad_s=1e-7,controller_confirmation=dict(displacement_rad=.0002,speed_rad_s=.005,sustain_ns=3000000),
+        onset_velocity_resolution_rad_s=1e-7,probe_controller=dict(kp=0.,kd_nm_s_rad=config.get('breakaway_probe_kd_nm_s_rad',0.),
+            torque_observation='actual output current-derived torque, including local PD; do not add damping torque again'),controller_confirmation=dict(displacement_rad=.0002,speed_rad_s=.005,sustain_ns=3000000),
         torque_source='total output torque observation minus frozen gravity at actual sampled posture; legacy current uses declared output gain',
         gravity_uncertainty_source='earlier independent paired gravity residual and approach spread; not eliminated by a fast ramp',
         limitations=['Operational threshold at this velocity/current resolution, not a material maximum static-friction constant',

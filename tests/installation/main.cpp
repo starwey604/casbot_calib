@@ -22,6 +22,13 @@ int main() {
   if(!std::filesystem::is_regular_file(candidate/"scene.xml") || !std::filesystem::is_regular_file(candidate/"collision.npz"))return 8;
   std::cout<<"Installed DVT2 candidate: 14 axes loaded from "<<candidate<<'\n';
 #endif
+#ifdef CASBOT_CALIB_MODEL_DIRECTORY
+  const auto selected=std::filesystem::path(CASBOT_CALIB_MODEL_DIRECTORY)/"casbot_hl12p1_dvt2"/"derived"/"bare_flange_1105_03_gauge_v2";
+  const auto current=casbot::ArmDynamics::from_urdf((selected/"model.urdf").string());
+  if(current.model().model_id!="casbot_hl12p1_dvt2_bare_flange_1105_03_gauge_v2" || current.model().joints.size()!=14)return 9;
+  if(!std::filesystem::is_regular_file(selected/"scene_left.xml") || !std::filesystem::is_regular_file(selected/"scene_right.xml"))return 10;
+  std::cout<<"Installed default DVT2: 14 axes and both CAD view scenes loaded from "<<selected<<'\n';
+#endif
   casbot::TricalCalibration calibration;casbot::ArmPose sensor;
   const Eigen::Vector3d displacement(.001,-.002,.003);
   if((casbot::trical_readings(sensor,displacement,calibration)-displacement).norm()>1e-14) return 1;
@@ -31,6 +38,9 @@ int main() {
   const casbot::ArmDynamics engine(model);
   if((engine.frame_pose(Eigen::VectorXd::Zero(1),"tcp").topRightCorner<3,1>()-displacement).norm()>1e-14) return 2;
   if((engine.point_geometry(Eigen::VectorXd::Zero(1),"tcp",Eigen::Vector3d::Zero()).position-displacement).norm()>1e-14)return 4;
+  auto workspace=engine.workspace();
+  const Eigen::VectorXd zero=Eigen::VectorXd::Zero(1),velocity=Eigen::VectorXd::Constant(1,.2);
+  if((workspace.nonlinear_effects(zero,velocity)-engine.gravity(zero)-engine.velocity_bias(zero,velocity)).norm()>1e-13)return 11;
   casbot::ArmSimulationConfig drive;drive.gain=Eigen::VectorXd::Ones(1);
   casbot::TricalMockSession mock(engine,drive,casbot::TricalMockConfig{},Eigen::VectorXd::Zero(1),Eigen::VectorXd::Zero(1));
   mock.select_target("tcp","ball",displacement);

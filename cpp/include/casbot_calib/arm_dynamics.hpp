@@ -77,6 +77,8 @@ class ArmDynamics {
   std::vector<std::string> rigid_parameter_names() const;
   Eigen::MatrixXd mass_matrix(const Eigen::VectorXd& q) const;
   Eigen::VectorXd gravity(const Eigen::VectorXd& q) const;
+  // Pinocchio C(q,dq)dq + g(q), excluding friction and armature acceleration.
+  Eigen::VectorXd nonlinear_effects(const Eigen::VectorXd& q,const Eigen::VectorXd& dq) const;
   Eigen::VectorXd velocity_bias(const Eigen::VectorXd& q,const Eigen::VectorXd& dq) const;
   Eigen::VectorXd friction(const Eigen::VectorXd& dq) const;
   Eigen::VectorXd inverse(const Eigen::VectorXd& q,const Eigen::VectorXd& dq,const Eigen::VectorXd& ddq) const;
@@ -116,6 +118,7 @@ class ArmWorkspace {
   ArmWorkspace& operator=(const ArmWorkspace&) = delete;
   Eigen::MatrixXd mass_matrix(const Eigen::VectorXd& q);
   Eigen::VectorXd gravity(const Eigen::VectorXd& q);
+  Eigen::VectorXd nonlinear_effects(const Eigen::VectorXd& q,const Eigen::VectorXd& dq);
   Eigen::VectorXd velocity_bias(const Eigen::VectorXd& q,const Eigen::VectorXd& dq);
   Eigen::VectorXd friction(const Eigen::VectorXd& dq);
   Eigen::VectorXd rotor_torque(const Eigen::VectorXd& ddq);

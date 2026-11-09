@@ -30,16 +30,14 @@ def pose(translation, rotation_vector):
 
 
 def default_config(path=None):
-    config = json.loads(files('casbot_calib').joinpath('assets/trical_nominal_v1.json').read_text(encoding='utf-8'))
+    from .model_context import load_context
+    config=load_context().kinematic_config()
     if path is not None:
-        settings = yaml.safe_load(Path(path).read_text(encoding='utf-8'))
-        if not isinstance(settings, dict) or set(settings) - {'profile', 'control_period_ns'} or settings.get('profile') not in {'trical_nominal_v1','trical_workflow_v1'}:
-            raise ValueError('Unknown TriCal profile/overrides')
-        if settings['profile']=='trical_workflow_v1':
-            config=json.loads(files('casbot_calib').joinpath('assets/trical_workflow_v1.json').read_text(encoding='utf-8'))
-        config['control_period_ns'] = settings.get('control_period_ns', config['control_period_ns'])
-    validate_config(config)
-    return config
+        settings=yaml.safe_load(Path(path).read_text(encoding='utf-8'))
+        if not isinstance(settings,dict) or set(settings)-{'profile','control_period_ns'} or settings.get('profile')!='dvt2_trical_k1_context_v1':
+            raise ValueError('Use the DVT2 K1 profile; old synthetic fixtures are not a runtime model option')
+        config['control_period_ns']=settings.get('control_period_ns',config['control_period_ns'])
+    validate_config(config);return config
 
 
 def calibration(config):
@@ -51,10 +49,8 @@ def calibration(config):
 
 
 def workflow_config(path=None):
-    if path is not None and isinstance((selected:=yaml.safe_load(Path(path).read_text(encoding='utf-8'))),dict) and selected.get('profile')=='dvt2_trical_geometry_v1':
-        from .dvt2_trical import configuration
-        return configuration(path)
-    config=default_config(path) if path is not None else json.loads(files('casbot_calib').joinpath('assets/trical_workflow_v1.json').read_text(encoding='utf-8'))
+    from .dvt2_trical import configuration
+    config=configuration(path)
     validate_config(config)
     if 'workflow' not in config or 'sensor' not in config or 'drive' not in config:
         raise ValueError('K2 requires a workflow profile')
@@ -154,7 +150,10 @@ def nominal_kinematics(config=None,context=None):
     if config is not None and 'model_context' in config:
         from .model_context import resolve_context
         context=resolve_context(config['model_context'],context)
-    config = (context.kinematic_config() if context is not None else default_config()) if config is None else deepcopy(config); validate_config(config)
+    if context is None:
+        from .model_context import load_context
+        context=load_context()
+    config=context.kinematic_config() if config is None else deepcopy(config);validate_config(config)
     engine, source = nominal_dual_arm(context)
     if config['urdf_sha256'] != source['sha256'] or config['robot_model_id'] != engine.model.model_id:
         raise ValueError('Kinematics profile does not match nominal dual-arm source')

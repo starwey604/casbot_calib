@@ -34,11 +34,13 @@ def export_table(parameters,scaled,output):
 
 
 def export_urdf(nominal,candidate,config,path,context=None):
+    from .model_context import load_context
+    context=load_context() if context is None else context
     from .kinematics import ensure_tools
     if 'model_context' in config:
         from .model_context import resolve_context
         context=resolve_context(config['model_context'],context)
-    source_path=context.urdf if context is not None else Path(str(files('casbot_calib').joinpath('assets/casbot_dual_arm_benchmark_nominal.urdf')))
+    source_path=context.urdf
     if context is not None and (config['robot_model_id']!=context.model_id or config['urdf_sha256']!=context.source['sha256']):raise ValueError('Kinematic export/context source mismatch')
     nominal=ensure_tools(nominal,config['tools']);candidate=ensure_tools(candidate,config['tools'])
     root=ET.fromstring(source_path.read_bytes())

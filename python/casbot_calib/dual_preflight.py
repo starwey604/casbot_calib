@@ -40,7 +40,8 @@ def mock_encoder_channels(obs):
 
 def mapping_adapter(names,config):
     pre=config['preflight'];counts=pre['encoder_counts_per_revolution']
-    return TelemetryAdapter('casbot_20251015_dual_mock',[
+    from .model_runtime import context_for
+    return TelemetryAdapter(context_for(config).model_id,[
         JointMapping(name,name,2*np.pi/counts,int(pre['encoder_directions'][j]),float(pre['encoder_zero_ticks'][j]))
         for j,name in enumerate(names)])
 
