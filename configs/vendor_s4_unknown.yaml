@@ -7,6 +7,6 @@ settings:
 preflight: {}
 records: []
 notes:
-  - Await qualified S3 observations, mapped device identity and timing evidence.
+  - Await qualified S3 observations and timing evidence.
   - No default gain, noise, actuator torque capability or physical stop qualification.
   - This is an offline data protocol; S2 remains localhost-only.

@@ -28,8 +28,7 @@ def fixture(tmp_path):
              current=.3*np.sin(2*np.pi*seconds[:,None]/6)*np.ones((1,14)),sample_ns=t,receive_ns=t+1234,
              sequence=np.arange(n,dtype=np.int64),status=np.zeros((n,14),dtype=np.uint32))
     contract=dict(schema_version='casbot_observation_contract_v1',scope='synthetic_observations',joint_names=names,
-                  model_id='nominal_fixture',identity=dict(dataset_id='test',model_sha256=source['sha256'],
-                      robot_serial='synthetic',firmware_version='fixture_v1',motion_software_version='fixture_v1',provenance_reference='analytic sensor fixture'),
+                  model_id='nominal_fixture',identity=dict(dataset_id='test',model_sha256=source['sha256']),
                   fields=dict(position='q',velocity='dq',signal='current',receive='receive_ns',device_sequence='sequence',status='status'),
                   position_unit='rad',velocity_unit='rad/s',
                   position_time=dict(field='sample_ns',role='acquisition',clock_id='acq'),
@@ -39,7 +38,7 @@ def fixture(tmp_path):
                   experiment=dict(kind='periodic',begin_ns=0,end_ns=int(t[-1]),period_s=6.,discard_periods=0,harmonics=6,phase_points=128))
     delta=np.array([-1.,-.5,.5,1.])[:,None]*np.ones((1,14))
     scale=dict(schema_version='casbot_scale_validation_v1',scope='synthetic_observations',joint_names=names,model_id='nominal_fixture',
-               device_identity=dict(robot_serial='synthetic',firmware_version='fixture_v1'),sensor_identity='test_adc',
+               sensor_identity='test_adc',
                reference_basis='synthetic_reference',raw_delta=delta.tolist(),reference_delta_nm=(2*delta).tolist(),
                reference_zero_raw=[0.]*14,zero_uncertainty_raw=[0.]*14)
     return raw,contract,scale
@@ -92,16 +91,33 @@ def test_explicit_second_reducer_factor_is_rejected_before_import(tmp_path,fixtu
         imported(tmp_path,fixture,change=lambda c:c['signal'].update(gear_ratio=100))
 
 
-@pytest.mark.parametrize('case',['no_reference','same_current_reference','bad_zero','sensor_mismatch','firmware_mismatch'])
-def test_scale_requires_separate_bidirectional_identity_bound_reference(tmp_path,fixture,case):
+@pytest.mark.parametrize('case',['no_reference','same_current_reference','bad_zero','sensor_mismatch'])
+def test_scale_requires_separate_bidirectional_reference(tmp_path,fixture,case):
     def change(s):
         if case=='no_reference':s['reference_delta_nm']=[[0.]*14]*4
         if case=='same_current_reference':s['reference_basis']='derived_from_current'
         if case=='bad_zero':s['reference_zero_raw']=[.1]*14
         if case=='sensor_mismatch':s['sensor_identity']='another_motor'
-        if case=='firmware_mismatch':s['device_identity']['firmware_version']='changed'
     report=imported(tmp_path,fixture,scale_change=change)
     assert not report['scale']['passed'] and not report['passed']
+
+
+def test_hardware_scope_no_longer_requires_device_identity(tmp_path,fixture):
+    """2026-11-09 policy: SDK exposes no device fingerprint; identity is not a gate."""
+    def change(c):
+        c['scope']='hardware_observations'
+        c['identity'].update(robot_serial='unknown',firmware_version='unknown',
+                             motion_software_version='unknown',provenance_reference='unknown')
+    def scale_change(s):
+        s['scope']='hardware_observations'
+        s['reference_basis']='known_load'
+        s['device_identity']=dict(robot_serial='another_robot',firmware_version='another_build')
+    report=imported(tmp_path,fixture,change=change,scale_change=scale_change)
+    assert 'scale_reference_device_or_firmware_mismatch' not in report['scale']['reasons']
+    assert 'device_model_or_dataset_identity_unqualified' not in report['scale']['reasons']
+    assert report['scale']['passed'] and report['time']['passed']
+    assert report['stage_data_eligibility']['inertia']['observations_eligible']
+    assert report['run_id'] and report['created_utc']
 
 
 def test_synthetic_reference_cannot_become_hardware_qualification(tmp_path,fixture):

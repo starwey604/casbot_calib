@@ -19,11 +19,9 @@ from casbot_calib.dual_model import nominal_dual_arm
 def write_json(path,value):Path(path).write_text(json.dumps(value,indent=2)+'\n')
 
 
-def bundle(folder,payload,fields,names,model_sha,*,experiment=None,firmware='native_mock_fixture'):
+def bundle(folder,payload,fields,names,model_sha,*,experiment=None):
     folder=Path(folder);folder.mkdir(parents=True,exist_ok=False)
-    identity=dict(dataset_id=folder.name,robot_serial='synthetic_native_mock',firmware_version=firmware,
-                  motion_software_version='legacy_schema1_train',model_sha256=model_sha,
-                  provenance_reference='existing digest-verified observable capture; never evaluation truth')
+    identity=dict(dataset_id=folder.name,model_sha256=model_sha)
     contract=dict(schema_version='casbot_observation_contract_v1',scope='synthetic_observations',
                   source_sha256=sha256(payload),joint_names=names,model_id='casbot_20251015_nominal_fixed_waist_dual',
                   identity=identity,fields=fields,position_unit='rad',velocity_unit='rad/s',
@@ -35,7 +33,7 @@ def bundle(folder,payload,fields,names,model_sha,*,experiment=None,firmware='nat
     # Public synthetic unit/scale reference, separate from robot model/plant state.
     levels=np.array([-1.,-.5,-.2,.2,.5,1.])[:,None]*np.ones((1,14))
     scale=dict(schema_version='casbot_scale_validation_v1',scope=contract['scope'],joint_names=names,model_id=contract['model_id'],
-               device_identity={k:identity[k] for k in ('robot_serial','firmware_version')},sensor_identity='synthetic_output_current',
+               sensor_identity='synthetic_output_current',
                reference_basis='synthetic_reference',raw_delta=levels.tolist(),reference_delta_nm=(2*levels).tolist(),
                reference_zero_raw=[0.]*14,zero_uncertainty_raw=[1e-6]*14,
                note='Analytic synthetic scale fixture, not an ENCOS measurement or validation of hardware gain')

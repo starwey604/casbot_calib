@@ -241,7 +241,7 @@ bash scripts/humble/container.sh bash scripts/humble/build_vendor.sh
 cp configs/vendor_s1.yaml configs/vendor_s1_local.yaml
 ```
 
-在本地配置中核对 `joint_topic`、`joint_type`、具名14轴、实际软件/固件版本和 QoS。默认 `/joint_states`；若已经有对应 debug 模式反馈，可按实际端点选择 `/motion/joint_state` 或 `/motion/debug/joint_state`，消息类型分别为 `sensor_msgs/msg/JointState` 和 `crb_ros_msg/msg/JointStateData`。S1 不会为了取得反馈主动切换模式，上身模式能否提供这些端点仍需确认。
+在本地配置中核对 `joint_topic`、`joint_type`、具名14轴和 QoS。默认 `/joint_states`；若已经有对应 debug 模式反馈，可按实际端点选择 `/motion/joint_state` 或 `/motion/debug/joint_state`，消息类型分别为 `sensor_msgs/msg/JointState` 和 `crb_ros_msg/msg/JointStateData`。S1 不会为了取得反馈主动切换模式，上身模式能否提供这些端点仍需确认。
 
 S1 的 `effort_source`、`effort_unit`、`sample_timestamp_semantics` 保留 `unknown`，`model_mapping_verified` 保留 `false`：这些保守值表示只读层尚未授予资格，不是忽略厂家答复。厂家声明记录在能力文档，物理尺度/采样资格由独立 S3 契约处理，不能靠改 S1 配置绕过。
 

@@ -25,16 +25,16 @@ Profile使用`casbot_vendor_s3_profile_v1`，包含`scope`、`contract`、`scale
 观测契约`casbot_observation_contract_v1`至少明确以下内容：
 
 - `scope`为`synthetic_observations`或`hardware_observations`；`source_sha256`绑定原始NPZ/CSV，S1入口则绑定其`observations.npz`。`joint_names`、`model_id`绑定同一14轴模型。
-- `identity`记录数据批次`dataset_id`、URDF的`model_sha256`、机器人序列号、固件、运控版本和来源说明`provenance_reference`。nominal与evt6不得混用。
+- `identity`记录数据批次`dataset_id`与URDF的`model_sha256`，两者是数据／模型绑定，须与输入摘要和14轴顺序一致。设备序列号／固件／运控版本与`provenance_reference`按2026-11-09用户授权不再是门禁条件，可缺省；接入实机数据前须重建设备绑定。nominal与evt6不得混用。
 - `fields`明确`position/velocity/signal/receive/device_sequence/status/temperature`的键或列，缺失可选字段为null；`position_unit=rad`、`velocity_unit=rad/s`。
 - `position_time`和`signal_time`各含`field`、`role=acquisition`、`clock_id`。发布时刻、ROS header和接收时刻不自动晋升为采样时刻。
 - `signal`明确`origin`、`unit`、`side=output_equivalent`、`includes=total_actuator_output`、14轴`gain_nm_per_raw_unit`与`zero_raw`、`sensor_identity`、`raw_acquisition`及`filter.kind`。
 
 支持的信号来源是`motor_current`（A）、`output_torque_estimate`（Nm）和`independent_output_torque`（Nm）。转换为`(signal_raw-zero_raw)*gain`。输出侧增益已包含减速器效果，禁止再提供减速比乘一次。指令echo、未知来源或扣除了未说明补偿的信号不能直接进入总力矩方程。驱动估算力矩仍不算独立力传感器。
 
-独立尺度记录`casbot_scale_validation_v1`绑定同一scope、关节、model_id、sensor_identity及序列号/固件。它提供至少四组正反向`raw_delta`与`reference_delta_nm`、独立零位`reference_zero_raw`和`zero_uncertainty_raw`。参考类型为已知载荷、已知附加惯量或独立传感器；合成例子另标`synthetic_reference`，不能用于实机资格。当前检查固定增益的相对RMSE≤5%、参考RMS≥0.2Nm、含零位不确定度的误差≤0.01Nm；不在这里重新拟合增益，也不以同一电流自证尺度。
+独立尺度记录`casbot_scale_validation_v1`绑定同一scope、关节、model_id与sensor_identity。它提供至少四组正反向`raw_delta`与`reference_delta_nm`、独立零位`reference_zero_raw`和`zero_uncertainty_raw`。参考类型为已知载荷、已知附加惯量或独立传感器；合成例子另标`synthetic_reference`，不能用于实机资格。当前检查固定增益的相对RMSE≤5%、参考RMS≥0.2Nm、含零位不确定度的误差≤0.01Nm；不在这里重新拟合增益，也不以同一电流自证尺度。
 
-**摘要检查只能验证文件一致性，不能证明厂家字段的物理含义或外部参考真实性。** 实机证据仍需针对具体设备/固件审核，报告保留`physical_semantics_verified_by_software=false`。本机Mock的S1捕获不能被升级为hardware观测契约。
+**摘要检查只能验证文件一致性，不能证明厂家字段的物理含义或外部参考真实性。** 报告保留`physical_semantics_verified_by_software=false`。本机Mock的S1捕获不能被升级为hardware观测契约。
 
 ## 时钟、缺帧和阶段门禁
 

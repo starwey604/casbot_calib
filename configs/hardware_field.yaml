@@ -1,9 +1,5 @@
 schema_version: casbot_hardware_field_v1
 execution_scope: hardware_position_stream
-device:
-  serial_number: unknown
-  firmware_version: unknown
-  robot_software_version: unknown
 command_hz: 500
 gravity_feedforward: nominal
 joint_topic: /joint_states

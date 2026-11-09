@@ -43,7 +43,7 @@ bash scripts/humble/container.sh bash scripts/humble/vendor.sh \
 
 | 文件 | 内容 |
 | --- | --- |
-| `session.json` | 配置、SDK身份、本地二进制／消息库摘要、作用域、域号、请求时长、软件／固件版本声明 |
+| `session.json` | 配置、SDK身份、本地二进制／消息库摘要、作用域、域号、请求时长 |
 | `raw/cdr.bin` | GenericSubscription收到的序列化字节，在解码前追加保存 |
 | `raw/packets.jsonl` | 全局本地回调序号、接收时间、channel/topic/type、CDR偏移／长度、完整具名数组和header／状态原文 |
 | `raw/recorder.json` | Linux单调时钟身份、实际RMW、订阅QoS、采样时刻和设备序号未知声明 |

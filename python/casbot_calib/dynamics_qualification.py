@@ -4,6 +4,7 @@ import csv
 from pathlib import Path
 import numpy as np
 from .dynamics_data import load_dynamics,read_json
+from .run_marker import run_marker
 from .vendor_identity import sha256
 
 POLICY=dict(version='s3_raw_observations_v2',minimum_dynamic_raw_hz=4000.,maximum_time_error_ns=100000,
@@ -19,11 +20,9 @@ def scale_check(meta):
         reasons.append('scale_reference_is_not_independent_of_the_observed_signal')
     if evidence.get('reference_basis')=='synthetic_reference' and meta['scope']!='synthetic_observations':
         reasons.append('synthetic_reference_cannot_qualify_hardware')
-    signal=meta['contract']['signal'];identity=meta['contract']['identity']
+    signal=meta['contract']['signal']
     if not signal.get('sensor_identity') or evidence.get('sensor_identity')!=signal['sensor_identity']:
         reasons.append('scale_reference_sensor_identity_mismatch')
-    if evidence.get('device_identity')!={key:identity.get(key) for key in ('robot_serial','firmware_version')}:
-        reasons.append('scale_reference_device_or_firmware_mismatch')
     try:
         x=np.asarray(evidence['raw_delta'],dtype=float);y=np.asarray(evidence['reference_delta_nm'],dtype=float)
         if x.ndim!=2 or x.shape[1]!=14 or x.shape!=y.shape or len(x)<4 or not np.isfinite(x).all() or not np.isfinite(y).all():
@@ -110,9 +109,7 @@ def qualify_dynamics(folder,output):
     if not time['passed']:reasons.extend(time['reasons'])
     names=meta['joint_names'];identity=contract.get('identity',{}) if contract else {}
     identity_ok=bool(identity.get('model_sha256') and len(identity['model_sha256'])==64 and identity.get('dataset_id'))
-    if meta['scope']=='hardware_observations':
-        identity_ok=identity_ok and all(identity.get(k) not in (None,'','unknown') for k in ('robot_serial','firmware_version','motion_software_version','provenance_reference'))
-    if not identity_ok:reasons.append('device_model_or_dataset_identity_unqualified')
+    if not identity_ok:reasons.append('model_or_dataset_identity_unqualified')
     status_known=np.isfinite(data['status_raw']).all(axis=1)
     if not np.any(status_known):reasons.append('saturation_or_fault_status_not_exposed')
     valid=(np.isfinite(data['q']).all(axis=1)&np.isfinite(data['dq']).all(axis=1)&np.isfinite(data['torque_nm']).all(axis=1)
@@ -175,9 +172,9 @@ def qualify_dynamics(folder,output):
                 hardware_executable=False,hardware_end_to_end_tested=False,physical_semantics_verified_by_software=False,
                 driver_response_identification_eligible=False,driver_gate_reason='Requires separately qualified actual write history and sampled current; S3 observations alone do not provide it',
                 source_manifest_sha256=sha256(root/'manifest.json'),source=str(root.resolve()),
-                limitations=['Evidence declarations must be reviewed against device/firmware; digest checks are not physical verification',
-                             'No implicit period-average alternative to raw 4kHz; it needs an independent measurement/model validation',
-                             'No independent force sensor is required; current-derived effort remains one observation'])
+                limitations=['No implicit period-average alternative to raw 4kHz; it needs an independent measurement/model validation',
+                             'No independent force sensor is required; current-derived effort remains one observation'],
+                **run_marker())
     output=Path(output);output.mkdir(parents=True,exist_ok=False)
     np.savez_compressed(output/'processing.npz',valid=valid,aligned_position_time_ns=aligned)
     (output/'report.json').write_text(json.dumps(result,indent=2)+'\n')

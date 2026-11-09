@@ -15,6 +15,7 @@ from .data import write_json
 from .model_runtime import model_for, collision_for, urdf_for, check_same_context, context_for
 from .staged_motion import Motion, gate_motion
 from .static_field import _move as add_bounded_move
+from .run_marker import run_marker
 from .vendor_identity import sha256
 from .vendor_position import executor_binary
 
@@ -137,7 +138,8 @@ def run_executor(config, output, domain_id, *, snapshot=False, plan=None, timeou
     result = json.loads(path.read_text()) if path.exists() else dict(passed=False, reason='executor_did_not_finish')
     if interruption is not None: result['passed'] = False
     result.update(returncode=code, snapshot_only=snapshot, local_contract_test=bool(local_remaps),
-        physical_semantics_verified=False, supervisor_interruption=interruption, source_config_assumptions=config['assumptions'])
+        physical_semantics_verified=False, supervisor_interruption=interruption,
+        source_config_assumptions=config['assumptions'], **run_marker())
     write_json(root / 'result.json', result); seal(root)
     return result
 

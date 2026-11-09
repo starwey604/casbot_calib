@@ -7,6 +7,7 @@ import yaml
 from .dynamics_data import read_json
 from .dynamics_qualification import qualified_observations
 from .dynamics_problem import periodic_observation_problem
+from .run_marker import run_marker
 from .vendor_identity import sha256
 from .data import write_json
 
@@ -89,7 +90,6 @@ class StagedObservations:
         self.config=copy.deepcopy(self.protocol['settings'])
         self.config['drive']['gain_status']='synthetic_declared' if self.protocol['scope']=='synthetic_observations' else 'independently_validated'
         self.config['drive']['gain_nm_a']=None  # total Nm observations, never a fake current gain
-        self.identity=None
         for row in self.entries.values():
             for key in ('qualification','motion','guard','reference_collision','actual_collision'):
                 if row.get(key):checked(row[key])
@@ -104,10 +104,6 @@ class StagedObservations:
         nominal,model=nominal_dual_arm()
         if metadata['contract']['identity']['model_sha256']!=model['sha256'] or metadata['joint_names']!=[j.name for j in nominal.model.joints]:
             raise ValueError('S4 requires matching nominal URDF and joint order')
-        identity=metadata['contract']['identity']
-        binding=(model['sha256'],identity['robot_serial'],identity['firmware_version'],identity['motion_software_version'])
-        if self.identity is not None and self.identity!=binding:raise ValueError('Device/firmware/model changed between S4 records')
-        self.identity=binding
         motion=read_json(checked(row['motion']))
         if row['stage']=='inertia':
             motion['conditions']['source_batch']=motion['conditions']['batch']
@@ -192,7 +188,8 @@ def inspect_staged(folder,output):
         hardware_executable=False,protocol_sha256=sha256(Path(folder)/'protocol.json'),
         execution_blockers=['No real SDK torque/compensation capability or physical stop certification',
                             'Actual geometry, fixture/gravity transform and device constraints are unqualified',
-                            'S2 localhost-only restriction remains; offline data readiness never authorizes motion'])
+                            'S2 localhost-only restriction remains; offline data readiness never authorizes motion'],
+        **run_marker())
     output=Path(output);output.mkdir(parents=True,exist_ok=False);write_json(output/'report.json',result)
     return result
 
@@ -208,7 +205,7 @@ def analyse_staged(folder,output,through='inertia'):
     completed={};report=dict(schema_version='casbot_vendor_s4_analysis_v1',passed=False,completed_through=None,
         stages=completed,scope=reader.protocol['scope'],hardware_executable=False,physical_semantics_verified_by_software=False,
         independent_final_test_passed=False,control_validated=False,protocol_sha256=sha256(Path(folder)/'protocol.json'),
-        source_model_sha256=model_source['sha256'])
+        source_model_sha256=model_source['sha256'],**run_marker())
     try:
         if not all(reader.preflight.get(k,{}).get('passed') for k in ('mapping','timing')):
             raise ValueError('Qualified mapping and timing preflight evidence required before staged analysis')

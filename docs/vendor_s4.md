@@ -22,7 +22,7 @@ S4 spec为`casbot_vendor_s4_spec_v1`，scope区分合成/实机观测，settings
 | guard | 起动斜坡的实际反馈确认事件及阈值；不能用预定斜坡结束代替 |
 | source_kind | 本轮明确区分旧开发记录和新Mock采集 |
 
-`preflight.mapping/timing`绑定方向/映射和时序预检报告。当前示例绑定既有合成预检，不能当作甲方主机或物理网络验证。冻结协议检查原始捕获摘要不能在训练/验证角色之间复用，角色还须匹配原记录的conditions。之后每次分析重新核对协议、引用、S3原始manifest、设备/固件/模型及14轴顺序；新模型不能直接沿用旧协议。
+`preflight.mapping/timing`绑定方向/映射和时序预检报告。当前示例绑定既有合成预检，不能当作甲方主机或物理网络验证。冻结协议检查原始捕获摘要不能在训练/验证角色之间复用，角色还须匹配原记录的conditions。之后每次分析重新核对协议、引用、S3原始manifest、模型及14轴顺序；新模型不能直接沿用旧协议。
 
 这些文件摘要建立一致性边界，外部契约的物理真实性仍需现场核验。数据就绪不代表执行权限，所有execution_enabled/hardware_executable保持false。
 
