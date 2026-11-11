@@ -46,7 +46,7 @@ class Terminal:
                 axes.add_row(Text(axis['name']), '是' if axis['target_arm'] else '否',
                     *(f'{axis[key]:.6f}' for key in ('first_rad', 'last_rad', 'span_rad')))
             self.console.print(axes)
-        self.console.print('实物映射/方向待F2确认；运动未开放。')
+        self.console.print('本报告仅为只读观测；实物映射/方向由现场核对。')
         self.console.print('报告：' + str(Path(output).resolve()/'report.md'))
 
 
@@ -70,13 +70,12 @@ def parser():
     report.add_argument('folder', type=Path)
     report.add_argument('--output', type=Path, required=True, help='源会话之外的新目录')
     report.add_argument('--json', action='store_true')
-    gui = commands.add_parser('gui', help='GUI逐轴确认与短轨迹；执行按钮会实际发送SDK指令')
+    gui = commands.add_parser('gui', help='GUI五字段滑条调参；开始发送后拖动会实际发送SDK指令')
     gui.add_argument('--profile', type=Path, default=Path('configs/hardware_field.yaml'))
     gui.add_argument('--output', type=Path, help='新GUI会话目录')
     gui.add_argument('--session', type=Path, help='已有GUI会话；故障会话仍禁止运动')
     gui.add_argument('--domain-id', type=int)
     gui.add_argument('--scope', choices=('hardware_position_stream', 'localhost_contract_mock'))
-    gui.add_argument('--conditions', type=Path, help='新实机会话的现场前提证据登记')
     gui.add_argument('--preview', action='store_true', help='纯离线界面/模型预览，所有连接和控制按钮禁用')
     gui.add_argument('--frames', type=int, help='指定帧数后关闭，用于UI检查')
     gui.add_argument('--screenshot', type=Path, help='关闭时保存实际窗口截图')

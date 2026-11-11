@@ -99,17 +99,26 @@ def params(config, names):
         command_period_ns=1_000_000_000 // config['command_hz'], **experiment)
 
 
-def run_executor(config, output, domain_id, *, snapshot=False, plan=None, timeout_s=30, local_remaps=None,cancel_check=None):
+def run_executor(config, output, domain_id, *, snapshot=False, plan=None, timeout_s=30, local_remaps=None,cancel_check=None, manual_command=None, manual_effort_limit_nm=10., on_output=None):
     if not 0 <= domain_id <= 232:
         raise ValueError('Explicit ROS domain 0..232 required')
     from .sdk_connection import connection_remaps
     local_remaps = connection_remaps(config, domain_id, local_remaps)
     engine, _ = model_for(config); binary, identity = executor_binary()
+    if manual_command is not None:
+        if snapshot or plan is not None:
+            raise ValueError('Manual stream cannot consume a frozen trajectory or snapshot mode')
+        config = dict(config, gravity_feedforward='none', breakaway_parameters={})
     values = params(config, [j.name for j in engine.model.joints]); values['snapshot_only'] = snapshot
     root = Path(output).resolve(); root.mkdir(parents=True, exist_ok=False)
     values['output'] = str(root / 'execution')
     if not snapshot:
-        values.update(plan_file=str(Path(plan).resolve()), lower=[j.lower for j in engine.model.joints], upper=[j.upper for j in engine.model.joints])
+        values.update(lower=[j.lower for j in engine.model.joints], upper=[j.upper for j in engine.model.joints])
+        if manual_command is None:
+            values['plan_file'] = str(Path(plan).resolve())
+        else:
+            values.update(manual_stream=True, manual_command_file=str(Path(manual_command).resolve()),
+                          manual_effort_limit_nm=manual_effort_limit_nm)
     from .sdk_process import ros_arguments,recording_process,run_process
     if local_remaps and any(not target.startswith('/casbot_calib_s2_') for target in local_remaps.values()):
         raise ValueError('Integration remaps require isolated private endpoints')
@@ -117,6 +126,7 @@ def run_executor(config, output, domain_id, *, snapshot=False, plan=None, timeou
     write_json(root / 'request.json', dict(config=config, domain_id=domain_id, snapshot_only=snapshot,
         executor_sha256=sha256(binary), sdk=identity, local_contract_remaps=local_remaps,
         source_plan_csv_sha256=sha256(plan) if plan is not None else None,
+        **(dict(manual_stream=True, manual_command_file=str(manual_command), hidden_compensation=False) if manual_command is not None else {}),
         execution_target='isolated_contract_test' if local_remaps else 'hardware',
         physical_semantics_verified=False, disconnect_protection_verified=False))
     environment = dict(os.environ, ROS_DOMAIN_ID=str(domain_id), ROS_LOCALHOST_ONLY='1' if local_remaps else '0')
@@ -125,19 +135,22 @@ def run_executor(config, output, domain_id, *, snapshot=False, plan=None, timeou
         observation.update(model_id=engine.model.model_id,joint_names=[j.name for j in engine.model.joints],model_context=config['model_context'])
     observation.update(joint_topic=(local_remaps or {}).get(config['joint_topic'], config['joint_topic']),
         joint_type=config['feedback_type'], mode_topic=(local_remaps or {}).get(config['mode_topic'], config['mode_topic']),
-        robot_state_topic='', debug_topic='')
+        robot_state_topic='', debug_topic='/motion/debug/joint_state' if manual_command is not None else '')
+    if manual_command is not None and local_remaps:
+        observation['debug_topic'] = local_remaps['/motion/debug/joint_state']
     observation_path = root / 'observation.yaml'; observation_path.write_text(yaml.safe_dump(observation))
     import sys
     recorder_command=[sys.executable,'-m','casbot_calib.cli','vendor-capture','--config',str(observation_path),
         '--output',str(root/'raw_state'),'--duration',str(timeout_s+5),'--domain-id',str(domain_id),
         '--scope','localhost_contract_mock' if local_remaps else 'hardware_read_only']
-    with recording_process(recorder_command,environment,root/'recorder.log',root/'raw_state/raw/recorder.json') as recorder:
-        process_result=run_process(command,environment,root/'process.log',timeout_s=timeout_s,recorder=recorder,cancel_check=cancel_check)
+    with recording_process(recorder_command,environment,root/'recorder.log',root/'raw_state/raw/recorder.json',**(dict(cancel_check=cancel_check) if cancel_check else {})) as recorder:
+        process_result=run_process(command,environment,root/'process.log',timeout_s=timeout_s,recorder=recorder,cancel_check=cancel_check,**(dict(on_output=on_output) if on_output else {}))
     code=process_result.returncode;interruption=process_result.interruption
     path = root / 'execution/result.json'
-    result = json.loads(path.read_text()) if path.exists() else dict(passed=False, reason='executor_did_not_finish')
+    result = json.loads(path.read_text()) if path.exists() else dict(passed=False, reason='executor_did_not_finish' if process_result.started else 'executor_not_started',
+        **(dict(fault='interrupted') if not process_result.started else {}))
     if interruption is not None: result['passed'] = False
-    result.update(returncode=code, snapshot_only=snapshot, local_contract_test=bool(local_remaps),
+    result.update(returncode=code, snapshot_only=snapshot, local_contract_test=bool(local_remaps), executor_started=process_result.started,
         physical_semantics_verified=False, supervisor_interruption=interruption,
         source_config_assumptions=config['assumptions'], **run_marker())
     write_json(root / 'result.json', result); seal(root)

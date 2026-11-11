@@ -8,6 +8,7 @@
 #include <std_srvs/srv/set_bool.hpp>
 #include <csignal>
 #include <limits>
+#include <iostream>
 #ifdef __linux__
 #include <sys/prctl.h>
 #include <unistd.h>
@@ -15,17 +16,26 @@
 
 namespace {volatile std::sig_atomic_t interrupted=0; void on_signal(int) {interrupted=1;}}
 class PositionExecutor final : public rclcpp::Node {
+  struct Observation {std::string joint,field;double value,threshold;std::string unit;};
  public:
   PositionExecutor():Node("casbot_vendor_position_executor",rclcpp::NodeOptions()
       .enable_rosout(false).start_parameter_services(false).start_parameter_event_publisher(false)) {
     const auto output=declare_parameter<std::string>("output");
     names_=declare_parameter<std::vector<std::string>>("joint_names");
     snapshot_=declare_parameter<bool>("snapshot_only",false);
+    manual_=declare_parameter<bool>("manual_stream",false);
+    if(manual_) {
+      if(snapshot_)throw std::runtime_error("Manual stream is not a snapshot");
+      manual_file_=declare_parameter<std::string>("manual_command_file");
+      manual_effort_limit_=declare_parameter<double>("manual_effort_limit_nm",10.);
+      if(!std::isfinite(manual_effort_limit_)||manual_effort_limit_<=0||manual_effort_limit_>100.)throw std::runtime_error("Invalid manual effort range");
+    }
     const bool ramp_enabled=declare_parameter<bool>("breakaway_enabled",false);
     const bool gravity_enabled=declare_parameter<bool>("gravity_feedforward_enabled",false);
     const auto feedforward_path=declare_parameter<std::string>("feedforward_plan_file","");
     const double feedforward_limit=declare_parameter<double>("feedforward_limit_nm",100.);
-    experiment_commands_=ramp_enabled||gravity_enabled||!feedforward_path.empty();
+    experiment_commands_=manual_||ramp_enabled||gravity_enabled||!feedforward_path.empty();
+    if(manual_&&(ramp_enabled||gravity_enabled||!feedforward_path.empty()))throw std::runtime_error("Manual fields must not include hidden compensation");
     const auto joint=declare_parameter<std::string>("joint_topic"),mode=declare_parameter<std::string>("mode_topic");
     const auto command=declare_parameter<std::string>("command_topic"),service=declare_parameter<std::string>("mode_service"),stop=declare_parameter<std::string>("stop_service");
     command_topic_=command;
@@ -79,14 +89,17 @@ class PositionExecutor final : public rclcpp::Node {
       if(lower.size()!=14||upper.size()!=14) throw std::runtime_error("14 joint bounds required");
       for(int j=0;j<14;++j)if(!std::isfinite(lower[j])||!std::isfinite(upper[j])||lower[j]>=upper[j])throw std::runtime_error("Invalid bounds");
       std::copy(lower.begin(),lower.end(),lower_.begin());std::copy(upper.begin(),upper.end(),upper_.begin());
-      std::ifstream input(declare_parameter<std::string>("plan_file"));std::string line;std::getline(input,line);
-      while(std::getline(input,line)) {
-        auto row=vendor::csv(line);if(row.size()!=29||row[0]!=static_cast<double>(plan_.size())*period_) throw std::runtime_error("Invalid uniform position plan");
-        for(int j=0;j<14;++j) if(row[j+1]<lower_[j]||row[j+1]>upper_[j]||std::abs(row[j+15])>max_velocity_) throw std::runtime_error("Plan exceeds configured bounds");
-        plan_.push_back(row);
+      std::string line;
+      if(!manual_) {
+        std::ifstream input(declare_parameter<std::string>("plan_file"));std::getline(input,line);
+        while(std::getline(input,line)) {
+          auto row=vendor::csv(line);if(row.size()!=29||row[0]!=static_cast<double>(plan_.size())*period_) throw std::runtime_error("Invalid uniform position plan");
+          for(int j=0;j<14;++j) if(row[j+1]<lower_[j]||row[j+1]>upper_[j]||std::abs(row[j+15])>max_velocity_) throw std::runtime_error("Plan exceeds configured bounds");
+          plan_.push_back(row);
+        }
+        if(plan_.size()<2) throw std::runtime_error("Missing plan");
+        for(int j=0;j<14;++j) if(std::abs(plan_.back()[j+1]-plan_[0][j+1])>1e-12) throw std::runtime_error("Plan must return to observed start");
       }
-      if(plan_.size()<2) throw std::runtime_error("Missing plan");
-      for(int j=0;j<14;++j) if(std::abs(plan_.back()[j+1]-plan_[0][j+1])>1e-12) throw std::runtime_error("Plan must return to observed start");
       if(!feedforward_path.empty()) {
         if(!hardware_||gravity_enabled||ramp_enabled||!std::isfinite(feedforward_limit)||feedforward_limit<=0||feedforward_limit>100.)throw std::runtime_error("Exclusive bounded H4 feedforward schedule required");
         std::ifstream feedforward(feedforward_path);std::getline(feedforward,line);
@@ -134,6 +147,7 @@ class PositionExecutor final : public rclcpp::Node {
     if(done_) return;
     if(interrupted && phase_!="STOPPING"&&phase_!="FAILED") fault("interrupted");
     if(phase_=="STOPPING") {
+      if(manual_)notice(fresh(now)?"observing_stop":"observing_stop_no_feedback","observe_after_stop",motion_observations(.02));
       if(stop_future_.valid() && stop_future_.wait_for(std::chrono::seconds(0))==std::future_status::ready) {
         stop_ack_=stop_future_.get()->success;stop_future_={};
       }
@@ -145,11 +159,27 @@ class PositionExecutor final : public rclcpp::Node {
       return;
     }
     if(phase_=="WAIT_FEEDBACK") {
+      if(manual_) {
+        // A pending manual start is a visible, cancellable wait, not a 10 s deadline.
+        if(!fresh(now)) {notice("waiting_feedback","wait",{{"","feedback_callback_age",state_.receive?double(now-state_.receive)*1e-6:std::numeric_limits<double>::quiet_NaN(),double(max_age_)*1e-6,"ms"}});return;}
+        if(now-mode_at_>=mode_age_) {notice("waiting_mode_feedback","wait",{{"","mode_callback_age",mode_at_?double(now-mode_at_)*1e-6:std::numeric_limits<double>::quiet_NaN(),double(mode_age_)*1e-6,"ms"}});return;}
+        auto moving=motion_observations(.02);
+        if(!moving.empty()) {notice("waiting_stationary","wait",moving);return;}
+        if(!std::filesystem::exists(manual_file_)) {notice("waiting_start_command","wait");return;}
+        if(!load_manual())return;
+        if(mode_!="mode: READY, state: READY"&&mode_!="mode: IDLE_MODE, state: STAND") {notice("waiting_start_mode","wait");return;}
+        const auto publishers=count_publishers(command_topic_);
+        if(publishers>1) {notice("waiting_command_owner","wait",{{"","publishers",double(publishers),1.,"publishers"}});return;}
+        if(!mode_client_->service_is_ready()) {notice("waiting_mode_service","wait");return;}
+        mode_future_=request(mode_client_,true);event("ENTERING","request_upper_debug");return;
+      }
       if(fresh(now)&&speed()<.02&&now-mode_at_<mode_age_) {
         if(snapshot_) {save_snapshot();finish(true,"snapshot_only");return;}
+        if(manual_&&!std::filesystem::exists(manual_file_))return;
+        if(manual_&&!load_manual())return;
         if(mode_!="mode: READY, state: READY"&&mode_!="mode: IDLE_MODE, state: STAND") {fault("unexpected_start_mode");return;}
         if(hardware_&&count_publishers(command_topic_)>1) {fault("competing_command_publisher");return;}
-        for(int j=0;j<14;++j) if(std::abs(state_.q[j]-plan_[0][j+1])>tolerance_) {fault("start_pose_changed");return;}
+        for(int j=0;!manual_&&j<14;++j) if(std::abs(state_.q[j]-plan_[0][j+1])>tolerance_) {fault("start_pose_changed");return;}
         // Topic and service discovery are independent. Stay read-only until
         // all required services appear, bounded by the existing startup limit.
         if(!mode_client_->service_is_ready()||(!hardware_&&!stop_client_->service_is_ready())) {
@@ -160,9 +190,15 @@ class PositionExecutor final : public rclcpp::Node {
       } else if(now-began_>startup_timeout_) fault("initial_feedback_or_mode_timeout");
       return;
     }
-    if(!fresh(now)) {fault("stale_feedback");return;}
-    if(now-mode_at_>mode_age_) {fault("stale_mode");return;}
-    for(int j=0;j<14;++j) if(state_.q[j]<lower_[j]||state_.q[j]>upper_[j]||std::abs(state_.v[j])>max_velocity_) {fault("observed_limit");return;}
+    if(!fresh(now)) {fault("stale_feedback",{{"","feedback_callback_age",double(now-state_.receive)*1e-6,double(max_age_)*1e-6,"ms"}});return;}
+    if(now-mode_at_>mode_age_) {fault("stale_mode",{{"","mode_callback_age",double(now-mode_at_)*1e-6,double(mode_age_)*1e-6,"ms"}});return;}
+    std::vector<Observation> violations;
+    for(int j=0;j<14;++j) {
+      if(state_.q[j]<lower_[j])violations.push_back({names_[j],"position_lower",state_.q[j],lower_[j],"rad"});
+      if(state_.q[j]>upper_[j])violations.push_back({names_[j],"position_upper",state_.q[j],upper_[j],"rad"});
+      if(std::abs(state_.v[j])>max_velocity_)violations.push_back({names_[j],"velocity",state_.v[j],max_velocity_,"rad/s"});
+    }
+    if(!violations.empty()) {fault("observed_limit",violations);return;}
     if(phase_=="ENTERING") {
       if(mode_future_.valid()&&mode_future_.wait_for(std::chrono::seconds(0))==std::future_status::ready) {
         mode_ack_=mode_future_.get()->success; mode_future_={};
@@ -191,6 +227,13 @@ class PositionExecutor final : public rclcpp::Node {
       if(count_publishers(command_topic_)>1) {fault("competing_command_publisher");return;}
     }
     if(mode_!="mode: UPPER_BODY_DEBUG, state: STAND") {fault("control_mode_lost");return;}
+    if(manual_) {
+      const auto index=(now-start_)/period_;
+      if(index<=last_index_)return;
+      if(!load_manual())return;
+      if(index>last_index_+1)skips_+=index-last_index_-1;
+      publish(manual_row_,index,"manual");last_index_=index;return;
+    }
     const auto index=std::min<std::int64_t>((now-start_)/period_,plan_.size()-1);
     if(index<=last_index_ && phase_=="STREAMING") return;
     const auto& row=plan_[index];
@@ -229,6 +272,49 @@ class PositionExecutor final : public rclcpp::Node {
       <<",\"physical_stop_verified\":false,\"clock_id\":"<<std::quoted(vendor::clock_id())<<"}\n";
   }
  private:
+  std::vector<Observation> motion_observations(double limit) const {
+    std::vector<Observation> result;
+    for(int j=0;j<14;++j)if(std::abs(state_.v[j])>=limit)result.push_back({names_[j],"velocity",state_.v[j],limit,"rad/s"});
+    return result;
+  }
+  void notice(const std::string& code,const std::string& action,const std::vector<Observation>& observations={},bool force=false) {
+    if(!manual_)return;
+    const auto now=vendor::now();
+    const auto key=phase_+":"+code;
+    if(key!=notice_key_) {notice_since_=now;notice_key_=key;force=true;}
+    if(!force&&now-last_notice_<200000000)return;
+    last_notice_=now;
+    std::ostringstream out;out<<std::setprecision(17);
+    out<<"{\"code\":"<<vendor::json_quote(code)<<",\"phase\":"<<vendor::json_quote(phase_)
+      <<",\"action\":"<<vendor::json_quote(action)<<",\"event_ns\":"<<now<<",\"since_ns\":"<<notice_since_
+      <<",\"feedback_receive_ns\":"<<state_.receive<<",\"mode\":"<<vendor::json_quote(mode_)<<",\"observations\":[";
+    bool first=true;
+    for(const auto& item:observations) {
+      if(!first)out<<',';
+      first=false;
+      out<<"{\"joint\":"<<vendor::json_quote(item.joint)<<",\"field\":"<<vendor::json_quote(item.field)<<",\"value\":";
+      if(std::isfinite(item.value))out<<item.value;else out<<"null";
+      out<<",\"threshold\":"<<item.threshold<<",\"unit\":"<<vendor::json_quote(item.unit)<<'}';
+    }
+    out<<"]}";
+    // Live status remains independent of archival log success.
+    std::cout<<"FIELDWORK_EVENT "<<out.str()<<std::endl;
+  }
+  bool load_manual() {
+    // GUI replaces the complete file atomically. No partial frames or replay queue.
+    std::ifstream input(manual_file_);std::string line;std::getline(input,line);
+    try {
+      auto fields=vendor::csv(line);
+      if(fields.size()!=71)throw std::runtime_error("71 manual fields required");
+      for(int j=0;j<14;++j) {
+        if(fields[1+j]<lower_[j]||fields[1+j]>upper_[j]||std::abs(fields[15+j])>max_velocity_||
+           std::abs(fields[29+j])>manual_effort_limit_||fields[43+j]<0||fields[43+j]>1000||fields[57+j]<0||fields[57+j]>100)
+          throw std::runtime_error("Manual command outside configured ranges");
+      }
+      manual_fields_=std::move(fields);manual_row_.assign(manual_fields_.begin(),manual_fields_.begin()+29);
+      return true;
+    } catch(const std::exception&) {fault("invalid_manual_command");return false;}
+  }
   void receive(const sensor_msgs::msg::JointState& msg) {
     vendor::State value;
     if(!vendor::state(msg,names_,value)) {if(active())fault("invalid_feedback");return;}
@@ -253,10 +339,15 @@ class PositionExecutor final : public rclcpp::Node {
   bool fresh(std::int64_t now) const {return state_.receive>0&&now-state_.receive<=max_age_;}
   double speed() const {double v=0;for(double x:state_.v)v=std::max(v,std::abs(x));return v;}
   bool active() const {return phase_!="WAIT_FEEDBACK"&&phase_!="STOPPING"&&!done_;}
-  void event(const std::string& phase,const std::string& reason) {phase_=phase;phase_at_=vendor::now();stable_at_=0;events_<<phase_at_<<','<<phase<<','<<reason<<'\n';events_.flush();}
-  void fault(const std::string& reason) {
+  void event(const std::string& phase,const std::string& reason) {
+    phase_=phase;phase_at_=vendor::now();stable_at_=0;
+    notice(reason,phase=="STREAMING"?"sending":phase=="STOPPING"?"observe_after_stop":phase=="ENTERING"?"request_mode":phase=="FAILED"||phase=="COMPLETE"?"control_ended":"wait",{},true);
+    events_<<phase_at_<<','<<phase<<','<<reason<<'\n';events_.flush();
+  }
+  void fault(const std::string& reason,const std::vector<Observation>& observations={}) {
     if(done_||phase_=="STOPPING")return;
     fault_=reason;
+    notice(reason,reason=="interrupted"?"cancel_or_stop":"end_control",observations,true);
     if(snapshot_||(!mode_ack_ && phase_!="ENTERING")) {finish(false,reason);return;}
     event("STOPPING",reason);
     if(stop_client_&&stop_client_->service_is_ready())stop_future_=request(stop_client_,true);
@@ -266,6 +357,11 @@ class PositionExecutor final : public rclcpp::Node {
     if(hardware_)msg.header.frame_id="base_link";
     msg.position.assign(row.begin()+1,row.begin()+15);msg.velocity.assign(row.begin()+15,row.end());msg.effort.assign(14,0.);
     msg.kp=hold_kp_;msg.kd=hold_kd_;
+    if(manual_) {
+      msg.effort.assign(manual_fields_.begin()+29,manual_fields_.begin()+43);
+      msg.kp.assign(manual_fields_.begin()+43,manual_fields_.begin()+57);
+      msg.kd.assign(manual_fields_.begin()+57,manual_fields_.end());
+    }
     if(gravity_workspace_) {
       Eigen::Map<const Eigen::VectorXd> observed(state_.q.data(),14);auto g=gravity_workspace_->gravity(observed);
       msg.effort.assign(g.data(),g.data()+14);
@@ -285,6 +381,7 @@ class PositionExecutor final : public rclcpp::Node {
       if(msg.kp.empty()){std::array<double,14> unknown;unknown.fill(std::numeric_limits<double>::quiet_NaN());vendor::values(commands_,unknown);vendor::values(commands_,unknown);}
       else {vendor::values(commands_,msg.kp);vendor::values(commands_,msg.kd);}commands_<<','<<increment;}
     commands_<<'\n';
+    if(manual_)commands_.flush();
   }
   void save_snapshot() {
     auto out=vendor::log(root_/"snapshot.csv","receive_ns"+vendor::columns("q")+vendor::columns("v"));
@@ -295,6 +392,8 @@ class PositionExecutor final : public rclcpp::Node {
   std::ofstream events_,received_,commands_;
   std::string phase_,mode_,fault_,command_topic_,scope_;std::int64_t began_=0,phase_at_=0,mode_at_=0,start_=0,last_index_=-1,last_publish_=0,stable_at_=0,skips_=0,last_graph_check_=0;
   std::int64_t max_age_,mode_age_,timeout_,period_,startup_timeout_;double tolerance_,tracking_,allowance_,max_velocity_,vel_scale_;
+  std::string notice_key_;std::int64_t notice_since_=0,last_notice_=0;
+  bool manual_=false;std::string manual_file_;double manual_effort_limit_=10.;std::vector<double> manual_fields_,manual_row_;
   bool snapshot_=false,done_=false,success_=false,mode_ack_=false,exit_ack_=false,stop_ack_=false,hardware_=false,stop_rest_observed_=false;
   rclcpp::Subscription<sensor_msgs::msg::JointState>::SharedPtr sub_;rclcpp::Subscription<std_msgs::msg::String>::SharedPtr status_;
   rclcpp::Subscription<crb_ros_msg::msg::JointStateData>::SharedPtr debug_sub_;

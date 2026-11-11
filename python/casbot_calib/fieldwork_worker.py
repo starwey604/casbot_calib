@@ -1,94 +1,131 @@
-"""One GUI operation per process; native SDK sender remains the only command loop."""
+"""Native stream supervisor and isolated geometry renderer; no GUI control loop."""
 import argparse
 from pathlib import Path
+import time
 
 import numpy as np
 
 from .fieldwork_analysis import read_json
 from .data import write_json
-from .fieldwork_control import Session, heartbeat_check, operate
+from .fieldwork_control import Session, heartbeat_check
+from .hardware_batch import atomic_json, batch_lock
 
 
-def render_pose(root, q, selected, output):
-    """Reuse the existing geometry-only viewer in this worker's EGL context."""
-    session = Session(root)
-    render_geometry(session.metadata, q, selected, output)
-
-
-def render_geometry(metadata, q, selected, output):
-    from PIL import Image
+def open_view(metadata, directory):
     from .model_context import resolve_context
-    from .telemetry import StateFrame
     from .viewer import JointView
     context = resolve_context(metadata['model_context'])
-    directory = Path(output).parent; directory.mkdir(parents=True, exist_ok=True)
+    directory = Path(directory); directory.mkdir(parents=True, exist_ok=True)
     scene = directory/'scene.xml'
     if scene.exists():
         from .dvt2_bundle import viewer_adapter
         adapter = viewer_adapter(context.bundle)
     else:
         adapter = context.write_view_scene(scene)
-    with JointView(adapter, scene, width=640, height=480) as view:
-        view.camera.lookat[:] = [0, 0, .95]
-        view.camera.distance = 2.3
-        view.camera.azimuth = 160
-        view.camera.elevation = -8
-        if selected in metadata['joint_names']:
-            view.highlight(metadata['joint_names'].index(selected))
-        frame = StateFrame(adapter.robot_model_id, '已记录位置的几何预览', 0, -1, 0,
-                           tuple(metadata['joint_names']), np.array(q), None, None, None, clock_domain='sample_unknown')
-        Image.fromarray(view.render(frame)).save(output)
+    view = JointView(adapter, scene, width=640, height=480)
+    # Full CAD geometry is retained; avoid expensive shadow/reflection passes in a tuning view.
+    for flag in ('mjRND_SHADOW','mjRND_REFLECTION'):
+        view.renderer.scene.flags[getattr(view.mj.mjtRndFlag,flag)] = False
+    view.camera.lookat[:] = [0, 0, .95]
+    view.camera.distance = 2.3; view.camera.azimuth = 160; view.camera.elevation = -8
+    return view
 
 
-def preview(root, result, action):
+def frame(metadata, view, q, receive_ns=0):
+    from .telemetry import StateFrame
+    return StateFrame(view.adapter.robot_model_id, 'SDK接收位置几何回放', 0, -1, receive_ns,
+                      tuple(metadata['joint_names']), np.asarray(q), None, None, None, clock_domain='sample_unknown')
+
+
+def render_live(root, check):
+    """Own EGL in a separate process, never interfere with ImGui's OpenGL context."""
+    metadata = read_json(root/'view/metadata.json')
+    sequence = 0; previous = None
+    with open_view(metadata, root/'view') as view:
+        while check() in (None, 'operator_cancel'):
+            pose = read_json(root/'view/pose.json')
+            if pose and pose != previous:
+                if pose.get('selected') is not None: view.highlight(pose['selected'])
+                pixels = view.render(frame(metadata, view, pose['q'], pose.get('receive_ns') or 0))
+                temporary = root/'view/frame.pending'
+                with temporary.open('wb') as stream: np.save(stream, pixels, allow_pickle=False)
+                temporary.replace(root/'view/frame.npy')
+                sequence += 1
+                atomic_json(root/'view/rendered.json', dict(**pose, rendered_frames=sequence), replace=True)
+                previous = pose
+            time.sleep(1/15)
+
+
+def render_recording(root, relative, cancel_check=None):
+    """Video uses recorded feedback and receive-time ZOH, not command targets or truth."""
+    import imageio_ffmpeg
+    from PIL import Image, ImageDraw
+    from .presentation import _font
+    font = _font(18)
     session = Session(root)
-    if action == 'snapshot':
-        # Do not alter the already sealed snapshot directory.
-        path = Path(root)/'view'/('snapshot_'+Path(result['snapshot']).name+'.png')
-        path.parent.mkdir(exist_ok=True)
-        render_pose(root, result['q_rad'], None, path)
-        result['image'] = str(path)
-    elif action == 'plan':
-        attempt = Path(root)/result['attempt']
-        data = np.genfromtxt(attempt/'plan/position_plan.csv', delimiter=',', names=True)
-        indices = np.unique(np.linspace(0, len(data)-1, min(240, len(data)), dtype=int))
-        result['plot'] = dict(t=(data['relative_ns'][indices]*1e-9).tolist(),
-            q={name: data['q'+str(session.names.index(name))][indices].tolist() for name in result['joints']})
-        q = np.array(result['q_start_rad'])
-        request = read_json(attempt/'input/request.json')
-        for name in request['joints']:
-            q[session.names.index(name)] += np.deg2rad(request['amplitude_deg'])
-        path = Path(root)/'view'/('plan_'+attempt.name+'.png')
-        path.parent.mkdir(exist_ok=True)
-        render_pose(root, q, result['joints'][0], path)
-        result['image'] = str(path)
-    return result
+    directory = (root/relative).resolve()
+    if directory.parent != root/'runs': raise ValueError('运行目录不属于会话')
+    data = np.genfromtxt(directory/'recording/feedback.csv', delimiter=',', names=True, dtype=None, encoding='utf-8')
+    data = np.atleast_1d(data)
+    if len(data) < 2: raise ValueError('记录不足两帧')
+    output = directory/'recording/motion.mp4'
+    if output.exists(): raise ValueError('视频已存在')
+    timestamps = data['receive_ns'].astype(np.int64)
+    times = (timestamps-timestamps[0])*1e-9
+    with open_view(session.metadata, root/'view') as view:
+        temporary = output.with_name('motion.pending.mp4')
+        writer = imageio_ffmpeg.write_frames(str(temporary), (640,480), fps=20, codec='libx264',
+                    pix_fmt_in='rgb24', pix_fmt_out='yuv420p', output_params=['-crf','22','-preset','fast'])
+        writer.send(None)
+        try:
+            for t in np.arange(0, times[-1]+.025, .05):
+                reason = cancel_check() if cancel_check else None
+                if reason: raise ValueError('视频导出已中断：'+reason)
+                i = max(0, np.searchsorted(times,t,side='right')-1)
+                q = [data['q'+str(j)][i] for j in range(14)]
+                pixels = Image.fromarray(view.render(frame(session.metadata, view, q, int(timestamps[i]))))
+                draw = ImageDraw.Draw(pixels); draw.rectangle((0,0,640,32),fill=(235,242,248))
+                label = 'SDK Mock' if session.metadata['scope']=='localhost_contract_mock' else '现场SDK反馈'
+                draw.text((12,5),f'{label}  {t:.2f} s   已接收位置 / 几何回放',font=font,fill=(24,44,65))
+                writer.send(np.asarray(pixels))
+        finally: writer.close()
+    temporary.replace(output)
+    return dict(video=str(output), duration_s=float(times[-1]), source='recorded SDK feedback, receive-time ZOH')
 
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--session', type=Path, required=True)
-    parser.add_argument('--request', type=Path, required=True)
+    parser.add_argument('--request', type=Path)
     parser.add_argument('--heartbeat', type=Path, required=True)
     parser.add_argument('--owner-id', required=True)
-    parser.add_argument('--output', type=Path, required=True)
+    parser.add_argument('--output', type=Path)
+    parser.add_argument('--render', action='store_true')
+    parser.add_argument('--pipe-heartbeat', action='store_true')
     args = parser.parse_args(argv)
-    request = read_json(args.request)
+    from .fieldwork_ipc import PipeHeartbeat,emit
+    request = None if args.render else read_json(args.request)
+    control = request is not None and request['action']=='stream'
+    check = PipeHeartbeat(0,args.owner_id,timeout_s=2. if control else None) if args.pipe_heartbeat else heartbeat_check(args.heartbeat, expected_owner=args.owner_id)
+    if args.render:
+        render_live(args.session, check); return 0
     try:
-        check = heartbeat_check(args.heartbeat, expected_owner=args.owner_id)
-        reason = check()
-        if reason:
-            raise ValueError(reason)
-        result = operate(args.session, request['action'], request.get('values', {}), cancel_check=check)
-        if request['action'] in ('snapshot', 'plan'):
-            try:
-                preview(args.session, result, request['action'])
-            except (OSError, RuntimeError, ValueError) as exc:
-                result['preview_error'] = str(exc)
-        response = dict(completed=True, action=request['action'], result=result, status=Session(args.session).status())
+        if check(): raise ValueError(check())
+        with batch_lock(args.session):
+            if request['action'] == 'stream':
+                result = Session(args.session).stream(**request['values'], cancel_check=check,
+                    on_event=lambda value:emit('status',event=value))
+            elif request['action'] == 'observe':
+                from .fieldwork_observer import observe
+                result=observe(args.session,**request['values'],cancel_check=check,publish=emit)
+            elif request['action'] == 'video': result = render_recording(args.session, **request['values'], cancel_check=check)
+            else: raise ValueError('未知操作')
+        response = dict(completed=True, action=request['action'], result=result)
     except Exception as exc:
-        response = dict(completed=False, error=str(exc), action=request['action'], status=Session(args.session).status())
-    write_json(args.output, response)
+        response = dict(completed=False, error=str(exc), action=request['action'])
+    emit('response',response=response)
+    try:write_json(args.output, response)
+    except OSError as exc:emit('recording_error',message='操作结果写入失败：'+str(exc))
     return 0 if response['completed'] else 1
 
 

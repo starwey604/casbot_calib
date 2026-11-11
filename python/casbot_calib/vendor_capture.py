@@ -10,7 +10,8 @@ from .vendor_identity import sha256
 
 
 def capture(config_path, output, *, duration_s, domain_id, scope,
-            record_discovery=False, poll_callback=None):
+            record_discovery=False, poll_callback=None, live_callback=None, cancel_check=None,
+            until_stopped=False, tolerate_recording_io_error=False):
     config = load_config(config_path)
     if not math.isfinite(duration_s) or duration_s <= 0 or not 0 <= domain_id <= 232:
         raise ValueError('A positive duration and explicit ROS domain 0..232 are required')
@@ -35,6 +36,9 @@ def capture(config_path, output, *, duration_s, domain_id, scope,
                    config_sha256=sha256(config_path), connection_scope=scope,
                    domain_id=domain_id, duration_s=duration_s, read_only=True,
                    environment={key: os.environ.get(key) for key in ('RMW_IMPLEMENTATION', 'ROS_DISTRO', 'CYCLONEDDS_URI', 'FASTRTPS_DEFAULT_PROFILES_FILE')})
+    if until_stopped:session['until_stopped']=True
+    if live_callback:session['live_display_stream']=True
+    if tolerate_recording_io_error:session['recording_io_policy']='report_and_keep_live_subscription'
     (output/'session.json').write_text(json.dumps(session, ensure_ascii=False, indent=2)+'\n')
     args = [str(binary), '--ros-args', '-p', 'output:='+str(output/'raw'), '-p', 'duration_s:='+str(float(duration_s))]
     for key in ('joint_topic', 'joint_type', 'debug_topic', 'mode_topic', 'robot_state_topic', 'reliable', 'depth'):
@@ -44,16 +48,30 @@ def capture(config_path, output, *, duration_s, domain_id, scope,
         args += ['-p', key+':='+value]
     if record_discovery:
         args += ['-p', 'record_discovery:=true']
+    if live_callback:
+        args += ['-p','stream_packets:=true']
+    if until_stopped:args += ['-p','until_stopped:=true']
+    if tolerate_recording_io_error:
+        if live_callback is None:raise ValueError('Tolerant recording requires a live callback')
+        args += ['-p','tolerate_recording_io_error:=true']
     env = dict(os.environ, ROS_DOMAIN_ID=str(domain_id), ROS_LOCALHOST_ONLY='1' if scope == 'localhost_contract_mock' else '0')
     with (output/'process.log').open('x') as log:
-        process = subprocess.Popen(args, env=env, stdout=log, stderr=subprocess.STDOUT)
+        from .sdk_process import OutputPump
+        process = subprocess.Popen(args, env=env, stdout=subprocess.PIPE if live_callback else log,
+            stderr=subprocess.STDOUT,**(dict(text=True,bufsize=1) if live_callback else {}))
+        pump=OutputPump(process.stdout,log,live_callback) if live_callback else None
         try:
-            if poll_callback is None:
+            if poll_callback is None and cancel_check is None and pump is None:
                 code = process.wait()
             else:
                 while process.poll() is None:
-                    poll_callback()
-                    time.sleep(.05)
+                    if poll_callback:poll_callback()
+                    if (cancel_check and cancel_check()) or (pump and pump.error):
+                        import signal
+                        process.send_signal(signal.SIGINT)
+                        process.wait(timeout=10)
+                        break
+                    time.sleep(.02)
                 code = process.returncode
         except KeyboardInterrupt:
             import signal
@@ -68,6 +86,7 @@ def capture(config_path, output, *, duration_s, domain_id, scope,
                 try: process.wait(timeout=5)
                 except subprocess.TimeoutExpired:
                     process.kill(); process.wait()
+            if pump:pump.join()
     result = dict(returncode=code, completed=False, read_only=True)
     if (output/'raw/summary.json').exists():
         result['completed'] = code == 0 and json.loads((output/'raw/summary.json').read_text())['reason'] == 'duration_complete'

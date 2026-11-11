@@ -6,11 +6,13 @@
 #include <std_msgs/msg/string.hpp>
 #include <rmw/rmw.h>
 #include <chrono>
+#include <csignal>
 #include <cmath>
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
 #include <iostream>
+#include <map>
 #include <sstream>
 #include <stdexcept>
 
@@ -64,6 +66,14 @@ class Recorder final : public rclcpp::Node {
     const auto duration = declare_parameter<double>("duration_s", 10.);
     const auto depth = declare_parameter<int>("depth", 10);
     const auto reliable = declare_parameter<bool>("reliable", true);
+    live_=declare_parameter<bool>("stream_packets",false);
+    until_stopped_=declare_parameter<bool>("until_stopped",false);
+    tolerate_io_=declare_parameter<bool>("tolerate_recording_io_error",false);
+    if(tolerate_io_&&!live_)throw std::invalid_argument("Tolerant recording requires a live observation consumer");
+    // With a file-size limit Linux otherwise kills the recorder before the
+    // stream can report EFBIG. Only opt-in live observation tolerates this I/O
+    // failure; the original finite S1 capture retains its existing policy.
+    if(tolerate_io_)std::signal(SIGXFSZ,SIG_IGN);
     if (output.empty() || !std::isfinite(duration) || duration <= 0 || depth < 1)
       throw std::invalid_argument("output, positive duration and depth are required");
     output_ = output;
@@ -93,8 +103,8 @@ class Recorder final : public rclcpp::Node {
     add("robot_state", declare_parameter<std::string>("robot_state_topic", "/motion/robot_state"), "std_msgs/msg/String", qos);
     start_ = now_ns(); end_ = start_ + static_cast<std::int64_t>(duration * 1e9);
     timer_ = create_wall_timer(std::chrono::milliseconds(20), [this] {
-      if (now_ns() >= end_) done_ = true;
-      if (now_ns() >= next_graph_) { graph_snapshot(); next_graph_ = now_ns() + 500000000; }
+      if (!until_stopped_ && now_ns() >= end_) done_ = true;
+      if (now_ns() >= next_graph_) { record([this]{graph_snapshot();}); next_graph_ = now_ns() + 500000000; }
     });
     std::ofstream meta(output_ / "recorder.pending");
     meta.exceptions(std::ios::badbit | std::ios::failbit);
@@ -104,21 +114,33 @@ class Recorder final : public rclcpp::Node {
          << ",\"depth\":" << depth << ",\"reliable\":" << (reliable ? "true" : "false")
          << ",\"read_only\":true,\"sample_time_known\":false,\"device_sequence_known\":false,"
             "\"nonfinite_json\":\"null; original IEEE values retained in CDR\","
-            "\"cdr_source\":\"received generic subscription bytes before deserialization\"}\n";
+            "\"cdr_source\":\"received generic subscription bytes before deserialization\","
+         << "\"stream_packets\":"<<(live_?"true":"false")<<",\"until_stopped\":"<<(until_stopped_?"true":"false")<<"}\n";
     meta.close();
     std::filesystem::rename(output_ / "recorder.pending", output_ / "recorder.json");
   }
   bool done() const { return done_; }
   void finish(const std::string& reason) {
-    cdr_.flush(); rows_.flush();
-    std::ofstream summary(output_ / "summary.json");
-    summary.exceptions(std::ios::badbit | std::ios::failbit);
-    summary << "{\"receive_packets\":" << sequence_ << ",\"start_ns\":" << start_
-            << ",\"end_ns\":" << now_ns() << ",\"reason\":" << quote(reason)
-            << ",\"read_only\":true,\"application_publishers\":0,\"mode_clients\":0}\n";
-    graph_snapshot();
+    record([this]{cdr_.flush();rows_.flush();graph_snapshot();});
+    try {
+      std::ofstream summary(output_ / "summary.json");summary.exceptions(std::ios::badbit | std::ios::failbit);
+      summary<<"{\"receive_packets\":"<<sequence_<<",\"start_ns\":"<<start_
+        <<",\"end_ns\":"<<now_ns()<<",\"reason\":"<<quote(recording_failed_?"recording_error":reason)
+        <<",\"recording_failed\":"<<(recording_failed_?"true":"false")
+        <<",\"read_only\":true,\"application_publishers\":0,\"mode_clients\":0}\n";
+    } catch(const std::ios_base::failure& error) {io_failure(error);}
   }
  private:
+  void io_failure(const std::ios_base::failure& error) {
+    if(!tolerate_io_)throw;
+    if(!recording_failed_)std::cout<<"FIELDWORK_NOTICE {\"code\":\"recording_io_error\",\"message\":"<<quote(error.what())
+      <<",\"event_ns\":"<<now_ns()<<",\"recording\":false}"<<std::endl;
+    recording_failed_=true;
+  }
+  template<class Write> void record(Write write) {
+    if(recording_failed_)return;
+    try {write();}catch(const std::ios_base::failure& error){io_failure(error);}
+  }
   void graph_snapshot() {
     if (!rclcpp::ok()) return;
     for (const auto& topic : topics_) for (const auto& info : get_publishers_info_by_topic(topic)) {
@@ -170,8 +192,8 @@ class Recorder final : public rclcpp::Node {
     subscriptions_.push_back(create_generic_subscription(topic, type, qos,
       [this, channel, topic, type](std::shared_ptr<rclcpp::SerializedMessage> raw) {
         const auto received = now_ns(); const auto& bytes = raw->get_rcl_serialized_message();
-        const auto offset = cdr_.tellp();
-        cdr_.write(reinterpret_cast<const char*>(bytes.buffer), bytes.buffer_length); cdr_.flush();
+        std::streamoff offset=-1;
+        record([&]{offset=cdr_.tellp();cdr_.write(reinterpret_cast<const char*>(bytes.buffer),bytes.buffer_length);cdr_.flush();});
         std::ostringstream decoded; decoded << std::setprecision(17);
         try {
           if (type == "sensor_msgs/msg/JointState") {
@@ -188,11 +210,19 @@ class Recorder final : public rclcpp::Node {
         } catch (const std::exception& e) {
           decoded.str(""); decoded.clear(); decoded << "{\"decode_error\":" << quote(e.what()) << '}';
         }
-        rows_ << "{\"receive_sequence\":" << sequence_++ << ",\"receive_ns\":" << received
+        std::ostringstream row;row<<std::setprecision(17);
+        row << "{\"receive_sequence\":" << sequence_++ << ",\"receive_ns\":" << received
               << ",\"channel\":" << quote(channel) << ",\"topic\":" << quote(topic) << ",\"type\":" << quote(type)
-              << ",\"cdr_offset\":" << offset << ",\"cdr_size\":" << bytes.buffer_length
-              << ",\"message\":" << decoded.str() << "}\n";
-        rows_.flush();
+              << ",\"cdr_offset\":";
+        if(offset>=0&&!recording_failed_)row<<offset;else row<<"null";
+        row << ",\"cdr_size\":" << bytes.buffer_length << ",\"message\":" << decoded.str() << "}";
+        const auto text=row.str();
+        record([&]{rows_<<text<<'\n';rows_.flush();});
+        // Full CDR/JSON recording retains every callback. Only the live display
+        // is decimated by callback time, never by equality of numeric values.
+        if(live_&&(last_live_.count(channel)==0||received-last_live_[channel]>=50000000)) {
+          std::cout<<"FIELDWORK_PACKET "<<text<<std::endl;last_live_[channel]=received;
+        }
       }));
   }
   std::filesystem::path output_;
@@ -200,7 +230,8 @@ class Recorder final : public rclcpp::Node {
   std::string clock_;
   std::uint64_t sequence_ = 0;
   std::int64_t start_ = 0, end_ = 0, next_graph_ = 0;
-  bool done_ = false;
+  bool done_ = false,live_=false,until_stopped_=false,tolerate_io_=false,recording_failed_=false;
+  std::map<std::string,std::int64_t> last_live_;
   std::vector<std::string> topics_;
   std::vector<rclcpp::GenericSubscription::SharedPtr> subscriptions_;
   rclcpp::TimerBase::SharedPtr timer_;

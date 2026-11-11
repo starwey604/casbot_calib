@@ -24,6 +24,15 @@ inline std::ofstream log(const std::filesystem::path& path, const std::string& h
   std::ofstream out(path); out.exceptions(std::ios::badbit|std::ios::failbit);
   out << std::setprecision(17) << header << '\n'; return out;
 }
+inline std::string json_quote(const std::string& value) {
+  std::ostringstream out;out<<'"';
+  for(unsigned char c:value) {
+    if(c=='"'||c=='\\')out<<'\\'<<c;
+    else if(c<32)out<<"\\u"<<std::hex<<std::setw(4)<<std::setfill('0')<<int(c)<<std::dec;
+    else out<<c;
+  }
+  out<<'"';return out.str();
+}
 inline std::string columns(const std::string& name) {
   std::string s; for (int j=0;j<14;++j) s+=","+name+std::to_string(j); return s;
 }
