@@ -37,6 +37,11 @@ template<class T> void numbers(std::ostream& out, const T& values) {
   }
   out << ']';
 }
+template<class T> void strings(std::ostream& out, const T& values) {
+  out << '['; bool first = true;
+  for (const auto& value : values) { if (!first) out << ','; first = false; out << quote(value); }
+  out << ']';
+}
 template<class T> void joint_json(std::ostream& out, const T& msg) {
   out << "{\"header\":{\"sec\":" << msg.header.stamp.sec
       << ",\"nanosec\":" << msg.header.stamp.nanosec
@@ -69,6 +74,10 @@ class Recorder final : public rclcpp::Node {
     cdr_.exceptions(std::ios::badbit | std::ios::failbit);
     rows_.exceptions(std::ios::badbit | std::ios::failbit);
     graph_.exceptions(std::ios::badbit | std::ios::failbit);
+    if (declare_parameter<bool>("record_discovery", false)) {
+      discovery_.open(output_ / "discovery.jsonl");
+      discovery_.exceptions(std::ios::badbit | std::ios::failbit);
+    }
     std::ifstream boot("/proc/sys/kernel/random/boot_id"); std::string id; boot >> id;
     if (id.empty()) throw std::runtime_error("Linux monotonic clock identity is unavailable");
     clock_ = "linux_monotonic:" + id + ":" + std::filesystem::read_symlink("/proc/self/ns/time").string();
@@ -120,6 +129,40 @@ class Recorder final : public rclcpp::Node {
             << ",\"qos_history\":" << p.history << ",\"qos_depth\":" << p.depth << "}\n";
     }
     graph_.flush();
+    if (discovery_.is_open()) {
+      // Include empty publisher lists: absence cannot be represented by the
+      // legacy publishers.jsonl stream. Graph discovery is observational only.
+      discovery_ << "{\"observed_ns\":" << now_ns() << ",\"topics\":{";
+      bool first = true;
+      for (const auto& item : get_topic_names_and_types()) {
+        if (!first) discovery_ << ',';
+        first = false; discovery_ << quote(item.first) << ':'; strings(discovery_, item.second);
+      }
+      discovery_ << "},\"services\":{"; first = true;
+      for (const auto& item : get_service_names_and_types()) {
+        if (!first) discovery_ << ',';
+        first = false; discovery_ << quote(item.first) << ':'; strings(discovery_, item.second);
+      }
+      discovery_ << "},\"monitored_topics\":{"; first = true;
+      for (const auto& topic : topics_) {
+        if (!first) discovery_ << ',';
+        first = false; discovery_ << quote(topic) << ":[";
+        bool first_endpoint = true;
+        for (const auto& info : get_publishers_info_by_topic(topic)) {
+          if (!first_endpoint) discovery_ << ',';
+          first_endpoint = false;
+          const auto& p = info.qos_profile().get_rmw_qos_profile();
+          std::ostringstream gid;
+          for (auto byte : info.endpoint_gid()) gid << std::hex << std::setfill('0') << std::setw(2) << int(byte);
+          discovery_ << "{\"node\":" << quote(info.node_name()) << ",\"namespace\":" << quote(info.node_namespace())
+              << ",\"gid\":" << quote(gid.str()) << ",\"type\":" << quote(info.topic_type())
+              << ",\"qos_reliability\":" << p.reliability << ",\"qos_durability\":" << p.durability
+              << ",\"qos_history\":" << p.history << ",\"qos_depth\":" << p.depth << '}';
+        }
+        discovery_ << ']';
+      }
+      discovery_ << "}}\n"; discovery_.flush();
+    }
   }
   void add(const std::string& channel, const std::string& topic, const std::string& type, const rclcpp::QoS& qos) {
     if (topic.empty()) return;
@@ -153,7 +196,7 @@ class Recorder final : public rclcpp::Node {
       }));
   }
   std::filesystem::path output_;
-  std::ofstream cdr_, rows_, graph_;
+  std::ofstream cdr_, rows_, graph_, discovery_;
   std::string clock_;
   std::uint64_t sequence_ = 0;
   std::int64_t start_ = 0, end_ = 0, next_graph_ = 0;

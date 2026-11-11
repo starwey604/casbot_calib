@@ -4,11 +4,13 @@ import math
 import os
 from pathlib import Path
 import subprocess
+import time
 from .vendor_data import load_config, raw_fingerprints
 from .vendor_identity import sha256
 
 
-def capture(config_path, output, *, duration_s, domain_id, scope):
+def capture(config_path, output, *, duration_s, domain_id, scope,
+            record_discovery=False, poll_callback=None):
     config = load_config(config_path)
     if not math.isfinite(duration_s) or duration_s <= 0 or not 0 <= domain_id <= 232:
         raise ValueError('A positive duration and explicit ROS domain 0..232 are required')
@@ -40,17 +42,32 @@ def capture(config_path, output, *, duration_s, domain_id, scope):
         # ROS CLI needs an explicit YAML empty string rather than a missing value.
         value = "''" if value == '' else str(value).lower() if isinstance(value, bool) else str(value)
         args += ['-p', key+':='+value]
+    if record_discovery:
+        args += ['-p', 'record_discovery:=true']
     env = dict(os.environ, ROS_DOMAIN_ID=str(domain_id), ROS_LOCALHOST_ONLY='1' if scope == 'localhost_contract_mock' else '0')
     with (output/'process.log').open('x') as log:
         process = subprocess.Popen(args, env=env, stdout=log, stderr=subprocess.STDOUT)
         try:
-            code = process.wait()
+            if poll_callback is None:
+                code = process.wait()
+            else:
+                while process.poll() is None:
+                    poll_callback()
+                    time.sleep(.05)
+                code = process.returncode
         except KeyboardInterrupt:
             import signal
             process.send_signal(signal.SIGINT)
             try: code = process.wait(timeout=5)
             except subprocess.TimeoutExpired:
                 process.terminate(); code = process.wait(timeout=5)
+        finally:
+            # A frontend failure must not orphan its recording process.
+            if process.poll() is None:
+                process.terminate()
+                try: process.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    process.kill(); process.wait()
     result = dict(returncode=code, completed=False, read_only=True)
     if (output/'raw/summary.json').exists():
         result['completed'] = code == 0 and json.loads((output/'raw/summary.json').read_text())['reason'] == 'duration_complete'

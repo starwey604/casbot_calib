@@ -74,6 +74,8 @@ def normalize_packet(packet, config):
 def raw_fingerprints(root):
     root = Path(root)
     names = ['session.json', 'raw/recorder.json', 'raw/packets.jsonl', 'raw/cdr.bin', 'raw/summary.json', 'raw/publishers.jsonl']
+    if (root/'raw/discovery.jsonl').exists():
+        names.append('raw/discovery.jsonl')
     return {name: sha256(root/name) for name in names}
 
 
