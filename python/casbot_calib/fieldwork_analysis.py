@@ -258,7 +258,7 @@ def analyse_capture(root, session):
         non_target_observation=dict(names=[axis['name'] for axis in channels.get('joint', {}).get('axes', []) if not axis['target_arm']],
             coverage='仅覆盖收到的具名轴；缺失的非目标轴未知', hold_verified=False),
         mode_events=modes, operator_events=operator_events, monitor_events=monitor_events, evidence_errors=evidence_errors,
-        manual_confirmation=dict(status='needs_manual_confirmation', conclusion='目标实物与物理方向须现场核对；F2尚未实现'),
+        manual_confirmation=dict(status='needs_manual_confirmation', conclusion='目标实物与物理方向须在GUI逐轴核对；只读报告不授予运动资格'),
         unavailable=dict(sample_time='not_supported_by_current_interface', device_sequence='not_supported_by_current_interface',
             cache_age='not_supported_by_current_interface', actual_sample_hz=None, one_way_network_delay_ms=None,
             independent_torque=None, effort_scale='unknown'),

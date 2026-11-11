@@ -1,0 +1,8 @@
+# Optional Python 3.10 GUI; core ROS/CLI requirements remain independent.
+-r requirements.lock
+annotated-types==0.8.0
+imgui-bundle==1.5.2
+munch==4.0.0
+pydantic==2.14.3
+pydantic_core==2.50.4
+typing-inspection==0.4.5

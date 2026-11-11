@@ -31,7 +31,7 @@ class ProcessResult:
     interruption:str|None=None
 
 
-def run_process(command,environment,log,*,timeout_s=60,recorder=None,timeout_signal=signal.SIGINT,stop_timeout_s=10):
+def run_process(command,environment,log,*,timeout_s=60,recorder=None,timeout_signal=signal.SIGINT,stop_timeout_s=10,cancel_check=None):
     process=None;interruption=None
     with Path(log).open('x') as stream:
         try:
@@ -39,6 +39,9 @@ def run_process(command,environment,log,*,timeout_s=60,recorder=None,timeout_sig
             deadline=time.monotonic()+timeout_s
             try:
                 while process.poll() is None:
+                    if cancel_check is not None:
+                        reason=cancel_check()
+                        if reason:interruption=reason;break
                     if recorder is not None and recorder.poll() is not None:
                         interruption='raw_recorder_exited';break
                     if time.monotonic()>deadline:interruption='execution_timeout';break

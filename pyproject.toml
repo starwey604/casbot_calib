@@ -13,6 +13,7 @@ dependencies = ["numpy>=1.26", "scipy>=1.14", "PyYAML>=6", "matplotlib>=3.9"]
 staged = ["clarabel>=0.11,<0.12"]
 viewer = ["mujoco>=3.3,<4", "Pillow>=10", "imageio-ffmpeg>=0.6,<1"]
 fieldwork = ["rich==14.1.0"]
+fieldwork-gui = ["imgui-bundle==1.5.2", "mujoco>=3.3,<4", "Pillow>=10"]
 
 [project.scripts]
 casbot-calib = "casbot_calib.cli:main"

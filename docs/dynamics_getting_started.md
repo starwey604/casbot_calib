@@ -8,7 +8,7 @@
 
 需要自动组织现场方向、频率和静态批次时，使用[H2整批采集](hardware_batch_h2.md)。受控中断可续采，SDK故障只log并终止整批，当前不恢复故障会话。
 
-首次到场先用[现场只读CLI](../fieldwork/README.md)：`bash fieldwork/run.sh --help`。`preflight`检查环境/端点/反馈，`observe`保留全轴原始记录，`reconnect`只观测中断和恢复收数，`report`离线重分析；采集须显式传入现场确认的`--domain-id`、`--scope`和新`--output`。依赖更新与vendor记录器构建见该指南，GUI逐轴确认和后续短轨迹待F2/F3实现。
+首次到场先用[现场CLI和GUI](../fieldwork/README.md)：`bash fieldwork/run.sh --help`。F1的`preflight`、`observe`、`reconnect`、`report`保持只读，采集须显式传入现场确认的`--domain-id`、`--scope`和新`--output`。F2新增`gui --preview`离线预览，以及逐轴执行/人工确认；完整14轴证据通过后才开放短轨迹。GUI依赖、现场条件登记和启动命令见该指南，GUI执行按钮会真实下发位置命令。
 
 H2重力候选通过联调验证后，按[H3指南](hardware_friction_h3.md)继续多速度运动摩擦和零PD起动实验；完成H3后，再按[H4指南](hardware_inertia_h4.md)继续加速度激励、惯量候选、前序复核及独立控制对照。前序验证失败会阻断后续。
 

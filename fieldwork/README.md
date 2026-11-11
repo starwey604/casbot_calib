@@ -1,8 +1,8 @@
-# 实机现场只读CLI与后续实施计划
+# 实机现场CLI和GUI联调指南
 
 到场后先诊断连接、保留只读记录，再通过GUI逐轴核对实物关节与方向，最后测试短轨迹。工具应自动整理测量和证据，让操作者知道当前结论、失败原因与下一步。
 
-2026-11-11用户确认本方案，补充决定：**短轨迹测试必须放在GUI逐轴映射与方向确认之后。** F1只读CLI已实现；F2 GUI与F3主动试验/短轨迹待后续实现。`fieldwork/`集中提供现场入口与操作说明。
+2026-11-11用户确认本方案，补充决定：**短轨迹测试必须放在GUI逐轴映射与方向确认之后。** F1只读CLI、F2逐轴GUI及F3的受限短轨迹入口已接入；主动断流与100/250/500Hz比较的GUI向导仍待后续。`fieldwork/`集中提供现场入口与操作说明。
 
 ## 先用只读CLI检查连接
 
@@ -51,13 +51,84 @@ bash fieldwork/run.sh report artifacts/fieldwork/site_reconnect_v1 \
   --output artifacts/fieldwork/site_reconnect_analysis_v1 --json
 ```
 
-重分析不启动ROS节点，输出必须在原会话之外的新目录。它核对已有采集摘要及配置/域号/scope绑定，不改原始记录。所有子命令支持`--json`，此时Python CLI的stdout只输出JSON、错误送stderr；与`--interactive`互斥。环境包装脚本的启动提示写到stderr。
+重分析不启动ROS节点，输出必须在原会话之外的新目录。它核对已有采集摘要及配置/域号/scope绑定，不改原始记录。四个F1子命令支持`--json`，此时Python CLI的stdout只输出JSON、错误送stderr；与`--interactive`互斥。环境包装脚本的启动提示写到stderr。
 
 退出码：`0`自动只读检查通过，`1`采集/结构/证据失败，`2`数据不足、目标不明确或未观察到所需恢复周期。通过只表示列出的自动检查；实物映射、物理方向、停止和标定资格另外确认，报告始终保持`motion_allowed=false`。
 
+## 在GUI逐轴核对后测试短轨迹
+
+### 安装可选GUI并先离线预览
+
+GUI使用Dear ImGui Bundle，固定在具有Python 3.10二进制wheel的1.5.2版本；不升级Humble的Python。额外依赖与只读CLI分开安装：
+
+```bash
+bash scripts/humble/container.sh python -m pip install -r scripts/humble/requirements-gui.lock
+bash fieldwork/run.sh gui --preview --output artifacts/fieldwork/gui_preview_v1
+```
+
+预览不连接ROS，连接和运动按钮全部禁用，图中姿态明确标作名义模型示意。可加`--frames 60 --screenshot 输出.png`保存实际窗口图像。包装脚本传入宿主已有的DISPLAY、XAUTHORITY等显示配置，不放宽X访问权限；桌面显示不可用时先解决容器的显示连接，不能通过猜DISPLAY或关闭认证处理。
+
+### 先用同一个SDK Mock演练
+
+终端一启动隔离Mock；181是这里主动选择的本机试验域，不是实机域号：
+
+```bash
+bash scripts/humble/container.sh bash scripts/humble/vendor.sh \
+  casbot-calib sdk-mock --domain-id 181 --output artifacts/fieldwork/gui_sdk_mock_v1
+```
+
+终端二使用它生成的连接profile，不自动启动或切换另一套Mock：
+
+```bash
+bash fieldwork/run.sh gui \
+  --profile artifacts/fieldwork/gui_sdk_mock_v1/client_profile.yaml \
+  --domain-id 181 --scope localhost_contract_mock \
+  --output artifacts/fieldwork/gui_mock_session_v1
+```
+
+界面按一次一个轴操作：
+
+1. 读取实际起姿，选择左/右臂关节。
+2. 填写实物关节名称并确认已经辨认；设置本次幅度。
+3. 规划单轴正反往返，查看同源模型正端点、局部正轴、位置曲线和完整路径检查结果。
+4. 明确勾选已检查预览与现场条件，再执行本次计划。执行期间显示接收位置曲线与接收间隔；模型图片是标注的已记录起姿/计划端点，不伪装成实时运动。
+5. 执行与分析通过后，填写观察者、映射和方向结论，保存该轴确认。发现不一致则填写备注并终止会话，不自动改符号重试。
+6. 重新读取起姿，再检查下一个轴。每份计划只执行一次，用于执行的快照不再次用于规划。
+
+幅度默认0.5°，本工具仅接受(0,1]°；这是软件上限，不是现场安全幅度保证。GUI不开放任意力矩、PD编辑或拖动即下发的滑块。
+
+全部14轴确认后，短轨迹区域开放所选单轴、同侧肩肘、双臂肩俯仰三种组合。先重新读起姿、规划，再明确确认执行；轨迹为有界C3过渡的正端点、负端点、回起点，未选轴保持本次实测角度。后端在规划和执行两个入口都核验14轴证据、会话/模型/域号绑定，缺轴、旧证据变化或未封存执行均拒绝，不仅是界面按钮置灰。
+
+### 实机会话先登记现场前提
+
+先阅读[SDK前置条件](../docs/sdk_hardware_prerequisites.md)。GUI不扫描域号，也不从只读采集推导运动许可。未提供现场条件记录时，实机会话仅开放只读起姿，运动保持锁定。
+
+复制`profiles/site_conditions.example.yaml`，由现场操作者与厂家/安全人员记录三组结论：急停/支撑；真实限制/几何/安装重力/负载；模式及未指定腰/头/手轴保持。每组填写`status: site_confirmed`、具体`conclusion`及`evidence`文件列表，路径相对该YAML。非目标轴行为须明确为`non_target_behavior: hold_prior_target_output`；释放、缺省0或未知均不符合现有执行器前提。模板中的unknown不会放行；物理真实性由现场核验，软件仍保留`physical_motion_qualified=false`。
+
+取得现场证据后，在新目录显式建立会话：
+
+```bash
+bash fieldwork/run.sh gui --profile configs/hardware_field.yaml \
+  --domain-id "$calib_domain_id" --scope hardware_position_stream \
+  --conditions /path/to/completed_site_conditions.yaml \
+  --output artifacts/fieldwork/gui_site_session_v1
+```
+
+此入口中的执行按钮会真实申请上身模式并发送双臂14轴命令。非目标轴不填充命令，原始全轴CDR仍保留。当前真实几何/夹具/保护尚无实测验收，不沿用Mock演练结果填写现场证据。
+
+已有会话可用`gui --session 会话目录`重新打开，沿用封存的profile和域号，不允许同时传入新连接参数。GUI不会因打开会话而自动执行计划；故障或状态不明的未封存执行会话仍禁止继续运动。协议复用H2的实现/SDK/原生扩展绑定，另绑定GUI、工作进程和新状态机；变更这些实现、profile、模型、安装或现场前提时新建会话。旧开发会话缺少实现绑定时只读查看/导出，不自动补身份或开放运动。
+
+### 停止、关闭与卡死如何处理
+
+“结束试验/停止发布”请求现有发送器中断，不是硬件急停，不自动回位。界面逐帧更新前端存活标记，后台独立进程在现有SDK监督循环中检查；超过2秒未更新、钟域不符或标记不可读时终止命令流并锁定会话。同一会话仅允许一个GUI窗口；每个窗口独立的owner标记防止重开窗口替旧执行续命。窗口正常关闭请求受控中断；只有收到对应完整中断结果且无其他SDK故障时，才允许重新读起姿、创建新尝试。
+
+执行、通信、模式故障或GUI心跳丢失记录终止事件，清故障能力保持未实现，不自动恢复。记录器与发送器仍保存可用原始数据；观测静止不冒充物理停止证明。后续实机保护与断流试验另按现场条件实施。
+
+GUI会话保存`protocol/`、`snapshots/`、`attempts/`、`reviews/`、`events/`、`operations/`和`view/`。其中protocol封存模型/连接/现场证据，attempt含input、计划、执行CDR、分析和outcome，review绑定具体采集manifest；operations保留每次GUI工作进程的请求、结果和日志。模型预览图片在view中，不回写已封存采集。点击顶部“保存现场报告”会在`reports/UTC标记/`生成中文Markdown和JSON；终止会话也可导出，参考拒绝和受控中断分别列出。
+
 ## CLI架构与依赖
 
-四层分工：`fieldwork_cli.py`负责argparse/Rich显示与参数，`fieldwork.py`负责会话/人工事件/记录器生命周期，已有`vendor_capture.py`和C++ `state_recorder`负责订阅与原始留证，`fieldwork_analysis.py`独立生成诊断和报告。后续GUI直接调用编排与分析，不嵌套终端命令或复制试验逻辑。
+F1四层分工：`fieldwork_cli.py`负责argparse/Rich显示与参数，`fieldwork.py`负责会话/人工事件/记录器生命周期，已有`vendor_capture.py`和C++ `state_recorder`负责订阅与原始留证，`fieldwork_analysis.py`独立生成诊断和报告。F2的`fieldwork_gui.py`只处理交互，`fieldwork_worker.py`按次执行操作，`fieldwork_control.py`拥有会话状态机、方向证据和短轨迹门禁，复用H1与SDK监督循环，不复制控制循环。
 
 命令解析沿用标准库`argparse`，交互输入采用逐行操作标记；新增可选依赖Rich 14.1.0显示中文表格和状态，不引入Typer/Click或新的ROS Python采集循环。Rich已纳入Humble依赖锁，也提供`fieldwork`安装extra；既有标定入口不强制依赖Rich。安装项目后另有`casbot-fieldwork`入口，`fieldwork/run.sh`通过模块运行，不依赖重新生成console script。
 
@@ -66,8 +137,8 @@ bash fieldwork/run.sh report artifacts/fieldwork/site_reconnect_v1 \
 | 轮次 | 交付 | 完成条件 |
 | --- | --- | --- |
 | F1 只读CLI，已实现 | 环境预检、端点/QoS检查、全轴原始采集、只读断线恢复观测、中文报告 | 不创建运动publisher、不切换模式；能区分连接故障，保留中断前后数据；验证范围见文末 |
-| F2 逐轴GUI | Python ImGui操作台、受限单轴动作、实物映射/方向人工确认、证据绑定 | 每轴独立选择、预览、确认和执行；未确认轴不能被批量自动试动；14轴确认完整后才开放后续轨迹入口；实际窗口与后端中断行为经Mock验证 |
-| F3 主动试验与短轨迹 | 受控断流/模式行为试验、100/250/500Hz运动比较、短轨迹向导及汇总 | 消费F2有效确认；按现场前提逐项授权，检查完整路径；故障后无自动恢复或旧轨迹重发；报告逐项给出测量与人工结论 |
+| F2 逐轴GUI，已接入 | Python ImGui操作台、受限单轴动作、实物映射/方向人工确认、证据绑定 | 每轴独立选择、预览、确认和执行；14轴确认后才开放短轨迹；本机验证范围见文末 |
+| F3 短轨迹已接入，其余向导待续 | 受限短轨迹；待补主动断流/模式试验、100/250/500Hz比较向导 | 消费F2有效确认，检查完整路径；故障后无自动恢复或旧轨迹重发 |
 
 F1可独立带去现场使用，不等待GUI。F1可以统计只读反馈接收频率；需要实际运动的频率比较和响应偏移测试属于F3，不提前到GUI之前。F2中的受限单轴动作是建立方向证据的专用试验，不是开放任意轨迹执行。
 
@@ -175,7 +246,7 @@ GUI不能成为第二个命令循环。后端监督GUI存活；窗口关闭、�
 
 ## 目录与报告约定
 
-现有现场文件为`README.md`和`run.sh`；检查清单、profile模板及专用薄脚本按后续实际需要加入，不创建不可执行的占位命令。原计划布局如下：
+现有现场文件为`README.md`、`run.sh`和`profiles/site_conditions.example.yaml`；检查清单及专用薄脚本按后续实际需要加入，不创建不可执行的占位命令。原计划布局如下：
 
 ```text
 fieldwork/
@@ -218,4 +289,20 @@ F1验证无运动输出、反馈缺失/结构错误、QoS诊断、断线后恢�
 
 初次F1 ROS验证因节点尚未发现时查询其client清单而中止，修正测试夹具的发现竞争后在v2完成。交互v1暴露文本流预读导致连续输入的`q`留在缓冲区，已改用文件描述符分段读取并补回归；v2实际交互通过。失败目录保留。以上均为私有域、localhost内的Mock/协议测试，尚无物理机器人或跨机网络证据。
 
-**下一轮进入F2：GUI逐轴核对。** F3最后接主动试验、运动频率比较与短轨迹。
+### GUI和短轨迹本机验证记录
+
+2026-11-11在Xvfb实际窗口及私有localhost SDK Mock内验证，未连接实机：
+
+本机交付汇总为`artifacts/fieldwork_f2_delivery_v2/delivery.json`。
+
+- `artifacts/fieldwork_f2_frozen_gui_v1/verification.json`：封存完整实现绑定后，通过真实ImGui鼠标/文本输入逐轴完成14次SDK往返和确认，随后通过双臂肩俯仰短轨迹；另在命令流运行中停止GUI帧3秒，后台因2秒存活超时终止并锁定会话。测试输入均明确登记为Mock软件检查，不作为实物方向证据。前序开发记录`fieldwork_f2_gui_v5`保留，不补写实现绑定。
+- `artifacts/fieldwork_f2_owner_stop_v1/verification.json`：实际点击停止按钮中断SDK流，验证完整受控中断结果与重新读起姿要求。
+- 早期Stop/Close专项分别接收88/86条命令后中断，却误用了全流程的“超过100条”计数条件；已按专项预定的30条触发点区分判据。原失败报告保留，`artifacts/fieldwork_f2_interrupt_review_v1/verification.json`对相同封存记录离线复核通过，包括STOPPING后无新命令；不把专项计数当成吞吐验收。
+- `artifacts/fieldwork_f2_frozen_report_v1/verification.json`：在已终止的封存14轴会话中实际点击导出报告，无须重启SDK或恢复运动。实际截图在上述各目录的`window.png`，已查看窗口渲染和关键状态。
+- `artifacts/fieldwork_f2_tests_v3.xml`：121项相关回归通过，涵盖F1、S1、原位置/H1/H2、SDK Mock和GUI控制门禁。最终24项控制/绑定专项见`artifacts/fieldwork_f2_bound_tests_v1.xml`，与该回归有交叠，不累加为全量验收数量。
+
+初期窗口检查发现Hello ImGui的全屏边距使用em而非像素，导致按钮被裁切；已修正边距并由完整14轴窗口操作验证。旧字体API/资源路径尝试、规划事件参数冲突及预览scene重复创建的拒绝记录保留在早期测试目录。当前模型画面复用既有只读MuJoCo几何renderer，命令与机械计算仍走原有C++/Pinocchio/Coal路径。
+
+初次汇总误用浮点逐位相等检查未激励臂轴的参考常量，最大差为8.88e-16rad；已按原有对应单元测试的1e-12rad绝对容差重评分，未改数据或控制。v1汇总false保留，v2汇总通过；该容差仅检查参考数值保持，不表示实物跟踪精度。
+
+后续继续F3的主动断流/模式试验和频率比较向导；实物方向、保护行为与正式标定资格由现场证据分别验收。

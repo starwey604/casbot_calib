@@ -51,7 +51,7 @@ class Terminal:
 
 
 def parser():
-    result = argparse.ArgumentParser(prog='casbot-fieldwork', description='现场只读联调：连接预检、全轴采集、断线恢复观测；不发运动命令。')
+    result = argparse.ArgumentParser(prog='casbot-fieldwork', description='现场联调：只读预检/采集/报告，以及显式GUI逐轴控制。')
     commands = result.add_subparsers(dest='command', required=True)
     for name, label, duration in [('preflight', '环境、发现与反馈预检', 5.),
                                   ('observe', '全轴原始采集与接收节奏报告', 30.),
@@ -70,11 +70,28 @@ def parser():
     report.add_argument('folder', type=Path)
     report.add_argument('--output', type=Path, required=True, help='源会话之外的新目录')
     report.add_argument('--json', action='store_true')
+    gui = commands.add_parser('gui', help='GUI逐轴确认与短轨迹；执行按钮会实际发送SDK指令')
+    gui.add_argument('--profile', type=Path, default=Path('configs/hardware_field.yaml'))
+    gui.add_argument('--output', type=Path, help='新GUI会话目录')
+    gui.add_argument('--session', type=Path, help='已有GUI会话；故障会话仍禁止运动')
+    gui.add_argument('--domain-id', type=int)
+    gui.add_argument('--scope', choices=('hardware_position_stream', 'localhost_contract_mock'))
+    gui.add_argument('--conditions', type=Path, help='新实机会话的现场前提证据登记')
+    gui.add_argument('--preview', action='store_true', help='纯离线界面/模型预览，所有连接和控制按钮禁用')
+    gui.add_argument('--frames', type=int, help='指定帧数后关闭，用于UI检查')
+    gui.add_argument('--screenshot', type=Path, help='关闭时保存实际窗口截图')
     return result
 
 
 def main(argv=None):
     args = parser().parse_args(argv)
+    if args.command == 'gui':
+        try:
+            from .fieldwork_gui import run_gui
+            return run_gui(args)
+        except (OSError, ValueError, RuntimeError, ImportError) as exc:
+            print(f'现场GUI：{exc}', file=sys.stderr)
+            return 1
     if args.command != 'report' and args.json and args.interactive:
         parser().error('--json不能与--interactive并用')
     try:

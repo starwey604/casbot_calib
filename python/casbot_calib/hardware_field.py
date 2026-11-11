@@ -99,7 +99,7 @@ def params(config, names):
         command_period_ns=1_000_000_000 // config['command_hz'], **experiment)
 
 
-def run_executor(config, output, domain_id, *, snapshot=False, plan=None, timeout_s=30, local_remaps=None):
+def run_executor(config, output, domain_id, *, snapshot=False, plan=None, timeout_s=30, local_remaps=None,cancel_check=None):
     if not 0 <= domain_id <= 232:
         raise ValueError('Explicit ROS domain 0..232 required')
     from .sdk_connection import connection_remaps
@@ -132,7 +132,7 @@ def run_executor(config, output, domain_id, *, snapshot=False, plan=None, timeou
         '--output',str(root/'raw_state'),'--duration',str(timeout_s+5),'--domain-id',str(domain_id),
         '--scope','localhost_contract_mock' if local_remaps else 'hardware_read_only']
     with recording_process(recorder_command,environment,root/'recorder.log',root/'raw_state/raw/recorder.json') as recorder:
-        process_result=run_process(command,environment,root/'process.log',timeout_s=timeout_s,recorder=recorder)
+        process_result=run_process(command,environment,root/'process.log',timeout_s=timeout_s,recorder=recorder,cancel_check=cancel_check)
     code=process_result.returncode;interruption=process_result.interruption
     path = root / 'execution/result.json'
     result = json.loads(path.read_text()) if path.exists() else dict(passed=False, reason='executor_did_not_finish')
@@ -293,7 +293,7 @@ def finish_plan(root, config, motion, trials, bindings):
     return report
 
 
-def execute_field(plan, output, domain_id, *, local_remaps=None):
+def execute_field(plan, output, domain_id, *, local_remaps=None,cancel_check=None):
     root = Path(plan).resolve(); check_seal(root); metadata = json.loads((root / 'plan.json').read_text())
     output_outside(output, root)
     if metadata.get('source_domain_id') is not None and metadata['source_domain_id'] != domain_id:
@@ -305,7 +305,7 @@ def execute_field(plan, output, domain_id, *, local_remaps=None):
     if source['sha256'] != metadata['source_model_sha256'] or metadata['joint_names'] != [j.name for j in engine.model.joints]:
         raise ValueError('Field model changed')
     return run_executor(metadata['config'], output, domain_id, plan=root / 'position_plan.csv',
-        timeout_s=metadata['duration_s'] + 45, local_remaps=local_remaps)
+        timeout_s=metadata['duration_s'] + 45, local_remaps=local_remaps,cancel_check=cancel_check)
 
 
 def read_feedback(path, *, require_effort=True):

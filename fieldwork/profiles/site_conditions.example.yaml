@@ -1,0 +1,15 @@
+# Copy and complete with site evidence. These unknown entries do not enable motion.
+# evidence paths are relative to this file and are copied into the new protocol.
+emergency_stop_and_support:
+  status: unknown
+  conclusion: ''
+  evidence: []
+limits_geometry_gravity_load:
+  status: unknown
+  conclusion: ''
+  evidence: []
+mode_and_non_target_hold:
+  status: unknown
+  non_target_behavior: unknown  # only hold_prior_target_output matches this executor
+  conclusion: ''
+  evidence: []

@@ -1,10 +1,24 @@
 #!/usr/bin/env bash
-# Read-only entry point. No motion command or SDK mode client is reachable here.
+# F1 stays read-only; only the explicitly selected GUI exposes motion actions.
 set -euo pipefail
 repo_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 cd "$repo_dir"
-if [[ "${1:-}" == "report" || "${1:-}" == "--help" || "${1:-}" == "-h" || $# == 0 ]]; then
-  exec bash scripts/humble/container.sh python -m casbot_calib.fieldwork_cli "$@"
+runner=(bash scripts/humble/container.sh)
+if [[ "${1:-}" == "gui" ]]; then
+  # Pass the desktop's existing display/auth configuration, never relax X access.
+  display_env=()
+  for name in DISPLAY XAUTHORITY WAYLAND_DISPLAY XDG_RUNTIME_DIR CASBOT_CJK_FONT; do
+    if [[ -v "$name" ]]; then display_env+=("$name=${!name}"); fi
+  done
+  runner+=(env "${display_env[@]}")
+  for arg in "$@"; do
+    if [[ "$arg" == "--preview" ]]; then
+      exec "${runner[@]}" python -m casbot_calib.fieldwork_cli "$@"
+    fi
+  done
 fi
-exec bash scripts/humble/container.sh bash scripts/humble/vendor.sh \
+if [[ "${1:-}" == "report" || "${1:-}" == "--help" || "${1:-}" == "-h" || $# == 0 ]]; then
+  exec "${runner[@]}" python -m casbot_calib.fieldwork_cli "$@"
+fi
+exec "${runner[@]}" bash scripts/humble/vendor.sh \
   python -m casbot_calib.fieldwork_cli "$@"
