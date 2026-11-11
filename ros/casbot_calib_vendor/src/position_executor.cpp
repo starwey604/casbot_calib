@@ -26,6 +26,7 @@ class PositionExecutor final : public rclcpp::Node {
     manual_=declare_parameter<bool>("manual_stream",false);
     if(manual_) {
       if(snapshot_)throw std::runtime_error("Manual stream is not a snapshot");
+      recording_pause_file_=declare_parameter<std::string>("recording_pause_file","");
       manual_file_=declare_parameter<std::string>("manual_command_file");
       manual_effort_limit_=declare_parameter<double>("manual_effort_limit_nm",10.);
       if(!std::isfinite(manual_effort_limit_)||manual_effort_limit_<=0||manual_effort_limit_>100.)throw std::runtime_error("Invalid manual effort range");
@@ -266,12 +267,22 @@ class PositionExecutor final : public rclcpp::Node {
     std::ofstream out(root_/"result.json");out<<"{\"passed\":"<<(ok?"true":"false")<<",\"reason\":"<<std::quoted(reason)
       <<",\"last_feedback_receive_ns\":"<<state_.receive<<",\"last_mode_receive_ns\":"<<mode_at_<<",\"last_mode\":"<<std::quoted(mode_)
       <<",\"fault\":"<<std::quoted(fault_)<<",\"skipped_slots\":"<<skips_<<",\"stop_ack\":"<<(stop_ack_?"true":"false")
+      <<",\"recording_paused\":"<<(recording_paused_?"true":"false")
       <<",\"snapshot_only\":"<<(snapshot_?"true":"false")<<",\"hardware_executable\":"<<(hardware_?"true":"false")
       <<",\"execution_scope\":"<<std::quoted(scope_)<<",\"device_disconnect_protection_assumed\":"<<(hardware_?"true":"false")
       <<",\"feedback_rest_observed_after_fault\":"<<(stop_rest_observed_?"true":"false")
       <<",\"physical_stop_verified\":false,\"clock_id\":"<<std::quoted(vendor::clock_id())<<"}\n";
   }
  private:
+  bool recording_enabled() {
+    if(recording_paused_)return false;
+    if(!recording_pause_file_.empty()&&std::filesystem::exists(recording_pause_file_)) {
+      recording_paused_=true;
+      std::cout<<"FIELDWORK_NOTICE {\"code\":\"recording_io_error\",\"message\":\"缓存已满，已停止追加记录；控制和反馈继续\"}"<<std::endl;
+      return false;
+    }
+    return true;
+  }
   std::vector<Observation> motion_observations(double limit) const {
     std::vector<Observation> result;
     for(int j=0;j<14;++j)if(std::abs(state_.v[j])>=limit)result.push_back({names_[j],"velocity",state_.v[j],limit,"rad/s"});
@@ -318,7 +329,8 @@ class PositionExecutor final : public rclcpp::Node {
   void receive(const sensor_msgs::msg::JointState& msg) {
     vendor::State value;
     if(!vendor::state(msg,names_,value)) {if(active())fault("invalid_feedback");return;}
-    state_=value;received_<<value.receive;vendor::values(received_,value.q);vendor::values(received_,value.v);
+    state_=value;
+    if(recording_enabled()) {received_<<value.receive;vendor::values(received_,value.q);vendor::values(received_,value.v);
     if(hardware_) {
       const auto stamp=static_cast<std::int64_t>(msg.header.stamp.sec)*1000000000LL+msg.header.stamp.nanosec;
       received_<<','<<stamp;
@@ -328,7 +340,8 @@ class PositionExecutor final : public rclcpp::Node {
         else received_<<",nan";
       }
     }
-    received_<<'\n';
+    received_<<'\n';}
+
     if(ramp_&&start_>0&&active()) {
       ramp_->observe(value.q,value.v,value.receive-start_,vendor::now()-start_);
       if(!ramp_->fault().empty())fault(ramp_->fault());
@@ -342,7 +355,7 @@ class PositionExecutor final : public rclcpp::Node {
   void event(const std::string& phase,const std::string& reason) {
     phase_=phase;phase_at_=vendor::now();stable_at_=0;
     notice(reason,phase=="STREAMING"?"sending":phase=="STOPPING"?"observe_after_stop":phase=="ENTERING"?"request_mode":phase=="FAILED"||phase=="COMPLETE"?"control_ended":"wait",{},true);
-    events_<<phase_at_<<','<<phase<<','<<reason<<'\n';events_.flush();
+    if(recording_enabled()) {events_<<phase_at_<<','<<phase<<','<<reason<<'\n';events_.flush();}
   }
   void fault(const std::string& reason,const std::vector<Observation>& observations={}) {
     if(done_||phase_=="STOPPING")return;
@@ -375,7 +388,9 @@ class PositionExecutor final : public rclcpp::Node {
       if(zero){msg.kp[ramp_joint_]=0.;msg.kd[ramp_joint_]=0.;}
       msg.effort[ramp_joint_]+=increment;
     }
-    last_publish_=vendor::now();pub_->publish(msg);commands_<<index<<','<<start_+index*period_<<','<<last_publish_<<','<<phase;
+    last_publish_=vendor::now();pub_->publish(msg);
+    if(!recording_enabled())return;
+    commands_<<index<<','<<start_+index*period_<<','<<last_publish_<<','<<phase;
     vendor::values(commands_,msg.position);vendor::values(commands_,msg.velocity);
     if(experiment_commands_){vendor::values(commands_,msg.effort);
       if(msg.kp.empty()){std::array<double,14> unknown;unknown.fill(std::numeric_limits<double>::quiet_NaN());vendor::values(commands_,unknown);vendor::values(commands_,unknown);}
@@ -393,6 +408,7 @@ class PositionExecutor final : public rclcpp::Node {
   std::string phase_,mode_,fault_,command_topic_,scope_;std::int64_t began_=0,phase_at_=0,mode_at_=0,start_=0,last_index_=-1,last_publish_=0,stable_at_=0,skips_=0,last_graph_check_=0;
   std::int64_t max_age_,mode_age_,timeout_,period_,startup_timeout_;double tolerance_,tracking_,allowance_,max_velocity_,vel_scale_;
   std::string notice_key_;std::int64_t notice_since_=0,last_notice_=0;
+  bool recording_paused_=false;std::string recording_pause_file_;
   bool manual_=false;std::string manual_file_;double manual_effort_limit_=10.;std::vector<double> manual_fields_,manual_row_;
   bool snapshot_=false,done_=false,success_=false,mode_ack_=false,exit_ack_=false,stop_ack_=false,hardware_=false,stop_rest_observed_=false;
   rclcpp::Subscription<sensor_msgs::msg::JointState>::SharedPtr sub_;rclcpp::Subscription<std_msgs::msg::String>::SharedPtr status_;

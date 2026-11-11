@@ -60,10 +60,11 @@
       "baseline_effect": "滑条夹值，Python/C++拒绝越界；填名义重力时任意轴超范围会拒绝整组填入。",
       "source": "fieldwork_control.py:15,23,77; fieldwork_gui.py:113; position_executor.cpp:28-29,260",
       "decision": "保留范围，去掉各层重复硬编码",
-      "planned_behavior": "越界修改拒绝并解释；名义重力加用户偏置也显示最终值及范围冲突，不悄悄夹值或退出。 前馈限额约束最终effort；辅助生成值超限时持续发送有界输出并明确裁剪，同时暂停位置参考，不丢弃整帧。",
+      "planned_behavior": "前馈范围仅约束用户直接effort；删除重力偏置/裁剪计划，不生成模型力矩。",
       "gui_location": "逐轴前馈范围",
       "implementation_round": 2,
-      "status": "planned_not_implemented"
+      "status": "planned_not_implemented",
+      "decision_update": "2026-11-12用户取消模型重力辅助，采用无补偿休息姿态Mock（肩滚转±20°）"
     },
     {
       "audit_id": "L06",
@@ -299,10 +300,11 @@
       "baseline_effect": "进入模组PD前，重力支撑+前馈先被clamp；激活且internal_gravity=false时重力项为0。",
       "source": "sdk_mock_server.cpp:158-173",
       "decision": "Mock设备行为保留并说明",
-      "planned_behavior": "显示前馈/重力各项及总值、该层上限；不和PD总输出饱和混作一个范围。",
+      "planned_behavior": "手动Mock的活动/待机/断流重力项均关闭；原标定Mock的重力+前馈截断合同不变。",
       "gui_location": "Mock设备设置与实际发送值",
       "implementation_round": 4,
-      "status": "planned_not_implemented"
+      "status": "planned_not_implemented",
+      "decision_update": "2026-11-12用户取消模型重力辅助，采用无补偿休息姿态Mock（肩滚转±20°）"
     },
     {
       "audit_id": "L25",
@@ -515,10 +517,11 @@
       "baseline_effect": "声明不符不能加载；手动run_executor会另把gravity_feedforward强制设none、breakaway参数清空，effort_gain/zero不用于滑条命令换算。",
       "source": "hardware_field.py:33,43-50,108-111",
       "decision": "拆分手动实际需要的声明",
-      "planned_behavior": "保留真实使用的模型/重力/连接含义；不强制无关effort拟合换算字段。重力是否开启由显式控制方式决定，不藏在继承的H1字段里。",
+      "planned_behavior": "保留模型/连接含义，手动发送器强制无模型补偿；不从H1继承重力开启策略。",
       "gui_location": "手动专用配置/控制方式",
       "implementation_round": 2,
-      "status": "planned_not_implemented"
+      "status": "planned_not_implemented",
+      "decision_update": "2026-11-12用户取消模型重力辅助，采用无补偿休息姿态Mock（肩滚转±20°）"
     },
     {
       "audit_id": "L43",
@@ -736,11 +739,12 @@
       "baseline_value": "待机/首帧前/断流后Mock会用名义重力+默认PD；活动且internal_gravity=false时不加内部重力",
       "baseline_effect": "首帧和断流会改变控制输出；这不是限幅，但正是此前全轴变化的重要机制。",
       "source": "sdk_mock_policy.hpp:6-8; sdk_mock_server.cpp:135-173",
-      "decision": "控制交接可见，修正默认演练路径",
-      "planned_behavior": "位置调试明确连续重力辅助并保留暂停时支撑；原始方式仍直接五字段。Mock待机/断流策略不暗改。",
+      "decision": "休息姿态起步，无模型补偿，无回零动作",
+      "planned_behavior": "手动Mock肩滚转±20°、其余0的休息起姿，待机/首帧前/活动/断流后均无模型重力；仅PD及显式effort。",
       "gui_location": "控制方式/实际发送分量",
       "implementation_round": 3,
-      "status": "planned_not_implemented"
+      "status": "implemented_manual_rest_no_gravity",
+      "decision_update": "2026-11-12用户取消模型重力辅助，采用无补偿休息姿态Mock（肩滚转±20°）"
     },
     {
       "audit_id": "L61",
@@ -748,11 +752,12 @@
       "baseline_value": "速度目标0、前馈0；无回读Kp20/Kd2；名义重力按钮只填一次当前数值",
       "baseline_effect": "不会持续补重力，不把速度目标0解释成实际速度必须为0；参数改变可造成动力学运动。",
       "source": "fieldwork_control.py:53-65; fieldwork_gui.py:110-127",
-      "decision": "保留首次反馈与默认值来源，显式选择辅助",
-      "planned_behavior": "原始effort仍是直接前馈；重力辅助显示重力项/附加偏置/实际发送值。非操作轴命令保持且观察实际偏移。",
+      "decision": "休息姿态起步，无模型补偿，无回零动作",
+      "planned_behavior": "删除GUI名义重力按钮及实现，不加回零；保留实际首次反馈初始化和每轴Kp/Kd、直接effort。",
       "gui_location": "五字段/控制方式/未操作轴状态",
       "implementation_round": 3,
-      "status": "planned_not_implemented"
+      "status": "implemented_manual_rest_no_gravity",
+      "decision_update": "2026-11-12用户取消模型重力辅助，采用无补偿休息姿态Mock（肩滚转±20°）"
     }
   ],
   "source_roots": {

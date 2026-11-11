@@ -115,7 +115,7 @@ class Session:
         fault = any(e['event'] == 'terminal_fault' for e in journal)
         return dict(**self.metadata, runs=starts, blocked_reason='会话故障或未封存，需新建会话' if fault or set(starts)-ends else None)
 
-    def stream(self, relative, command_file, cancel_check=None, initial_values=None, on_event=None):
+    def stream(self, relative, command_file, cancel_check=None, initial_values=None, on_event=None, recording_pause_file=None):
         if self.status()['blocked_reason']:
             raise ValueError(self.status()['blocked_reason'])
         directory = (self.root/relative).resolve()
@@ -144,7 +144,8 @@ class Session:
         try:
             result = field.run_executor(self.config, directory/'capture', self.metadata['domain_id'],
                 manual_command=command_file, manual_effort_limit_nm=self.metadata['manual_tuning']['effort_limit_nm'],
-                timeout_s=24*3600, cancel_check=cancel_check, on_output=output if on_event else None)
+                timeout_s=24*3600, cancel_check=cancel_check, on_output=output if on_event else None,
+                **(dict(recording_pause_file=recording_pause_file) if recording_pause_file else {}))
             controlled = result.get('fault') == 'interrupted' and result.get('supervisor_interruption') in ('operator_cancel', 'frontend_closed')
             event(self.root, 'stream_finished', run=relative, controlled_stop=controlled)
             if not controlled:
@@ -153,13 +154,15 @@ class Session:
             atomic_json(directory/'control_status.json',dict(events=native_events,
                 first_fault=next((e for e in native_events if e.get('action')=='end_control'),None)))
             recording_error=None
-            try:export_recording(self, directory)
+            try:
+                if recording_pause_file and Path(recording_pause_file).exists():raise ValueError('缓存已满；原始前缀保留，记录导出不完整')
+                if recording_pause_file is None:export_recording(self, directory) # Automatic spools derive comparison files only on explicit save.
             except (OSError,ValueError) as exc:
                 recording_error=str(exc)
                 if on_event:on_event(dict(code='recording_io_error',title='控制已结束，但记录导出不完整',
                     severity='warning',action='recording_warning',effect=str(exc),details=[]))
             return dict(run=relative, controlled_stop=controlled, result=result,recording_error=recording_error,
-                        diagnostics=diagnostics,
+                        diagnostics=diagnostics,recording_deferred=bool(recording_pause_file),
                         first_fault=next((e for e in native_events if e.get('action')=='end_control'),None))
         except Exception:
             event(self.root, 'terminal_fault', run=relative, reason='stream_or_export_failed')

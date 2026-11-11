@@ -72,6 +72,7 @@ def main(argv=None):
     dynamics_verify=sub.add_parser('verify-dynamics-urdf',help='Recheck an exported inertial URDF and runtime sidecar without fitting or truth')
     dynamics_verify.add_argument('folder',type=Path);dynamics_verify.add_argument('--output',type=Path,required=True)
     vendor_capture=sub.add_parser('vendor-capture',help='S1 subscription-only SDK state recording; no motion or mode changes')
+    vendor_capture.add_argument('--recording-pause-file',type=Path,help=argparse.SUPPRESS)
     vendor_capture.add_argument('--config',type=Path,default=Path('configs/vendor_s1.yaml'))
     vendor_capture.add_argument('--output',type=Path,required=True);vendor_capture.add_argument('--duration',type=float,default=10.)
     vendor_capture.add_argument('--domain-id',type=int,required=True)
@@ -304,7 +305,8 @@ def main(argv=None):
         return 0 if result.get('passed',True) else 1
     if args.command=='vendor-capture':
         from .vendor_capture import capture
-        result=capture(args.config,args.output,duration_s=args.duration,domain_id=args.domain_id,scope=args.scope)
+        result=capture(args.config,args.output,duration_s=args.duration,domain_id=args.domain_id,scope=args.scope,
+            **(dict(recording_pause_file=args.recording_pause_file) if args.recording_pause_file else {}))
         print(f"SDK只读采集：{'完成' if result['completed'] else '中断或失败，原始记录保留'} -> {args.output}")
         return 0 if result['completed'] else 1
     if args.command=='vendor-normalize':

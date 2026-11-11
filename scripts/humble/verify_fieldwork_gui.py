@@ -23,7 +23,7 @@ def main():
     from casbot_calib.fieldwork_analysis import read_json,write_json
     from casbot_calib import fieldwork_gui
     from imgui_bundle import imgui
-    with SDKMockSession('configs/sdk_mock.yaml',root/'mock',domain) as mock:
+    with SDKMockSession('configs/fieldwork_mock.yaml',root/'mock',domain) as mock:
         create_session(mock.client_profile,root/'desk',domain,'localhost_contract_mock',workspace=True)
         ui=argparse.Namespace(session=root/'desk',output=None,preview=False,profile=mock.client_profile,
             domain_id=None,scope=None,frames=20000,screenshot=root/'window.png')
@@ -68,9 +68,7 @@ def main():
                 state['checks']['first_q_initialization']=np.array_equal(desk.commands['position'],desk.first_q)
                 state['checks']['kp_readback_initialization']=np.array_equal(desk.commands['kp'],desk.feedback['kp'])
                 state['checks']['effort_not_feedback_copy']=bool(np.all(desk.commands['effort']==0))
-                click(desk,'gravity');stage('gravity')
-            elif step=='gravity' and dt>10:
-                state['checks']['visible_gravity_fill']=bool(np.max(abs(desk.commands['effort']))>1)
+                state['checks']['gravity_control_removed']='gravity' not in desk.controls
                 click(desk,'send');stage('mode')
             elif step=='mode' and desk.sending and dt>35:
                 if args.scenario=='close':

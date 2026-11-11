@@ -8,7 +8,7 @@
 
 需要自动组织现场方向、频率和静态批次时，使用[H2整批采集](hardware_batch_h2.md)。受控中断可续采，SDK故障只log并终止整批，当前不恢复故障会话。
 
-首次到场先用[现场CLI和GUI](../fieldwork/README.md)：`bash fieldwork/run.sh --help`。F1保持只读，采集显式传入`--domain-id`、`--scope`和新`--output`。GUI提供各轴位置与速度/Kp/Kd/前馈力矩滑条、反馈驱动模型、短轨迹及命令/反馈/视频记录；“开始发送”后拖动直接下发五字段，不填写人工审核或备注。初始化来源、Mock演练与实机命令见该指南。 启动未停稳会显示原因并等待，可取消；控制故障后窗口与只读观测保留，显式“重读 / 新控制”开始另一会话。
+首次到场先用[现场CLI和GUI](../fieldwork/README.md)：`bash fieldwork/run.sh --help`。F1保持只读，采集显式传入`--domain-id`、`--scope`和新`--output`。GUI提供各轴位置与速度/Kp/Kd/前馈力矩滑条、反馈驱动模型、短轨迹及命令/反馈/视频记录；“开始发送”后拖动直接下发五字段，不填写人工审核或备注。初始化来源、Mock演练与实机命令见该指南。 本地演练推荐`bash fieldwork/run.sh gui --mock --domain-id 181 --software-rendering`，无需手工配对profile/输出目录；默认自动缓存，在GUI内保存正式记录。 启动未停稳会显示原因并等待，可取消；控制故障后窗口与只读观测保留，显式“重读 / 新控制”开始另一会话。
 
 H2重力候选通过联调验证后，按[H3指南](hardware_friction_h3.md)继续多速度运动摩擦和零PD起动实验；完成H3后，再按[H4指南](hardware_inertia_h4.md)继续加速度激励、惯量候选、前序复核及独立控制对照。前序验证失败会阻断后续。
 

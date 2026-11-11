@@ -50,7 +50,8 @@ class PipeHeartbeat:
 
 class Child:
     """One producer for heartbeat, background reader drains live output even during UI stalls."""
-    def __init__(self, command, log, *, environment=None):
+    def __init__(self, command, log, *, environment=None, pause_file=None):
+        self.pause_file=Path(pause_file) if pause_file else None
         self.log=Path(log).open('x'); self.messages=queue.SimpleQueue(); self.log_error=None
         self.latest_feedback=None;self.feedback_lock=threading.Lock()
         try:
@@ -70,7 +71,7 @@ class Child:
                         with self.feedback_lock:self.latest_feedback=value
                     else:self.messages.put(value)
                 except ValueError: self.messages.put(dict(type='ipc_error',message='后台状态消息无法解析'))
-            if self.log_error is None:
+            if self.log_error is None and not (self.pause_file and self.pause_file.exists()):
                 try: self.log.write(line); self.log.flush()
                 except OSError as exc:
                     self.log_error=str(exc);self.messages.put(dict(type='recording_error',message='后台日志写入失败：'+str(exc)))

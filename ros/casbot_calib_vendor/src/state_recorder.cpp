@@ -66,6 +66,7 @@ class Recorder final : public rclcpp::Node {
     const auto duration = declare_parameter<double>("duration_s", 10.);
     const auto depth = declare_parameter<int>("depth", 10);
     const auto reliable = declare_parameter<bool>("reliable", true);
+    pause_file_=declare_parameter<std::string>("recording_pause_file","");
     live_=declare_parameter<bool>("stream_packets",false);
     until_stopped_=declare_parameter<bool>("until_stopped",false);
     tolerate_io_=declare_parameter<bool>("tolerate_recording_io_error",false);
@@ -104,7 +105,7 @@ class Recorder final : public rclcpp::Node {
     start_ = now_ns(); end_ = start_ + static_cast<std::int64_t>(duration * 1e9);
     timer_ = create_wall_timer(std::chrono::milliseconds(20), [this] {
       if (!until_stopped_ && now_ns() >= end_) done_ = true;
-      if (now_ns() >= next_graph_) { record([this]{graph_snapshot();}); next_graph_ = now_ns() + 500000000; }
+      if (now_ns() >= next_graph_) { record([this]{graph_snapshot();});if(live_)live_graph(); next_graph_ = now_ns() + 500000000; }
     });
     std::ofstream meta(output_ / "recorder.pending");
     meta.exceptions(std::ios::badbit | std::ios::failbit);
@@ -125,7 +126,7 @@ class Recorder final : public rclcpp::Node {
     try {
       std::ofstream summary(output_ / "summary.json");summary.exceptions(std::ios::badbit | std::ios::failbit);
       summary<<"{\"receive_packets\":"<<sequence_<<",\"start_ns\":"<<start_
-        <<",\"end_ns\":"<<now_ns()<<",\"reason\":"<<quote(recording_failed_?"recording_error":reason)
+        <<",\"end_ns\":"<<now_ns()<<",\"reason\":"<<quote(recording_paused_?"recording_paused":recording_failed_?"recording_error":reason)
         <<",\"recording_failed\":"<<(recording_failed_?"true":"false")
         <<",\"read_only\":true,\"application_publishers\":0,\"mode_clients\":0}\n";
     } catch(const std::ios_base::failure& error) {io_failure(error);}
@@ -138,8 +139,20 @@ class Recorder final : public rclcpp::Node {
     recording_failed_=true;
   }
   template<class Write> void record(Write write) {
+    if(!pause_file_.empty()&&std::filesystem::exists(pause_file_)){recording_failed_=true;recording_paused_=true;}
     if(recording_failed_)return;
     try {write();}catch(const std::ios_base::failure& error){io_failure(error);}
+  }
+  void live_graph() {
+    std::ostringstream out;out<<"FIELDWORK_GRAPH {\"observed_ns\":"<<now_ns()<<",\"channels\":{";
+    bool first=true;
+    for(const auto& pair:channels_) {
+      if(!first)out<<',';
+      first=false;
+      auto publishers=get_publishers_info_by_topic(pair.second);
+      out<<quote(pair.first)<<":{\"topic\":"<<quote(pair.second)<<",\"publishers\":"<<publishers.size()<<'}';
+    }
+    out<<"}}";std::cout<<out.str()<<std::endl;
   }
   void graph_snapshot() {
     if (!rclcpp::ok()) return;
@@ -188,7 +201,7 @@ class Recorder final : public rclcpp::Node {
   }
   void add(const std::string& channel, const std::string& topic, const std::string& type, const rclcpp::QoS& qos) {
     if (topic.empty()) return;
-    topics_.push_back(topic);
+    topics_.push_back(topic);channels_[channel]=topic;
     subscriptions_.push_back(create_generic_subscription(topic, type, qos,
       [this, channel, topic, type](std::shared_ptr<rclcpp::SerializedMessage> raw) {
         const auto received = now_ns(); const auto& bytes = raw->get_rcl_serialized_message();
@@ -227,9 +240,10 @@ class Recorder final : public rclcpp::Node {
   }
   std::filesystem::path output_;
   std::ofstream cdr_, rows_, graph_, discovery_;
-  std::string clock_;
+  std::string clock_,pause_file_;std::map<std::string,std::string> channels_;
   std::uint64_t sequence_ = 0;
   std::int64_t start_ = 0, end_ = 0, next_graph_ = 0;
+  bool recording_paused_=false;
   bool done_ = false,live_=false,until_stopped_=false,tolerate_io_=false,recording_failed_=false;
   std::map<std::string,std::int64_t> last_live_;
   std::vector<std::string> topics_;

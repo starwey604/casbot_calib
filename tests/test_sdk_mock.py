@@ -90,3 +90,37 @@ def test_mock_initial_pose_checks_the_selected_scene_before_starting(tmp_path):
     with pytest.raises(ValueError,match='collision scene'):
         SDKMockSession(ROOT/'configs/sdk_mock.yaml',tmp_path/'not_started',222,profile=path)
     assert not (tmp_path/'not_started').exists()
+
+
+def test_manual_mock_rest_defaults_remove_gravity_without_removing_physics():
+    config=mock_config(ROOT/'configs/fieldwork_mock.yaml')
+    assert config['purpose']=='manual_tuning'
+    import numpy as np
+    expected=np.zeros(14);expected[1]=np.deg2rad(20);expected[8]=-expected[1]
+    np.testing.assert_allclose(config['initial_q'],expected,rtol=0,atol=1e-14)
+    from casbot_calib.model_runtime import collision_for
+    assert collision_for(config).check(expected)['distances'].min()>=.01
+    assert not config['internal_gravity'] and not config['protection_gravity']
+    assert not config['plant']['zero_gravity']
+    assert config['allow_custom_pd'] and config['allow_effort']
+
+
+def test_manual_rest_pose_does_not_redefine_the_calibration_mock(tmp_path):
+    from casbot_calib.sdk_mock import SDKMockSession
+    session=SDKMockSession(ROOT/'configs/fieldwork_mock.yaml',tmp_path/'not_started',222)
+    import numpy as np
+    assert session.config['initial_q'][1]==pytest.approx(np.deg2rad(20)) and not session.processes
+    legacy=mock_config(ROOT/'configs/sdk_mock.yaml')
+    assert legacy['purpose']=='calibration' and legacy['protection_gravity']
+    assert legacy['initial_q']!=[0.]*14
+
+
+def test_manual_mock_cannot_reenable_automatic_gravity(tmp_path):
+    config=yaml.safe_load((ROOT/'configs/fieldwork_mock.yaml').read_text());config['protection_gravity']=True
+    path=tmp_path/'bad.yaml';path.write_text(yaml.safe_dump(config))
+    with pytest.raises(ValueError,match='compensation'):mock_config(path)
+
+
+def test_manual_gui_has_no_gravity_filling_path():
+    from casbot_calib.fieldwork_gui import Desk
+    assert not hasattr(Desk,'fill_nominal_gravity')

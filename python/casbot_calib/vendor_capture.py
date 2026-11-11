@@ -11,7 +11,7 @@ from .vendor_identity import sha256
 
 def capture(config_path, output, *, duration_s, domain_id, scope,
             record_discovery=False, poll_callback=None, live_callback=None, cancel_check=None,
-            until_stopped=False, tolerate_recording_io_error=False):
+            until_stopped=False, tolerate_recording_io_error=False, recording_pause_file=None):
     config = load_config(config_path)
     if not math.isfinite(duration_s) or duration_s <= 0 or not 0 <= domain_id <= 232:
         raise ValueError('A positive duration and explicit ROS domain 0..232 are required')
@@ -54,12 +54,13 @@ def capture(config_path, output, *, duration_s, domain_id, scope,
     if tolerate_recording_io_error:
         if live_callback is None:raise ValueError('Tolerant recording requires a live callback')
         args += ['-p','tolerate_recording_io_error:=true']
+    if recording_pause_file:args += ['-p','recording_pause_file:='+str(recording_pause_file)]
     env = dict(os.environ, ROS_DOMAIN_ID=str(domain_id), ROS_LOCALHOST_ONLY='1' if scope == 'localhost_contract_mock' else '0')
     with (output/'process.log').open('x') as log:
         from .sdk_process import OutputPump
         process = subprocess.Popen(args, env=env, stdout=subprocess.PIPE if live_callback else log,
             stderr=subprocess.STDOUT,**(dict(text=True,bufsize=1) if live_callback else {}))
-        pump=OutputPump(process.stdout,log,live_callback) if live_callback else None
+        pump=OutputPump(process.stdout,log,live_callback,recording_pause_file) if live_callback else None
         try:
             if poll_callback is None and cancel_check is None and pump is None:
                 code = process.wait()

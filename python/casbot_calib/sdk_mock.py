@@ -17,6 +17,11 @@ from .vendor_identity import sha256
 
 def mock_config(path):
     config = yaml.safe_load(Path(path).read_text(encoding='utf-8'))
+    purpose=config.setdefault('purpose','calibration')
+    if purpose not in ('calibration','manual_tuning'):raise ValueError('Unknown SDK Mock purpose')
+    protection=config.setdefault('protection_gravity',True)
+    if type(protection) is not bool:raise ValueError('Explicit protection_gravity boolean required')
+    if purpose=='manual_tuning' and (protection or config['internal_gravity']):raise ValueError('Manual tuning does not add gravity compensation')
     if config.get('schema_version') != 'casbot_sdk_mock_v1': raise ValueError('Explicit SDK Mock schema required')
     for key in ('control_hz', 'publish_hz'):
         if type(config[key]) is not int or not 100 <= config[key] <= 2000: raise ValueError('Invalid Mock rate')
@@ -31,8 +36,9 @@ def mock_config(path):
     engine, _ = model_for(config)
     if any(not j.lower <= x <= j.upper for x, j in zip(q, engine.model.joints)): raise ValueError('Initial pose outside nominal limits')
     context=context_for(config)
-    scene = collision_for(config,scene=dynamics_scene(context) if context else None)
-    if np.min(scene.check(q[None, :])['distances']) <= .01: raise ValueError('Initial SDK Mock pose collides or lacks10mm clearance')
+    if purpose=='calibration':
+        scene = collision_for(config,scene=dynamics_scene(context) if context else None)
+        if np.min(scene.check(q[None, :])['distances']) <= .01: raise ValueError('Initial SDK Mock pose collides or lacks10mm clearance')
     for key in ('servo_natural_frequency_rad_s', 'servo_damping_ratio','servo_minimum_kp','servo_minimum_kd'):
         if not np.isfinite(config[key]) or config[key] <= 0: raise ValueError('Positive synthetic servo parameter required')
     plant = config['plant']
@@ -65,14 +71,15 @@ def stop(process):
 
 class SDKMockSession(AbstractContextManager):
     """Owns only Mock processes. Clients use the generated ordinary H1 profile."""
-    def __init__(self, config_path, output, domain_id, *, profile='configs/hardware_field.yaml', endpoint_root=None):
+    def __init__(self, config_path, output, domain_id, *, profile='configs/hardware_field.yaml', endpoint_root=None, recording_pause_file=None, cancel_check=None):
         self.config = mock_config(config_path); self.root = Path(output).resolve()
+        self.recording_pause_file=recording_pause_file;self.cancel_check=cancel_check
         self.domain_id = domain_id; self.endpoint = endpoint_root or '/casbot_calib_s2_sdk_' + uuid.uuid4().hex[:10]
         mock_connection(self.endpoint, domain_id, '0'*64)  # Validate before filesystem/process actions.
         self.profile = load_profile(profile); self.processes = []; self.logs = []
         check_same_context(self.config,self.profile)
         clearance = self.profile['scene']['clearance_m']
-        if np.min(collision_for(self.profile).check(self.config['initial_q'])['distances']) <= clearance:
+        if self.config['purpose']=='calibration' and np.min(collision_for(self.profile).check(self.config['initial_q'])['distances']) <= clearance:
             raise ValueError('Initial SDK Mock pose violates the configured collision scene')
         if 'model_context' in self.config and not np.allclose(self.profile['gravity_world'],model_for(self.config)[0].model.gravity_world,rtol=0,atol=1e-12):
             raise ValueError('SDK Mock and client installation gravity differ')
@@ -97,11 +104,13 @@ class SDKMockSession(AbstractContextManager):
         device_params['plant_control_hz'] = device_params.pop('control_hz')
         device_params['plant_feedback_hz'] = device_params.pop('feedback_hz')
         device_params.update(initial_q=q.tolist(),plant_output=str(plant_dir))
-        keys = ('control_hz','publish_hz','cache_period_ns','interpolation_ns','watchdog_ns','internal_gravity','allow_effort','allow_custom_pd','effort_limit_nm')
+        keys = ('control_hz','publish_hz','cache_period_ns','interpolation_ns','watchdog_ns','internal_gravity','protection_gravity','allow_effort','allow_custom_pd','effort_limit_nm')
         server_params = dict(experiment_id='sdk_mock',model_id=model_id,model_path=model_path,
             output=str(server_dir),endpoint_root=self.endpoint,joint_names=[j.name for j in model.joints],
             kp=kp.tolist(),kd=kd.tolist(),**{k:self.config[k] for k in keys},**device_params)
+        if self.recording_pause_file:server_params['recording_pause_file']=str(self.recording_pause_file)
         write_json(protocol/'behavior.json', dict(schema_version='casbot_sdk_mock_backend_v2',config=self.config,
+            initial_pose_collision_qualified=False,initial_pose_policy='operator_specified' if self.config['purpose']=='manual_tuning' else 'calibration_collision_check',
             backend='in_process_shared_SimulatedArmDevice',internal_ros_bridge=False,source_model_sha256=source['sha256'],
             server_sha256=sha256(server),server_params=server_params,
             **({'model_context':context.identity} if context else {}),
@@ -122,6 +131,7 @@ class SDKMockSession(AbstractContextManager):
                 self.processes.append(subprocess.Popen(command, env=env, stdout=stream, stderr=subprocess.STDOUT))
             deadline=time.monotonic()+30
             while True:
+                if self.cancel_check and self.cancel_check():raise RuntimeError('本地Mock启动已取消')
                 if any(p.poll() is not None for p in self.processes): raise RuntimeError('SDK Mock process exited; inspect logs')
                 events=server_dir/'server_events.csv'
                 if events.exists() and 'settled_initial_hold' in events.read_text(): break

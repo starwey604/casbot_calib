@@ -4,7 +4,60 @@
 
 2026-11-11按用户最新决定，GUI改为**直接五字段调参台**：删除逐轴确认勾选、实物名称填写、观察结论、备注、review存储与14轴审核门禁。不再要求上传现场前提表；现场人员决定物理防护和操作顺序。原H1/H2流程与S3/S4正式观测资格独立保留。
 
-限制改造按[四轮计划](../docs/fieldwork_limits_behavior_plan.md)推进。第一轮已接入可见状态、启动等待/取消、独立只读观测和新控制会话。参数设置面板、运行软阈值动作、平滑交接和连续重力辅助仍待后续轮次；当前运行越限仍结束本次控制，但会明确列出原因，不关闭GUI。
+限制改造按[四轮计划](../docs/fieldwork_limits_behavior_plan.md)推进。第一轮已接入可见状态、启动等待/取消、独立只读观测和新控制会话。参数设置面板、运行软阈值动作和平滑交接仍待后续轮次；模型重力辅助已按最新决定撤销；当前运行越限仍结束本次控制，但会明确列出原因，不关闭GUI。
+
+## 推荐：一条命令打开本地Mock调参台
+
+```bash
+bash fieldwork/run.sh gui --mock --domain-id 181 --software-rendering
+```
+
+不用先启动另一终端的SDK，也不用填写profile或输出目录。181是主动选定的本地测试域；`--mock`显式启动本窗口独占的私有SDK Mock并自动配对连接。窗口打开后点“连接 / 读取”，收到反馈后再操作滑条和“开始发送”。当前仍是原始五字段模式：本窗口Mock从近垂臂休息姿态初始化（左肩滚转+20°、右肩滚转−20°，其余0），待机、首帧前、活动及断流后均不添加模型重力补偿；物理重力仍正常存在。GUI不提供重力填值或回零按钮，Kp/Kd和手动effort等滑条保持原逻辑。窗口关闭只清理自己启动的Mock；独立启动的服务不受影响。
+
+`--software-rendering`显式选择软件渲染，适用于容器出现`iris`/`dri3`显卡驱动兼容错误；有可用显卡驱动时可以省略。它不改变控制或通信频率。
+
+### 显示性能
+
+窗口交互刷新上限30 Hz、空闲目标20 Hz；软件绘图线程默认每进程2个。实时视图采用同源轻量显示网格，碰撞、动力学及视频仍用原模型。显示死区仅跳过不超过`1e-4 rad`的微小画面变化，数值和原始记录保持完整。500 Hz发送、Mock物理步长与SDK发布配置不变。设置和CPU实测见[性能说明](../docs/fieldwork_performance.md)。更新后直接重启GUI即可，无需重编C++。
+
+### 在GUI中保存，而不是提前起文件夹名
+
+- 默认自动建立**磁盘运行缓存**。点击“保存会话”，使用自动生成的名称或编辑完整目录，再点“保存”。现有目录不会被覆盖。
+- 保存在线程中完成，**不中断发送或只读连接**。保存期间仍可拖动和停止；完成后显示正式目录。后续新数据继续留在运行缓存，再次保存会生成另一个快照。对照用的`recording/*.csv`在保存时从快照数据生成，不在自动缓存中反复复制。
+- 在线保存只包含每个文件已完成写入的前缀；CSV/JSONL不带半行，CDR截到已保存消息引用的末尾。`saved_session.json`列出各文件截点与`live_prefix`/`finalized_prefix`/`capacity_paused`状态，不把它们当成同一设备采样时刻。
+- 已保存目录可用`gui --session 保存目录`查看和导出视频，连接/发送禁用。快照中的活动控制不能恢复执行；原始封存配置与运行记录不改写。
+
+### 恢复缓存和容量
+
+```bash
+bash fieldwork/run.sh gui --recover
+# 或在窗口顶部“缓存记录”中选择另一份记录。
+```
+
+缓存默认在`${XDG_STATE_HOME:-~/.local/state}/casbot-calib/fieldwork/sessions/`，可用环境变量`CASBOT_FIELDWORK_CACHE`更换根目录。运行目录和ID自动生成，正常关窗或异常退出都保留；`--recover`选择最近未被其他窗口占用的缓存，也可跟缓存ID。恢复不自动连接或发送，可以直接另存已有数据。缓存的旧Mock端点不会自动改绑到新Mock；实时演练另开`gui --mock --domain-id 181`即可。
+
+单次缓存默认512 MiB，可在启动时用`--cache-limit-mib 2048`等修改。后台每秒检查，达到上限后停止追加原始记录、控制CSV、进程日志及本窗口Mock诊断，不删除旧数据；实时反馈、手动发送和停止继续，自动短轨迹取消。可能超出一个检查周期内的新增量，固定最新值/视图及最终元数据仍可更新；这是应用层录制额度，不是文件系统硬配额。1kHz原始消息占用较快，长会话应增大容量。
+
+达到容量后红条提示录制已暂停，保存现有前缀或另开新会话继续记录；不会静默覆盖旧数据。缓存不会在保存后或关窗时自动删除；完成核对后可自行清理对应缓存ID目录。全部缓存的累计占用不受单次额度约束。
+
+### 连接已有服务或实机
+
+原有入口保留，**输出目录现在可省略**：
+
+```bash
+# 独立启动的Mock必须使用它本次生成的profile，不能沿用已关闭实例的文件。
+bash fieldwork/run.sh gui \
+  --profile artifacts/fieldwork/manual_mock_v2/client_profile.yaml \
+  --domain-id 181 --scope localhost_contract_mock --software-rendering
+
+# 实机仍须现场确认域号并显式指定scope；不扫描域号或自动挑选设备。
+bash fieldwork/run.sh gui --profile configs/hardware_field.yaml \
+  --domain-id "$calib_domain_id" --scope hardware_position_stream
+```
+
+连接后显示实际目标topic、域号、发现的发布者数量与首次反馈等待时间。发布者为0时明确提示目标尚未出现，优先核对服务是否运行、profile是否属于本次Mock实例；相同域号不能替代私有端点绑定。
+
+高级兼容用法：`--output 新目录`仍直接创建指定工作区，存在时拒绝覆盖；`--session 工作区`沿用原封存连接。显式工作区不使用自动缓存额度。下面保留只读CLI和双终端Mock的详细用法。
 
 ## 先用只读CLI检查连接
 
@@ -69,13 +122,14 @@ bash fieldwork/run.sh gui --preview --output artifacts/fieldwork/manual_preview_
 
 使用Python 3.10与Dear ImGui Bundle 1.5.2。预览不连接ROS；可加`--frames 150 --screenshot 输出.png`保存窗口截图。包装脚本沿用桌面已有DISPLAY/XAUTHORITY等显示配置，不放宽X访问权限。
 
-### 用SDK Mock演练并记录运动
+### 双终端Mock兼容用法（需手工配对profile）
 
 终端一启动同一套原生机械SDK Mock。181是本机主动选择的测试域，不是实机默认域：
 
 ```bash
 bash scripts/humble/container.sh bash scripts/humble/vendor.sh \
-  casbot-calib sdk-mock --domain-id 181 --output artifacts/fieldwork/manual_mock_v1
+  casbot-calib sdk-mock --config configs/fieldwork_mock.yaml \
+  --domain-id 181 --output artifacts/fieldwork/manual_mock_v1
 ```
 
 终端二打开GUI：
@@ -87,7 +141,9 @@ bash fieldwork/run.sh gui \
   --output artifacts/fieldwork/manual_desk_v1
 ```
 
-**Mock起步建议**：默认Mock的PD较软，而且没有内部重力补偿。开始发送前可点击顶部“填入名义重力 / 14轴”，把当前模型计算的重力数值明确填进力矩目标。它不会自动随姿态更新；所有值可在滑条中查看和覆盖。保持默认0直接发送时，下垂是动力学结果，也可能触发速度阈值结束本次控制，只读连接仍在。此按钮不是设备回读，也不代表实机重力模型已准确。
+**当前手动Mock默认值**：`configs/fieldwork_mock.yaml`使用近垂臂休息姿态：左肩滚转`+0.3490658504 rad`（+20°）、右肩滚转`−0.3490658504 rad`（−20°），其它12轴为0，关闭活动和待机/断流的模型重力前馈；不关闭物理重力，不新增回零动作。GUI首次连接仍用实际反馈初始化滑条，允许各轴自行调节Kp/Kd、速度及手动effort；PD作用与重力可能产生小的实际位置偏差。
+
+这个起姿是数值筛选出的Mock休息姿态，不是出厂位认定。当前完整碰撞模型的静态最小间隙为11.81 mm；无补偿启动、左肩pitch小幅调节及停止的一组实际反馈采样检查最小11.87 mm。全零位腕部与髋部的重叠已避开。检查只覆盖起姿和所列代表范围，任意滑条操作的整段轨迹仍需另行检查；画面由用户核对。`configs/sdk_mock.yaml`及DVT2标定Mock保留原校验起姿和保护策略，不受这个手动默认值影响。
 
 1. **连接 / 读取**：只读订阅并记录反馈，不创建命令发布者或模式客户端。14个位置滑条用首次完整位置初始化，当前值与本次控制起点分列显示。
 2. 点击轴名选中该轴。左侧位置滑条可直接拖动；右侧调该轴的目标速度、Kp、Kd、前馈力矩。发送前的修改仅暂存；**开始发送**后拖动即更新SDK命令。Ctrl+单击滑条可精确输入数值。
@@ -139,11 +195,11 @@ bash fieldwork/run.sh gui --profile configs/hardware_field.yaml \
 
 “开始发送”会申请上身模式并下发双臂14轴，不填腰/头/手目标。域号不扫描、不猜测；GUI只在显式连接后启动ROS工作进程。实物限位、安装、非目标轴行为及防护由现场人员决定，原始全轴消息/CDR保留供核对。SDK未知项和正式标定门槛见[前置条件](../docs/sdk_hardware_prerequisites.md)。
 
-已有新工作区可用`gui --session 工作区目录`重新打开，沿用封存连接和模型；不会自动连接或发送。此前`casbot_fieldwork_manual_v2`手动会话只能只读查看/导出，不迁移成新控制。更早的逐轴验收向导会话需使用原版查看；新GUI新建输出目录。
+自动缓存与手动指定的新工作区均可用`gui --session 工作区目录`重新打开，沿用封存连接和模型；不会自动连接或发送。此前`casbot_fieldwork_manual_v2`手动会话只能只读查看/导出，不迁移成新控制。更早的逐轴验收向导会话需使用原版查看；新GUI新建输出目录。
 
 ## 记录可直接用于Mock / 实机对照
 
-工作区区分持续只读观测与每次显式开始的控制：
+运行工作区区分持续只读观测与每次显式开始的控制；“保存会话”复制其数据前缀并新增`saved_session.json`：
 
 ```text
 protocol/                 # 工作区封存连接、模型和初始调参配置
@@ -189,6 +245,7 @@ Mock与实机采用同一格式；先核对模型、轴顺序和初值，再对�
 - `fieldwork_gui.py`：滑条、回读与图像显示，只写最新完整目标邮箱；不承担500Hz循环。
 - `fieldwork_control.py`：手动会话、默认值来源、值范围、记录导出与故障状态；无review/备注表。
 - `fieldwork_worker.py`：SDK进程监督、独立几何渲染进程、离线视频。
+- `fieldwork_display.py`：显示限帧、可重建邮箱、轻量CAD场景；不调度机器人命令。
 - `fieldwork_observer.py`：持续只读SDK订阅，生命周期不依赖本次控制。
 - `fieldwork_ipc.py` / `fieldwork_status.py`：管道心跳/停止/实时消息；统一中文状态、逐轴细节与首因保留。
 - `position_executor.cpp`：新增显式manual模式，共用模式/反馈监督与500Hz发送；原封存轨迹入口仍要求闭合回位和原参考检查。手动目标不是已通过连续碰撞证明的离线参考。
@@ -204,6 +261,23 @@ bash scripts/humble/container.sh bash scripts/humble/vendor.sh \
 
 该脚本只在私有localhost域内启动SDK Mock，通过实际鼠标操作检查五字段滑条、反馈运动、实时模型、短轨迹、停止和视频。`--scenario close`及`--scenario heartbeat`分别检查关闭窗口与GUI卡死后的清理；不连接物理机器人。结果只代表脚本实际执行的轴和范围。
 
+
+## 休息起姿与移除补偿（2026-11-12）
+
+当前起姿记录：`artifacts/fieldwork_rest_pose_v2/verification.json`；搜索与保留的15°近接反例在`artifacts/fieldwork_rest_pose_v1/`。优先选择只调整两肩滚转的简单姿态：±20°使腕部离开髋部，并为无补偿PD偏差留出空间；没有恢复名义重力前馈，也没有新增回零流程。当前静态与代表反馈采样检查通过，Kp/Kd可调；按用户要求不运行GUI或渲染，外观由用户验证。
+
+原零位/无补偿实现记录`artifacts/fieldwork_zero_v1/verification.json`只验证当时的初始化与输出合同，其零位已被用户确认有碰撞，不作为当前起姿证据。旧GUI自动化脚本不充作本版画面验收。
+
+## 自动缓存与手动保存验证（2026-11-11）
+
+本轮汇总在`artifacts/fieldwork_cache_delivery_v1/delivery.json`，覆盖实际GUI的自动Mock配对、发送中保存、缓存容量、旧端点诊断、缓存恢复、快照显示与独立CDR解码；另验证父GUI被SIGSTOP时额度仍生效、被硬杀后仅清理其自有Mock。13项存储专项通过；原有滑条/短轨迹/视频与S1协议回归通过。已保存快照显示与缓存视频（48帧）实际查看；早期失败及修复记录保留在汇总中。验证只使用私有localhost Mock，不连接实机。
+
+```bash
+bash scripts/humble/container.sh bash scripts/humble/vendor.sh \
+  env LIBGL_ALWAYS_SOFTWARE=1 xvfb-run -a -s '-screen 0 1600x1100x24' \
+  python scripts/humble/verify_fieldwork_cache.py --output artifacts/fieldwork_cache_check_v1
+# --scenario crash单独检查GUI硬杀后的EOF清理与缓存保留。
+```
 
 ## 限制改造第1轮验证（2026-11-11）
 
@@ -237,4 +311,4 @@ bash scripts/humble/container.sh bash scripts/humble/vendor.sh \
 - `fieldwork_manual_final_preview_v2/window.png`：最终离线窗口与模型已查看。渲染器保留完整CAD形状，关闭阴影/反射开销；软件渲染帧率不等于SDK发送或采样频率。
 - 91项相关回归、32项相邻回归及最终24项控制专项通过，专项与前两组有交叠，不累加声称全仓库验收。
 
-首轮0前馈、较软Mock PD触发重力下垂/速度保护，原记录保留；显式名义重力填值用于后续演练，不改成隐藏补偿。早期驱动器点击滑块手柄或亚像素拖动未改变部分值，已修正为实际拖动；全字段通过后，软件视频渲染又超过早期150秒测试预算，最终按600秒预算完成，旧失败目录不回写。上述均为私有localhost与软件窗口证据，没有实机、跨机、物理停止或正式标定验收。
+该历史版本曾使用名义重力填值演练；现版已移除该按钮，改为手动Mock休息姿态起步、全阶段无模型补偿，历史记录不回写。早期驱动器点击滑块手柄或亚像素拖动未改变部分值，已修正为实际拖动；全字段通过后，软件视频渲染又超过早期150秒测试预算，最终按600秒预算完成，旧失败目录不回写。上述均为私有localhost与软件窗口证据，没有实机、跨机、物理停止或正式标定验收。

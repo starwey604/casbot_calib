@@ -32,6 +32,7 @@ class SdkMockServer final:public rclcpp::Node {
     cache_period_=declare_parameter<std::int64_t>("cache_period_ns",3000000);
     watchdog_=declare_parameter<std::int64_t>("watchdog_ns",100000000);
     const auto horizon=declare_parameter<std::int64_t>("interpolation_ns",2000000);
+    protection_gravity_=declare_parameter<bool>("protection_gravity",true);
     gravity_=declare_parameter<bool>("internal_gravity",false);
     allow_effort_=declare_parameter<bool>("allow_effort",false);allow_pd_=declare_parameter<bool>("allow_custom_pd",false);
     effort_limit_=declare_parameter<double>("effort_limit_nm",100.);
@@ -55,6 +56,8 @@ class SdkMockServer final:public rclcpp::Node {
     for(int j=0;j<14;++j)q_[j]=setup.initial_q[j];
     device_commands_.open(std::filesystem::path(plant_output)/"device_commands.csv", "write_ns,local_pd"+vendor::columns("q")+vendor::columns("v")+vendor::columns("feedforward_nm")+vendor::columns("kp")+vendor::columns("kd"),log_pool_);
     device_samples_.open(std::filesystem::path(plant_output)/"host_samples.csv", "sequence,sample_ns,driver_receive_ns"+vendor::columns("q")+vendor::columns("dq")+vendor::columns("current")+vendor::columns("status"),log_pool_);
+    const auto pause_file=declare_parameter<std::string>("recording_pause_file","");
+    for(auto* log:{&events_,&commands_,&references_,&publications_,&device_commands_,&device_samples_})log->set_pause_file(pause_file);
     epoch_=vendor::now();
     const auto advance_device=[this]{
       const auto now=vendor::now();
@@ -155,7 +158,7 @@ class SdkMockServer final:public rclcpp::Node {
     const auto now=vendor::now();
     if(active_&&now-last_command_>watchdog_)hold("assumed_watchdog_hold");
     if(active_&&get_parameter("lose_mode").as_bool())hold("injected_mode_loss");
-    const bool needs_pose=casbot::sdk::needs_plant_pose(active_,awaiting_first_command_,gravity_);
+    const bool needs_pose=casbot::sdk::needs_plant_pose(active_,awaiting_first_command_,gravity_,protection_gravity_);
     if(needs_pose&&now-state_at_>20000000)return; // Only synthetic protection/gravity uses host pose.
     if(!initial_ready_) {
       double speed=0;for(auto value:v_)speed=std::max(speed,std::abs(value));
@@ -196,6 +199,7 @@ class SdkMockServer final:public rclcpp::Node {
     publications_<<now<<','<<cache_.sample.sequence<<','<<cache_.sample.sample_ns+epoch_<<','<<cache_.driver_receive_ns<<','<<cache_.publish_sequence<<','<<(previous_cache_==static_cast<std::uint64_t>(cache_.sample.sequence))<<'\n';
     previous_cache_=cache_.sample.sequence;
   }
+  bool protection_gravity_=true;
   std::string root_,model_id_,experiment_,clock_=vendor::clock_id();std::vector<std::string> names_;
   std::vector<double> kp_,kd_,custom_kp_,custom_kd_;std::array<double,14> q_{},v_{},target_v_{},feedforward_{};
   std::int64_t state_at_=0,cache_at_=0,last_command_=0,cache_period_=0,watchdog_=0,initial_stable_at_=0;

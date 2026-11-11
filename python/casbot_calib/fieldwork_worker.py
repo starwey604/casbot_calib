@@ -8,10 +8,11 @@ import numpy as np
 from .fieldwork_analysis import read_json
 from .data import write_json
 from .fieldwork_control import Session, heartbeat_check
-from .hardware_batch import atomic_json, batch_lock
+from .hardware_batch import batch_lock
+from .fieldwork_display import latest_json, geometry_changed, lightweight_scene, VIEW_FPS
 
 
-def open_view(metadata, directory):
+def open_view(metadata, directory, *, lightweight=False):
     from .model_context import resolve_context
     from .viewer import JointView
     context = resolve_context(metadata['model_context'])
@@ -22,8 +23,9 @@ def open_view(metadata, directory):
         adapter = viewer_adapter(context.bundle)
     else:
         adapter = context.write_view_scene(scene)
+    if lightweight:scene=lightweight_scene(context,scene)
     view = JointView(adapter, scene, width=640, height=480)
-    # Full CAD geometry is retained; avoid expensive shadow/reflection passes in a tuning view.
+    # Preserve CAD shape/scene; avoid expensive shadow/reflection passes in a tuning view.
     for flag in ('mjRND_SHADOW','mjRND_REFLECTION'):
         view.renderer.scene.flags[getattr(view.mj.mjtRndFlag,flag)] = False
     view.camera.lookat[:] = [0, 0, .95]
@@ -41,19 +43,19 @@ def render_live(root, check):
     """Own EGL in a separate process, never interfere with ImGui's OpenGL context."""
     metadata = read_json(root/'view/metadata.json')
     sequence = 0; previous = None
-    with open_view(metadata, root/'view') as view:
+    with open_view(metadata, root/'view',lightweight=True) as view:
         while check() in (None, 'operator_cancel'):
             pose = read_json(root/'view/pose.json')
-            if pose and pose != previous:
+            if pose and geometry_changed(pose,previous):
                 if pose.get('selected') is not None: view.highlight(pose['selected'])
                 pixels = view.render(frame(metadata, view, pose['q'], pose.get('receive_ns') or 0))
                 temporary = root/'view/frame.pending'
                 with temporary.open('wb') as stream: np.save(stream, pixels, allow_pickle=False)
                 temporary.replace(root/'view/frame.npy')
                 sequence += 1
-                atomic_json(root/'view/rendered.json', dict(**pose, rendered_frames=sequence), replace=True)
+                latest_json(root/'view/rendered.json', dict(**pose, rendered_frames=sequence))
                 previous = pose
-            time.sleep(1/15)
+            time.sleep(1/VIEW_FPS)
 
 
 def render_recording(root, relative, cancel_check=None):
@@ -62,14 +64,18 @@ def render_recording(root, relative, cancel_check=None):
     from PIL import Image, ImageDraw
     from .presentation import _font
     font = _font(18)
+    root=Path(root).resolve()
     session = Session(root)
     directory = (root/relative).resolve()
     if directory.parent != root/'runs': raise ValueError('运行目录不属于会话')
-    data = np.genfromtxt(directory/'recording/feedback.csv', delimiter=',', names=True, dtype=None, encoding='utf-8')
+    feedback=directory/'recording/feedback.csv'
+    if not feedback.exists():feedback=directory/'capture/execution/feedback.csv'
+    data = np.genfromtxt(feedback, delimiter=',', names=True, dtype=None, encoding='utf-8')
     data = np.atleast_1d(data)
     if len(data) < 2: raise ValueError('记录不足两帧')
     output = directory/'recording/motion.mp4'
     if output.exists(): raise ValueError('视频已存在')
+    output.parent.mkdir(exist_ok=True)
     timestamps = data['receive_ns'].astype(np.int64)
     times = (timestamps-timestamps[0])*1e-9
     with open_view(session.metadata, root/'view') as view:

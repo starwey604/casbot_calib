@@ -3,8 +3,8 @@
 namespace casbot::sdk {
 // The host forwards five fields; device-local PD does not use host feedback.
 // Only the synthetic protection/gravity hold actually depends on a plant pose.
-inline bool needs_plant_pose(bool active, bool awaiting_first_command, bool internal_gravity) {
-  return !active || awaiting_first_command || internal_gravity;
+inline bool needs_plant_pose(bool active, bool awaiting_first_command, bool internal_gravity, bool protection_gravity=true) {
+  return ((!active || awaiting_first_command) && protection_gravity) || internal_gravity;
 }
 // Vendor feedback repeats the latest cached frame with a publication stamp.
 // Publishing that cache never certifies its physical acquisition time/freshness.

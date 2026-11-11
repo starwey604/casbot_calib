@@ -21,3 +21,6 @@ python/casbot_calib/assets/models/trical_1105_03/** -text
 python/casbot_calib/assets/models/trical_1105_03_gauge_cover_v2/** -text
 python/casbot_calib/assets/models/trical_1105_03_gauge_cover_v2/**/*.stl filter=lfs diff=lfs merge=lfs -text
 python/casbot_calib/assets/models/trical_1105_03_gauge_cover_v2/**/*.npz filter=lfs diff=lfs merge=lfs -text
+
+# Display-only CAD LOD; frozen calibration bundles remain unchanged.
+python/casbot_calib/assets/fieldwork_display/**/*.stl filter=lfs diff=lfs merge=lfs -text

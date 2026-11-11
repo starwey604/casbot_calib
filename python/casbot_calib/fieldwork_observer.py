@@ -24,6 +24,8 @@ def observe(root, relative, cancel_check, publish):
     path=directory/'observation.yaml';path.write_text(yaml.safe_dump(config),encoding='utf-8')
     values=dict(q=None,dq=None,effort_raw=None,kp=None,kd=None,receive_ns=None,mode='尚未收到模式反馈')
     def line(text):
+        if text.startswith('FIELDWORK_GRAPH '):
+            publish('connection_status',**json.loads(text[len('FIELDWORK_GRAPH '):]));return
         if text.startswith('FIELDWORK_NOTICE '):
             notice=json.loads(text[len('FIELDWORK_NOTICE '):]);publish('recording_error',message=notice['message'],code=notice['code']);return
         if not text.startswith('FIELDWORK_PACKET '):return
@@ -39,8 +41,13 @@ def observe(root, relative, cancel_check, publish):
                 if packet['channel']=='debug' or normalized[name] is not None:values[name]=normalized[name]
         else:return
         publish('feedback',**values)
-    publish('observer_started',relative=relative)
-    result=capture(path,directory/'capture',duration_s=10.,domain_id=session.metadata['domain_id'],
+    publish('observer_started',relative=relative,channels={name:dict(topic=config[key],publishers=None) for name,key in [('joint','joint_topic'),('mode','mode_topic'),('debug','debug_topic')]})
+    from .fieldwork_storage import recording_pause_file,cache_for,CacheMonitor
+    cache=cache_for(session.root);monitor=CacheMonitor(cache) if cache else None
+    try:
+        result=capture(path,directory/'capture',duration_s=10.,domain_id=session.metadata['domain_id'],
         scope='localhost_contract_mock' if remaps else 'hardware_read_only',live_callback=line,
-        cancel_check=cancel_check,until_stopped=True,tolerate_recording_io_error=True)
+        cancel_check=cancel_check,until_stopped=True,tolerate_recording_io_error=True,recording_pause_file=recording_pause_file(session.root))
+    finally:
+        if monitor:monitor.close()
     return dict(observation=relative,result=result)

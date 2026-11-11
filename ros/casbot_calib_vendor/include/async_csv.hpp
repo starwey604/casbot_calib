@@ -17,7 +17,9 @@ class AsyncCsv final:public std::ostream {
    public:
     std::shared_ptr<spdlog::async_logger> logger;
     std::shared_ptr<std::atomic<bool>> failed=std::make_shared<std::atomic<bool>>(false);
+    std::string pause_file;
     int sync() override {
+      if(!pause_file.empty()&&std::filesystem::exists(pause_file)){str("");return 0;}
       if(*failed)return -1;
       auto text=str();
       if(text.empty())return 0;
@@ -38,5 +40,6 @@ class AsyncCsv final:public std::ostream {
     buffer_.logger->set_error_handler([failed=buffer_.failed](const std::string&){*failed=true;});
     *this<<std::setprecision(17)<<header<<'\n';flush();
   }
+  void set_pause_file(const std::string& path){buffer_.pause_file=path;}
   void check() const {if(*buffer_.failed)throw std::runtime_error("Asynchronous diagnostic CSV write failed");}
 };

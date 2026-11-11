@@ -35,14 +35,15 @@ class ProcessResult:
 
 class OutputPump:
     """Drain child status independently of an optional archival log."""
-    def __init__(self, source, log, callback):
+    def __init__(self, source, log, callback, pause_file=None):
+        self.pause_file=Path(pause_file) if pause_file else None
         self.source=source; self.log=log; self.callback=callback; self.error=None; self.log_failed=False
         self.thread=threading.Thread(target=self._read,daemon=True);self.thread.start()
     def _read(self):
         try:
             for line in self.source:
                 self.callback(line)
-                if not self.log_failed:
+                if not self.log_failed and not (self.pause_file and self.pause_file.exists()):
                     try:self.log.write(line);self.log.flush()
                     except OSError as exc:
                         self.log_failed=True
@@ -52,7 +53,7 @@ class OutputPump:
     def join(self):self.thread.join(timeout=2.)
 
 
-def run_process(command,environment,log,*,timeout_s=60,recorder=None,timeout_signal=signal.SIGINT,stop_timeout_s=10,cancel_check=None,on_output=None):
+def run_process(command,environment,log,*,timeout_s=60,recorder=None,timeout_signal=signal.SIGINT,stop_timeout_s=10,cancel_check=None,on_output=None, recording_pause_file=None):
     process=None;interruption=None;pump=None
     with Path(log).open('x') as stream:
         try:
@@ -60,7 +61,7 @@ def run_process(command,environment,log,*,timeout_s=60,recorder=None,timeout_sig
             if early:return ProcessResult(-int(signal.SIGINT),early,False)
             process=subprocess.Popen(command,env=environment,stdout=subprocess.PIPE if on_output else stream,
                 stderr=subprocess.STDOUT,**(dict(text=True,bufsize=1) if on_output else {}))
-            if on_output:pump=OutputPump(process.stdout,stream,on_output)
+            if on_output:pump=OutputPump(process.stdout,stream,on_output,recording_pause_file)
             deadline=time.monotonic()+timeout_s if timeout_s is not None else None
             try:
                 while process.poll() is None:

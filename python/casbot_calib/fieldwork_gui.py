@@ -14,6 +14,7 @@ from .fieldwork import clock_id
 from .fieldwork_analysis import read_json, write_json
 from .fieldwork_control import Session, Workspace, initial_commands, tuning_config, validate_commands, write_command, short_position
 from .fieldwork_ipc import Child
+from .fieldwork_display import FramePacer, configure_graphics_environment, latest_json, VIEW_FPS
 from .fieldwork_status import JOINT_LABELS, OperatorStatus, describe
 from .hardware_batch import atomic_json
 
@@ -31,15 +32,19 @@ def last_csv(path):
     with Path(path).open('rb') as stream:
         header=stream.readline().decode().strip().split(',')
         stream.seek(0,2);size=stream.tell();stream.seek(max(0,size-16384))
-        lines=stream.read().decode().splitlines()
-    if len(lines)<2:return None
-    return dict(zip(header,next(csv.reader([lines[-1]]))))
+        lines=stream.read().decode().splitlines(keepends=True)
+    for line in reversed(lines):
+        if not line.endswith('\n'):continue
+        row=next(csv.reader([line]))
+        if len(row)==len(header) and row!=header:return dict(zip(header,row))
+    return None
 
 
 class Desk:
     def __init__(self, root, *, preview=False, profile='configs/hardware_field.yaml'):
         from .hardware_field import load_profile, model_for
         self.root=Path(root).resolve();self.preview=preview;self.archive=False
+        self.snapshot=(self.root/'saved_session.json').exists() or (self.root/'saving.json').exists()
         self.frontend_lease=None if preview else claim_frontend(root)
         if preview:
             config=load_profile(profile);engine,_=model_for(config)
@@ -50,6 +55,11 @@ class Desk:
             self.archive=metadata.get('schema_version')=='casbot_fieldwork_manual_v2'
             session=Session(root) if self.archive else Workspace(root)
             self.status=session.status();config=session.config;engine,_=model_for(config)
+        self.read_only=self.archive or self.snapshot
+        from .fieldwork_storage import recording_pause_file,cached_sessions
+        self.pause_file=recording_pause_file(self.root);self.cache_monitor=None;self.owned_mock=None
+        self.save_job=None;self.save_open=False;self.save_path='';self.save_message='';self.reopen_root=None
+        self.recovery_rows=cached_sessions();self.connection_channels={};self.connected_at=None
         self.engine=engine;self.config=config;self.tuning=tuning_config(config);self.names=self.status['joint_names']
         self.lower=np.array([j.lower for j in engine.model.joints]);self.upper=np.array([j.upper for j in engine.model.joints])
         self.axes=[np.asarray(j.axis).tolist() for j in engine.model.joints]
@@ -58,6 +68,7 @@ class Desk:
         self.observer_response=None
         self.observer_cancel=None;self.control_cancel=None;self.closing=False;self.render_error=None
         self.selected=0;self.frame=0;self.controls={};self.control_bounds={}
+        self.has_feedback_pose=False
         self.texture=None;self.texture_stamp=0;self.rendered_frames=0
         self.q=self.first_q=None;self.receive_ns=None;self.commands=None;self.sources={};self.dirty=set()
         self.feedback=dict(q=None,dq=None,effort_raw=None,kp=None,kd=None)
@@ -66,18 +77,43 @@ class Desk:
         self.needs_reinitialize=False;self.generation=0;self.active_run=None;self.control_root=self.root
         self.control_roots=[];self.last_recording=None
         self.short=None;self.short_amplitude=.25;self.short_duration=6.
-        self.view_last=0;self.last_render_pose=None
+        self.view_last=0;self.last_render_pose=None;self.heartbeat_archived_at=None
         view=self.root/'view';view.mkdir(exist_ok=True)
         atomic_json(view/'metadata.json',self.status,replace=True)
-        nominal=yaml.safe_load(Path('configs/sdk_mock.yaml').read_text())['initial_q']
-        atomic_json(view/'pose.json',dict(q=nominal,selected=0,receive_ns=0,source='nominal_not_feedback'),replace=True)
+        nominal=yaml.safe_load(Path('configs/fieldwork_mock.yaml').read_text())['initial_q']
+        latest_json(view/'pose.json',dict(q=nominal,selected=0,receive_ns=0,source='nominal_not_feedback'))
         if self.archive:self.load_archive()
         elif not preview:
             for relative in reversed(self.status.get('controls',[])):
                 control=self.root/relative;state=Session(control).status()
                 for run in reversed(state['runs']):
-                    if (control/run/'recording/feedback.csv').exists():self.last_recording=(control,run);break
+                    if (control/run/'recording/feedback.csv').exists() or (control/run/'capture/execution/feedback.csv').exists():self.last_recording=(control,run);break
                 if self.last_recording:break
+            if self.last_recording:
+                control,relative=self.last_recording;path=control/relative/'capture/execution/feedback.csv'
+                if path.exists():
+                    row=last_csv(path)
+                    if row:self.q=np.array([float(row['q'+str(j)]) for j in range(14)]);self.mode='历史记录 / 尚未连接'
+        if not preview and not self.archive:
+            from .fieldwork_storage import last_observation
+            historical=last_observation(self.root,self.names)
+            if historical:
+                for key in self.feedback:self.feedback[key]=historical.get(key)
+                if self.q is None:self.q=np.asarray(historical['q']);self.mode='历史记录 / 尚未连接'
+            if self.last_recording:
+                control,relative=self.last_recording;directory=control/relative
+                initial=read_json(directory/'initial.json')
+                if initial:
+                    self.first_q=np.asarray(initial['q_rad']);self.sources=initial['sources']
+                    self.commands={key:np.asarray(value) for key,value in initial['command'].items()}
+                path=directory/'capture/execution/commands.csv'
+                row=last_csv(path) if path.exists() else None
+                if row:
+                    values={key:np.array([float(row[column+str(j)]) for j in range(14)]) for key,column in
+                        [('position','q'),('velocity','v'),('effort','effort'),('kp','kp'),('kd','kd')]}
+                    if all(np.isfinite(value).all() for value in values.values()):self.commands=values
+        self.has_feedback_pose=self.q is not None
+        if self.snapshot:self.message='历史数据只读查看，可导出运动视频或另存。'
         self.pulse();self.start_renderer()
 
     @property
@@ -113,12 +149,14 @@ class Desk:
         if cancel:self.control_cancel=cancel
         final='frontend_closed' if self.closing else None
         row=self.heartbeat_row(final)
-        # This file is for archive compatibility only. Live workers use pipes.
-        try:atomic_json(self.heartbeat,row,replace=True)
-        except OSError as exc:self.recording_error='存活标记归档失败（停止通道仍使用管道）：'+str(exc)
+        # Deliver stop/close BEFORE any archival I/O. Live workers use pipes.
         if self.task:self.task.pulse(self.heartbeat_row(final or self.control_cancel))
         if self.observer:self.observer.pulse(self.heartbeat_row(final or self.observer_cancel))
         if self.renderer:self.renderer.pulse(row)
+        now=time.monotonic()
+        if self.heartbeat_archived_at is None or now-self.heartbeat_archived_at>=1. or final or cancel:
+            try:latest_json(self.heartbeat,row);self.heartbeat_archived_at=now
+            except OSError as exc:self.recording_error='存活标记归档失败（停止通道仍使用管道）：'+str(exc)
 
     def launch(self, action, values, session_root=None):
         directory=self.root/'operations';directory.mkdir(exist_ok=True);token=uuid.uuid4().hex[:12]
@@ -127,7 +165,7 @@ class Desk:
         command=[sys.executable,'-m','casbot_calib.fieldwork_worker','--session',str(session_root or self.root),
             '--request',str(request),'--heartbeat',str(self.heartbeat),'--owner-id',self.owner_id,
             '--output',str(output),'--pipe-heartbeat']
-        child=Child(command,directory/(token+'.log'));child.pulse(self.heartbeat_row())
+        child=Child(command,directory/(token+'.log'),pause_file=self.pause_file);child.pulse(self.heartbeat_row())
         return child,dict(action=action,values=values,output=output)
 
     def start_renderer(self):
@@ -137,11 +175,11 @@ class Desk:
         self.renderer.pulse(self.heartbeat_row())
 
     def connect(self):
-        if self.preview or self.archive or self.observer:return
+        if self.preview or self.read_only or self.observer:return
         self.observer_cancel=None;self.recording_error=None;self.q=self.first_q=self.commands=None;self.receive_ns=None
         self.dirty.clear();self.sources={};self.feedback=dict(q=None,dq=None,effort_raw=None,kp=None,kd=None)
         self.needs_reinitialize=False;self.operator=OperatorStatus();self.control_cancel=None
-        self.observer_response=None
+        self.observer_response=None;self.connected_at=time.monotonic();self.connection_channels={}
         try:self.observer,_=self.launch('observe',dict(relative='observations/'+uuid.uuid4().hex[:12]))
         except (OSError,ValueError,RuntimeError) as exc:self.message='无法建立只读连接：'+str(exc);return
         self.message='只读连接已启动，等待SDK反馈；尚未申请控制。';self.mode='等待反馈'
@@ -163,18 +201,8 @@ class Desk:
                 command={k:v.tolist() for k,v in self.commands.items()},sources=self.sources,
                 mechanical_zero_known=False,position_limits_source='bundled_URDF_not_device_readback'),replace=True)
 
-    def fill_nominal_gravity(self):
-        if self.commands is None or self.q is None:return
-        effort=np.asarray(self.engine.gravity(self.q))
-        if np.max(abs(effort))>self.tuning['effort_limit_nm']:
-            self.message='名义重力超出力矩滑条范围；未采纳，请调整设置。';return
-        self.commands['effort']=effort.copy();self.dirty.add('effort')
-        self.sources['effort']='操作者填入的当前名义重力；固定数值，不自动跟随姿态'
-        if self.busy and self.pending['action']=='stream':self.send()
-        self.message='已把当前名义重力填入14轴力矩目标；不会自动随姿态更新。'
-
     def begin_sending(self):
-        if self.preview or self.archive or not self.observing or self.busy or self.start_requested or self.needs_reinitialize:return
+        if self.preview or self.read_only or not self.observing or self.busy or self.start_requested or self.needs_reinitialize:return
         if self.commands is not None:
             try:validate_commands(self.commands,self.lower,self.upper,self.tuning,self.config['maximum_velocity_rad_s'])
             except ValueError as exc:self.message=str(exc);return
@@ -190,7 +218,8 @@ class Desk:
         self.active_run='runs/'+uuid.uuid4().hex[:12];directory=self.control_root/self.active_run;directory.mkdir(parents=True)
         self.generation=0;self.save_initial()
         self.task,self.pending=self.launch('stream',dict(relative=self.active_run,command_file=str(directory/'latest.csv'),
-              initial_values={k:v.tolist() for k,v in self.commands.items()}),self.control_root)
+              initial_values={k:v.tolist() for k,v in self.commands.items()},
+              **(dict(recording_pause_file=str(self.pause_file)) if self.pause_file else {})),self.control_root)
         self.response=None;self.message='启动请求已保留，等待后端条件满足；可取消。'
 
     def start(self, action, **values):
@@ -206,6 +235,7 @@ class Desk:
         if not path.exists():return  # Worker creates the first frame only after checking its empty mailbox.
         arrays=validate_commands(self.commands,self.lower,self.upper,self.tuning,self.config['maximum_velocity_rad_s'])
         self.generation+=1;write_command(path,self.generation,arrays)
+        if self.pause_file and self.pause_file.exists():return
         with (path.parent/'target_edits.jsonl').open('a') as stream:
             import json
             stream.write(json.dumps(dict(monotonic_ns=time.monotonic_ns(),generation=self.generation,
@@ -231,7 +261,7 @@ class Desk:
         for key in self.feedback:
             self.feedback[key]=row.get(key)
         if row.get('q') is not None:
-            self.q=np.asarray(row['q']);self.receive_ns=row['receive_ns']
+            self.q=np.asarray(row['q']);self.receive_ns=row['receive_ns'];self.has_feedback_pose=True
         if self.q is not None and self.commands is None:
             self.first_q=self.q.copy();self.commands,self.sources=initial_commands(self.first_q,self.feedback['kp'],self.feedback['kd'],self.tuning)
         if self.commands is not None and not self.busy:
@@ -242,6 +272,7 @@ class Desk:
     def _handle(self,item,observer=False):
         kind=item['type']
         if kind=='feedback':self._feedback(item)
+        elif kind in ('observer_started','connection_status'):self.connection_channels=item.get('channels',{})
         elif kind=='recording_error':
             self.recording_error='当前录制不完整；实时反馈和停止通道继续。原因：'+item['message'];self.short=None
         elif kind=='status':
@@ -251,6 +282,7 @@ class Desk:
             if previous is None or (previous['code'],previous.get('phase'))!=(value['code'],value.get('phase')):
                 print(value['title']+'；'+value['effect']+'\n'+'\n'.join(value['details']),file=sys.stderr)
             self.operator.accept(value)
+            if value.get('action')=='sending':self.message='五字段发送中；拖动滑条更新目标。'
             self.sending=value.get('action')=='sending' or (self.sending and value.get('action') not in ('end_control','cancel_or_stop','observe_after_stop','control_ended'))
             if value.get('action') in ('end_control','cancel_or_stop','observe_after_stop','control_ended'):
                 self.sending=False;self.start_requested=False;self.short=None
@@ -260,7 +292,22 @@ class Desk:
             else:self.response=item['response']
         elif kind=='ipc_error':self.message=item['message']
 
+    def begin_save(self):
+        from .fieldwork_storage import SaveJob
+        if self.save_job and not self.save_job.done:return
+        self.save_job=SaveJob(self.root,self.save_path);self.save_message='正在保存已完成写入的数据段；控制和只读连接继续。'
+
     def poll(self):
+        if getattr(self,'save_job',None) and self.save_job.done:
+            if self.save_job.error:self.save_message='保存失败：'+self.save_job.error
+            else:self.save_message='会话已保存：'+self.save_job.result['destination'];self.save_open=False
+            self.save_job=None
+        monitor=getattr(self,'cache_monitor',None)
+        if monitor and monitor.paused:
+            self.recording_error='缓存容量已达到上限，已停止追加记录；反馈和手动控制继续。请保存已有记录，下一次使用新会话。';self.short=None
+        if monitor and monitor.error:self.recording_error='缓存检查失败：'+monitor.error
+        if getattr(self,'owned_mock',None) and self.owned_mock.done() and self.observing:
+            self.message='本地Mock进程已结束；等待反馈超时处理，不自动重启。'
         if self.observer:
             for item in self.observer.drain():self._handle(item,True)
             if self.observer.done():
@@ -287,7 +334,7 @@ class Desk:
                 self.sending=False;self.start_requested=False;self.short=None
                 if self.pending['action']=='stream':
                     self.needs_reinitialize=True
-                    if (self.control_root/self.active_run/'recording/feedback.csv').exists():self.last_recording=(self.control_root,self.active_run)
+                    if (self.control_root/self.active_run/'capture/execution/feedback.csv').exists():self.last_recording=(self.control_root,self.active_run)
                     if self.response and self.response['completed']:
                         result=self.response['result']
                         if result.get('recording_error'):self.recording_error=result['recording_error']
@@ -300,10 +347,10 @@ class Desk:
         if self.start_requested and not self.busy and self.commands is not None and self.observing:
             try:self._launch_control()
             except (OSError,ValueError,RuntimeError) as exc:self.start_requested=False;self.message='无法开始控制：'+str(exc)
-        if self.q is not None and time.monotonic()-self.view_last>.07:
-            pose=dict(q=self.q.tolist(),selected=self.selected,receive_ns=self.receive_ns,source='SDK_feedback')
+        if self.q is not None and time.monotonic()-self.view_last>1/VIEW_FPS:
+            pose=dict(q=self.q.tolist(),selected=self.selected,receive_ns=self.receive_ns,source='SDK_feedback' if self.observing else 'recorded_SDK_feedback')
             if pose!=self.last_render_pose:
-                try:atomic_json(self.root/'view/pose.json',pose,replace=True);self.last_render_pose=pose
+                try:latest_json(self.root/'view/pose.json',pose);self.last_render_pose=pose
                 except OSError as exc:self.render_error='几何画面更新失败，数值反馈仍独立接收：'+str(exc)
             self.view_last=time.monotonic()
         if self.renderer and self.renderer.done() and not self.closing:self.render_error='几何视图进程已结束；数值反馈和停止通道仍独立运行。'
@@ -320,12 +367,14 @@ class Desk:
         if stamp==self.texture_stamp:return
         try:pixels=np.load(path,allow_pickle=False)
         except (OSError,ValueError):return
-        if self.texture is None:self.texture=int(GL.glGenTextures(1))
+        allocate=self.texture is None
+        if allocate:self.texture=int(GL.glGenTextures(1))
         GL.glBindTexture(GL.GL_TEXTURE_2D,self.texture)
         GL.glTexParameteri(GL.GL_TEXTURE_2D,GL.GL_TEXTURE_MIN_FILTER,GL.GL_LINEAR)
         GL.glTexParameteri(GL.GL_TEXTURE_2D,GL.GL_TEXTURE_MAG_FILTER,GL.GL_LINEAR)
         GL.glPixelStorei(GL.GL_UNPACK_ALIGNMENT,1)
-        GL.glTexImage2D(GL.GL_TEXTURE_2D,0,GL.GL_RGB,pixels.shape[1],pixels.shape[0],0,GL.GL_RGB,GL.GL_UNSIGNED_BYTE,pixels)
+        if allocate:GL.glTexImage2D(GL.GL_TEXTURE_2D,0,GL.GL_RGB,pixels.shape[1],pixels.shape[0],0,GL.GL_RGB,GL.GL_UNSIGNED_BYTE,pixels)
+        else:GL.glTexSubImage2D(GL.GL_TEXTURE_2D,0,0,0,pixels.shape[1],pixels.shape[0],GL.GL_RGB,GL.GL_UNSIGNED_BYTE,pixels)
         GL.glBindTexture(GL.GL_TEXTURE_2D,0);self.texture_stamp=stamp;self.rendered_frames+=1
 
     def close(self):
@@ -337,10 +386,12 @@ class Desk:
                 try:child.process.wait(timeout=12 if name!='renderer' else 5)
                 except subprocess.TimeoutExpired:child.process.terminate();child.process.wait(timeout=5)
                 child.close();setattr(self,name,None)
+        if self.save_job:self.save_job.thread.join()
         if self.frontend_lease:self.frontend_lease.close();self.frontend_lease=None
 
     def gui(self):
         from imgui_bundle import imgui
+        imgui.push_id(self.owner_id)
         self.frame+=1;self.controls.clear();self.control_bounds.clear();self.poll();self.update_texture()
         def remember(key):
             a=imgui.get_item_rect_min();b=imgui.get_item_rect_max()
@@ -350,7 +401,9 @@ class Desk:
         def number(value):return '—' if value is None else f'{value:.5f}'
         imgui.push_font(self.heading_font);imgui.text('双臂手动调参');imgui.pop_font()
         imgui.same_line();imgui.text_disabled('离线预览' if self.preview else f"域 {self.status['domain_id']} / {self.status['scope']} / 原始五字段")
-        if button('connect','连接 / 读取',not self.preview and not self.archive and self.observer is None):self.connect()
+        if self.cache_monitor:
+            imgui.same_line();imgui.text_disabled(f'缓存 {self.cache_monitor.used/1024**2:.1f}/{self.cache_monitor.limit/1024**2:.0f} MiB'+(' / 本窗口Mock' if self.owned_mock else ''))
+        if button('connect','连接 / 读取',not self.preview and not self.read_only and self.observer is None):self.connect()
         imgui.same_line()
         if button('send','开始发送',self.observing and not self.busy and not self.start_requested and not self.needs_reinitialize):self.begin_sending()
         imgui.same_line()
@@ -360,9 +413,39 @@ class Desk:
         imgui.same_line()
         if button('refresh','重读 / 新控制',self.connected and not self.busy and not self.start_requested):self.refresh_initial()
         imgui.same_line()
-        if button('gravity','填入名义重力 / 14轴',self.connected and self.commands is not None and not self.needs_reinitialize):self.fill_nominal_gravity()
-        imgui.same_line()
         if button('video','导出运动视频',not self.busy and self.last_recording is not None):self.start('video')
+        imgui.same_line()
+        if button('save_session','保存会话',not self.preview and self.save_job is None):
+            from datetime import datetime
+            self.save_path=str(Path('artifacts/fieldwork/saved')/(datetime.now().strftime('%Y%m%d_%H%M%S')+'_'+uuid.uuid4().hex[:6]))
+            self.save_open=True
+        imgui.same_line()
+        if button('recover_menu','缓存记录'):
+            from .fieldwork_storage import cached_sessions
+            self.recovery_rows=cached_sessions();imgui.open_popup('recovery_list')
+        if self.save_open:
+            imgui.set_next_item_width(-220);_,self.save_path=imgui.input_text('保存到',self.save_path);remember('save_path')
+            imgui.same_line()
+            if button('save_apply','保存',self.save_job is None and bool(self.save_path.strip())):self.begin_save()
+            imgui.same_line()
+            if button('save_cancel','取消',self.save_job is None):self.save_open=False
+        if self.save_message:imgui.text_wrapped(self.save_message)
+        if self.snapshot:imgui.text_disabled('已保存快照 / 只读；实时运行请另开新会话。')
+        if imgui.begin_popup('recovery_list'):
+            imgui.text('恢复查看缓存；不会自动连接或发送')
+            if not self.recovery_rows:imgui.text_disabled('暂无缓存记录')
+            for row in self.recovery_rows:
+                if Path(row['workspace'])==self.root:continue
+                imgui.text(row['id']);imgui.same_line()
+                if button('recover_'+row['id'],('已打开' if row['active'] else '打开')+'##'+row['id'],not row['active'] and not self.busy and not self.save_job):self.reopen_root=Path(row['workspace']);imgui.close_current_popup()
+            imgui.end_popup()
+        if self.observing and self.connected_at is not None:
+            joint=self.connection_channels.get('joint',{});count=joint.get('publishers')
+            label='正在发现发布者' if count is None else f'发布者 {count}'
+            elapsed=time.monotonic()-self.connected_at
+            imgui.text_wrapped(f"目标 {joint.get('topic',self.config['joint_topic'])} / {label}")
+            if self.receive_ns is None:
+                imgui.text_wrapped(f'等待首次完整位置反馈 {elapsed:.1f} s；尚未收到有效数据。'+('目标尚未出现：请确认服务在运行且profile属于本次Mock实例。' if count==0 else ''))
         event=self.operator.displayed
         if event:
             followup=self.operator.current if self.operator.first_fault and self.operator.current is not event else None
@@ -397,7 +480,7 @@ class Desk:
                 if name in highlighted:imgui.pop_style_color()
                 if imgui.is_item_hovered():imgui.set_tooltip(name+'\n序号是数组顺序，不是设备硬件ID')
                 imgui.table_next_column();imgui.set_next_item_width(-1)
-                imgui.begin_disabled(self.commands is None or self.archive or self.short is not None or self.needs_reinitialize)
+                imgui.begin_disabled(self.commands is None or self.read_only or self.short is not None or self.needs_reinitialize)
                 value=float(self.commands['position'][i]) if self.commands is not None else 0.
                 changed,value=imgui.slider_float('##q',value,float(self.lower[i]),float(self.upper[i]),'%.4f',imgui.SliderFlags_.always_clamp)
                 remember('position_'+str(i));imgui.end_disabled()
@@ -410,13 +493,13 @@ class Desk:
         imgui.text_wrapped('模式：'+self.mode)
         imgui.end_child();imgui.same_line()
         imgui.begin_child('tuning',imgui.ImVec2(0,height),imgui.ChildFlags_.border)
-        imgui.text('双臂SDK反馈驱动的模型')
+        imgui.text('SDK反馈模型 / 显示网格不用于碰撞')
         image_width=min(imgui.get_content_region_avail().x,380.)
         if self.texture is not None:imgui.image(self.texture,imgui.ImVec2(image_width,image_width*.75))
         else:imgui.dummy(imgui.ImVec2(image_width,image_width*.75));imgui.text('正在载入几何视图…')
         age=(time.monotonic_ns()-self.receive_ns)*1e-6 if self.receive_ns else None
         live=self.observing and age is not None and age<=self.config['max_feedback_age_ns']*1e-6
-        imgui.text_disabled('只读反馈更新中' if live else '末次反馈 / 未收到新数据' if self.q is not None else '名义模型 / 尚无反馈')
+        imgui.text_disabled('只读反馈更新中' if live else '末次反馈 / 未收到新数据' if self.q is not None else '末次反馈模型 / 尚无本次数据' if self.has_feedback_pose else '名义模型 / 尚无反馈')
         if age is not None:imgui.same_line();imgui.text_disabled(f'回调间隔 {age:.0f} ms')
         i=self.selected;imgui.separator();imgui.text(('左臂 ' if i<7 else '右臂 ')+JOINT_LABELS[i%7]+' / 五字段')
         if self.commands is not None:imgui.text(f"目标 {self.commands['position'][i]:.5f} rad    当前 {self.q[i]:.5f} rad")
@@ -425,7 +508,7 @@ class Desk:
                ('effort','前馈力矩 / Nm',-self.tuning['effort_limit_nm'],self.tuning['effort_limit_nm'])]
         for key,label,lo,hi in specs:
             imgui.text(label);imgui.same_line(185);imgui.set_next_item_width(-1)
-            imgui.begin_disabled(self.commands is None or self.archive or self.needs_reinitialize)
+            imgui.begin_disabled(self.commands is None or self.read_only or self.needs_reinitialize)
             value=float(self.commands[key][i]) if self.commands is not None else 0.
             changed,value=imgui.slider_float('##'+key,value,float(lo),float(hi),'%.4f',imgui.SliderFlags_.always_clamp);remember(key);imgui.end_disabled()
             if changed:self.change(key,i,value)
@@ -442,31 +525,26 @@ class Desk:
             amplitude=np.deg2rad(self.short_amplitude);anchor=self.commands['position'][i]
             if self.lower[i]<=anchor-amplitude and anchor+amplitude<=self.upper[i]:self.short=dict(start=time.monotonic(),duration=self.short_duration,amplitude=amplitude,anchor=anchor,joint=i)
             else:self.message='短轨迹端点超出'+self.names[i]+'的URDF范围，本次轨迹未启动。'
-        imgui.end_child();imgui.pop_style_var();self.pulse()
+        imgui.end_child();imgui.pop_style_var();self.pulse();imgui.pop_id()
 def run_gui(args):
+    if getattr(args,'software_rendering',False):os.environ['LIBGL_ALWAYS_SOFTWARE']='1'
+    configure_graphics_environment()
+    if args.screenshot and args.screenshot.exists():raise ValueError('截图输出已存在，请使用新文件')
+    if args.frames is not None and args.frames<=0:raise ValueError('--frames必须为正整数')
+    from .fieldwork_launch import prepare_gui
+    import copy
+    while True:
+        with prepare_gui(args) as (root,monitor,mock):
+            reopen=_run_window(args,root,monitor,mock)
+        if reopen is None:return 0
+        args=copy.copy(args);args.session=reopen;args.output=args.domain_id=args.scope=None
+        args.mock=False;args.recover=None;args.preview=False;args.screenshot=None
+
+
+def _run_window(args,root,monitor,mock):
     from imgui_bundle import imgui, hello_imgui
-    from .fieldwork_control import create_session
-    if args.screenshot and args.screenshot.exists():
-        raise ValueError('截图输出已存在，请使用新文件')
-    if args.frames is not None and args.frames <= 0:
-        raise ValueError('--frames必须为正整数')
-    if args.preview:
-        if args.session:
-            raise ValueError('离线预览请使用新output目录，不加载可执行会话')
-        if args.output is None:
-            raise ValueError('请为离线预览指定新--output目录')
-        args.output.mkdir(parents=True, exist_ok=False)
-        root = args.output
-    elif args.session:
-        if args.output is not None or args.domain_id is not None or args.scope is not None:
-            raise ValueError('已有会话使用封存的域号、scope和profile；不能同时提供新连接参数')
-        root = args.session
-    else:
-        if args.output is None or args.domain_id is None or args.scope is None:
-            raise ValueError('新会话须显式提供--output、--domain-id和--scope')
-        create_session(args.profile, args.output, args.domain_id, args.scope, workspace=True)
-        root = args.output
     desk = Desk(root, preview=args.preview, profile=args.profile)
+    desk.cache_monitor=monitor;desk.owned_mock=mock
     hello_imgui.set_assets_folder(str(Path(root).resolve()))
     params = hello_imgui.RunnerParams()
     params.app_window_params.window_title = 'CASBOT Fieldwork'
@@ -478,7 +556,15 @@ def run_gui(args):
     # Hello ImGui expresses these margins in em, not pixels.
     params.imgui_window_params.full_screen_window_margin_top_left = imgui.ImVec2(.75, .5)
     params.imgui_window_params.full_screen_window_margin_bottom_right = imgui.ImVec2(.75, .5)
-    params.fps_idling.enable_idling = False
+    # Refresh live numbers/heartbeat at 20 Hz while idle, respond at up to 30 Hz
+    # when interacting. Neither rate is the native command/physics frequency.
+    params.fps_idling.enable_idling = True
+    params.fps_idling.fps_idle = 20.
+    params.fps_idling.time_active_after_last_event = .5
+    params.callbacks.pre_new_frame = FramePacer()
+    # ImGui fonts/edges are already antialiased; avoid a multisampled full-window
+    # framebuffer in the software desktop renderer. CAD rendering is separate.
+    params.renderer_backend_options.open_gl_options.anti_aliasing_samples = 0
     def fonts():
         from .presentation import _font
         path = _font(18).path
@@ -499,7 +585,9 @@ def run_gui(args):
     params.callbacks.setup_imgui_style = style
     def gui():
         desk.gui()
-        if args.frames and desk.frame >= args.frames:
+        # Keep GUI-generated short trajectories on the active redraw budget.
+        params.fps_idling.enable_idling = desk.short is None
+        if desk.reopen_root or (args.frames and desk.frame >= args.frames):
             params.app_shall_exit = True
     params.callbacks.show_gui = gui
     params.callbacks.before_exit = desk.close
@@ -510,4 +598,4 @@ def run_gui(args):
             Image.fromarray(hello_imgui.final_app_window_screenshot()).save(args.screenshot)
     finally:
         desk.close()
-    return 0
+    return desk.reopen_root

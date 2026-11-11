@@ -99,7 +99,7 @@ def params(config, names):
         command_period_ns=1_000_000_000 // config['command_hz'], **experiment)
 
 
-def run_executor(config, output, domain_id, *, snapshot=False, plan=None, timeout_s=30, local_remaps=None,cancel_check=None, manual_command=None, manual_effort_limit_nm=10., on_output=None):
+def run_executor(config, output, domain_id, *, snapshot=False, plan=None, timeout_s=30, local_remaps=None,cancel_check=None, manual_command=None, manual_effort_limit_nm=10., on_output=None, recording_pause_file=None):
     if not 0 <= domain_id <= 232:
         raise ValueError('Explicit ROS domain 0..232 required')
     from .sdk_connection import connection_remaps
@@ -119,6 +119,9 @@ def run_executor(config, output, domain_id, *, snapshot=False, plan=None, timeou
         else:
             values.update(manual_stream=True, manual_command_file=str(Path(manual_command).resolve()),
                           manual_effort_limit_nm=manual_effort_limit_nm)
+    if recording_pause_file:
+        if manual_command is None:raise ValueError('Recording pause is exclusive to the manual workspace')
+        values['recording_pause_file']=str(recording_pause_file)
     from .sdk_process import ros_arguments,recording_process,run_process
     if local_remaps and any(not target.startswith('/casbot_calib_s2_') for target in local_remaps.values()):
         raise ValueError('Integration remaps require isolated private endpoints')
@@ -143,8 +146,10 @@ def run_executor(config, output, domain_id, *, snapshot=False, plan=None, timeou
     recorder_command=[sys.executable,'-m','casbot_calib.cli','vendor-capture','--config',str(observation_path),
         '--output',str(root/'raw_state'),'--duration',str(timeout_s+5),'--domain-id',str(domain_id),
         '--scope','localhost_contract_mock' if local_remaps else 'hardware_read_only']
+    if recording_pause_file:recorder_command+=['--recording-pause-file',str(recording_pause_file)]
     with recording_process(recorder_command,environment,root/'recorder.log',root/'raw_state/raw/recorder.json',**(dict(cancel_check=cancel_check) if cancel_check else {})) as recorder:
-        process_result=run_process(command,environment,root/'process.log',timeout_s=timeout_s,recorder=recorder,cancel_check=cancel_check,**(dict(on_output=on_output) if on_output else {}))
+        process_result=run_process(command,environment,root/'process.log',timeout_s=timeout_s,recorder=recorder,cancel_check=cancel_check,**(dict(on_output=on_output) if on_output else {}),
+            **(dict(recording_pause_file=recording_pause_file) if recording_pause_file else {}))
     code=process_result.returncode;interruption=process_result.interruption
     path = root / 'execution/result.json'
     result = json.loads(path.read_text()) if path.exists() else dict(passed=False, reason='executor_did_not_finish' if process_result.started else 'executor_not_started',
