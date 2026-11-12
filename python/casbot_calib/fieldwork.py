@@ -130,10 +130,11 @@ class LiveObservation:
 
 
 def collect(config_path, output, *, command, domain_id, scope, duration_s, timeout_s=None,
-            target_label='', interactive=False, notify=lambda event: None):
+            target_label='', interactive=False, notify=lambda event: None, imu_topic=None):
     from .vendor_data import load_config
     from .vendor_capture import capture
     config = load_config(config_path)
+    if imu_topic is not None:config['imu_topic'] = imu_topic
     if command not in ('preflight', 'observe', 'reconnect'):
         raise ValueError('Unknown read-only field command')
     if type(domain_id) is not int or not 0 <= domain_id <= 232:
@@ -145,8 +146,9 @@ def collect(config_path, output, *, command, domain_id, scope, duration_s, timeo
     timeout_ns = config['stale_after_ns'] if timeout_s is None else round(timeout_s * 1e9) if math.isfinite(timeout_s) else 0
     if timeout_ns <= 0:
         raise ValueError('Timeout must be positive and finite')
-    if scope == 'localhost_contract_mock' and any(config[key] and not config[key].startswith(('/casbot_calib_s1_', '/casbot_calib_s2_'))
-            for key in ('joint_topic', 'debug_topic', 'mode_topic', 'robot_state_topic')):
+    if scope == 'localhost_contract_mock' and any(
+            config.get(key) and not config[key].startswith(('/casbot_calib_s1_', '/casbot_calib_s2_'))
+            for key in ('joint_topic', 'debug_topic', 'mode_topic', 'robot_state_topic', 'imu_topic')):
         raise ValueError('Mock scope requires private S1/S2 topic names')
     root = Path(output).resolve()
     root.mkdir(parents=True, exist_ok=False)

@@ -3,9 +3,11 @@
 #include <rclcpp/rclcpp.hpp>
 #include <rclcpp/serialization.hpp>
 #include <sensor_msgs/msg/joint_state.hpp>
+#include <sensor_msgs/msg/imu.hpp>
 #include <crb_ros_msg/msg/joint_state_data.hpp>
 #include <std_msgs/msg/string.hpp>
 #include <rmw/rmw.h>
+#include <array>
 #include <chrono>
 #include <csignal>
 #include <cmath>
@@ -103,6 +105,9 @@ class Recorder final : public rclcpp::Node {
     add("debug", declare_parameter<std::string>("debug_topic", ""), "crb_ros_msg/msg/JointStateData", qos);
     add("mode", declare_parameter<std::string>("mode_topic", "/motion/status"), "std_msgs/msg/String", qos);
     add("robot_state", declare_parameter<std::string>("robot_state_topic", "/motion/robot_state"), "std_msgs/msg/String", qos);
+    // Optional sensor channel; best-effort also receives reliable IMU publishers.
+    auto imu_qos = rclcpp::QoS(rclcpp::KeepLast(static_cast<std::size_t>(depth))).best_effort().durability_volatile();
+    add("imu", declare_parameter<std::string>("imu_topic", ""), "sensor_msgs/msg/Imu", imu_qos);
     start_ = now_ns(); end_ = start_ + static_cast<std::int64_t>(duration * 1e9);
     timer_ = create_wall_timer(std::chrono::milliseconds(20), [this] {
       record([this]{commit(false);});
@@ -238,6 +243,21 @@ class Recorder final : public rclcpp::Node {
             crb_ros_msg::msg::JointStateData msg; rclcpp::Serialization<crb_ros_msg::msg::JointStateData> codec;
             codec.deserialize_message(raw.get(), &msg); joint_json(decoded,msg,names(msg.name));
             decoded << ",\"kp\":"; numbers(decoded, msg.kp); decoded << ",\"kd\":"; numbers(decoded, msg.kd); decoded << '}';
+          } else if (type == "sensor_msgs/msg/Imu") {
+            sensor_msgs::msg::Imu msg; rclcpp::Serialization<sensor_msgs::msg::Imu> codec;
+            codec.deserialize_message(raw.get(), &msg);
+            decoded << "{\"header\":{\"sec\":" << msg.header.stamp.sec
+                << ",\"nanosec\":" << msg.header.stamp.nanosec
+                << ",\"frame_id\":" << quote(msg.header.frame_id) << "},\"orientation\":";
+            numbers(decoded, std::array<double,4>{msg.orientation.x,msg.orientation.y,msg.orientation.z,msg.orientation.w});
+            decoded << ",\"angular_velocity\":";
+            numbers(decoded, std::array<double,3>{msg.angular_velocity.x,msg.angular_velocity.y,msg.angular_velocity.z});
+            decoded << ",\"linear_acceleration\":";
+            numbers(decoded, std::array<double,3>{msg.linear_acceleration.x,msg.linear_acceleration.y,msg.linear_acceleration.z});
+            decoded << ",\"orientation_covariance\":"; numbers(decoded,msg.orientation_covariance);
+            decoded << ",\"angular_velocity_covariance\":"; numbers(decoded,msg.angular_velocity_covariance);
+            decoded << ",\"linear_acceleration_covariance\":"; numbers(decoded,msg.linear_acceleration_covariance);
+            decoded << '}';
           } else {
             std_msgs::msg::String msg; rclcpp::Serialization<std_msgs::msg::String> codec;
             codec.deserialize_message(raw.get(), &msg); decoded << "{\"data\":" << quote(msg.data) << '}';

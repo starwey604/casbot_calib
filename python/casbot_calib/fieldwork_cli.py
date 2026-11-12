@@ -63,6 +63,7 @@ def parser():
         item.add_argument('--output', type=Path, required=True, help='必须不存在的会话目录')
         item.add_argument('--duration', type=float, default=duration, help='采集时长/秒')
         item.add_argument('--timeout', type=float, help='有效位置反馈超时/秒；默认沿用S1配置')
+        item.add_argument('--imu-topic', help='可选IMU只读话题，例如 /motion/imu；Mock须私有命名空间')
         item.add_argument('--target-label', default='', help='操作者对现场目标的备注，不作为设备身份')
         item.add_argument('--interactive', action='store_true', help='允许输入d/r/n备注/q并回车登记操作或结束')
         item.add_argument('--json', action='store_true', help='stdout仅输出JSON；不可与interactive并用')
@@ -70,6 +71,16 @@ def parser():
     report.add_argument('folder', type=Path)
     report.add_argument('--output', type=Path, required=True, help='源会话之外的新目录')
     report.add_argument('--json', action='store_true')
+    evidence = commands.add_parser('a-evidence', help='从fieldwork保存记录整理A路线判断证据')
+    evidence.add_argument('--source', type=Path, required=True)
+    evidence.add_argument('--output', type=Path, required=True)
+    evidence.add_argument('--joint', type=int, default=13, choices=range(14))
+    evidence.add_argument('--window', nargs=2, type=float, metavar=('START', 'END'), help='相对首条实际发送指令的秒数；指定后计算局部A及错位敏感性')
+    evidence.add_argument('--band', type=float, default=30., help='共同处理带宽Hz，默认30')
+    sensitivity = commands.add_parser('sensitivity', help='只读比较已有SDK探针的A/B标定敏感性，不连接机器人')
+    sensitivity.add_argument('--source', type=Path, action='append', required=True, help='封存探针会话，可重复指定')
+    sensitivity.add_argument('--output', type=Path, required=True, help='全部源会话之外的新目录')
+    sensitivity.add_argument('--reference-assessment', type=Path, help='复用已有同配方评估，比较独立会话')
     for name, label in [('zero-capture', '将当前实际14轴位置保存为工作区零位（只读）'),
                         ('zero-return', '显式发送单程轨迹到已保存零位')]:
         item = commands.add_parser(name, help=label)
@@ -99,6 +110,19 @@ def parser():
 
 def main(argv=None):
     args = parser().parse_args(argv)
+    if args.command == 'a-evidence':
+        from .fieldwork_a_evidence import run
+        try:
+            report = run(args.source, args.output, joint=args.joint, window=args.window, band=args.band)
+            print(report['summary']+'；报告：'+str(args.output.resolve()/'report.md'))
+            return 0
+        except (OSError, ValueError, RuntimeError) as exc:
+            print('A路线证据：'+str(exc), file=sys.stderr); return 1
+    if args.command == 'sensitivity':
+        from .sdk_feedback_sensitivity import main as sensitivity_main
+        extra = ['--reference-assessment', str(args.reference_assessment)] if args.reference_assessment else []
+        return sensitivity_main([item for source in args.source for item in ('--source', str(source))]
+                                + ['--output', str(args.output)] + extra)
     if args.command in ('zero-capture', 'zero-return'):
         try:
             from .fieldwork_zero import capture_zero, return_zero, ZERO_FILE
@@ -141,7 +165,7 @@ def main(argv=None):
             report = collect(args.config, args.output, command=args.command, domain_id=args.domain_id,
                 scope=args.scope, duration_s=args.duration, timeout_s=args.timeout,
                 target_label=args.target_label, interactive=args.interactive,
-                notify=terminal.event if terminal else lambda event: None)
+                notify=terminal.event if terminal else lambda event: None, imu_topic=args.imu_topic)
         if terminal:
             terminal.report(report, args.output)
         else:

@@ -20,6 +20,8 @@ H2生成重力数值候选后，按[H3指南](hardware_friction_h3.md)继续多�
 
 只想探索当前 SDK 缓存反馈对腕部惯量的影响，可运行[双腕 H4 本机探索](sdk_wrist_h4_exploration.md)：自动启动隔离 Mock，采集、拟合并比较缓存／相位／滤波敏感性，不连接实机。 当前缓存标准为 5ms；非换向探针先用[离线适配入口](sdk_wrist_probe_offline.md)检查轨迹与信号预算，不启动 SDK。 小范围实际 Mock 采集先走[正反两条](sdk_wrist_probe_pair.md)，再走[6 条补采与 8 条删组检查](sdk_wrist_pitch_campaign.md)，最后做[冻结候选第三姿态开发验证](sdk_wrist_pitch_validation.md)。扩到 roll 前，使用[两条信号筛查入口](sdk_wrist_roll_screen.md)，先确认较弱的力矩信号与字段相对时序敏感性；随后按[多频离线设计](sdk_wrist_roll_frequency_design.md)和[已冻结双频协议](sdk_wrist_roll_dual_protocol.md)准备惯量／相位分离试验。双频入口把冻结、只读验证与实际 Mock 采集分开，冻结不会启动采集。 云端 H4 接入后新协议采用质量只报告语义，版本与旧记录重放说明见[接入记录](cloud_h4_integration.md)。
 
+已有单／双频探针采完后，用[SDK 反馈敏感性评估器](sdk_feedback_sensitivity.md)比较相同缓存、错位、滤波和噪声下的 A／B 路线：`casbot-fieldwork sensitivity --source 会话 --output 新目录`。入口只读、不启动 SDK；任意 GUI 手动记录仍需探针窗口与前序模型适配。 独立复测可追加 `--reference-assessment 旧评估目录`，复用旧结果做同配方跨会话比较；[右腕 roll 复测结果](sdk_wrist_roll_repeat.md)已完成。
+
 ---
 
 **默认已使用DVT2裸法兰整机模型**。下列原命令与配置文件名直接运行新模型；`configs/dvt2/`仍可显式使用同源配置。动力学场景为整机＋地面，不带千分计台架/工具。历史旧模型记录须使用其原版本复现，不能直接续采或改身份。当前证据与阶段进度见[N4收尾](dvt2_n4_closeout.md)。

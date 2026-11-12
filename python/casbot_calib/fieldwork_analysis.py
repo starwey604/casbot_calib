@@ -113,6 +113,8 @@ def analyse_capture(root, session):
     evidence_errors = []
     for packet in json_lines(raw / 'packets.jsonl', evidence_errors):
         channel = packet['channel']
+        if channel == 'imu':
+            continue  # Raw IMU is retained; a-evidence summarizes it, not mode events.
         if channel not in ('joint', 'debug'):
             item = dict(channel=channel, receive_ns=packet['receive_ns'], message=packet['message'])
             if previous_mode.get(channel) != item['message']:

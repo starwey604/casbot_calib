@@ -18,8 +18,8 @@ def capture(config_path, output, *, duration_s, domain_id, scope,
     if scope not in ('localhost_contract_mock', 'hardware_read_only'):
         raise ValueError('Explicit connection scope is required')
     if scope == 'localhost_contract_mock' and any(
-            config[key] and not config[key].startswith(('/casbot_calib_s1_', '/casbot_calib_s2_'))
-            for key in ('joint_topic', 'debug_topic', 'mode_topic', 'robot_state_topic')):
+            config.get(key) and not config[key].startswith(('/casbot_calib_s1_', '/casbot_calib_s2_'))
+            for key in ('joint_topic', 'debug_topic', 'mode_topic', 'robot_state_topic', 'imu_topic')):
         raise ValueError('Local contract tests require private calibration S1/S2 topics')
     prefix = Path(os.environ.get('CASBOT_VENDOR_INSTALL', 'install/vendor')).resolve()
     binary = prefix/'casbot_calib_vendor/lib/casbot_calib_vendor/state_recorder'
@@ -47,6 +47,7 @@ def capture(config_path, output, *, duration_s, domain_id, scope,
         # ROS CLI needs an explicit YAML empty string rather than a missing value.
         value = "''" if value == '' else str(value).lower() if isinstance(value, bool) else str(value)
         args += ['-p', key+':='+value]
+    if config.get('imu_topic'):args += ['-p', 'imu_topic:='+config['imu_topic']]
     if recording_flush_period_ms:args+=['-p','recording_flush_period_ms:='+str(recording_flush_period_ms)]
     if record_discovery:
         args += ['-p', 'record_discovery:=true']

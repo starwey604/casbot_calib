@@ -20,7 +20,8 @@ def observe(root, relative, cancel_check, publish):
         model_id=session.metadata['model_context']['model_id'],joint_type=session.config['feedback_type'],
         joint_topic=remaps.get(session.config['joint_topic'],session.config['joint_topic']),
         debug_topic=remaps.get('/motion/debug/joint_state','/motion/debug/joint_state'),
-        mode_topic=remaps.get(session.config['mode_topic'],session.config['mode_topic']),robot_state_topic='')
+        mode_topic=remaps.get(session.config['mode_topic'],session.config['mode_topic']),robot_state_topic='',
+        imu_topic=(session.config['connection']['endpoint_root']+'/motion/imu' if remaps else '/motion/imu'))
     path=directory/'observation.yaml';path.write_text(yaml.safe_dump(config),encoding='utf-8')
     values=dict(q=None,dq=None,effort_raw=None,kp=None,kd=None,receive_ns=None,mode='尚未收到模式反馈')
     def line(text):

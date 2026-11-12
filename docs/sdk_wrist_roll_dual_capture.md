@@ -94,3 +94,7 @@ bash scripts/humble/container.sh python scripts/humble/verify_sdk_roll_dual_capt
 - `delivery.json`：本轮范围和结果汇总。
 
 **推荐下一步只做一个独立 SDK Mock 会话的同配方正反复测**，不先扩成 8 条、不加新姿态。冻结现有两条为开发对照，检查跨会话 J、b、等效相位及频点信号能否重现，再决定是否扩范围；本轮未执行这次复测。
+
+## 后续独立会话复测
+
+[同配方新会话两条](sdk_wrist_roll_repeat.md)现已完成，原记录与本页历史数值保留。使用只读评估器比较 A／B，同方向跨会话最差分别为 6.037%／7.302%；具体方向差、相位漂移和扰动结果见新报告。

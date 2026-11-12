@@ -24,6 +24,10 @@
 
 * **🔬 SDK 腕部专项探索**：见[双频协议](docs/sdk_wrist_roll_dual_protocol.md)与[实际双频两条记录](docs/sdk_wrist_roll_dual_capture.md)。右腕 roll 使用 5ms 共享缓存、2.5Hz＋10Hz 双频；c00 正反两条的预定主模型局部方向差为 8.96%，尚未扩展为完整 P0 R2。`freeze`只封存协议，显式`collect`才启动本机 Mock。新协议按[云端 H4 接入](docs/cloud_h4_integration.md)采用质量只报告语义，原 10% 研究门槛、正式 test 与旧封存结果保持各自口径。
 
+**已有探针可用[SDK 反馈敏感性评估器](docs/sdk_feedback_sensitivity.md)只读比较 A／B 两条路线**：`casbot-fieldwork sensitivity --source 会话 --output 新目录`，同一数据与扰动下报告惯量变化、方向一致性及首次观测越界点，不启动采集、不锁现场流程。 追加 `--reference-assessment 旧评估目录` 可比较同配方独立会话，见[右腕 roll 复测](docs/sdk_wrist_roll_repeat.md)。
+
+现场已保存的GUI记录可直接按 [A优先判断流程](fieldwork/README.md#4-用已保存的数据判断能否优先采用-a) 运行 `fieldwork/run.sh a-evidence`，比较发送档位、局部惯量与时序／身体运动敏感性。
+
 ---
 
 ## 🎯 核心目标与功能特性
