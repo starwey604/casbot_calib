@@ -4,6 +4,8 @@
 
 > 💡 **提示**：如果刚到现场，想先用可视化界面直观地拖动各轴、调 `Kp/Kd`、测正负方向或一键回零，建议先用 **[实机接入与现场联调手册 (`fieldwork/README.md`)](../fieldwork/README.md)**。
 
+到场只读留证、未指定轴行为与厂家辅助验证的操作和回填位置，另见[现场测试与回填手册](sdk_field_validation.md)；本文保留 CLI 命令路径。
+
 ---
 
 ## 🗺️ 实机联调与标定阶段总览
@@ -23,6 +25,7 @@
 默认配置文件为 [configs/hardware_field.yaml](../configs/hardware_field.yaml)，核心运行机制如下：
 
 1. **控制通道与范围**：向 `/motion/upper_body_debug` 申请上身调试模式，以默认 **500Hz** 向 `/upper_body_debug/joint_cmd` 发送双臂 **14 轴**指令（不填充腰、头、手）。
+   * 现有执行路径假设未指定的腰、头、手保持原目标/输出；现场仍需区分保持、释放、缺省值0，允许只发14轴不等于这些轴的实际行为已验证。
 2. **MIT 控制与前馈**：CASBOT 主机将 `position, velocity, kp, kd, effort` 五项直接转发给因克斯模组本地执行 PD，并对 `position` 做 1000Hz 线性插值。H1/H2 轨迹默认在 `effort` 中附带理论模型重力前馈（`gravity_feedforward: nominal`）。
 3. **运行时的安全阈值**：
    * **启动静止要求**：开始执行前，14 轴实测速度均需 `< 0.02 rad/s`，且机器人处于 `READY` 或 `IDLE_MODE / STAND` 状态。

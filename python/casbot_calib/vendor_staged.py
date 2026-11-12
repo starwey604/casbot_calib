@@ -31,8 +31,9 @@ def checked(ref):
     return path
 
 
-def freeze_staged(spec_path,output):
+def freeze_staged(spec_path,output,through='inertia'):
     """Seal the declared roles before any fitting; no motion permissions."""
+    if through not in STAGES:raise ValueError('Unknown S4 stage')
     spec_path=Path(spec_path).resolve();spec=yaml.safe_load(spec_path.read_text());base=spec_path.parent
     if spec.get('schema_version')!='casbot_vendor_s4_spec_v1':raise ValueError('Explicit S4 protocol schema required')
     if spec.get('scope') not in ('synthetic_observations','hardware_observations'):raise ValueError('Explicit observation scope required')
@@ -79,7 +80,7 @@ def freeze_staged(spec_path,output):
     output=Path(output);output.mkdir(parents=True,exist_ok=False)
     write_json(output/'protocol.json',protocol)
     (output/'protocol.sha256').write_text(sha256(output/'protocol.json')+'\n')
-    return inspect_staged(output,output/'inspection')
+    return inspect_staged(output,output/'inspection',through)
 
 
 class StagedObservations:
@@ -165,16 +166,20 @@ class StagedObservations:
                         source='S3 qualified output torque and Pinocchio; no current alias',harmonics=details['harmonics']))
 
 
-def inspect_staged(folder,output):
+def inspect_staged(folder,output,through='inertia'):
+    if through not in STAGES:raise ValueError('Unknown S4 stage')
+    stages=STAGES[:STAGES.index(through)+1]
     reader=StagedObservations(folder);results={};records={}
     for name,row in reader.entries.items():
+        if row['stage'] not in stages and not (through=='inertia' and row['stage']=='inertia_probe'):
+            continue
         try:
             # Exercise the actual reader, not a supplied passed flag.
             reader.load(name)
             records[name]=dict(passed=True,stage=row['stage'],split=row['split'])
         except (ValueError,KeyError,FileNotFoundError) as exc:
             records[name]=dict(passed=False,stage=row['stage'],split=row['split'],reason=str(exc))
-    for stage in STAGES:
+    for stage in stages:
         items=[r for r in records.values() if r['stage']==stage]
         splits={r['split'] for r in items if r['passed']}
         reasons=[]
@@ -184,11 +189,11 @@ def inspect_staged(folder,output):
         if stage=='friction' and 'sampling' not in splits:reasons.append('independent_denser_sampling_required')
         if stage=='inertia' and not any(r['stage']=='inertia_probe' and r['passed'] for r in records.values()):reasons.append('dedicated_wrist_probes_required')
         results[stage]=dict(data_ready=not reasons,reasons=reasons,execution_enabled=False)
-    result=dict(schema_version='casbot_vendor_s4_inspection_v1',passed=all(r['data_ready'] for r in results.values()),stages=results,records=records,
+    result=dict(schema_version='casbot_vendor_s4_inspection_v1',passed=all(r['data_ready'] for r in results.values()),through=through,stages=results,records=records,
         hardware_executable=False,protocol_sha256=sha256(Path(folder)/'protocol.json'),
-        execution_blockers=['No real SDK torque/compensation capability or physical stop certification',
-                            'Actual geometry, fixture/gravity transform and device constraints are unqualified',
-                            'S2 localhost-only restriction remains; offline data readiness never authorizes motion'],
+        execution_blockers=['S4 is offline and does not authorize motion',
+                            'Field execution requires separate evidence for control, stop behavior, geometry, fixture and limits',
+                            'S2 remains localhost-only; use the separate hardware commissioning path'],
         **run_marker())
     output=Path(output);output.mkdir(parents=True,exist_ok=False);write_json(output/'report.json',result)
     return result

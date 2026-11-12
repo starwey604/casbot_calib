@@ -17,22 +17,69 @@ def load_problems(root, split, static):
         raise ValueError('R1 nominal model changed since acquisition; revalidate geometry/model before analysis')
     purpose = {'train': 'fit', 'selection': 'select', 'test': 'final_test'}[split]
     result = {}
-    for stage in ('inertia', 'inertia_probe'):
-        for name, meta, obs in recordings(root, stage, split=split, purpose=purpose):
-            problem = periodic_problem(nominal, obs, meta, config['drive']['gain_nm_a'], static,
-                config['p0']['preprocessing']['harmonics'], config['p0']['preprocessing']['phase_points']) if stage == 'inertia' else probe_problem(nominal, obs, meta, config['drive']['gain_nm_a'])
-            # Coverage comes from actual observations in the active window.
-            begin, end = (meta['knots_s'][0], meta['duration_s'])
-            label = 'periodic' if stage == 'inertia' else 'probe_measure'
-            windows = [(meta['knots_s'][i], meta['knots_s'][i+1]) for i, l in enumerate(meta['labels']) if l == label]
-            begin = windows[0][0] + (2*config['dynamic_period_s'] if stage == 'inertia' else .2)
-            end = windows[-1][1] - (0. if stage == 'inertia' else .2)
-            t = obs['sample_ns']*1e-9; active = (t >= begin) & (t < end)
-            coverage = dict(minimum_rad=obs['q'][active].min(axis=0).tolist(), maximum_rad=obs['q'][active].max(axis=0).tolist(),
-                mean_rad=obs['q'][active].mean(axis=0).tolist(),
-                range_rad=np.ptp(obs['q'][active], axis=0).tolist(), speed_rms_rad_s=np.sqrt(np.mean(obs['dq'][active]**2,axis=0)).tolist(),
-                acceleration_rms_rad_s2=np.sqrt(np.mean(problem['ddq']**2,axis=0)).tolist(), source='actual acquired q/dq, Fourier/probe derivative; active measurement window')
-            result[name] = dict(meta=meta, problem=problem, coverage=coverage)
+    records = (r for stage in ('inertia', 'inertia_probe')
+               for r in recordings(root, stage, split=split, purpose=purpose))
+    if split == 'train' and 'wrist_periodic_train' in config['p0']:
+        from itertools import chain
+        from .staged_wrist_periodic import wrist_records
+        records = chain(records,wrist_records(root))
+    left_support=None
+    pitch_support=None
+    wrist_support=None
+    if split=='train' and 'pitch_sustained_train' in config['p0']:
+        with np.load(Path(root)/config['p0']['pitch_sustained_train']['support_file'],allow_pickle=False) as data:
+            pitch_support={k:data[k] for k in data.files}
+    if split=='train' and 'wrist_sustained_train' in config['p0']:
+        with np.load(Path(root)/config['p0']['wrist_sustained_train']['support_file'],allow_pickle=False) as data:
+            wrist_support={k:data[k] for k in data.files}
+    if split=='train' and 'right_pitch_train' in config['p0']:
+        from .staged_right_pitch import right_records,left_sample_indices
+        from .staged_wrist_local import local_problem
+        records=chain(records,right_records(root))
+        left_support=left_sample_indices(root)
+    for name,meta,obs in records:
+        stage = meta['stage']
+        is_probe=stage in ('inertia_probe','right_pitch_probe')
+        if stage=='wrist_periodic' and left_support is not None:
+            problem=local_problem(nominal,obs,meta,config['drive']['gain_nm_a'],static,
+                config['inertia_sample_period_ns'],left_support[name],config['p0']['right_pitch_train']['left_sigma_ms'])
+        elif is_probe:
+            problem=probe_problem(nominal,obs,meta,config['drive']['gain_nm_a'])
+        else:
+            problem=periodic_problem(nominal,obs,meta,config['drive']['gain_nm_a'],static,
+                config['p0']['preprocessing']['harmonics'],config['p0']['preprocessing']['phase_points'])
+        if stage=='inertia' and pitch_support is not None:
+            from .staged_pitch_sustained import problem as sustained_problem
+            problem['sustained_pitch']=sustained_problem(nominal,obs,meta,config['drive']['gain_nm_a'],static,
+                config['inertia_sample_period_ns'],pitch_support[name])
+            raw_right_centers=pitch_support.pop(name)
+        if stage=='inertia' and wrist_support is not None:
+            from .staged_pitch_sustained import problem as sustained_problem
+            problem['sustained_wrist']={}
+            for joint in config['p0']['wrist_sustained_train']['joints']:
+                indices=wrist_support.pop(f'{name}__j{joint:02}')
+                if joint==12:
+                    if not np.array_equal(indices,raw_right_centers):
+                        raise ValueError('Uniform wrist policy changed the inherited right-pitch support')
+                    local=problem['sustained_pitch']
+                else:
+                    local=sustained_problem(nominal,obs,meta,config['drive']['gain_nm_a'],static,
+                        config['inertia_sample_period_ns'],indices,joint=joint)
+                problem['sustained_wrist'][joint]=local
+        # Coverage comes from actual observations in the active window.
+        begin, end = (meta['knots_s'][0], meta['duration_s'])
+        label = 'periodic' if not is_probe else 'probe_measure'
+        windows = [(meta['knots_s'][i], meta['knots_s'][i+1]) for i, l in enumerate(meta['labels']) if l == label]
+        begin = windows[0][0] + (2*config['dynamic_period_s'] if not is_probe else .2)
+        end = windows[-1][1] - (0. if not is_probe else .2)
+        t = obs['sample_ns']*1e-9; active = (t >= begin) & (t < end)
+        coverage = dict(minimum_rad=obs['q'][active].min(axis=0).tolist(), maximum_rad=obs['q'][active].max(axis=0).tolist(),
+            mean_rad=obs['q'][active].mean(axis=0).tolist(),
+            range_rad=np.ptp(obs['q'][active], axis=0).tolist(), speed_rms_rad_s=np.sqrt(np.mean(obs['dq'][active]**2,axis=0)).tolist(),
+            acceleration_rms_rad_s2=np.sqrt(np.mean(problem['ddq']**2,axis=0)).tolist(), source='actual acquired q/dq, Fourier/probe derivative; active measurement window')
+        result[name] = dict(meta=meta, problem=problem, coverage=coverage)
+    if pitch_support or wrist_support:
+        raise ValueError('Unused sustained pitch support record')
     return result
 
 
@@ -59,9 +106,42 @@ def assemble_training(problems, config):
                 normalizer = max(float(np.sqrt(np.mean(p['current_torque'][mask,j]**2))), floor)
                 factor = np.sqrt(1024./(count*len(periodic)))/normalizer
                 if j in (4, 11): factor *= config['p0']['weighting']['primary_wrist_sqrt_weight']
+                local=p.get('sustained_wrist',{}).get(j)
+                if j==12 and 'sustained_pitch' in p:local=p['sustained_pitch']
+                if local is not None:
+                    new_count=len(local['target'])
+                    factor*=np.sqrt(count/new_count);count=new_count
+                    rows.append(local['regression']*factor);extras.append(local['extra']*factor);targets.append(local['target']*factor)
+                    weights.append(dict(trial_id=name,joint=j,rows=count,torque_normalizer_nm=normalizer,sqrt_weight=factor,
+                        center_id=conditions['center_id'],acquisition_batch_id=conditions['acquisition_batch_id'],stage='inertia'))
+                    continue
                 rows.append(p['regression'][mask,j,:]*factor); extras.append(p['extra'][mask,j,:]*factor); targets.append(p['target'][mask,j]*factor)
                 weights.append(dict(trial_id=name, joint=j, rows=count, torque_normalizer_nm=normalizer, sqrt_weight=factor,
                     center_id=conditions['center_id'], acquisition_batch_id=conditions['acquisition_batch_id'], stage='inertia'))
+        elif row['meta']['stage'] == 'wrist_periodic':
+            policy = config['p0']['wrist_periodic_train']
+            for j in policy['active_joints']:
+                mask = p['moving'][:,j]; count = int(mask.sum())
+                if count < 16:
+                    raise ValueError('Insufficient wrist-periodic excitation on axis ' + str(j))
+                normalizer = policy['normalization_nm']
+                factor = np.sqrt(1024.*policy['squared_weight_per_axis']/(count*policy['baseline_probe_count']))/normalizer
+                rows.append(p['regression'][mask,j,:]*factor)
+                extras.append(p['extra'][mask,j,:]*factor)
+                targets.append(p['target'][mask,j]*factor)
+                weights.append(dict(trial_id=name,joint=j,rows=count,torque_normalizer_nm=normalizer,
+                    sqrt_weight=factor,center_id=conditions['center_id'],
+                    acquisition_batch_id=conditions['acquisition_batch_id'],stage='wrist_periodic'))
+        elif row['meta']['stage'] == 'right_pitch_probe':
+            policy=config['p0']['right_pitch_train'];count=len(p['target'])
+            if p['joint']!=policy['active_joint'] or count<16:
+                raise ValueError('Right pitch probe rows do not match the training policy')
+            normalizer=policy['normalization_nm']
+            factor=np.sqrt(1024./(count*policy['baseline_probe_count']))/normalizer
+            rows.append(p['regression']*factor);extras.append(p['extra']*factor);targets.append(p['target']*factor)
+            weights.append(dict(trial_id=name,joint=p['joint'],rows=count,torque_normalizer_nm=normalizer,
+                sqrt_weight=factor,center_id=conditions['center_id'],
+                acquisition_batch_id=conditions['acquisition_batch_id'],stage='right_pitch_probe'))
         else:
             count = len(p['target']); normalizer = max(float(np.sqrt(np.mean(p['target']**2))), floor)
             factor = np.sqrt(1024./(count*len(probes)))/normalizer
@@ -86,7 +166,38 @@ def score_problems(problems, candidate, theta, friction, static, config):
                 mean_full_period_residual_nm=np.mean(predicted-p['current_torque'],axis=0).tolist(),
                 passed=bool(excited and metric.get('stationary_qualified',True) and metric['maximum_normalized_rmse'] <= threshold['dynamic_axis_nrmse'] and
                     metric['maximum_stationary_interval_excess_nm'] <= threshold['stationary_excess_nm']))
+            sustained_channels=dict(p.get('sustained_wrist',{}))
+            if 'sustained_pitch' in p:sustained_channels[12]=p['sustained_pitch']
+            for joint,local in sustained_channels.items():
+                key='sustained_pitch' if joint==12 else f'sustained_j{joint:02}'
+                error=local['regression']@theta+local['extra']@friction-local['target']
+                normalizer=max(float(np.sqrt(np.mean(p['current_torque'][p['moving'][:,joint],joint]**2))),threshold['torque_floor_nm'])
+                value=float(np.sqrt(np.mean(error**2)))
+                metric[key]=dict(samples=len(error),rmse_nm=value,normalized_rmse=value/normalizer,
+                    passed=value/normalizer<=threshold['dynamic_axis_nrmse'])
+                metric['passed']=metric['passed'] and metric[key]['passed']
             rows[name] = metric
+        elif meta['stage'] == 'wrist_periodic':
+            active = conditions['active_joints']
+            observed = p['current_torque']
+            if p.get('local_balance'):
+                errors=(p['regression']@theta+p['extra']@friction-p['target'])[:,active]
+            else:
+                predicted = p['regression']@theta+p['extra']@friction+p['fixed_friction']+p['rotor']
+                errors = predicted[:,active]-observed[:,active]
+            rms = [None]*14; nrmse = [None]*14
+            for col,j in enumerate(active):
+                use = p['moving'][:,j]
+                if np.count_nonzero(use)<16:raise ValueError('Insufficient wrist-periodic scoring rows')
+                rms[j]=float(np.sqrt(np.mean(errors[use,col]**2)))
+                nrmse[j]=rms[j]/max(float(np.sqrt(np.mean(observed[use,j]**2))),threshold['torque_floor_nm'])
+            means = np.zeros(14);means[active]=errors.mean(axis=0)
+            maximum = max(nrmse[j] for j in active)
+            rows[name]=dict(identity,actual_coverage=row['coverage'],active_joints=active,
+                stage='wrist_periodic',rmse_nm=rms,normalized_rmse=nrmse,
+                maximum_normalized_rmse=maximum,stationary_interval_excess_nm=[None]*14,
+                maximum_stationary_interval_excess_nm=None,mean_full_period_residual_nm=means.tolist(),
+                passed=maximum<=threshold['dynamic_axis_nrmse'])
         else:
             probes[name] = dict(**probe_metrics(p,candidate,theta,friction), **identity, actual_coverage=row['coverage'])
     return rows, probes
@@ -118,7 +229,7 @@ def grouped_prediction_summary(metrics, probes):
             primary=[r for r in metrics.values() if r[key]==value];wrist=[r for r in probes.values() if r[key]==value]
             groups[value]=dict(primary_trials=len(primary),wrist_trials=len(wrist),
                 maximum_axis_nrmse=max((r['maximum_normalized_rmse'] for r in primary),default=None),
-                maximum_stationary_excess_nm=max((r['maximum_stationary_interval_excess_nm'] for r in primary),default=None),
+                maximum_stationary_excess_nm=max((r['maximum_stationary_interval_excess_nm'] for r in primary if r['maximum_stationary_interval_excess_nm'] is not None),default=None),
                 maximum_wrist_inertia_disagreement=max((r['relative_inertia_disagreement'] for r in wrist),default=None),
                 maximum_wrist_prediction_rmse_nm=max((r['rmse_nm'] for r in wrist),default=None),
                 passed=all(r['passed'] for r in primary+wrist))
@@ -140,6 +251,7 @@ def wrist_repeatability(probes,limit):
 
 def measured_center_coverage(metrics,config):
     from .staged_multiconfiguration import center_separation
+    metrics={n:r for n,r in metrics.items() if r.get('stage')!='wrist_periodic'}
     names=list(dict.fromkeys(r['center_id'] for r in metrics.values()))
     centers={name:np.mean([r['actual_coverage']['mean_rad'] for r in metrics.values() if r['center_id']==name],axis=0) for name in names}
     pairs=[dict(first=a,second=b,**center_separation(centers[a],centers[b],np.asarray(config['pose_amplitude_rad']),config['p0']['center_design']))

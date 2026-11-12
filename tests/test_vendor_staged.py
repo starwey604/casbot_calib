@@ -132,3 +132,35 @@ def test_previous_failure_blocks_following_fitter(tmp_path,monkeypatch):
     result=analyse_staged(protocol,tmp_path/'analysis')
     assert not result['passed'] and list(result['stages'])==['gravity']
     assert 'following stage blocked' in result['blocked_reason']
+
+
+def test_gravity_readiness_does_not_require_later_stages(tmp_path,fixture):
+    from casbot_calib.cli import main
+
+    entries=[]
+    for i,split in enumerate(('train','validation')):
+        case=tmp_path/split;case.mkdir()
+        def stationary(raw):
+            for key in raw:raw[key]=raw[key][:1001]
+            raw['q'][:]=raw['q'][0]
+            raw['dq'][:]=0
+            raw['sample_ns'][:]=np.arange(1001,dtype=np.int64)*1_000_000
+            raw['receive_ns'][:]=raw['sample_ns']+1234
+            raw['current'][:]=i*.1
+        imported(case,fixture,raw_change=stationary)
+        entry=row(case,name='gravity_'+split,split=split);entry['stage']='gravity'
+        motion=Path(entry['motion']['path']);value=json.loads(motion.read_text())
+        value['stage']='gravity';write(motion,value);entry['motion']=reference(motion)
+        entries.append(entry)
+    protocol=tmp_path/'protocol'
+    assert main(['vendor-plan-staged','--spec',str(spec(tmp_path,records=entries)),
+                 '--through','gravity','--output',str(protocol)])==0
+    report=json.loads((protocol/'inspection/report.json').read_text())
+    assert report['through']=='gravity' and list(report['stages'])==['gravity']
+    assert report['stages']['gravity']['data_ready'] and not report['hardware_executable']
+    assert main(['vendor-inspect-staged',str(protocol),'--through','gravity',
+                 '--output',str(tmp_path/'gravity')])==0
+    assert main(['vendor-inspect-staged',str(protocol),'--output',str(tmp_path/'full')])==1
+    full=json.loads((tmp_path/'full/report.json').read_text())
+    assert full['stages']['gravity']['data_ready'] and not full['stages']['friction']['data_ready']
+    assert not analyse_staged(protocol,tmp_path/'fit',through='gravity')['passed']  # preflight still required

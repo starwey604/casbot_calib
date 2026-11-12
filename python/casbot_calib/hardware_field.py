@@ -335,6 +335,9 @@ def replan_field(plan, snapshot, output):
     if recipe['kind'] == 'zero':
         from .fieldwork_zero import prepare_zero
         return prepare_zero(config, snapshot, output, recipe['target_rad'], recipe['duration_s'], bindings=binding)
+    if recipe['kind'] == 'sdk_wrist_probe':
+        from .hardware_probe_capture import replan_probe
+        return replan_probe(config,snapshot,output,recipe,binding)
     if recipe['kind'] != 'static': raise ValueError('Unsupported field start-replan recipe')
     start = _read_snapshot(snapshot); destination = Path(output).resolve(); destination.mkdir(parents=True, exist_ok=False)
     motion, trials = _static_motion(config, start, recipe)

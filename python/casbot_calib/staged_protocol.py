@@ -107,6 +107,21 @@ def validate_config(config):
             raise ValueError('Finite 14-axis geometry required')
     from .staged_acceleration import validate_design
     validate_design(config)
+    if 'wrist_supplement' in p0:
+        from .staged_wrist_supplement import validate_supplement
+        validate_supplement(p0)
+    if 'wrist_periodic_train' in p0:
+        from .staged_wrist_periodic import validate_policy
+        validate_policy(p0)
+    if 'right_pitch_train' in p0:
+        from .staged_right_pitch import validate_right_policy
+        validate_right_policy(p0)
+    if 'pitch_sustained_train' in p0:
+        from .staged_pitch_sustained import validate_policy
+        validate_policy(p0)
+    if 'wrist_sustained_train' in p0:
+        from .staged_pitch_sustained import validate_wrist_policy
+        validate_wrist_policy(p0)
     # Reject non-finite settings even when they are not used until a later round.
     digest(config)
     return p0
@@ -128,6 +143,10 @@ def build_split_manifest(config):
             for joint in p0['wrist']['joints']:
                 for direction in p0['wrist']['directions']:
                     references.append(('inertia_probe', 'left' if joint < 7 else 'right', joint, direction, 0))
+            added = split == 'train' and center_id in p0.get('wrist_supplement', {}).get('held_pitch_roll_rad', {})
+            baseline_references = len(references)
+            if added:
+                references.extend(('inertia_probe', 'left', 4, direction, 0) for direction in (-1, 1))
             for batch in range(role['batches']):
                 for ref_index, (stage, group, joint, direction, phase) in enumerate(references):
                     index = center * 100 + ref_index
@@ -145,6 +164,8 @@ def build_split_manifest(config):
                         reference_status='pending_R1_collision_certified_motion')
                     if stage=='inertia' and 'acceleration_tone' in p0:
                         row['excitation_harmonics'].append(p0['acceleration_tone']['harmonic_by_split'][split])
+                    if added and ref_index >= baseline_references:
+                        row['supplemental_wrist'] = True
                     if joint is not None:
                         row.update(joint=joint, direction=direction)
                     rows.append(row)
@@ -154,8 +175,10 @@ def build_split_manifest(config):
         blocks = []
         for stage in ('inertia_probe', 'inertia'):
             for batch in range(2):
-                block = [r['trial_id'] for r in rows if r['split'] == split and r['stage'] == stage and r['repeat_id'] == batch]
+                block = [r['trial_id'] for r in rows if r['split'] == split and r['stage'] == stage and r['repeat_id'] == batch and not r.get('supplemental_wrist')]
                 blocks.extend([block[i] for i in rng.permutation(len(block))])
+        blocks.extend(r['trial_id'] for batch in range(2) for r in rows
+                      if r['split'] == split and r['repeat_id'] == batch and r.get('supplemental_wrist'))
         order[split] = blocks
     manifest = dict(schema_version=1, protocol=PROTOCOL, trials=rows, planned_execution_order=order,
         actual_execution_order_status='not_collected', centers_status='logical slots only; R1 must select and certify seven separated centers',
@@ -196,13 +219,14 @@ def validate_split_manifest(manifest, config):
         for center in centers:
             group = [r for r in selected if r['center_id'] == center]
             refs = {r['reference_id'] for r in group}
-            if len(refs) != per_center + len(config['p0']['wrist']['joints']) * len(config['p0']['wrist']['directions']):
+            extra = split == 'train' and center in config['p0'].get('wrist_supplement', {}).get('held_pitch_roll_rad', {})
+            if len(refs) != per_center + len(config['p0']['wrist']['joints']) * len(config['p0']['wrist']['directions']) + 2 * extra:
                 raise ValueError('Missing reference design in center')
             for ref in refs:
                 repeats = [r for r in group if r['reference_id'] == ref]
                 if len(repeats) != 2 or {r['repeat_id'] for r in repeats} != {0, 1} or {r['acquisition_batch_id'] for r in repeats} != {f'{split}_batch_00', f'{split}_batch_01'}:
                     raise ValueError('Missing or repeated acquisition batch')
-                for key in ('stage', 'reference_seed', 'active_arm_group', 'joint', 'direction', 'phase_id', 'period_s', 'excitation_harmonics'):
+                for key in ('stage', 'reference_seed', 'active_arm_group', 'joint', 'direction', 'phase_id', 'period_s', 'excitation_harmonics', 'supplemental_wrist'):
                     if repeats[0].get(key) != repeats[1].get(key):
                         raise ValueError('Repeated reference design changed')
             for batch in range(2):
@@ -210,7 +234,13 @@ def validate_split_manifest(manifest, config):
                 if sorted((r['phase_id'], r['active_arm_group']) for r in periodic) != sorted(
                         (phase, arm) for phase in range(role['phase_seeds_per_center']) for arm in role['active_arm_groups']):
                     raise ValueError('Incorrect phase/arm-group coverage')
-                probes = [r for r in group if r['repeat_id'] == batch and r['stage'] == 'inertia_probe']
+                extra_rows = [r for r in group if r['repeat_id'] == batch and r.get('supplemental_wrist')]
+                if extra and (len(extra_rows) != 2 or any(r['stage'] != 'inertia_probe' or r['joint'] != 4 or r['active_arm_group'] != 'left' for r in extra_rows)
+                              or {r['direction'] for r in extra_rows} != {-1, 1}):
+                    raise ValueError('Incorrect supplemental wrist coverage')
+                if not extra and extra_rows:
+                    raise ValueError('Unexpected supplemental wrist role')
+                probes = [r for r in group if r['repeat_id'] == batch and r['stage'] == 'inertia_probe' and not r.get('supplemental_wrist')]
                 if sorted((r['joint'], r['direction']) for r in probes) != sorted(
                         (j, d) for j in config['p0']['wrist']['joints'] for d in config['p0']['wrist']['directions']):
                     raise ValueError('Incorrect wrist coverage')
@@ -307,6 +337,16 @@ def load_protocol(root):
         required |= {'motion_plan.json', 'configuration_coverage.json'}
         if 'development_reference.json' in protocol['input_sha256']:
             required.add('development_reference.json')
+    if protocol['schema_version'] == 2 and 'wrist_supplement_reuse.json' in protocol['input_sha256']:
+        required.add('wrist_supplement_reuse.json')
+    if protocol['schema_version'] == 2 and 'wrist_periodic_input.json' in protocol['input_sha256']:
+        required.add('wrist_periodic_input.json')
+    if protocol['schema_version']==2 and 'right_pitch_input.json' in protocol['input_sha256']:
+        required.add('right_pitch_input.json')
+    if protocol['schema_version']==2 and 'right_pitch_sample_indices.npz' in protocol['input_sha256']:
+        required.add('right_pitch_sample_indices.npz')
+    if protocol['schema_version']==2 and 'wrist_primary_sample_indices.npz' in protocol['input_sha256']:
+        required.add('wrist_primary_sample_indices.npz')
     if set(protocol['input_sha256']) != required:
         raise ValueError('Incomplete P0 protocol input seal')
     for path, expected in protocol['input_sha256'].items():
@@ -317,6 +357,14 @@ def load_protocol(root):
         raise ValueError('Changed policy or plant truth in public configuration')
     if config.get('model_context')!=protocol['model'].get('model_context') or config.get('model_context')!=session['collision'].get('model_context'):
         raise ValueError('P0 protocol/session model contexts differ')
+    if protocol['schema_version']==2 and (('wrist_periodic_train' in config['p0']) != ('wrist_periodic_input.json' in required)):
+        raise ValueError('Wrist-periodic train data require an explicit sealed companion')
+    if protocol['schema_version']==2 and (('right_pitch_train' in config['p0']) != ('right_pitch_input.json' in required)):
+        raise ValueError('Right pitch training requires its sealed companion')
+    if protocol['schema_version']==2 and (('pitch_sustained_train' in config['p0']) != ('right_pitch_sample_indices.npz' in required)):
+        raise ValueError('Sustained pitch training requires sealed raw sample indices')
+    if protocol['schema_version']==2 and (('wrist_sustained_train' in config['p0']) != ('wrist_primary_sample_indices.npz' in required)):
+        raise ValueError('Sustained left pitch requires sealed raw sample indices')
     manifest = _read(Path(root) / 'split_manifest.json')
     validate_split_manifest(manifest, config)
     if protocol['schema_version']==2:
@@ -339,13 +387,18 @@ def seal_role_records(root, split):
         raise ValueError('Unknown role')
     freeze_hash = file_hash(Path(root) / 'candidate_freeze.json') if split == 'test' and load_frozen_candidate(root) else None
     session = _read(Path(root) / 'session.json'); records = []; references = {}
+    reuse = _read(Path(root) / 'wrist_supplement_reuse.json') if 'wrist_supplement_reuse.json' in protocol['input_sha256'] else None
+    child_hash = file_hash(Path(root) / 'protocol.json')
     for slot in (r for r in manifest['trials'] if r['split'] == split):
         name = slot['trial_id']; meta, _ = load_trial(root, name)
         if meta['stage'] != slot['stage'] or any(meta['conditions'].get(k) != slot[k] for k in IDENTITY):
             raise ValueError('Acquisition identity differs from preregistered role')
         record, _ = read_record(root, name, meta, session['joint_names'])
-        if record.get('protocol_sha256') != file_hash(Path(root) / 'protocol.json'):
-            raise ValueError('Raw recording lacks the frozen P0 protocol identity')
+        imported = reuse and reuse['records'].get(name)
+        expected_protocol = (reuse.get('acquisition_protocols', {}).get(name, reuse['source_protocol_sha256'])
+                             if imported else child_hash)
+        if record.get('protocol_sha256') != expected_protocol:
+            raise ValueError('Raw recording lacks its frozen acquisition protocol identity')
         if record.get('native_binary_sha256') != protocol['native_binary_sha256'] or record.get('sample_period_ns') != 250000 or record.get('control_period_ns') != 2000000:
             raise ValueError('P0 native kernel or 500 Hz / 4 kHz acquisition contract changed')
         if split == 'test' and record.get('candidate_freeze_sha256') != freeze_hash:
@@ -357,7 +410,10 @@ def seal_role_records(root, split):
         paths += [f'runs/{name}/{p}' for p in ('observations.npz', 'commands.npz', 'feedforward.json', 'collision_actual.json', 'metadata.json')]
         if not _read(_local(root, f'runs/{name}/collision_actual.json'))['passed']:
             raise ValueError('Observed collision gate failed')
-        records.append(dict(trial_id=name, files={p: file_hash(_local(root, p)) for p in paths}))
+        files = {p: file_hash(_local(root, p)) for p in paths}
+        if imported and files != imported:
+            raise ValueError('Copied 004 acquisition differs from its sealed original')
+        records.append(dict(trial_id=name, files=files))
     return _seal(root, f'role_inputs/{split}.json', dict(schema_version=1, split=split,
         protocol_sha256=file_hash(Path(root) / 'protocol.json'), candidate_freeze_sha256=freeze_hash, records=records))
 
@@ -400,6 +456,8 @@ def role_recordings(root, stage, *, split, purpose):
 def freeze_candidate(root, candidate, selection_report):
     """R2/R3 hook: select only eligible candidates using the sealed selection role."""
     _, config, _ = load_protocol(root)
+    if 'wrist_supplement' in config['p0']:
+        raise ValueError('This 004 supplement is development-only; register independent final references separately')
     root = Path(root)
     test_ids=[r['trial_id'] for r in _read(root/'split_manifest.json')['trials'] if r['split']=='test']
     if (root/'motion_plan.json').exists():test_ids += [r['trial_id'] for r in _read(root/'motion_plan.json')['final_prior_trials']]

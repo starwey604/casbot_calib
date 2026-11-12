@@ -111,6 +111,8 @@ H4代码路径完成后，H5仍需真实模型/安装/限制、尺度与采样�
 
 ## 🔬 七、本机验证入口
 
+新增[双腕 SDK 回调观测探索](sdk_wrist_h4_exploration.md)：只用本机隔离 Mock，后续采用 5ms 缓存标准，3ms 为较快对照；历史 3/20ms 记录保留。六腕轴非换向探针已有[离线适配入口](sdk_wrist_probe_offline.md)，[右腕 pitch 8 条 SDK Mock 训练与删组检查](sdk_wrist_pitch_campaign.md)已完成，[第三姿态独立开发验证](sdk_wrist_pitch_validation.md)也已通过；[c00 右腕 roll 两条信号筛查](sdk_wrist_roll_screen.md)也已完成，[频响／多频离线比较](sdk_wrist_roll_frequency_design.md)已选出两条双频补采设计，[多频分析与协议冻结](sdk_wrist_roll_dual_protocol.md)也已完成，[两条实际双频记录](sdk_wrist_roll_dual_capture.md)也已完成，预定主模型方向差 8.96%，未扩展为完整 R2。它使用声明的合成前序夹具，不要求或伪造历史 H3 验收；不授予 H3/H4 正式资格。
+
 已有通过H3的单轴合成会话时，可运行真实ROS双端演练；下列脚本只用localhost私有域，不能用于物理机器人：
 
 ~~~bash

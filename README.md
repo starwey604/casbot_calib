@@ -16,10 +16,13 @@
   * **H3**：[运动摩擦与起动摩擦指南](docs/hardware_friction_h3.md)（多姿态正反匀速 + 零 PD 力矩斜坡）。
   * **H4**：[惯量与控制验证指南](docs/hardware_inertia_h4.md)（多姿态周期加速度激励、Pinocchio 物理一致惯量拟合、五档 PD 与前馈控制对照）。
 * **📖 首次上手与背景参考**：
+  * 到场只读留证、厂家辅助验证与结果回填：[现场测试与回填手册](docs/sdk_field_validation.md)
   * 环境安装与离线仿真演练：[动力学标定启动指南](docs/dynamics_getting_started.md)
   * 统一本地 SDK 物理模拟器说明：[统一 SDK Mock 指南](docs/sdk_mock_unification.md)
   * 厂家接口约定与实机待核对项：[SDK 前置条件与厂家答复汇总](docs/sdk_hardware_prerequisites.md)
   * 当前默认机器人模型：`casbot_hl12p1_dvt2_bare_flange_1105_03_gauge_v2`（DVT2 裸法兰整机模型，迁移说明见 [N4 收尾](docs/dvt2_n4_closeout.md)）。
+
+* **🔬 SDK 腕部专项探索**：见[双频协议](docs/sdk_wrist_roll_dual_protocol.md)与[实际双频两条记录](docs/sdk_wrist_roll_dual_capture.md)。右腕 roll 使用 5ms 共享缓存、2.5Hz＋10Hz 双频；c00 正反两条的预定主模型局部方向差为 8.96%，尚未扩展为完整 P0 R2。`freeze`只封存协议，显式`collect`才启动本机 Mock。新协议按[云端 H4 接入](docs/cloud_h4_integration.md)采用质量只报告语义，原 10% 研究门槛、正式 test 与旧封存结果保持各自口径。
 
 ---
 

@@ -68,8 +68,9 @@ def test_profile_manual_does_not_require_h1_static_limits(tmp_path):
     import yaml
     from casbot_calib.hardware_field import load_profile,params
     config=yaml.safe_load(Path('configs/hardware_field.yaml').read_text());config['collision_scene']=str(Path('configs/collision_scene.yaml').resolve())
-    for key in ('initial_hold_s','final_hold_s','anchor_transition_s','start_tolerance_rad',
-                'static_velocity_rad_s','static_position_range_rad','static_max_gap_s','gravity_validation_rmse_nm'):
+    for key in ('static_velocity_rad_s','static_position_range_rad','static_max_gap_s','gravity_validation_rmse_nm'):
+        assert key not in config  # These field quality limits were removed, not made optional.
+    for key in ('initial_hold_s','final_hold_s','anchor_transition_s','start_tolerance_rad'):
         config.pop(key)
     path=tmp_path/'profile.yaml';path.write_text(yaml.safe_dump(config))
     loaded=load_profile(path,manual=True);v=params(loaded,NAMES,manual=True)

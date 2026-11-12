@@ -65,7 +65,7 @@ def _snapshot_sources():
     return {p.name:file_hash(p) for p in sorted(root.glob('*.py'))}
 
 
-def prepare_analysis(root,output,config,parent,development=None):
+def prepare_analysis(root,output,config,parent,development=None,*,r1_rejection=None):
     nominal,source=model_for(config)
     if source['sha256']!=parent['model']['sha256']:raise ValueError('Nominal geometry differs from the recorded model')
     prior=frozen_predecessors(root)
@@ -93,6 +93,8 @@ def prepare_analysis(root,output,config,parent,development=None):
         native_binary_sha256=file_hash(_core.__file__),model_source=source,source_sha256=_snapshot_sources(),policy=policy,
         development_qualification=development,settings=config['p0']['stability'],ridge_candidates=config['p0']['selection']['ridge_candidates'],
         inputs={name:file_hash(output/name) for name in files},truth_read=False,test_consumed=False)
+    if r1_rejection is not None:
+        protocol['r1_rejection']=r1_rejection
     _seal(output,'analysis_protocol.json',protocol)
     return protocol
 
@@ -107,6 +109,11 @@ def load_analysis(root,output):
         from .staged_development import accepted_development
         evidence=protocol['development_qualification']
         if accepted_development(root,evidence.get('verification'))!=evidence:raise ValueError('R1 development qualification changed')
+    if 'r1_rejection' in protocol:
+        from .staged_right_pitch import rejected_r1_evidence
+        if protocol.get('development_qualification') is not None or rejected_r1_evidence(root)!=protocol['r1_rejection']:
+            raise ValueError('Bound right-pitch R1 rejection changed')
+
     for path,expected in protocol['inputs'].items():
         if file_hash(output/path)!=expected:raise ValueError('R2 fixed coordinates/probes/priors changed')
     return protocol,config
@@ -131,15 +138,25 @@ def _train_summary(problems,model,theta,friction,static,config):
         scope='all train only, including omitted groups as held-group diagnostics; not selection or final test')
 
 
-def run_stability(root,output,resume=False,development_verification=None):
+def run_stability(root,output,resume=False,development_verification=None,*,diagnose_rejected_right_pitch=False):
     root=Path(root);output=Path(output);started=perf_counter();parent,config,_=load_protocol(root)
     if parent['schema_version']!=2:raise ValueError('R2 needs a certified R1 session')
     from .staged_development import accepted_development
-    development=accepted_development(root,development_verification)
+    rejection=None
+    if diagnose_rejected_right_pitch:
+        from .staged_right_pitch import rejected_r1_evidence
+        if development_verification is not None:
+            raise ValueError('Rejected R1 diagnostics cannot carry accepted evidence')
+        rejection=rejected_r1_evidence(root)
+        development=None
+    else:
+        development=accepted_development(root,development_verification)
     if output.exists() and not resume:raise FileExistsError(output)
     if not output.exists():
-        output.mkdir(parents=True,exist_ok=False);prepare_analysis(root,output,config,parent,development)
+        output.mkdir(parents=True,exist_ok=False);prepare_analysis(root,output,config,parent,development,r1_rejection=rejection)
     protocol,config=load_analysis(root,output)
+    if ('r1_rejection' in protocol)!=diagnose_rejected_right_pitch:
+        raise ValueError('R2 analysis mode differs from its sealed inputs')
     with collection_lock(output):
         coordinates=_arrays(output/'coordinates.npz');probes=_arrays(output/'operator_probe_set.npz')
         nominal,source=model_for(config);training=load_problems(root,'train',coordinates['static'])
@@ -240,12 +257,15 @@ def _finalize(output,root,protocol,results,started):
     path=regularization_path(output,protocol['settings'])
     path_pass={r['ridge']:r['passed'] for r in path['comparisons']}
     eligible=[ridge for ridge in protocol['ridge_candidates'] if path_pass.get(ridge,False) and all(r['passed'] for r in results if r['ridge']==ridge)]
+    if 'r1_rejection' in protocol:eligible=[]
     report=dict(schema_version=1,round='R2',completed=True,passed=bool(eligible),stability_qualified=bool(eligible),
         p0_acceptance_passed=False,publishable=False,test_consumed=False,truth_read=False,
         eligible_ridges=eligible,selection_status='not_selected; R3 attribution and selection-only prediction gates pending',
         parent_protocol_sha256=file_hash(root/'protocol.json'),analysis_protocol_sha256=file_hash(output/'analysis_protocol.json'),
         variants=results,regularization_path=path,fit_calls=sum(2 if r['kind']=='full' else 1 for r in results),wall_s=perf_counter()-started,
         scope='train-only sensitivity on fixed declared probes; no confidence intervals, test observation or hardware acceptance')
+    if 'r1_rejection' in protocol:
+        report.update(r1_rejected=True,selection_status='diagnostic only; R1 rejected, no candidate eligibility')
     write_json(output/'regularization_path.json',path)
     write_json(output/'group_sensitivity.json',dict(variants=[r for r in results if r['kind'] in ('center','batch')]))
     write_json(output/'prior_sensitivity.json',dict(variants=[r for r in results if r['kind']=='prior'],confidence_interval=False))

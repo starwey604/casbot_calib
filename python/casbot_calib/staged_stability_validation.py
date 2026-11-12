@@ -41,8 +41,37 @@ def verify_stability(root,analysis,output):
     for path,expected in delivery['files'].items():
         if file_hash(analysis/path)!=expected:raise ValueError('R2 analysis output changed: '+path)
     # Validate the complete train role without opening selection/test observations.
+    pitch_indices={}
+    for key in ('pitch_sustained_train','wrist_sustained_train'):
+        if key in config['p0']:
+            with np.load(root/config['p0'][key]['support_file'],allow_pickle=False) as data:
+                if key=='pitch_sustained_train':
+                    pitch_indices[12]={k:data[k] for k in data.files}
+                else:
+                    for joint in config['p0'][key]['joints']:
+                        pitch_indices[joint]={k.removesuffix(f'__j{joint:02}'):data[k] for k in data.files if k.endswith(f'__j{joint:02}')}
     for stage in ('inertia','inertia_probe'):
-        for _ in recordings(root,stage,split='train',purpose='stability'):pass
+        for name,meta,obs in recordings(root,stage,split='train',purpose='stability'):
+            if stage=='inertia' and pitch_indices:
+                from .staged_pitch_sustained import support
+                for joint,indices in pitch_indices.items():
+                    _,expected=support(obs,meta,config['inertia_sample_period_ns'],joint=joint)
+                    if not np.array_equal(indices.pop(name),expected):
+                        raise ValueError('R2 sustained pitch support changed')
+    if any(pitch_indices.values()):
+        raise ValueError('Extra R2 sustained pitch support record')
+    if 'wrist_periodic_train' in config['p0']:
+        from .staged_wrist_periodic import wrist_records
+        for _ in wrist_records(root):pass
+    if 'right_pitch_train' in config['p0']:
+        from .staged_right_pitch import right_records,left_sample_indices
+        left_sample_indices(root)
+        for _ in right_records(root):pass
+    rejected='r1_rejection' in protocol
+    if rejected:
+        from .staged_right_pitch import rejected_r1_evidence
+        if protocol.get('development_qualification') is not None or rejected_r1_evidence(root)!=protocol['r1_rejection']:
+            raise ValueError('Bound right-pitch R1 rejection changed')
     raw=_read(analysis/'report.json');results=raw['variants']
     expected={'full':1,'center':3,'batch':2,'prior':4}
     for ridge in protocol['ridge_candidates']:
@@ -70,6 +99,7 @@ def verify_stability(root,analysis,output):
     path=regularization_path(analysis,protocol['settings'])
     path_pass={r['ridge']:r['passed'] for r in path['comparisons']}
     eligible=[ridge for ridge in protocol['ridge_candidates'] if path_pass.get(ridge,False) and all(r['passed'] for r in results if r['ridge']==ridge)]
+    if rejected:eligible=[]
     formal=[r['trial_id'] for r in manifest['trials'] if r['split']=='test']+ [r['trial_id'] for r in _read(root/'motion_plan.json')['final_prior_trials']]
     untouched=not any((root/'runs'/name).exists() for name in formal)
     if not untouched:raise ValueError('R2 has consumed formal test observations')
@@ -84,7 +114,9 @@ def verify_stability(root,analysis,output):
         maximum_native_operator_difference=max((r['maximum_native_operator_difference'] for r in identity),default=None),
         sensitivity_variants=len(results),rigid_fit_calls=raw['fit_calls'],selection_status='not_selected; attribution and selection prediction pending R3',
         source_sha256=file_hash(__file__),scope='independent artifact/native check plus fixed-reference regularization path; no new fit or measurement')
-    for row in (r for r in results if r['kind']=='full' and r['completed']):
+    if rejected:
+        report.update(r1_rejected=True,selection_status='diagnostic only; R1 rejected, no candidate eligibility')
+    for row in (r for r in results if not rejected and r['kind']=='full' and r['completed']):
         write_json(output/f'eligibility_ridge_{row["ridge"]:g}.json',dict(schema_version=1,kind='stability',
             protocol_sha256=file_hash(root/'protocol.json'),input_manifests={'train':file_hash(root/'role_inputs/train.json')},
             candidate_sha256=file_hash(analysis/'variants'/row['label']/'candidate.json'),completed=True,passed=row['ridge'] in eligible,
