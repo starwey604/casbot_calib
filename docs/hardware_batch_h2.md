@@ -1,146 +1,100 @@
-# 🚀 H2：实机整批采集、频率分档与受控续采
+# 🚀 H2：实机整批采集（14 轴方向、频率测试与静态重力）
 
-H2 将 [H1 实机入口](hardware_execution_path.md) 组织成一份冻结的现场批次：**逐轴方向检查 → 100/250/500Hz重复测试 → 逐姿态正反静态采集 → 汇总重力候选与只读回放**。
+H2 将 [H1 单步命令](hardware_execution_path.md) 打包成一套自动化现场采集批次，按固定顺序依次执行：
+**14 轴方向往返 → 100/250/500Hz 频率分档重复测试 → 64 姿态正反静态采集 → 重力参数拟合与 3D 视频回放**。
 
-H2 负责采集编排，继续使用同一个C++ SDK位置发送器、Pinocchio回归、Coal碰撞和已有物理一致求解器。它不增加真实力矩斜坡或惯量硬件标定，也不将缓存反馈转换成已知采样时刻。
+---
 
-无实机时可按[统一SDK Mock指南](sdk_mock_unification.md)启动完整机械Mock，用生成的client_profile.yaml代替硬件profile；H2自动冻结本机连接，执行入口不变。
+## 🧭 一、默认批次包含哪些任务
 
-**按用户最新要求：执行、通信或模式故障发生后，默认clear_fault只记录日志，然后结束整个采集流程。该故障会话不能通过--resume继续。现在不尝试清故障、不请求恢复、不自动重新申请控制。**
+默认批次配置为 [configs/hardware_batch.yaml](../configs/hardware_batch.yaml)，底层硬件参数来自 [configs/hardware_field.yaml](../configs/hardware_field.yaml)：
 
-## 🧭 一、默认批次做什么
+| 阶段 | 任务安排（共 90 个采集单元） | 目的与记录内容 |
+| :--- | :--- | :--- |
+| **1. 方向检查** | 双臂 14 轴依次各做一次 `±1°` 正反往返（默认 500Hz，共 14 条） | 验证 14 轴指令与反馈映射、运动跨度及正负方向 |
+| **2. 频率测试** | 左/右肩俯仰（`shoulder_pitch`）各跑 `100 / 250 / 500Hz`，每档重复 2 次（随机顺序，共 12 条） | 对比不同发送频率下的实际发布率、通信抖动与轨迹响应延迟 |
+| **3. 静态重力** | 每臂 24 个训练姿态 + 8 个验证姿态（共 64 个姿态，每个姿态包含正反两个接近方向） | 采集静止窗口内的关节角度与估算力矩均值 |
+| **4. 汇总拟合** | 自动合并所有有效静态窗口，调用 Pinocchio 物理一致求解器 | 输出探索重力参数（`calibration.json`）、候选 URDF 及汇总报告 |
 
-默认配置为 [hardware_batch.yaml](../configs/hardware_batch.yaml)，硬件参数来自 [hardware_field.yaml](../configs/hardware_field.yaml)。
+* 如果只想先快速跑通整批流程，可在 `configs/hardware_batch.yaml` 中调小 `max_poses_per_split`（限制每臂静态姿态数量），或只保留部分关节/阶段。
+* **频率测试如何保证公平对比**：第一条频率任务启动前会记录当前实测姿态作为冻结锚点；后续 100/250/500Hz 任务均使用完全相同的连续参考轨迹（仅客户端发送周期不同），并在报告中单独统计核心比较窗口内的发布表现。
 
-| 阶段 | 默认安排 | 记录内容 |
-| --- | --- | --- |
-| 方向 | 14轴，各做1°正反往返，默认500Hz | 保存实际反馈跨度与跟踪误差，不设运动跨度通过比例或人工review门禁 |
-| 频率 | 左/右肩pitch，各100/250/500Hz、每档2次，共12条，固定种子随机化顺序 | 保存实际发布频率、抖动与整体偏移；低于计划90%也继续 |
-| 静态 | 默认每臂24训练+8验证，共64个姿态；每姿态两种接近方向 | 整个正反接近对作为一个采集单元，保存计划测量窗口中的实际数据，速度/跨度/覆盖/缺口不判合格与否 |
-| 汇总 | 合并有数值的窗口，复用H1重力拟合/候选导出 | 不跨记录拼接时间、求导或伪造采样，正式实机标定接受仍为false |
+---
 
-静态预设可通过max_poses_per_split限制每臂每角色的姿态数，用于先跑采集链路；少量姿态不等于充分可辨识，也不保证角度小。批次可配置单关节/部分阶段，报告会显示方向范围，不冒充完成14轴检查。
+## 🛠️ 二、第 1 步：离线生成批次计划（不连机器人）
 
-### 频率比较怎样保持一致
+在仓库根目录下运行以下命令，将配置、碰撞场景和任务顺序打包冻结到批次目录中（输出目录不能提前存在）：
 
-首条频率实验读取实际姿态后，冻结一个14轴比较锚点。同一目标关节在各档使用完全相同的连续参考，SHA记录在计划和分析中；只有客户端发送周期变化，不按频率重新拟合机械模型。
-
-每次尝试仍重新读取起姿，接近冻结锚点，执行比较动作后回到这次实测起姿。比较窗内只动目标轴；接近/返回阶段其他臂轴可能回到锚点，整个路径照常检查。频率报告单独统计比较窗，避免初始等待或回位掩盖实际发布情况。
-
-各档实际发布率都只作为测量结果，不再影响后续静态采集。程序不自动换成较低频率，也不宣称推荐某一实机频率。
-
-## 🛠️ 二、规划批次：不连接机器人
-
-先按[启动指南](dynamics_getting_started.md)准备Humble及SDK overlay，在宿主仓库根目录操作：
-
-~~~bash
+```bash
 cd ~/codings/casbot_calib
 bash scripts/humble/container.sh bash scripts/humble/build_vendor.sh
 read -r -p "现场 ROS_DOMAIN_ID: " calib_domain_id
 
-# 尚无预设时先生成
+# 1. 若尚未生成静态姿态预设库，先生成一份
 bash scripts/humble/container.sh casbot-calib plan-static-field \
   --output artifacts/site_static_preset_v1
 
+# 2. 生成 H2 批次计划（仅离线规划，不下发任何运动指令）
 bash scripts/humble/container.sh bash scripts/humble/vendor.sh \
   casbot-calib hardware-plan-batch \
   --config configs/hardware_batch.yaml --profile configs/hardware_field.yaml \
   --preset artifacts/site_static_preset_v1 \
   --domain-id "$calib_domain_id" --output artifacts/site_batch_v1
-~~~
+```
 
-输出目录必须不存在。规划会复制小型预设和场景到protocol中，冻结配置、设备声明、模型、SDK/执行器身份、关键代码及完整任务顺序，不依赖其他历史artifacts；此命令不创建运动节点或下发指令。规划报告的passed=false不表示“规划失败”，它表示整批采集尚未完成，state=planned。
+> 💡 **注意**：批次一旦规划生成，配置即被封存在 `artifacts/site_batch_v1/protocol/` 中。如果之后修改了 `configs/*.yaml`，需要重新指定一个新目录运行 `hardware-plan-batch`。
 
-协议冻结后，修改原YAML不会改变这个批次；需要变更模型、采样/控制规则、判据、SDK或关键实现时，建立新批次，不改旧协议。
+---
 
-## ▶️ 三、开始执行
+## ▶️ 三、第 2 步：启动采集与断点续采
 
-下面的run会真实发送SDK位置命令：
+以下命令会连接实机 SDK，自动申请上身调试模式并依次执行采集单元：
 
-~~~bash
+```bash
+# 推荐：先用 --max-jobs 1 只跑第 1 个单元，确认机器人动作与日志正常
 bash scripts/humble/container.sh bash scripts/humble/vendor.sh \
-  casbot-calib hardware-run-batch artifacts/site_batch_v1
-~~~
+  casbot-calib hardware-run-batch artifacts/site_batch_v1 --max-jobs 1
 
-每个采集单元都重新读取实际静止姿态，再生成和检查本次完整路径，执行末帧后退出模式，不再以回位位置/停稳作为完成门槛。原始CDR、实际命令和回调反馈继续由H1保存。
-
-默认依次执行14轴往返、频率实验和静态扫描，不要求人工review，不再提供`hardware-direction-template`或`hardware-direction-review`入口。实际物理方向仍由现场人员观察，软件不代替判断。
-
-## ⏯️ 四、检查点、分析不可用与故障的区别
-
-### 发指令前起点变了：重建当前单元
-
-起点偏差阈值仍为0.005rad。原生执行器明确回报“未申请模式、未发布指令、需要重规划”时，将旧尝试封存为`start_replan`，输出最大偏差，自动重新读取快照、规划和检查当前任务；不调用clear_fault、不锁整批，也不重跑已接受的单元。重复变化时可以Ctrl+C取消；频率比较锚点、静态角色及H3/H4前序输入保持原绑定。
-
-此分支不接收已申请模式/已发送指令后的异常。SDK、模式、通信故障仍按下述规则结束整批。关节/模式接收超时的新profile默认为2秒/3秒；启动/运行速度和模式故障处理保留。实现更新后建立新批次，旧批次不原地改规则。
-
-### 正常检查点或主动中断：可以续采
-
-~~~bash
-# 本次最多新完成2个采集单元，再正常暂停
+# 确认无误后，加 --resume 继续跑完剩余单元（也可随时加 --max-jobs N 分段跑）
 bash scripts/humble/container.sh bash scripts/humble/vendor.sh \
-  casbot-calib hardware-run-batch artifacts/site_batch_v1 --resume --max-jobs 2
-~~~
+  casbot-calib hardware-run-batch artifacts/site_batch_v1 --resume
+```
 
-后续--resume会校验已完成单元摘要，只跳过已完成发送的记录。主动Ctrl-C会要求当前发送器停止，将该尝试标为interrupted；续采创建新的尝试，重新读起姿，不追加旧CSV或沿用中断前的姿态。已完成单元不重采。
+### 运行中的中断与重规划规则
 
-如果外部模式仍不允许新执行，后续尝试会终止，不会帮机器人解除保护。进程被硬杀、写盘中断而留下未封存且状态不明的尝试，当前按终止故障处理，不能当作正常受控续采。
+1. **发指令前起点微偏（自动重规划）**：每个采集单元启动前都会重新读取当前静止姿态。如果在准备阶段发现当前角度与规划首点偏差超过 `0.005 rad`（尚未申请模式或发指令），程序会自动保存旧快照并重新规划当前单元路径，不会中断整批。
+2. **正常暂停与 `Ctrl+C`（可续采）**：
+   * 通过 `--max-jobs N` 到达检查点，或在运行中主动按 `Ctrl+C` 中断，当前未跑完的单元会标记为 `interrupted`。
+   * 下次带 `--resume` 启动时，已完成单元会自动跳过，被中断的单元会从当前新起姿重新读取快照并执行。
+3. **数据质量不阻断采集**：所有运动单元只跑一次，数据原样保存。即使某条数据波动较大或缺少部分数值，也只会在报告中标记该项分析不可用，继续往下采其它任务。
+4. **SDK / 通信 / 越限故障（终止整批）**：如果运行中发生超速（`> 1.5 rad/s`）、反馈超时（关节 2s / 模式 3s）或控制模式丢失，程序会立即停止发送、记录故障日志并终止整个批次（故障批次不可用 `--resume` 强行续采，需排查原因后新建批次）。
 
-### 运动完成后，数据照录，不做质量重试
+---
 
-静态速度/位置跨度/窗口覆盖、回调间隔、匀速平台质量、周期速度一致性、发送率和拟合残差都不作为批次门禁。静态重试预算、settle递增策略和质量拒绝状态已删除，每个任务正常执行一次；只有发指令前的起点变化仍会重建参考。
+## 🔍 四、第 3 步：离线重分析与生成 3D 回放视频
 
-分析能计算时保存数值，缺少数据或数值求解无法完成时在`inspection/report.json`记录`available=false`及原因，继续下个任务，不调用清故障、不锁整批。SDK执行失败仍遵循下一节的终止规则。
+采集完成后（或中途暂停时），可以在不连接机器人的情况下重新生成分析报告，或将实测反馈渲染为 3D 回放视频：
 
-H4后续动作若必须使用尚未生成的惯量候选或所选控制参数，则记录`not_run_missing_input`并处理其它任务，不替换为别的模型。`jobs_not_run`列出这些动作及原因。
-
-### 执行、模式、通信故障：记录后结束整批
-
-默认API为SDKBatchBackend.clear_fault(reason)，实现只写日志，返回implemented=false、performed=false。随后登记terminal_fault并终止整批，当前不执行任何恢复动作；即使再次显式--resume也会拒绝。
-
-占位日志不代表故障已清除、机体已停止或模式已恢复。后续获得可靠恢复方法时再设计新的恢复协议；不要在当前会话中删故障事件、改状态或伪造回执继续采集。
-
-## 📂 五、记录和报告
-
-| 目录/文件 | 用途 |
-| --- | --- |
-| protocol/ | 冻结的profile、配置、模型/SDK/代码身份、任务顺序、场景与静态预设 |
-| events/ | 按序列和前项摘要串联的不可变事件；原子提交，不靠可变进度文件决定是否跳过数据 |
-| attempts/任务/attempt_NNN/ | 每次独立profile、快照、完整计划、原始采集、检查、outcome与摘要 |
-| frequency_anchor/ | 第一条频率实验冻结的实际比较锚点及来源摘要 |
-| faults/ | 默认清故障占位日志；有记录不等于发生过恢复 |
-| reports/ | 各检查点/终止时刻的不可变汇总、jobs.csv、频率PNG及可用的重力候选 |
-| latest.json、progress.json | 最新报告指针/进度缓存，不是观测或恢复状态的唯一依据 |
-
-进程锁阻止两个控制器同时运行同一批次。已经封存的attempt和report不覆盖；未完成文件保留，续采不静默删除或修改。
-
-新报告为`casbot_hardware_batch_report_v2`：`passed`表示任务已处理且无执行故障，`workflow_processed`表示流程处理完，`collection_complete`仅在所有任务确有成功运动记录时为true。缺输入跳过的动作列在`jobs_not_run`；分析结果能否计算另看各阶段`available`。因此“流程已处理”不冒充“所有运动都已采到”，也不表示辨识质量通过。
-
-旧`direction_review_complete`、`direction_gate_satisfied`、`default_frequency_passed`及`all_frequency_profiles_passed`字段已删除。新尝试状态为`recorded`，不以数据质量接受/拒绝命名；旧封存记录不回写，代码改变后运行须新建批次。
-
-## 🔍 六、只读重分析与回放
-
-~~~bash
+```bash
+# 离线重新运行数据分析与重力拟合
 bash scripts/humble/container.sh casbot-calib hardware-analyse-batch \
   artifacts/site_batch_v1 --output artifacts/site_batch_analysis_v1
 
+# 将批次内各单元的实测关节反馈渲染为 3D 视频（每条限制最长展示 4 秒）
 bash scripts/humble/container.sh casbot-calib hardware-render-batch \
   artifacts/site_batch_v1 --output artifacts/site_batch_video_v1 \
   --fps 12 --max-seconds-per-attempt 4
-~~~
+```
 
-分析不运行SDK节点或采集动作，只消费封存记录。静态模型使用计划角色中的可用数值窗口；各记录自己的时钟和角色保留，不把多次尝试拼成一条均匀采样序列。
+---
 
-回放复用统一MuJoCo几何renderer，不推进物理；展示每次尝试的真实已接收角度，包括失败或重采的可用记录。试次间留分隔，不插值或推测缺失运动；时间可压缩，角度不放大。无有效反馈或尾行不完整的尝试会在回放报告中说明未展示原因。
+## 📂 五、批次目录结构速查
 
-## ✅ 七、适用范围
-
-H2提供实机批次代码，不代替设备能力确认。position插值、缓存反馈、发布stamp、估算Nm及断流保护的已知边界继续沿用[SDK记录](sdk_hardware_prerequisites.md)。本轮不连接实体机器人；自动化验证使用隔离ROS协议夹具及既有数值测试，[H3运动摩擦/起动](hardware_friction_h3.md)和[H4惯量/控制](hardware_inertia_h4.md)的软件路径现已接入，完成H2后按顺序继续；H5正式现场验收仍需实机证据。
-
-### 历史版本本机验证记录（含当时已存在、现已删除的质量/review策略）
-
-完整Python回归415项通过，随后补充的H2专项13项通过，覆盖质量预算耗尽不再重采及只显示实际送达姿态等反例。测试报告分别为artifacts/hardware_batch_tests_v3/full.xml与artifacts/hardware_batch_tests_v4/h2.xml；这不是重新执行历史114项冻结数值交付。
-
-artifacts/hardware_batch_ros_v2/verification.json的17项隔离ROS检查通过，其中8项为H2：人工方向结论绑定、整批完成、失败/重采记录保留、三档相同参考、几何回放、受控Ctrl-C续采、通信故障后拒绝续采、默认clear_fault无实际动作。夹具只模拟最新位置指令的响应和缓存发布，不认证厂商插值或物理保护。首次v1因测试进程的ROS信号处理同时关闭夹具而失败，原记录保留；v2隔离信号后重新验证。
-
-默认完整预设另完成无设备I/O规划：14方向+12频率+64静态，共90个单元，见artifacts/hardware_batch_default_plan_v1。中文视频为artifacts/hardware_batch_ros_v2/h2_replay/vendor_read_only_zh.mp4；重放几何与Pinocchio FK最大差约3.33e-16，角度未放大。交付摘要为artifacts/hardware_batch_delivery_v1/delivery.json。artifacts属于本机生成物，不随Git提供。
+| 目录 / 文件 | 说明 |
+| :--- | :--- |
+| `protocol/` | 冻结的硬件配置、任务列表、碰撞场景与静态预设副本 |
+| `attempts/<任务名>/attempt_NNN/` | 每个采集单元的独立快照、轨迹计划、原始 CDR、`commands.csv` 与 `feedback.csv` |
+| `frequency_anchor/` | 第一条频率测试冻结的 14 轴比较锚点姿态 |
+| `reports/` | 汇总报告（`report.md` / `report.json`）、各任务状态表 `jobs.csv`、频率响应图及候选 URDF |
+| `faults/` | 发生通信/模式/超速终止时的故障记录日志 |
+| `latest.json`, `progress.json` | 当前批次最新进度与报告摘要入口 |

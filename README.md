@@ -4,29 +4,22 @@
 
 本项目采用 **C++ 高性能底层计算 + Python 灵活工作流编排 + ROS 2 Humble 实时通信** 的混合架构，支持从离线激励轨迹生成、安全边界与自碰撞预检（Preflight Check）、真机/仿真数据采集，到摩擦、重力与惯量参数分步辨识及可视化报告生成的完整闭环。
 
-**默认模型已统一为DVT2**：动力学、运动学、SDK Mock、碰撞、导出和只读显示使用`casbot_hl12p1_dvt2_bare_flange_1105_03_gauge_v2`。普通手已拆除，动力学使用裸法兰整机＋地面；运动学使用同一个三表工具左右依次换装和实际四球。原命令/配置文件名保留，旧模型不再是运行选项；历史记录不得改绑。迁移与验证见[N4收尾](docs/dvt2_n4_closeout.md)，源资源通过Git LFS取得。实机工具负载、自由测杆包络和安装计量仍待核验。
+## 📌 现场实机联调与标定导航
 
-**DVT2 P0与N4进展**：SDK H4代表性合成验证已通过；[004开发实验](docs/dvt2_acceleration_development.md)的60条新数据与独立R1复核通过，但R2删构型腕部惯量差仍达23.8–24.0%，超过10%门槛。N4尚未整体验收，不进入R3/R4、不采正式test；下一步针对左腕yaw做可辨识性与激励设计。完整结果见[N4收尾](docs/dvt2_n4_closeout.md)。
-
-**首次使用请从 [🚀 动力学标定启动指南](docs/dynamics_getting_started.md) 开始**：环境安装、第一次 Mock 标定、逐阶段推进、静态现场预设、SDK 只读采集和候选 URDF 导出，附可执行命令与报告位置。
-
-**出差现场工具包见[CLI和GUI联调指南](fieldwork/README.md)**：F1保持只读；GUI现为14轴位置与速度/Kp/Kd/前馈力矩滑条调参台，首次反馈初始化，`bash fieldwork/run.sh gui --mock --domain-id 181`可自动配对本地Mock，默认缓存并在GUI内手动保存，实时模型跟随SDK反馈，可记录命令/运动并导出视频。删除人工审核勾选和备注表，现场人员掌握防护及操作顺序。 启动未停稳会显示原因并等待，可取消；控制故障后窗口与只读观测保留，显式“重读 / 新控制”开始另一会话。 “限制设置”可分开调整目标输入与反馈观察阈值；新手动控制默认越限告警，可选结束。用法见[可调限制](docs/fieldwork_manual_limits.md)。 CLI/GUI均提供[采集零位与一键回零](fieldwork/README.md#采集零位与一键回零)，固定保存`fieldwork/zero.yaml`，无需逐次指定输出名。
-
-**准备接实体机器人：见 [🤖 实机联调路径](docs/hardware_execution_path.md)**。新增 `hardware-*` 实际 SDK 入口，支持只读起姿、单轴小幅往返、静态扫描采集及探索重力/URDF候选。仅发双臂14轴；断流自保护按用户当前假设处理并保留未验证状态。此入口会实际发送位置命令，尚无物理设备验收；已补H3运动摩擦/起动候选，已补H4惯量与控制候选，正式实机验收待后续。
-
-**整批操作见 [H2现场采集指南](docs/hardware_batch_h2.md)**：冻结任务顺序，14轴方向往返，随机化100/250/500Hz重复测试，按正反姿态对一次采集，并支持正常检查点/主动中断续采和只读回放。SDK执行故障只记录默认清故障占位日志并结束整批，当前不自动恢复或续采故障会话。
-
-**已确认控制链路：CASBOT主机转发position、velocity、kp、kd、effort五项，由因克斯模组本地计算PD。** position仍按此前说明在主机插值到1000Hz；模组PD环具体频率未知，不能由插值频率推断。
-
-**摩擦接着看 [H3运动摩擦与起动指南](docs/hardware_friction_h3.md)**：冻结前序重力，多姿态/多速度正反匀速与独立验证，再执行零PD力矩斜坡。沿用H2执行/续采/故障规则；缓存反馈只生成探索候选，不冒充合格采样。
-
-**惯量与控制继续看 [H4指南](docs/hardware_inertia_h4.md)**：多姿态加速度激励、Pinocchio物理一致惯量拟合、独立预测及H3前序复核，然后完成五档PD选择和模型×增益四组对照。缓存回调协议只形成现场候选，保留原S3/S4采样和腕部带宽门禁。
-
-**Mock与实机共用SDK入口，见[统一SDK Mock指南](docs/sdk_mock_unification.md)**：sdk-mock以单进程SDK服务端运行共享机械模拟设备，生成H1/H2/H3/H4可直接使用的连接profile。仅position按配置线性插值，缓存反馈保留发布stamp；内部采样真值不交给标定流程。后续SDK流程优先在此入口开发，旧S2 bridge仅保留历史回归。
-
-**正式实机标定验收前必须逐项弄清[SDK待确认能力与前置条件](docs/sdk_hardware_prerequisites.md)**，尤其是反馈/指令effort语义、输出侧尺度、PD与内部补偿、采样/时钟/500Hz采用能力、停止行为，以及真实模型和腰部固定条件。原S1–S4通过的是只读接口或本机/离线流程，仍不开放硬件执行；新增现场入口可按记录的假设联调，但不因此获得S3/S4或P0正式资格。只读采集、字段存在或配置布尔值不作为标定验收证明。
-
-2026-10-30同步的厂家答复：反馈effort为模组驱动估算Nm、无独立扭矩传感器；主机仅将position线性插值到1000Hz；debug反馈据称1000Hz发布但可能重复最新缓存，反馈stamp为发布时间，当前无可用高频日志。这些是**已说明待验证**，尚未绑定设备/版本或完成实测；不代表1000Hz新采样或同步动态观测。默认客户端发送仍为500Hz，采样时刻保持未知，现有S3/S4门禁和历史Mock实验条件不回写；当前SDK Mock的effort/PD与补偿约定见H3说明。静态重力可优先准备，缓存替代观测尚需另行实现/验证。详见[厂家答复与阶段影响](docs/sdk_hardware_prerequisites.md#厂家答复记录2026-10-30同步)。
+* **🛠️ 出差现场第一站（CLI 预检 + GUI 手动调参台）**：请直接阅读 **[实机接入与现场联调手册 (`fieldwork/README.md`)](fieldwork/README.md)**。
+  * 支持只读通信预检（`preflight` / `observe` / `reconnect`）、采集安全零位与一键平滑回零（`fieldwork/zero.yaml`）。
+  * 提供 14 轴 **MIT 五字段（`position / velocity / kp / kd / effort`）** 实时滑条调参 GUI、单轴短轨迹往返测试、3D 实时姿态跟随、可调限制面板及会话自动缓存/视频导出。
+  * 本地演练一键启动：`bash fieldwork/run.sh gui --mock --domain-id 181 --software-rendering`
+* **🤖 命令行（CLI）实机联调与分阶段标定（H1 → H4）**：见 **[实机 CLI 联调与标定路径](docs/hardware_execution_path.md)**。
+  * **H1**：只读起姿快照、单轴 1° 往返（Jog）、小批量静态采集。
+  * **H2**：[整批基础采集指南](docs/hardware_batch_h2.md)（14 轴方向往返、100/250/500Hz 频率测试、64 姿态静态重力采集，支持断点续采）。
+  * **H3**：[运动摩擦与起动摩擦指南](docs/hardware_friction_h3.md)（多姿态正反匀速 + 零 PD 力矩斜坡）。
+  * **H4**：[惯量与控制验证指南](docs/hardware_inertia_h4.md)（多姿态周期加速度激励、Pinocchio 物理一致惯量拟合、五档 PD 与前馈控制对照）。
+* **📖 首次上手与背景参考**：
+  * 环境安装与离线仿真演练：[动力学标定启动指南](docs/dynamics_getting_started.md)
+  * 统一本地 SDK 物理模拟器说明：[统一 SDK Mock 指南](docs/sdk_mock_unification.md)
+  * 厂家接口约定与实机待核对项：[SDK 前置条件与厂家答复汇总](docs/sdk_hardware_prerequisites.md)
+  * 当前默认机器人模型：`casbot_hl12p1_dvt2_bare_flange_1105_03_gauge_v2`（DVT2 裸法兰整机模型，迁移说明见 [N4 收尾](docs/dvt2_n4_closeout.md)）。
 
 ---
 
