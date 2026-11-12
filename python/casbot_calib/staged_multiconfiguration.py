@@ -21,6 +21,10 @@ def motion_for_slot(slot, center, config):
     conditions = {k: slot[k] for k in IDENTITY}
     conditions.update(center_rad=np.asarray(center).tolist(), phase_id=slot.get('phase_id'),
                       excitation_harmonics=slot.get('excitation_harmonics', []))
+    if slot.get('supplemental_wrist'):
+        center = np.asarray(center).copy()
+        center[5:7] = config['p0']['wrist_supplement']['held_pitch_roll_rad'][slot['center_id']]
+        conditions.update(supplemental_wrist=True, probe_pose_rad=center.tolist())
     if slot['stage'] == 'inertia_probe':
         return wrist_probe_motion(slot['trial_id'], config['home_rad'], center, config,
                                   slot['joint'], slot['direction'], conditions)
@@ -235,6 +239,10 @@ def validate_resolved_plan(plan, manifest, config):
         if q.shape!=(14,) or not np.isfinite(q).all():raise ValueError('Invalid resolved center')
         previous=centers.setdefault(row['center_id'],q)
         if not np.array_equal(previous,q):raise ValueError('Role center changed across repetitions')
+        if slot.get('supplemental_wrist'):
+            held=q.copy();held[5:7]=config['p0']['wrist_supplement']['held_pitch_roll_rad'][slot['center_id']]
+            if not np.array_equal(row.get('probe_pose_rad'),held):
+                raise ValueError('Resolved supplemental wrist pose changed')
     amplitude=np.asarray(config['pose_amplitude_rad']);names=list(centers)
     if any(not center_separation(centers[a],centers[b],amplitude,config['p0']['center_design'])['passed']
            for i,a in enumerate(names) for b in names[i+1:]):raise ValueError('Resolved centers are not separated')

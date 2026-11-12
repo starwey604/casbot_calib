@@ -120,15 +120,18 @@ def run_development(folder, config, *, resume=False, development_reference=None)
                 analysis_folder=str(prior.relative_to(root)),files=files,scope='development only; final independent predecessor holdout remains uncollected'))
         model = predecessor_model(prior,public); plant = synthetic_plant(config)
         profile = collision_for(public,scene=_read(root/'session.json')['collision']['scene'])
+        reuse = _read(root/'wrist_supplement_reuse.json') if 'wrist_supplement_reuse.json' in protocol['input_sha256'] else None
+        imported = set(reuse['records']) if reuse else set()
         for split in ('train','selection'):
-            _collect_order(root,manifest['planned_execution_order'][split],plant,model,public,profile,resume)
+            order = [name for name in manifest['planned_execution_order'][split] if name not in imported]
+            _collect_order(root,order,plant,model,public,profile,resume)
             index = root / f'role_inputs/{split}.json'
             if not index.exists():
                 seal_role_records(root,split)
         # Never loops over test or final-prior references during development.
         events = [json.loads(line) for line in (root/'execution_order.jsonl').read_text().splitlines()]
         actual = [r['trial_id'] for r in events if r['event']=='completed']
-        expected = manifest['planned_execution_order']['train']+manifest['planned_execution_order']['selection']
+        expected = [name for split in ('train','selection') for name in manifest['planned_execution_order'][split] if name not in imported]
         if actual != expected:
             raise ValueError('Actual execution order differs from the preregistered block order; inspect interrupted journal')
         output = root/'identification_development'
@@ -153,6 +156,8 @@ def run_development(folder, config, *, resume=False, development_reference=None)
             plan_report='plan_report.json',inertia_folder='identification_development',
             new_virtual_duration_s=sum(_read(root/'plans'/name/'motion.json')['duration_s'] for name in expected),
             wall_s=perf_counter()-started,pending=['R2 stability','R3 attribution and candidate freeze','R4 independent final test, control, full verification and video'])
+        if reuse:
+            result.update(reused_development_trials=len(imported), total_development_trials=len(imported)+len(expected))
         write_json(root/'checkpoint.json',result);write_json(root/'workflow.json',result)
         if not result['passed']:
             raise RuntimeError('R1 development prediction gate failed; no candidate release or formal test permitted')

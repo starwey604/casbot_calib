@@ -296,3 +296,36 @@ def test_fourier_energy_independent_analytic_oracle_and_noise_floor(base_root):
     assert spectrum[2, 0] == pytest.approx(3 / np.sqrt(2))
     assert spectrum[4, 0] == pytest.approx(4 / np.sqrt(2))
     assert float(np.sum(spectrum**2)) == pytest.approx(float(np.mean((signal - 2)**2)))
+
+
+def test_wrist_supplement_keeps_004_roles_and_adds_only_signed_train_repeats():
+    from casbot_calib.staged_multiconfiguration import motion_for_slot
+    from casbot_calib.staged_wrist_supplement import ANGLES, VERSION
+    old_config = yaml.safe_load(Path('configs/dvt2/staged_dual_arm_p0_v4.yaml').read_text())
+    old = build_split_manifest(old_config)
+    config = deepcopy(old_config)
+    config['p0'].update(experiment_version=VERSION, wrist_supplement={'held_pitch_roll_rad': ANGLES})
+    new = build_split_manifest(config)
+    identity = lambda row: {k:v for k,v in row.items() if k != 'config_sha256'}
+    assert [identity(r) for r in new['trials'] if not r.get('supplemental_wrist')] == [
+        identity(r) for r in old['trials']]
+    for role in ('selection', 'test'):
+        assert new['planned_execution_order'][role] == old['planned_execution_order'][role]
+    assert new['planned_execution_order']['train'][:36] == old['planned_execution_order']['train']
+    added = [r for r in new['trials'] if r.get('supplemental_wrist')]
+    assert len(added) == 8 and all(r['split'] == 'train' and r['joint'] == 4 for r in added)
+    assert {(r['center_id'],r['repeat_id'],r['direction']) for r in added} == {
+        (center,batch,sign) for center in ANGLES for batch in (0,1) for sign in (-1,1)}
+    pose = np.asarray(config['home_rad'])
+    for slot in added:
+        motion = motion_for_slot(slot, pose, config)
+        begin, end = motion.windows('probe_measure')[0][0], motion.windows('probe_measure')[-1][1]
+        q,v,_,_ = motion.at(np.linspace(begin,end,64))
+        np.testing.assert_allclose(q[:,5:7], np.broadcast_to(ANGLES[slot['center_id']], (64,2)), atol=1e-12)
+        assert np.min(slot['direction'] * v[:,4]) > .02
+        np.testing.assert_allclose(v[:,np.arange(14)!=4], 0, atol=1e-12)
+    # A signed repeat cannot escape its train center or be replaced by a right wrist.
+    changed = deepcopy(new)
+    next(r for r in changed['trials'] if r.get('supplemental_wrist'))['joint'] = 11
+    with pytest.raises(ValueError):
+        validate_split_manifest(changed, config)

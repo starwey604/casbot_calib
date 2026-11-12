@@ -78,3 +78,34 @@ R0独立白电流噪声谱给出每轴/频点的力矩门槛（至少0.0001Nm）
 保留带外诊断很有必要：40阶外原始电流残差最大RMS约0.01262Nm，不能用较低的带内误差宣称该部分已建模。已规划的28条正式惯量/腕部测试与548条最终前序留出，共576条仍未采集。后续R4使用冻结候选采集和验收，再进行控制对照及中文回放；不得根据正式test结果改模型后沿用同一批test。
 
 本轮52项针对性测试、259项完整Python测试及原A–F/R1/双臂114项冻结数值对照通过。反例覆盖仅偏置收益、仅摩擦收益、弱轴不能删除、跨带宽拒绝、非线性处理顺序及独立解析惯量力矩。60组候选×周期轨迹的保存分量与独立Pinocchio重算差为0，Parseval最大能量差约2.44e-19Nm²。C++/机械积分未修改或重建，本轮未重跑CTest、ROS网络或实机测试。
+
+## 2026-11-12：DVT2 持续运动开发协议的 R3
+
+父会话为 `artifacts/dvt2_004_wrist_sustained_development_v1/development`，已有 R1/R2 通过。R3 复用原三档 R2 B/D 解，没有新增拟合或采集。主周期 12 条 train、8 条 selection 仍按原完整周期／40 阶频带归因；新增持续运动训练通道、四条左腕补采和原单轴探针继续按各自原规则评分，不拼接有效样本做周期 FFT。分析、独立复核均在新进程禁止读取 `evaluation/` 与独立八条 A/B 记录，并禁止拟合、采集入口。
+
+三档均通过原候选资格、前序保护、预测和合格频段不退化检查；selection 的14轴信号均充分，每轴有4–5个合格频点。三档分数落在原 `1e-6` 平局容差内，依原规则选较强正则化 **`1e-3`**。
+
+| 该候选的 selection 指标 | 数值 |
+| --- | ---: |
+| 轨迹／轴等权未去偏置 NRMSE | 0.613928% |
+| 最大逐轴 NRMSE | 2.15543% |
+| 腕部惯量平衡最大差 | 0.45705% |
+| A／B／C／D 平均合格频段 RMSE（mNm） | 1.19664／0.603921／0.603226／0.600966 |
+| 固定摩擦惯量更新 B 相对 A 改善 | 49.5321% |
+| 联合模型 D 相对 A 改善 | 49.7790% |
+
+主要收益来自惯量更新，有限摩擦修正增加的收益较小。上述频段收益指原40阶内的合格激励频点；selection 的40阶外原始信号最大 RMS **13.457 mNm** 另行保留。
+
+`r3_verified/verification.json` 独立重算三档×20条主周期，共60组分量，保存结果与原生重算差为0，最大 Parseval 能量差 **1.90×10⁻¹⁹ Nm²**。中文归因图已查看；原 R2 候选参数未改变。
+
+**开发归因／选参通过，正式 R4 候选尚未冻结。** 本补采协议含 `wrist_supplement`，现有 `freeze_candidate` 明确要求另行登记独立最终参考。此次独立复核已写出通过证据；后续冻结尝试被该边界拒绝，未生成 `candidate_freeze.json`。下一步是为此已选候选登记独立最终参考协议，再完成正式冻结，不删除这项隔离检查。原计划的576条正式留出仍未采集。
+
+本次索引为 `artifacts/dvt2_004_wrist_sustained_development_v1/r3_delivery.json`。复现归因与只读复核：
+
+```bash
+d=artifacts/dvt2_004_wrist_sustained_development_v1
+bash scripts/humble/container.sh casbot-calib staged-identify \
+  "$d/development" --through attribution --stability-verification "$d/r2_verified" --output "$d/r3_recheck"
+bash scripts/humble/container.sh casbot-calib staged-verify \
+  "$d/development" --attribution-analysis "$d/r3_recheck" --output "$d/r3_verified_recheck"
+```

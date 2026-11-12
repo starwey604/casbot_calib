@@ -109,7 +109,8 @@ def main(argv=None):
     staged_vendor_inspect.add_argument('folder',type=Path);staged_vendor_inspect.add_argument('--output',type=Path,required=True)
     staged_vendor_identify=sub.add_parser('vendor-identify-staged',help='S4 sequential qualified torque fits and validation; no device I/O')
     staged_vendor_identify.add_argument('folder',type=Path);staged_vendor_identify.add_argument('--output',type=Path,required=True)
-    staged_vendor_identify.add_argument('--through',choices=('gravity','friction','breakaway','inertia'),default='inertia')
+    for s4_parser in (staged_vendor_plan,staged_vendor_inspect,staged_vendor_identify):
+        s4_parser.add_argument('--through',choices=('gravity','friction','breakaway','inertia'),default='inertia')
     kinematics=sub.add_parser('kinematics-check',help='K1 named dual-arm TCP and TriCal schema checks; no motion or calibration')
     kinematics.add_argument('--config',type=Path)
     kinematics.add_argument('--output',required=True,type=Path)
@@ -263,8 +264,8 @@ def main(argv=None):
         return 0 if result['passed'] else 1
     if args.command in ('vendor-plan-staged','vendor-inspect-staged','vendor-identify-staged'):
         from .vendor_staged import freeze_staged,inspect_staged,analyse_staged
-        if args.command=='vendor-plan-staged':result=freeze_staged(args.spec,args.output)
-        elif args.command=='vendor-inspect-staged':result=inspect_staged(args.folder,args.output)
+        if args.command=='vendor-plan-staged':result=freeze_staged(args.spec,args.output,args.through)
+        elif args.command=='vendor-inspect-staged':result=inspect_staged(args.folder,args.output,args.through)
         else:result=analyse_staged(args.folder,args.output,args.through)
         print(f"S4 {'通过' if result['passed'] else '阻断'}；离线数据流程，实机执行未开放 -> {args.output}")
         return 0 if result['passed'] else 1

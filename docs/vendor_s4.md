@@ -53,6 +53,8 @@ bash scripts/humble/container.sh casbot-calib vendor-identify-staged \
   artifacts/my_s4_protocol --through inertia --output artifacts/my_s4_analysis
 ```
 
+只准备重力时，给规划、检查和拟合三个命令都传 `--through gravity`；默认仍到惯量。规划和检查的退出状态只看所选范围的记录就绪情况，正式拟合仍检查预检、配对和独立验证。`execution_blockers` 说明实机执行边界，不是离线拟合条件。
+
 分析按阶段写报告，即使失败也保存analysis.json和manifest。阶段通过、前序检查、模型候选和输入角色都有明确绑定。analysis.passed只表示请求的离线阶段通过；independent_final_test_passed和control_validated默认false，不能据此声称新的最终test或控制收益。
 
 ## 本轮合成实验

@@ -1,0 +1,25 @@
+schema_version: casbot_sdk_wrist_probe_v1
+# 2026-11-12 user-selected standard for future SDK wrist exploration.
+cache_period_ns: 5000000
+cache_status: user_selected_exploratory_standard_not_device_evidence
+publication_hz: 1000
+command_hz: 500
+probe:
+  frequency_hz: 5.0
+  amplitude_rad: 0.004
+  bias_speed_rad_s: 0.18
+  duration_s: 2.0
+processing:
+  fit_band_hz: 30.0
+  polynomial_degree: 2
+  quadrature_period_s: 0.002
+  edge_trim_s: 0.2
+  maximum_callback_gap_s: 0.05
+  minimum_signed_velocity_rad_s: 0.02
+  maximum_held_velocity_rad_s: 0.001
+  maximum_velocity_consistency_rad_s: 0.02
+# Additional preview limits; the original dedicated probe gate also remains.
+reference_limits:
+  maximum_velocity_rad_s: 1.0
+  maximum_acceleration_rad_s2: 8.0
+  maximum_jerk_rad_s3: 200.0

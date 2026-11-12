@@ -4,7 +4,7 @@
 
 默认对象为 **完整装配、腰部刚性固定的 14 轴双臂机器人**。动力学由 Pinocchio 计算，碰撞由 Coal 检查，模拟积分使用 Boost.Odeint；MuJoCo 只负责显示。先跑通本地模拟，再根据设备能力接入真实观测，可以逐步确认安装、数据和求解流程。
 
-**本指南的完整示例运行 Mock 标定与离线分析。** 已新增真实SDK位置/静态探索的[实机联调路径](hardware_execution_path.md)，其hardware-execute会真实发送位置命令；已补H3运动摩擦/起动候选；已补H4惯量与控制候选；正式实机验收尚未完成。下文S1仍只读，S3/S4正式资格遵循[SDK前置条件](sdk_hardware_prerequisites.md)。首次Mock练习不依赖本机历史artifacts，也不复用已消耗的正式测试数据。
+**本指南的完整示例运行 Mock 标定与离线分析。** 已新增真实SDK位置/静态探索的[实机联调路径](hardware_execution_path.md)，到场请先走[现场测试与回填手册](sdk_field_validation.md)，其中 hardware-execute 会真实发送位置命令；已补H3运动摩擦/起动候选；已补H4惯量与控制候选；正式实机验收尚未完成。下文S1仍只读，S3/S4正式资格遵循[SDK前置条件](sdk_hardware_prerequisites.md)。首次Mock练习不依赖本机历史artifacts，也不复用已消耗的正式测试数据。
 
 需要自动组织现场方向、频率和静态批次时，使用[H2整批采集](hardware_batch_h2.md)。受控中断可续采，SDK故障只log并终止整批，当前不恢复故障会话。
 
@@ -15,6 +15,8 @@
 H2生成重力数值候选后，按[H3指南](hardware_friction_h3.md)继续多速度运动摩擦和零PD起动实验；完成H3后，再按[H4指南](hardware_inertia_h4.md)继续加速度激励、惯量候选、前序复核及独立控制对照。现场残差与数据质量不阻断后续；缺少实际数值模型时，仅相应依赖动作不能执行。
 
 需要提前演练实际SDK路径时，按[统一SDK Mock指南](sdk_mock_unification.md)启动sdk-mock；H1/H2/H3/H4只切换连接profile，继续共用同一执行、采集和分析入口。原有虚拟时间Mock适合数值回归，SDK Mock用于验证实际接口与时序条件。
+
+只想探索当前 SDK 缓存反馈对腕部惯量的影响，可运行[双腕 H4 本机探索](sdk_wrist_h4_exploration.md)：自动启动隔离 Mock，采集、拟合并比较缓存／相位／滤波敏感性，不连接实机。 当前缓存标准为 5ms；非换向探针先用[离线适配入口](sdk_wrist_probe_offline.md)检查轨迹与信号预算，不启动 SDK。 小范围实际 Mock 采集先走[正反两条](sdk_wrist_probe_pair.md)，再走[6 条补采与 8 条删组检查](sdk_wrist_pitch_campaign.md)，最后做[冻结候选第三姿态开发验证](sdk_wrist_pitch_validation.md)。扩到 roll 前，使用[两条信号筛查入口](sdk_wrist_roll_screen.md)，先确认较弱的力矩信号与字段相对时序敏感性；随后按[多频离线设计](sdk_wrist_roll_frequency_design.md)和[已冻结双频协议](sdk_wrist_roll_dual_protocol.md)准备惯量／相位分离试验。双频入口把冻结、只读验证与实际 Mock 采集分开，冻结不会启动采集。 云端 H4 接入后新协议采用质量只报告语义，版本与旧记录重放说明见[接入记录](cloud_h4_integration.md)。
 
 ---
 
