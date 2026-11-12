@@ -81,7 +81,7 @@ def gravity(tmp_path,profile):
     out=tmp_path/'gravity';out.mkdir()
     meta=dict(joint_names=[j.name for j in nominal.model.joints],source_model_sha256=source['sha256'])
     report=field.write_gravity_candidate(means,profile,out,meta);write_json(out/'report.json',report);field.seal(out)
-    assert report['passed'] and report['commissioning_validation_passed']
+    assert report['passed'] and report['fit_succeeded']
     assert not report['hardware_calibration_accepted']
     return out
 

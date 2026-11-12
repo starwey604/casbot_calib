@@ -149,8 +149,8 @@ def test_recording_notice_cancels_short_but_does_not_stop_manual_stream():
     desk=Desk.__new__(Desk)
     desk.operator=OperatorStatus();desk.short={'running':True};desk.sending=True
     desk.start_requested=False;desk.send=lambda:None
-    desk._handle(dict(type='status',event=describe(dict(code='recording_io_error',action='recording_warning'))))
-    assert desk.recording_error and desk.short is None and desk.sending
+    desk._handle(dict(type='status',event=describe(dict(code='recording_io_error',action='recording_warning',message='异步写盘队列已满，控制CSV暂停'))))
+    assert '异步写盘队列已满' in desk.recording_error and desk.short is None and desk.sending
     assert desk.operator.first_fault is None
     desk._handle(dict(type='recording_error',message='EFBIG fixture'))
     assert '当前录制不完整' in desk.recording_error and '停止通道继续' in desk.recording_error

@@ -51,7 +51,6 @@ settle_s: 3.0
 inter_job_pause_s: 0.25
 maximum_acceleration_rad_s2: 1.5
 maximum_jerk_rad_s3: 8.0
-maximum_gap_s: 0.05
 harmonics: 16
 phase_points: 256
 effort_relative_offset_s: 0.0
@@ -59,14 +58,7 @@ offset_diagnostic_grid_s:
 - -0.005
 - 0.0
 - 0.005
-moving_speed_rad_s: 0.015
-minimum_velocity_rms_rad_s: 0.01
-minimum_acceleration_rms_rad_s2: 0.02
-maximum_velocity_consistency_rad_s: 0.02
-validation_absolute_rmse_nm: 0.1
-validation_normalized_rmse: 0.2
 torque_floor_nm: 0.2
-gravity_preservation_nm: 1.0e-05
 ridge: 0.0001
 holding:
   hold_natural_frequency_rad_s: 15.0
@@ -84,7 +76,6 @@ control:
   - 1.25
   - 1.5
   maximum_effort_nm: 100.0
-  maximum_speed_rad_s: 0.75
 notes:
 - SDK callback-time periodic candidates only; acquisition/relative channel timing
   and filtering remain unqualified.

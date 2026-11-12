@@ -43,7 +43,7 @@ def verify_step_convergence(root):
     from time import perf_counter
     root=Path(root).resolve();folder=root/'step_convergence';folder.mkdir(exist_ok=False)
     _,protocol=batch.load_batch(root/'batch');history,_=batch.outcomes(root/'batch',protocol)
-    job=next(j for j in protocol['jobs'] if j['kind'] in ('moving_friction','inertia'));source=batch.accepted(history[job['id']])
+    job=next(j for j in protocol['jobs'] if j['kind'] in ('moving_friction','inertia'));source=batch.completed_capture(history[job['id']])
     trial=root/'batch'/source['attempt'];metadata=read(trial/'plan/plan.json')
     import csv
     with (trial/'capture/execution/commands.csv').open() as stream:rows=list(csv.DictReader(stream))

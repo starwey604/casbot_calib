@@ -4,8 +4,7 @@ import os
 from pathlib import Path
 import time
 
-GUI_FPS = 30.
-VIEW_FPS = 15.
+VIEW_FPS = 10.
 VIEW_ANGLE_EPSILON_RAD = 1e-4
 
 
@@ -13,20 +12,7 @@ def configure_graphics_environment():
     # Mesa software rasterization otherwise creates a worker per CPU, in BOTH
     # graphics processes. Respect an explicit deployment override. This does not
     # affect native physics, DDS, BLAS or OpenMP thread settings.
-    os.environ.setdefault('LP_NUM_THREADS', '2')
-
-
-class FramePacer:
-    """Bound UI redraw even without hardware vsync; no catch-up burst after stalls."""
-    def __init__(self, fps=GUI_FPS):
-        self.period=1./fps;self.previous=None
-
-    def __call__(self):
-        now=time.monotonic()
-        if self.previous is not None:
-            delay=self.previous+self.period-now
-            if delay>0:time.sleep(delay)
-        self.previous=time.monotonic()
+    os.environ.setdefault('LP_NUM_THREADS', '0')
 
 
 def latest_json(path, value):

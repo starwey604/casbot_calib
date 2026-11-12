@@ -72,6 +72,7 @@ SimulatedArmSettings simulated_arm_settings(const std::string& path,Read read) {
   c.sample_period_ns=read("sample_period_ns",std::int64_t(1000000));
   c.integration_ns=read("integration_ns",std::int64_t(50000));
   c.current_tau=read("current_tau",.001);
+  c.torque_limit=read("torque_limit_nm",100.);
   c.command_delay_ns=read("drive_delay_ns",std::int64_t(1350000));
   c.feedback_delay_ns=read("feedback_delay_ns",std::int64_t(700000));
   const auto q=read("initial_q",std::vector<double>(n,0.));

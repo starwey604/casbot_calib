@@ -27,5 +27,11 @@ int main(int argc,char** argv) {
     check(index==actual.size());check(device.has_feedback()==(now>=3000000));
     if(device.has_feedback())check(device.latest().receive_ns<=now);
   }
+  // Configured total PD+feedforward clamp is independent of SDK effort acceptance.
+  auto bounded=config;bounded.current_tau=0.;bounded.command_delay_ns=0;bounded.feedback_delay_ns=0;bounded.torque_limit=7.;
+  casbot::SimulatedArmDevice saturated(dynamics,bounded,q);
+  auto force=command;force.q=q;force.kp.setConstant(100.);force.kd.setZero();force.q[0]+=.1;force.torque.setZero();force.torque[0]=120.;
+  saturated.submit(force);saturated.advance_to(2000000);
+  check(std::abs(saturated.latest().current[0]-3.5)<1e-12);
   check(device.latest().q[0]>q[0]);std::cout<<"shared device preserves session dynamics and delayed delivery\n";
 }

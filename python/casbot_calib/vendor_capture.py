@@ -11,7 +11,7 @@ from .vendor_identity import sha256
 
 def capture(config_path, output, *, duration_s, domain_id, scope,
             record_discovery=False, poll_callback=None, live_callback=None, cancel_check=None,
-            until_stopped=False, tolerate_recording_io_error=False, recording_pause_file=None):
+            until_stopped=False, tolerate_recording_io_error=False, recording_pause_file=None, recording_flush_period_ms=0):
     config = load_config(config_path)
     if not math.isfinite(duration_s) or duration_s <= 0 or not 0 <= domain_id <= 232:
         raise ValueError('A positive duration and explicit ROS domain 0..232 are required')
@@ -36,6 +36,7 @@ def capture(config_path, output, *, duration_s, domain_id, scope,
                    config_sha256=sha256(config_path), connection_scope=scope,
                    domain_id=domain_id, duration_s=duration_s, read_only=True,
                    environment={key: os.environ.get(key) for key in ('RMW_IMPLEMENTATION', 'ROS_DISTRO', 'CYCLONEDDS_URI', 'FASTRTPS_DEFAULT_PROFILES_FILE')})
+    if recording_flush_period_ms:session['recording_flush_period_ms']=recording_flush_period_ms
     if until_stopped:session['until_stopped']=True
     if live_callback:session['live_display_stream']=True
     if tolerate_recording_io_error:session['recording_io_policy']='report_and_keep_live_subscription'
@@ -46,6 +47,7 @@ def capture(config_path, output, *, duration_s, domain_id, scope,
         # ROS CLI needs an explicit YAML empty string rather than a missing value.
         value = "''" if value == '' else str(value).lower() if isinstance(value, bool) else str(value)
         args += ['-p', key+':='+value]
+    if recording_flush_period_ms:args+=['-p','recording_flush_period_ms:='+str(recording_flush_period_ms)]
     if record_discovery:
         args += ['-p', 'record_discovery:=true']
     if live_callback:
@@ -56,6 +58,7 @@ def capture(config_path, output, *, duration_s, domain_id, scope,
         args += ['-p','tolerate_recording_io_error:=true']
     if recording_pause_file:args += ['-p','recording_pause_file:='+str(recording_pause_file)]
     env = dict(os.environ, ROS_DOMAIN_ID=str(domain_id), ROS_LOCALHOST_ONLY='1' if scope == 'localhost_contract_mock' else '0')
+    user_interrupted=False
     with (output/'process.log').open('x') as log:
         from .sdk_process import OutputPump
         process = subprocess.Popen(args, env=env, stdout=subprocess.PIPE if live_callback else log,
@@ -75,6 +78,7 @@ def capture(config_path, output, *, duration_s, domain_id, scope,
                     time.sleep(.02)
                 code = process.returncode
         except KeyboardInterrupt:
+            user_interrupted=True
             import signal
             process.send_signal(signal.SIGINT)
             try: code = process.wait(timeout=5)
@@ -89,6 +93,7 @@ def capture(config_path, output, *, duration_s, domain_id, scope,
                     process.kill(); process.wait()
             if pump:pump.join()
     result = dict(returncode=code, completed=False, read_only=True)
+    if user_interrupted: result['user_interrupted']=True
     if (output/'raw/summary.json').exists():
         result['completed'] = code == 0 and json.loads((output/'raw/summary.json').read_text())['reason'] == 'duration_complete'
         result['source_sha256'] = raw_fingerprints(output)

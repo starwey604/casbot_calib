@@ -28,6 +28,7 @@ int main() {
   check((engine.velocity_bias(q,v)-h).norm()<1e-12,"analytic 2R velocity coupling");
   check((engine.gravity(q)-g).norm()<1e-12,"analytic 2R gravity");
   check((engine.inverse(q,v,a)-(expected*a+h+g)).norm()<1e-12,"analytic 2R inverse dynamics");
+  check(engine.friction(v).isZero(0.),"zero declared dry friction stays exactly zero");
   check((engine.forward(q,v,expected*a+h+g)-a).norm()<1e-11,"independent torque -> forward acceleration");
   check(std::abs(engine.energy(q,v).kinetic-.5*v.dot(expected*v))<1e-12,"physical kinetic energy");
   model.joints[0].rotor_inertia=.07;model.joints[1].rotor_inertia=.03;

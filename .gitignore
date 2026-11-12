@@ -23,3 +23,5 @@ CMakeUserPresets.json
 *.exe
 *.pdb
 .DS_Store
+fieldwork/zero.yaml
+fieldwork/.zero-*.yaml

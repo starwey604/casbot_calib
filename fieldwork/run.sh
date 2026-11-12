@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# F1 stays read-only; only the explicitly selected GUI exposes motion actions.
+# F1 stays read-only; GUI control and zero-return are explicit motion actions.
 set -euo pipefail
 repo_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 cd "$repo_dir"

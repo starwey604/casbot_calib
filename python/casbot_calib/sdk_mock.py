@@ -30,7 +30,11 @@ def mock_config(path):
     if config['watchdog_ns'] < 10000000: raise ValueError('Mock watchdog must be at least10ms')
     for key in ('internal_gravity', 'allow_effort', 'allow_custom_pd'):
         if type(config[key]) is not bool: raise ValueError('Explicit Mock capability booleans required')
-    if not np.isfinite(config['effort_limit_nm']) or not 0 < config['effort_limit_nm'] <= 100: raise ValueError('Invalid Mock effort limit')
+    if not np.isfinite(config['effort_limit_nm']) or not 0 < config['effort_limit_nm'] or (purpose!='manual_tuning' and config['effort_limit_nm']>100): raise ValueError('Invalid Mock effort limit')
+    for key,default in [('kp_limit',1000.),('kd_limit',100.)]:
+        value=config.get(key,default)
+        if not np.isfinite(value) or value<=0 or (purpose!='manual_tuning' and value>default):raise ValueError('Invalid Mock '+key)
+    if 'torque_limit_nm' in config['plant'] and (not np.isfinite(config['plant']['torque_limit_nm']) or config['plant']['torque_limit_nm']<=0):raise ValueError('Invalid Mock total torque limit')
     q = np.asarray(config['initial_q'], dtype=float)
     if q.shape != (14,) or not np.isfinite(q).all(): raise ValueError('Finite14-axis initial pose required')
     engine, _ = model_for(config)
@@ -71,12 +75,12 @@ def stop(process):
 
 class SDKMockSession(AbstractContextManager):
     """Owns only Mock processes. Clients use the generated ordinary H1 profile."""
-    def __init__(self, config_path, output, domain_id, *, profile='configs/hardware_field.yaml', endpoint_root=None, recording_pause_file=None, cancel_check=None):
+    def __init__(self, config_path, output, domain_id, *, profile='configs/hardware_field.yaml', endpoint_root=None, recording_pause_file=None, cancel_check=None, diagnostics=True, coalesce_timers=False):
         self.config = mock_config(config_path); self.root = Path(output).resolve()
-        self.recording_pause_file=recording_pause_file;self.cancel_check=cancel_check
+        self.recording_pause_file=recording_pause_file;self.cancel_check=cancel_check;self.diagnostics=diagnostics;self.coalesce_timers=coalesce_timers
         self.domain_id = domain_id; self.endpoint = endpoint_root or '/casbot_calib_s2_sdk_' + uuid.uuid4().hex[:10]
         mock_connection(self.endpoint, domain_id, '0'*64)  # Validate before filesystem/process actions.
-        self.profile = load_profile(profile); self.processes = []; self.logs = []
+        self.profile = load_profile(profile,**(dict(manual=True) if self.config['purpose']=='manual_tuning' else {})); self.processes = []; self.logs = []
         check_same_context(self.config,self.profile)
         clearance = self.profile['scene']['clearance_m']
         if self.config['purpose']=='calibration' and np.min(collision_for(self.profile).check(self.config['initial_q'])['distances']) <= clearance:
@@ -92,7 +96,7 @@ class SDKMockSession(AbstractContextManager):
         omega = self.config['servo_natural_frequency_rad_s']; damping = self.config['servo_damping_ratio']
         from .control_gains import nominal_pd_gains
         kp,kd=nominal_pd_gains(engine,q,omega,damping,self.config['servo_minimum_kp'],self.config['servo_minimum_kd'])
-        if np.max(kp)>1000 or np.max(kd)>100: raise ValueError('Derived synthetic gains exceed declared range')
+        if np.max(kp)>self.config.get('kp_limit',1000.) or np.max(kd)>self.config.get('kd_limit',100.): raise ValueError('Derived synthetic gains exceed declared range')
         server = Path(os.environ.get('CASBOT_VENDOR_INSTALL', 'install/vendor')).resolve()/'casbot_calib_vendor/lib/casbot_calib_vendor/sdk_mock_server'
         if not server.is_file(): raise FileNotFoundError('Build optional SDK packages first: ' + str(server))
         protocol = self.root/'protocol'; protocol.mkdir(); plant_dir = self.root/'evaluation/plant'; plant_dir.mkdir(parents=True)
@@ -106,8 +110,8 @@ class SDKMockSession(AbstractContextManager):
         device_params.update(initial_q=q.tolist(),plant_output=str(plant_dir))
         keys = ('control_hz','publish_hz','cache_period_ns','interpolation_ns','watchdog_ns','internal_gravity','protection_gravity','allow_effort','allow_custom_pd','effort_limit_nm')
         server_params = dict(experiment_id='sdk_mock',model_id=model_id,model_path=model_path,
-            output=str(server_dir),endpoint_root=self.endpoint,joint_names=[j.name for j in model.joints],
-            kp=kp.tolist(),kd=kd.tolist(),**{k:self.config[k] for k in keys},**device_params)
+            output=str(server_dir),internal_diagnostics=self.diagnostics,coalesce_equal_timers=self.coalesce_timers,endpoint_root=self.endpoint,joint_names=[j.name for j in model.joints],
+            kp=kp.tolist(),kd=kd.tolist(),kp_limit=self.config.get('kp_limit',1000.),kd_limit=self.config.get('kd_limit',100.),**{k:self.config[k] for k in keys},**device_params)
         if self.recording_pause_file:server_params['recording_pause_file']=str(self.recording_pause_file)
         write_json(protocol/'behavior.json', dict(schema_version='casbot_sdk_mock_backend_v2',config=self.config,
             initial_pose_collision_qualified=False,initial_pose_policy='operator_specified' if self.config['purpose']=='manual_tuning' else 'calibration_collision_check',
@@ -116,11 +120,12 @@ class SDKMockSession(AbstractContextManager):
             **({'model_context':context.identity} if context else {}),
             assumptions=self.config['assumptions'],physical_device_semantics_verified=False,
             public_feedback_sample_time_known=False,stop_service_available=False,
-            internal_diagnostics_not_for_identification=True))
+            internal_diagnostics_not_for_identification=True,internal_diagnostics_enabled=self.diagnostics,coalesce_equal_timers=self.coalesce_timers))
         seal(protocol)
         self.connection = mock_connection(self.endpoint, self.domain_id, sha256(protocol/'manifest.json'))
         profile = dict(self.profile); profile.pop('scene')
         profile.update(collision_scene='scene.yaml', connection=self.connection)
+        if self.config['purpose']=='manual_tuning':profile['mock_limits']=dict(effort_limit_nm=self.config['effort_limit_nm'],kp_limit=self.config.get('kp_limit',1000.),kd_limit=self.config.get('kd_limit',100.),torque_limit_nm=self.config['plant'].get('torque_limit_nm',100.),watchdog_s=self.config['watchdog_ns']*1e-9)
         (self.root/'scene.yaml').write_text(yaml.safe_dump(self.profile['scene']), encoding='utf-8')
         self.client_profile.write_text(yaml.safe_dump(profile), encoding='utf-8')
         from .sdk_process import ros_arguments

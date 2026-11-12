@@ -18,6 +18,7 @@
 class SdkMockServer final:public rclcpp::Node {
  public:
   SdkMockServer():Node("casbot_sdk_mock_server") {
+    diagnostics_=declare_parameter<bool>("internal_diagnostics",true);
     root_=declare_parameter<std::string>("endpoint_root");vendor::local_topics({root_});
     names_=declare_parameter<std::vector<std::string>>("joint_names");
     model_id_=declare_parameter<std::string>("model_id");experiment_=declare_parameter<std::string>("experiment_id");
@@ -26,7 +27,9 @@ class SdkMockServer final:public rclcpp::Node {
     engine_=std::make_unique<casbot::ArmDynamics>(casbot::ArmDynamics::from_urdf(path));
     if(engine_->model().joints.size()!=14)throw std::runtime_error("SDK Mock requires14 model joints");
     workspace_=std::make_unique<casbot::ArmWorkspace>(engine_->workspace());
-    kp_=gains("kp",1000.);kd_=gains("kd",100.);
+    kp_limit_=declare_parameter<double>("kp_limit",1000.);kd_limit_=declare_parameter<double>("kd_limit",100.);
+    if(!std::isfinite(kp_limit_)||!std::isfinite(kd_limit_)||kp_limit_<=0||kd_limit_<=0)throw std::runtime_error("Invalid Mock gain limits");
+    kp_=gains("kp",kp_limit_);kd_=gains("kd",kd_limit_);
     for(int j=0;j<14;++j)if(engine_->model().joints[j].name!=names_[j])throw std::runtime_error("Mock model joint order mismatch");
     const auto control_hz=declare_parameter<int>("control_hz",1000),publish_hz=declare_parameter<int>("publish_hz",1000);
     cache_period_=declare_parameter<std::int64_t>("cache_period_ns",3000000);
@@ -37,7 +40,7 @@ class SdkMockServer final:public rclcpp::Node {
     allow_effort_=declare_parameter<bool>("allow_effort",false);allow_pd_=declare_parameter<bool>("allow_custom_pd",false);
     effort_limit_=declare_parameter<double>("effort_limit_nm",100.);
     if(control_hz<100||control_hz>2000||publish_hz<10||publish_hz>2000||cache_period_<1000000||watchdog_<10000000||
-       horizon<1000000||!std::isfinite(effort_limit_)||effort_limit_<=0||effort_limit_>100)throw std::runtime_error("Invalid Mock timing/limit");
+       horizon<1000000||!std::isfinite(effort_limit_)||effort_limit_<=0)throw std::runtime_error("Invalid Mock timing/limit");
     ramp_=std::make_unique<SdkPositionRamp>(horizon);
     // These are Mock fault controls only; no matching hardware capability is claimed.
     declare_parameter<bool>("feedback_enabled",true);declare_parameter<bool>("reject_mode",false);
@@ -69,7 +72,7 @@ class SdkMockServer final:public rclcpp::Node {
         const auto available=vendor::now();
         {std::lock_guard<std::mutex> lock(feedback_mutex_);
           delivered_.sample=samples.back();delivered_.driver_receive_ns=available;have_delivered_=true;}
-        for(const auto& sample:samples) {
+        if(diagnostics_)for(const auto& sample:samples) {
           device_samples_<<sample.sequence<<','<<sample.sample_ns+epoch_<<','<<available;
           vendor::values(device_samples_,sample.q);vendor::values(device_samples_,sample.dq);
           vendor::values(device_samples_,sample.current);vendor::values(device_samples_,sample.status);device_samples_<<'\n';
@@ -77,12 +80,12 @@ class SdkMockServer final:public rclcpp::Node {
       }
       if(now-last_samples_flush_>=20000000){device_samples_.flush();last_samples_flush_=now;}
     };
-    plant_feedback_=create_wall_timer(std::chrono::nanoseconds(1000000000/plant_feedback_hz),[this]{
+    const auto transfer_feedback=[this]{
       {std::lock_guard<std::mutex> lock(feedback_mutex_);if(plant_error_)std::rethrow_exception(plant_error_);if(!have_delivered_)return;latest_=delivered_;}
       latest_.publish_sequence=++source_publication_sequence_;state_at_=latest_.driver_receive_ns;
       for(int j=0;j<14;++j){q_[j]=latest_.sample.q[j];v_[j]=latest_.sample.dq[j];}
       if(!have_state_){ramp_->reset(q_,vendor::now());have_state_=true;}
-    });
+    };
     feedback_=create_publisher<sensor_msgs::msg::JointState>(root_+"/joint_states",rclcpp::QoS(10).reliable());
     motion_feedback_=create_publisher<sensor_msgs::msg::JointState>(root_+"/motion/joint_state",rclcpp::QoS(10).reliable());
     debug_=create_publisher<crb_ros_msg::msg::JointStateData>(root_+"/motion/debug/joint_state",rclcpp::QoS(10).reliable());
@@ -98,8 +101,17 @@ class SdkMockServer final:public rclcpp::Node {
         ramp_->reset(q_,vendor::now());target_v_.fill(0);feedforward_.fill(0);custom_pd_=false;
         last_command_=vendor::now();record(active_?"enter_requested":"exit_after_hold");resp->success=true;
       });
-    control_=create_wall_timer(std::chrono::nanoseconds(1000000000/control_hz),[this]{tick();});
-    publish_=create_wall_timer(std::chrono::nanoseconds(1000000000/publish_hz),[this]{publish();});
+    // The interactive Mock uses one executor wakeup when all three cadences
+    // coincide. Distinct cadences and existing calibration callers keep their
+    // original independent timers; the physics owner/thread is unchanged.
+    const auto coalesce=declare_parameter<bool>("coalesce_equal_timers",false);
+    if(coalesce&&control_hz==publish_hz&&publish_hz==plant_feedback_hz) {
+      control_=create_wall_timer(std::chrono::nanoseconds(1000000000/control_hz),[this,transfer_feedback]{transfer_feedback();tick();publish();});
+    } else {
+      plant_feedback_=create_wall_timer(std::chrono::nanoseconds(1000000000/plant_feedback_hz),transfer_feedback);
+      control_=create_wall_timer(std::chrono::nanoseconds(1000000000/control_hz),[this]{tick();});
+      publish_=create_wall_timer(std::chrono::nanoseconds(1000000000/publish_hz),[this]{publish();});
+    }
     status_=create_wall_timer(std::chrono::milliseconds(20),[this]{
       std_msgs::msg::String msg;msg.data=active_?"mode: UPPER_BODY_DEBUG, state: STAND":"mode: READY, state: READY";mode_->publish(msg);
       events_.flush();commands_.flush();references_.flush();publications_.flush();device_commands_.flush();
@@ -144,7 +156,7 @@ class SdkMockServer final:public rclcpp::Node {
        ((!msg.kp.empty()||!msg.kd.empty())&&(!allow_pd_||msg.kp.size()!=14||msg.kd.size()!=14))) {record("rejected_command_shape_or_semantics");return;}
     for(int j=0;j<14;++j)if(!std::isfinite(msg.position[j])||!std::isfinite(msg.velocity[j])||!std::isfinite(msg.effort[j])||
        std::abs(msg.effort[j])>effort_limit_||(!allow_effort_&&msg.effort[j]!=0)||
-       (!msg.kp.empty()&&(!std::isfinite(msg.kp[j])||!std::isfinite(msg.kd[j])||msg.kp[j]<0||msg.kp[j]>1000||msg.kd[j]<0||msg.kd[j]>100))) {
+       (!msg.kp.empty()&&(!std::isfinite(msg.kp[j])||!std::isfinite(msg.kd[j])||msg.kp[j]<0||msg.kp[j]>kp_limit_||msg.kd[j]<0||msg.kd[j]>kd_limit_))) {
       record("rejected_command_value");return;}
     SdkPositionRamp::Values target{};std::copy(msg.position.begin(),msg.position.end(),target.begin());
     const auto now=vendor::now();ramp_->target(target,now);last_command_=now;
@@ -177,9 +189,11 @@ class SdkMockServer final:public rclcpp::Node {
     }
     std::int64_t written;
     {std::lock_guard<std::mutex> lock(commands_mutex_);written=vendor::now();cmd.send_ns=written-epoch_;device_inbox_.push_back(cmd);}
+    if(diagnostics_) {
     device_commands_<<written<<",1";vendor::values(device_commands_,cmd.q);vendor::values(device_commands_,cmd.dq);
     vendor::values(device_commands_,cmd.torque);vendor::values(device_commands_,cmd.kp);vendor::values(device_commands_,cmd.kd);device_commands_<<'\n';
     references_<<now<<','<<active_;vendor::values(references_,reference);vendor::values(references_,target_v_);vendor::values(references_,feedforward_);references_<<'\n';
+    }
     if(!have_cache_||now-cache_at_>=cache_period_){cache_=latest_;cache_at_=now;have_cache_=true;}
   }
   void publish() {
@@ -193,12 +207,18 @@ class SdkMockServer final:public rclcpp::Node {
     for(auto& value:msg.effort)value*=2.;
     if(inject_pair_&&std::abs(msg.position[0]-get_parameter("unstable_q0").as_double())<.0005&&std::abs(msg.velocity[0])<.01)msg.velocity[0]=.02;
     msg.name.push_back("waist_yaw_joint");msg.position.push_back(.17);msg.velocity.push_back(0);msg.effort.push_back(0);
-    feedback_->publish(msg);motion_feedback_->publish(msg);
+    feedback_->publish(msg);
+    // Keep the mirror endpoint advertised. Avoid serializing an unobserved
+    // volatile mirror; once matched it retains the original publication cadence.
+    if(motion_feedback_->get_subscription_count())motion_feedback_->publish(msg);
     crb_ros_msg::msg::JointStateData debug;debug.header=msg.header;debug.name=msg.name;debug.position=msg.position;debug.velocity=msg.velocity;debug.effort=msg.effort;
     debug.kp=custom_pd_?custom_kp_:kp_;debug.kd=custom_pd_?custom_kd_:kd_;debug.kp.push_back(0);debug.kd.push_back(0);debug_->publish(debug);
+    if(diagnostics_) {
     publications_<<now<<','<<cache_.sample.sequence<<','<<cache_.sample.sample_ns+epoch_<<','<<cache_.driver_receive_ns<<','<<cache_.publish_sequence<<','<<(previous_cache_==static_cast<std::uint64_t>(cache_.sample.sequence))<<'\n';
+    }
     previous_cache_=cache_.sample.sequence;
   }
+  bool diagnostics_=true;
   bool protection_gravity_=true;
   std::string root_,model_id_,experiment_,clock_=vendor::clock_id();std::vector<std::string> names_;
   std::vector<double> kp_,kd_,custom_kp_,custom_kd_;std::array<double,14> q_{},v_{},target_v_{},feedforward_{};
@@ -206,7 +226,7 @@ class SdkMockServer final:public rclcpp::Node {
   std::int64_t epoch_=0,last_samples_flush_=0;
   std::uint64_t source_publication_sequence_=0,previous_cache_=std::numeric_limits<std::uint64_t>::max();
   bool have_state_=false,have_cache_=false,active_=false,inject_pair_=false,custom_pd_=false,gravity_=false,allow_effort_=false,allow_pd_=false,initial_ready_=false,awaiting_first_command_=false;
-  double effort_limit_=100.;
+  double effort_limit_=100.,kp_limit_=1000.,kd_limit_=100.;
   struct DeviceFrame {casbot::ArmSample sample;std::int64_t driver_receive_ns=0;std::uint64_t publish_sequence=0;};
   DeviceFrame latest_,cache_,delivered_;
   bool have_delivered_=false;

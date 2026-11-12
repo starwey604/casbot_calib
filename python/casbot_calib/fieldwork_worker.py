@@ -24,7 +24,15 @@ def open_view(metadata, directory, *, lightweight=False):
     else:
         adapter = context.write_view_scene(scene)
     if lightweight:scene=lightweight_scene(context,scene)
-    view = JointView(adapter, scene, width=640, height=480)
+    if lightweight:
+        from .fieldwork_frames import WIDTH,HEIGHT
+        # The live image is displayed at 380x285. Avoid oversampling it, while
+        # retaining the canonical full-size geometry/video path.
+        view = JointView(adapter,scene,width=WIDTH,height=HEIGHT,offscreen=False)
+        view.model.vis.quality.offsamples=0
+        from .fieldwork_scene import LiveSceneRenderer
+        view.renderer=LiveSceneRenderer(view.model,height=HEIGHT,width=WIDTH)
+    else:view = JointView(adapter, scene, width=640, height=480)
     # Preserve CAD shape/scene; avoid expensive shadow/reflection passes in a tuning view.
     for flag in ('mjRND_SHADOW','mjRND_REFLECTION'):
         view.renderer.scene.flags[getattr(view.mj.mjtRndFlag,flag)] = False
@@ -39,23 +47,30 @@ def frame(metadata, view, q, receive_ns=0):
                       tuple(metadata['joint_names']), np.asarray(q), None, None, None, clock_domain='sample_unknown')
 
 
-def render_live(root, check):
+def render_live(root, check, frame_fd=None):
     """Own EGL in a separate process, never interfere with ImGui's OpenGL context."""
     metadata = read_json(root/'view/metadata.json')
+    from .fieldwork_frames import FrameBuffer
+    frames=FrameBuffer(frame_fd) if frame_fd is not None else None
     sequence = 0; previous = None
     with open_view(metadata, root/'view',lightweight=True) as view:
         while check() in (None, 'operator_cancel'):
+            if not (getattr(check,'latest',None) or {}).get('view_visible',True):
+                time.sleep(1/VIEW_FPS);continue
             pose = read_json(root/'view/pose.json')
             if pose and geometry_changed(pose,previous):
                 if pose.get('selected') is not None: view.highlight(pose['selected'])
                 pixels = view.render(frame(metadata, view, pose['q'], pose.get('receive_ns') or 0))
-                temporary = root/'view/frame.pending'
-                with temporary.open('wb') as stream: np.save(stream, pixels, allow_pickle=False)
-                temporary.replace(root/'view/frame.npy')
                 sequence += 1
+                if frames:frames.write(pixels,sequence)
+                else:
+                    temporary = root/'view/frame.pending'
+                    with temporary.open('wb') as stream: np.save(stream,pixels,allow_pickle=False)
+                    temporary.replace(root/'view/frame.npy')
                 latest_json(root/'view/rendered.json', dict(**pose, rendered_frames=sequence))
                 previous = pose
             time.sleep(1/VIEW_FPS)
+    if frames:frames.close()
 
 
 def render_recording(root, relative, cancel_check=None):
@@ -69,7 +84,9 @@ def render_recording(root, relative, cancel_check=None):
     directory = (root/relative).resolve()
     if directory.parent != root/'runs': raise ValueError('运行目录不属于会话')
     feedback=directory/'recording/feedback.csv'
-    if not feedback.exists():feedback=directory/'capture/execution/feedback.csv'
+    if not feedback.exists():
+        from .fieldwork_control import recording_capture
+        feedback=recording_capture(directory)/'execution/feedback.csv'
     data = np.genfromtxt(feedback, delimiter=',', names=True, dtype=None, encoding='utf-8')
     data = np.atleast_1d(data)
     if len(data) < 2: raise ValueError('记录不足两帧')
@@ -107,14 +124,16 @@ def main(argv=None):
     parser.add_argument('--owner-id', required=True)
     parser.add_argument('--output', type=Path)
     parser.add_argument('--render', action='store_true')
+    parser.add_argument('--frame-fd',type=int)
     parser.add_argument('--pipe-heartbeat', action='store_true')
     args = parser.parse_args(argv)
     from .fieldwork_ipc import PipeHeartbeat,emit
     request = None if args.render else read_json(args.request)
-    control = request is not None and request['action']=='stream'
-    check = PipeHeartbeat(0,args.owner_id,timeout_s=2. if control else None) if args.pipe_heartbeat else heartbeat_check(args.heartbeat, expected_owner=args.owner_id)
+    control = request is not None and request['action'] in ('stream','zero_return')
+    heartbeat_timeout=request['values'].get('settings',{}).get('general',{}).get('heartbeat_timeout_s',2.) if control else None
+    check = PipeHeartbeat(0,args.owner_id,timeout_s=heartbeat_timeout) if args.pipe_heartbeat else heartbeat_check(args.heartbeat, expected_owner=args.owner_id,timeout_s=heartbeat_timeout or 2.)
     if args.render:
-        render_live(args.session, check); return 0
+        render_live(args.session, check,args.frame_fd); return 0
     try:
         if check(): raise ValueError(check())
         with batch_lock(args.session):
@@ -124,6 +143,20 @@ def main(argv=None):
             elif request['action'] == 'observe':
                 from .fieldwork_observer import observe
                 result=observe(args.session,**request['values'],cancel_check=check,publish=emit)
+            elif request['action'] == 'zero_return':
+                from .fieldwork_zero import return_zero
+                from .hardware_batch import event
+                session = Session(args.session)
+                if session.status()['blocked_reason']:raise ValueError(session.status()['blocked_reason'])
+                relative=Path(request['values']['output']).resolve().relative_to(session.root)
+                if relative.parent != Path('runs'):raise ValueError('回零运行必须属于本控制会话')
+                event(session.root,'zero_started',run=str(relative))
+                result = return_zero(session.config, session.metadata['domain_id'], session.metadata['scope'],
+                    **request['values'], cancel_check=check, notify=lambda message:emit('zero_status',message=message))
+                event(session.root,'zero_finished',run=str(relative),passed=result['passed'])
+                controlled = result['result'].get('supervisor_interruption') in ('operator_cancel','frontend_closed','user_interrupt')
+                if not result['passed'] and result['result'].get('fault') and not controlled:
+                    event(session.root,'terminal_fault',reason=result['result']['fault'])
             elif request['action'] == 'video': result = render_recording(args.session, **request['values'], cancel_check=check)
             else: raise ValueError('未知操作')
         response = dict(completed=True, action=request['action'], result=result)

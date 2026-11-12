@@ -35,7 +35,7 @@ from casbot_calib.data import write_json
 root,p=batch.load_batch(sys.argv[1]);history,_=batch.outcomes(root,p);largest=0.;preprocessing={}
 for job in p['jobs']:
  if job['kind']!='inertia':continue
- source=batch.accepted(history[job['id']]);folder=root/source['attempt'];plan=folder/'plan'
+ source=batch.completed_capture(history[job['id']]);folder=root/source['attempt'];plan=folder/'plan'
  meta,commands,origin,obs,elapsed,collision=field.field_observations(plan,folder/'capture')
  problem=periodic_problem(obs,elapsed,read(plan/'motion.json'),gravity_engine(plan/'gravity'),p['h4'],meta['config'],read(plan/'friction.json'))
  with np.load(folder/'inspection/periodic_problem.npz',allow_pickle=False) as saved:
@@ -87,12 +87,12 @@ def main():
         first=batch.run_batch(root/'batch',max_jobs=1)
         checks['checkpoint_after_one_inertia_trial']=first['state']=='checkpoint'
         result=batch.run_batch(root/'batch',resume=True) if first['state']=='checkpoint' else first
-        write_json(root/'batch_result.json',result);checks['complete_inertia_and_four_control_groups']=result['passed']
+        write_json(root/'batch_result.json',result);checks['complete_inertia_and_four_control_groups']=result['collection_complete'] and result['control'].get('available',False)
     checks['formal_sampling_not_fabricated']=not result['formal_hardware_calibration_accepted']
     if result['inertia']['available']:
-        checks['frozen_prior_stages_rechecked']=result['inertia']['prior_stage_acceptance']['passed']
-        checks['independent_inertia_prediction']=result['inertia']['checks']['independent_prediction']
-    if result['passed']:
+        checks['frozen_prior_stages_rechecked']=bool(result['inertia']['prior_stage_diagnostics'])
+        checks['independent_inertia_prediction']=bool(result['inertia']['validation'])
+    if result['inertia']['available'] and result['control'].get('available'):
         checks['selection_before_independent_control']=not result['control']['selection']['validation_used_for_selection'] and len(result['control']['groups'])==4
         isolated=truth_denied(root);write_json(root/'truth_isolation.json',isolated);checks['fresh_process_truth_denied']=isolated['passed']
         original=json.loads((root/'batch/inertia_checkpoint/candidate.json').read_text())

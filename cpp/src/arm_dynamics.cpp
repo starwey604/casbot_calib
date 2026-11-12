@@ -161,13 +161,16 @@ ArmDynamics ArmDynamics::from_urdf(const std::string& path) {
   return ArmDynamics(std::move(converted));
 }
 void ArmDynamics::check_vector(const Eigen::VectorXd& x,const char* label) const {
-  require(x.size()==static_cast<Eigen::Index>(model_->joints.size()) && x.allFinite(),std::string("Invalid arm vector: ")+label);
+  if(x.size()!=static_cast<Eigen::Index>(model_->joints.size()) || !x.allFinite())
+    throw std::invalid_argument(std::string("Invalid arm vector: ")+label);
 }
 struct ArmWorkspace::Impl {
   pinocchio::Data data;
-  explicit Impl(const pinocchio::Model& model):data(model) {}
+  bool zero_friction;
+  explicit Impl(const pinocchio::Model& model,const ArmModel& arm):data(model),zero_friction(
+    std::all_of(arm.joints.begin(),arm.joints.end(),[](const auto& joint){const auto& f=joint.friction;return f.viscous==0.&&f.coulomb==0.&&f.static_friction==0.;})) {}
 };
-ArmWorkspace::ArmWorkspace(const ArmDynamics& engine):engine_(engine),impl_(std::make_unique<Impl>(engine.backend_->model)) {}
+ArmWorkspace::ArmWorkspace(const ArmDynamics& engine):engine_(engine),impl_(std::make_unique<Impl>(engine.backend_->model,*engine.model_)) {}
 ArmWorkspace::~ArmWorkspace()=default;
 ArmWorkspace::ArmWorkspace(ArmWorkspace&&) noexcept=default;
 ArmWorkspace& ArmWorkspace::operator=(ArmWorkspace&&) noexcept=default;
@@ -236,6 +239,9 @@ Eigen::VectorXd ArmDynamics::friction(const Eigen::VectorXd& dq) const {
   check_vector(dq,"dq");Eigen::VectorXd result(dq.size());
   for(Eigen::Index j=0;j<dq.size();++j) {
     const auto& f=model_->joints[j].friction;const double v=dq[j];
+    // Exact zero dry-friction term: avoid two transcendental calls at every
+    // RK stage. SDK Mock's declared zero friction remains zero, not approximated.
+    if(f.coulomb==0. && f.static_friction==0.) {result[j]=f.viscous*v;continue;}
     const double magnitude=f.coulomb+(f.static_friction-f.coulomb)*std::exp(-std::pow(v/f.stribeck_velocity,2));
     result[j]=f.viscous*v+magnitude*std::tanh(v/f.smoothing_velocity);
   }
@@ -247,8 +253,12 @@ Eigen::VectorXd ArmWorkspace::inverse(const Eigen::VectorXd& q,const Eigen::Vect
 }
 Eigen::VectorXd ArmWorkspace::forward(const Eigen::VectorXd& q,const Eigen::VectorXd& dq,const Eigen::VectorXd& torque) {
   engine_.check_vector(q,"q");engine_.check_vector(dq,"dq");engine_.check_vector(torque,"torque");auto& data=impl_->data;
-  const Eigen::VectorXd applied=torque-friction(dq);
-  const Eigen::VectorXd result=pinocchio::aba(engine_.backend_->model,data,q,dq,applied);
+  Eigen::VectorXd result;
+  if(impl_->zero_friction)result=pinocchio::aba(engine_.backend_->model,data,q,dq,torque);
+  else {
+    const Eigen::VectorXd applied=torque-friction(dq);
+    result=pinocchio::aba(engine_.backend_->model,data,q,dq,applied);
+  }
   if(!result.allFinite()) throw std::runtime_error("Pinocchio forward dynamics produced non-finite acceleration");
   return result;
 }

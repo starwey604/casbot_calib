@@ -76,7 +76,7 @@ bash scripts/humble/container.sh casbot-calib hardware-analyse \
   --output artifacts/my_sdk_jog_analysis_v1
 ~~~
 
-H2使用同一个profile，后续按[H2指南](hardware_batch_h2.md)执行、填写方向结论和续采：
+H2使用同一个profile，后续按[H2指南](hardware_batch_h2.md)执行和受控续采（方向review与质量门禁已删除）：
 
 ~~~bash
 # 先按H2指南生成静态预设 artifacts/my_static_preset_v1

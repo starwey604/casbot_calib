@@ -1,4 +1,5 @@
 // S1 has subscriptions and file I/O only. No publisher, mode client or controller.
+#include "numeric_text.hpp"
 #include <rclcpp/rclcpp.hpp>
 #include <rclcpp/serialization.hpp>
 #include <sensor_msgs/msg/joint_state.hpp>
@@ -35,7 +36,7 @@ template<class T> void numbers(std::ostream& out, const T& values) {
   for (double v : values) {
     if (!first) out << ',';
     first = false;
-    if (std::isfinite(v)) out << v; else out << "null";
+    if(std::isfinite(v))vendor_text::number(out,v);else out<<"null";
   }
   out << ']';
 }
@@ -44,14 +45,11 @@ template<class T> void strings(std::ostream& out, const T& values) {
   for (const auto& value : values) { if (!first) out << ','; first = false; out << quote(value); }
   out << ']';
 }
-template<class T> void joint_json(std::ostream& out, const T& msg) {
+template<class T> void joint_json(std::ostream& out, const T& msg,const std::string& names) {
   out << "{\"header\":{\"sec\":" << msg.header.stamp.sec
       << ",\"nanosec\":" << msg.header.stamp.nanosec
       << ",\"frame_id\":" << quote(msg.header.frame_id) << "},\"name\":[";
-  for (std::size_t i = 0; i < msg.name.size(); ++i) {
-    if (i) out << ',';
-    out << quote(msg.name[i]);
-  }
+  out<<names;
   out << "],\"position\":"; numbers(out, msg.position);
   out << ",\"velocity\":"; numbers(out, msg.velocity);
   out << ",\"effort\":"; numbers(out, msg.effort);
@@ -66,6 +64,9 @@ class Recorder final : public rclcpp::Node {
     const auto duration = declare_parameter<double>("duration_s", 10.);
     const auto depth = declare_parameter<int>("depth", 10);
     const auto reliable = declare_parameter<bool>("reliable", true);
+    const auto flush_ms=declare_parameter<std::int64_t>("recording_flush_period_ms",0);
+    if(flush_ms<0||flush_ms>std::numeric_limits<std::int64_t>::max()/1000000)throw std::invalid_argument("Recording flush period outside nanosecond range");
+    flush_period_ns_=flush_ms*1000000;
     pause_file_=declare_parameter<std::string>("recording_pause_file","");
     live_=declare_parameter<bool>("stream_packets",false);
     until_stopped_=declare_parameter<bool>("until_stopped",false);
@@ -104,6 +105,7 @@ class Recorder final : public rclcpp::Node {
     add("robot_state", declare_parameter<std::string>("robot_state_topic", "/motion/robot_state"), "std_msgs/msg/String", qos);
     start_ = now_ns(); end_ = start_ + static_cast<std::int64_t>(duration * 1e9);
     timer_ = create_wall_timer(std::chrono::milliseconds(20), [this] {
+      record([this]{commit(false);});
       if (!until_stopped_ && now_ns() >= end_) done_ = true;
       if (now_ns() >= next_graph_) { record([this]{graph_snapshot();});if(live_)live_graph(); next_graph_ = now_ns() + 500000000; }
     });
@@ -116,13 +118,13 @@ class Recorder final : public rclcpp::Node {
          << ",\"read_only\":true,\"sample_time_known\":false,\"device_sequence_known\":false,"
             "\"nonfinite_json\":\"null; original IEEE values retained in CDR\","
             "\"cdr_source\":\"received generic subscription bytes before deserialization\","
-         << "\"stream_packets\":"<<(live_?"true":"false")<<",\"until_stopped\":"<<(until_stopped_?"true":"false")<<"}\n";
+         << "\"recording_flush_period_ns\":"<<flush_period_ns_<<",\"stream_packets\":"<<(live_?"true":"false")<<",\"until_stopped\":"<<(until_stopped_?"true":"false")<<"}\n";
     meta.close();
     std::filesystem::rename(output_ / "recorder.pending", output_ / "recorder.json");
   }
   bool done() const { return done_; }
   void finish(const std::string& reason) {
-    record([this]{cdr_.flush();rows_.flush();graph_snapshot();});
+    record([this]{commit(true);graph_snapshot();});
     try {
       std::ofstream summary(output_ / "summary.json");summary.exceptions(std::ios::badbit | std::ios::failbit);
       summary<<"{\"receive_packets\":"<<sequence_<<",\"start_ns\":"<<start_
@@ -132,6 +134,17 @@ class Recorder final : public rclcpp::Node {
     } catch(const std::ios_base::failure& error) {io_failure(error);}
   }
  private:
+  void commit(bool force) {
+    const auto now=now_ns();
+    if(!force&&flush_period_ns_&&now-last_flush_<flush_period_ns_)return;
+    if(!pending_cdr_.empty()) {
+      cdr_.write(pending_cdr_.data(),pending_cdr_.size());cdr_.flush();
+      // Publish complete JSON rows only after their entire CDR prefix is visible.
+      rows_.write(pending_rows_.data(),pending_rows_.size());rows_.flush();
+      pending_cdr_.clear();pending_rows_.clear();
+    }
+    last_flush_=now;
+  }
   void io_failure(const std::ios_base::failure& error) {
     if(!tolerate_io_)throw;
     if(!recording_failed_)std::cout<<"FIELDWORK_NOTICE {\"code\":\"recording_io_error\",\"message\":"<<quote(error.what())
@@ -202,19 +215,28 @@ class Recorder final : public rclcpp::Node {
   void add(const std::string& channel, const std::string& topic, const std::string& type, const rclcpp::QoS& qos) {
     if (topic.empty()) return;
     topics_.push_back(topic);channels_[channel]=topic;
+    const auto prefix=",\"channel\":"+quote(channel)+",\"topic\":"+quote(topic)+",\"type\":"+quote(type);
     subscriptions_.push_back(create_generic_subscription(topic, type, qos,
-      [this, channel, topic, type](std::shared_ptr<rclcpp::SerializedMessage> raw) {
+      [this, channel, topic, type,prefix,cached_names=std::vector<std::string>{},names_json=std::string{}](std::shared_ptr<rclcpp::SerializedMessage> raw) mutable {
         const auto received = now_ns(); const auto& bytes = raw->get_rcl_serialized_message();
         std::streamoff offset=-1;
-        record([&]{offset=cdr_.tellp();cdr_.write(reinterpret_cast<const char*>(bytes.buffer),bytes.buffer_length);cdr_.flush();});
+        record([&]{offset=cdr_bytes_;pending_cdr_.append(reinterpret_cast<const char*>(bytes.buffer),bytes.buffer_length);cdr_bytes_+=bytes.buffer_length;});
+        const auto names=[&](const auto& value)->const std::string& {
+          if(names_json.empty()||cached_names!=value) {
+            cached_names=value;std::ostringstream text;
+            for(std::size_t j=0;j<value.size();++j){if(j)text<<',';text<<quote(value[j]);}
+            names_json=text.str();
+          }
+          return names_json;
+        };
         std::ostringstream decoded; decoded << std::setprecision(17);
         try {
           if (type == "sensor_msgs/msg/JointState") {
             sensor_msgs::msg::JointState msg; rclcpp::Serialization<sensor_msgs::msg::JointState> codec;
-            codec.deserialize_message(raw.get(), &msg); joint_json(decoded, msg); decoded << '}';
+            codec.deserialize_message(raw.get(), &msg); joint_json(decoded,msg,names(msg.name)); decoded << '}';
           } else if (type == "crb_ros_msg/msg/JointStateData") {
             crb_ros_msg::msg::JointStateData msg; rclcpp::Serialization<crb_ros_msg::msg::JointStateData> codec;
-            codec.deserialize_message(raw.get(), &msg); joint_json(decoded, msg);
+            codec.deserialize_message(raw.get(), &msg); joint_json(decoded,msg,names(msg.name));
             decoded << ",\"kp\":"; numbers(decoded, msg.kp); decoded << ",\"kd\":"; numbers(decoded, msg.kd); decoded << '}';
           } else {
             std_msgs::msg::String msg; rclcpp::Serialization<std_msgs::msg::String> codec;
@@ -225,12 +247,12 @@ class Recorder final : public rclcpp::Node {
         }
         std::ostringstream row;row<<std::setprecision(17);
         row << "{\"receive_sequence\":" << sequence_++ << ",\"receive_ns\":" << received
-              << ",\"channel\":" << quote(channel) << ",\"topic\":" << quote(topic) << ",\"type\":" << quote(type)
+              <<prefix
               << ",\"cdr_offset\":";
         if(offset>=0&&!recording_failed_)row<<offset;else row<<"null";
         row << ",\"cdr_size\":" << bytes.buffer_length << ",\"message\":" << decoded.str() << "}";
         const auto text=row.str();
-        record([&]{rows_<<text<<'\n';rows_.flush();});
+        record([&]{pending_rows_+=text;pending_rows_+='\n';commit(false);});
         // Full CDR/JSON recording retains every callback. Only the live display
         // is decimated by callback time, never by equality of numeric values.
         if(live_&&(last_live_.count(channel)==0||received-last_live_[channel]>=50000000)) {
@@ -240,6 +262,8 @@ class Recorder final : public rclcpp::Node {
   }
   std::filesystem::path output_;
   std::ofstream cdr_, rows_, graph_, discovery_;
+  std::string pending_cdr_,pending_rows_;std::uint64_t cdr_bytes_=0;
+  std::int64_t flush_period_ns_=0,last_flush_=0;
   std::string clock_,pause_file_;std::map<std::string,std::string> channels_;
   std::uint64_t sequence_ = 0;
   std::int64_t start_ = 0, end_ = 0, next_graph_ = 0;

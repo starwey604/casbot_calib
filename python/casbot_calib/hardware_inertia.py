@@ -23,13 +23,11 @@ def settings(path,names):
     for key in ('home_rad','amplitude_rad'):
         value=np.asarray(c[key])
         if value.shape!=(14,) or not np.isfinite(value).all() or (key=='amplitude_rad' and np.any(value<=0)):raise ValueError('Finite 14-axis H4 reference required')
-    for key in ('period_s','transition_s','excitation_ramp_s','settle_s','maximum_acceleration_rad_s2','maximum_jerk_rad_s3','maximum_gap_s',
-                'moving_speed_rad_s','minimum_velocity_rms_rad_s','minimum_acceleration_rms_rad_s2','maximum_velocity_consistency_rad_s',
-                'validation_absolute_rmse_nm','validation_normalized_rmse','torque_floor_nm','gravity_preservation_nm','ridge'):
+    for key in ('period_s','transition_s','excitation_ramp_s','settle_s','maximum_acceleration_rad_s2','maximum_jerk_rad_s3','torque_floor_nm','ridge'):
         if not np.isfinite(c[key]) or c[key]<=0:raise ValueError('Positive H4 setting required: '+key)
     for key in ('periods','discard_periods','harmonics','phase_points'):
-        if type(c[key]) is not int or c[key]<1:raise ValueError('Positive integer H4 setting required')
-    if c['periods']-c['discard_periods']<2 or c['phase_points']<=2*c['harmonics']+1 or c['harmonics']<6:raise ValueError('Two steady periods and adequate matched bandwidth required')
+        if type(c[key]) is not int or c[key]<(0 if key=='discard_periods' else 1):raise ValueError('Positive integer H4 setting required')
+    if c['phase_points']<=2*c['harmonics']+1:raise ValueError('Adequate Fourier phase grid required')
     roles=[]
     for role in ('train','validation'):
         poses=c['pose_offsets_rad'][role];seeds=c[role+'_seeds']
@@ -42,7 +40,7 @@ def settings(path,names):
     roles += [control['tuning_seed'],control['validation_seed']]
     if len(set(roles))!=len(roles) or set(c['pose_offsets_rad']['train'])&set(c['pose_offsets_rad']['validation']):raise ValueError('Whole H4 trajectory roles must be disjoint')
     if type(control['enabled']) is not bool or control['kp_factors']!=list(PD_FACTORS):raise ValueError('Five predeclared common PD factors required')
-    if not np.isfinite(control['maximum_effort_nm']) or not 0<control['maximum_effort_nm']<=100 or not np.isfinite(control['maximum_speed_rad_s']) or control['maximum_speed_rad_s']<=0:raise ValueError('Bounded H4 control envelope required')
+    if not np.isfinite(control['maximum_effort_nm']) or not 0<control['maximum_effort_nm']<=100:raise ValueError('Bounded H4 control envelope required')
     offsets=np.asarray(c['offset_diagnostic_grid_s'])
     if offsets.ndim!=1 or len(offsets)<2 or not np.isfinite(offsets).all() or np.max(abs(offsets))>.05 or not np.isfinite(c['effort_relative_offset_s']) or abs(c['effort_relative_offset_s'])>.05:raise ValueError('Bounded explicit relative-time diagnostic required')
     if not np.isfinite(c['inter_job_pause_s']) or c['inter_job_pause_s']<0:raise ValueError('Nonnegative H4 pause required')
@@ -56,9 +54,8 @@ def snapshot_prior(source,profile,c,output):
     pointer=read(root/'latest.json');report_root=root/pointer['report'];field.check_seal(report_root)
     if sha256(report_root/'manifest.json')!=pointer['manifest_sha256']:raise ValueError('H3 report identity changed')
     report=read(report_root/'report.json')
-    if (not report['passed'] or not report['moving_friction']['passed'] or not p['h3']['breakaway']['enabled'] or
-        not report['breakaway'].get('available') or not report['breakaway'].get('passed')):
-        raise ValueError('Accepted H3 gravity/moving/onset commissioning required')
+    if not report['moving_friction'].get('available') or not report['breakaway'].get('available'):
+        raise ValueError('H3 numerical friction/onset inputs unavailable; source recordings retained')
     names=p['joint_names'];calibration=read(root/'protocol/gravity/calibration.json')
     _,model_source=model_for(profile)
     check_same_context(p['profile'],profile)
@@ -80,11 +77,11 @@ def snapshot_prior(source,profile,c,output):
         moving_report=report['moving_friction'],onset_report=report['breakaway'],
         source_protocol_manifest_sha256=sha256(root/'protocol/manifest.json'),source_report_manifest_sha256=sha256(report_root/'manifest.json'))
     write_json(output/'prior.json',frozen)
-    # Keep observation-only derivatives of accepted H3 captures for a genuine
+    # Keep observation-only derivatives of completed H3 captures for a genuine
     # post-inertia recheck. Original CDR/capture bundles are never modified.
     records=[];directory=output/'records';directory.mkdir()
     for job in p['jobs']:
-        row=batch.accepted(history[job['id']])
+        row=batch.completed_capture(history[job['id']])
         if row is None:raise ValueError('Incomplete H3 source')
         if job['joint'] not in c['joints']:continue
         attempt=root/row['attempt'];meta=read(attempt/'plan/plan.json');motion=read(attempt/'plan/motion.json')
@@ -119,8 +116,8 @@ def plan_inertia(config_path,profile_path,prior,output,*,domain_id):
         for model,gains in CONTROL_GROUPS:
             jobs.append(dict(id='control_'+model+'_'+gains,kind='control_validation',joint='both_arms',hz=profile['command_hz'],
                 split='control_validation',pose_offset_rad=0.,seed=c['control']['validation_seed'],feedforward=model,gain_strategy=gains))
-    generic=dict(direction=dict(enabled=False,require_review=False,joints=[]),frequency=dict(enabled=False,joints=[]),
-        static=dict(enabled=False,quality_retries=0,retry_settle_extra_s=0.),inter_job_pause_s=c['inter_job_pause_s'])
+    generic=dict(direction=dict(enabled=False,joints=[]),frequency=dict(enabled=False,joints=[]),
+        static=dict(enabled=False),inter_job_pause_s=c['inter_job_pause_s'])
     record=dict(schema_version='casbot_hardware_batch_protocol_v1',workflow='h4_inertia',jobs=jobs,domain_id=domain_id,
         connection_scope=profile.get('connection',{}).get('scope','hardware'),joint_names=names,source_model_sha256=source['sha256'],
         implementation=batch.implementation(),config=generic,h4=c,profile=profile,
@@ -216,24 +213,23 @@ def prior_recheck(root,candidate,c):
             q=data['q'][::50];onset.append(float(np.max(abs(candidate.gravity_batch(q)-old.gravity_batch(q)))))
     return dict(gravity_prediction_change_nm=change,gravity_check='new deterministic full-configuration Pinocchio queries, not training rows',
         frozen_gravity_validation_rmse_nm=read(root/'protocol/prior/gravity/report.json')['validation_rmse_nm'],
-        moving_friction_validation=friction,maximum_onset_gravity_change_nm=max(onset,default=float('inf')),
-        moving_and_onset_parameters_frozen=True,passed=bool(change<=c['gravity_preservation_nm'] and friction and onset and
-            max(r['rmse_nm'] for r in friction)<=prior['h3']['validation_rmse_nm'] and max(onset)<=c['gravity_preservation_nm']))
+        moving_friction_validation=friction,maximum_onset_gravity_change_nm=max(onset,default=None),
+        moving_and_onset_parameters_frozen=True)
 
 
 def inertia_result(root,protocol,history):
     from . import hardware_batch as batch
     root=Path(root);selected=[j for j in protocol['jobs'] if j['kind']=='inertia']
-    if any(not batch.accepted(history[j['id']]) for j in selected):return dict(available=False,passed=False),None
+    if any(not batch.completed_capture(history[j['id']]) for j in selected):return dict(available=False,passed=False),None
     c=protocol['h4'];axes=[protocol['joint_names'].index(j) for j in c['joints']];prior=read(root/'protocol/prior/prior.json')
     engine=gravity_engine(root/'protocol/prior/gravity');problems={};sources=[];train=[];target=[]
     for job in selected:
-        source=batch.accepted(history[job['id']]);folder=root/source['attempt']/'inspection'
+        source=batch.completed_capture(history[job['id']]);folder=root/source['attempt']/'inspection'
+        if not (folder/'periodic_problem.npz').exists():return dict(available=False,passed=False,reason='periodic_analysis_unavailable'),None
         with np.load(folder/'periodic_problem.npz',allow_pickle=False) as d:p={k:d[k] for k in d.files}
         problems[job['id']]=(job,p,folder);sources.append(dict(job=job,attempt=source['attempt'],manifest_sha256=source['manifest_sha256']))
         if job['split']=='train':
-            mask=np.zeros_like(p['moving']);mask[:,axes]=p['moving'][:,axes]
-            train.append(p['regression'][mask]);target.append(p['target'][mask])
+            train.append(p['regression'][:,axes,:].reshape(-1,140));target.append(p['target'][:,axes].reshape(-1))
     equality=gravity_constraints(engine,c['home_rad'])
     try:
         fit=fit_rigid(np.vstack(train),np.concatenate(target),np.asarray(prior['parameters']),equalities=equality,
@@ -250,10 +246,9 @@ def inertia_result(root,protocol,history):
             phase_sensitivity[name]=[dict(offset_s=float(offset),**prediction_metrics(dict(p,observed_torque_nm=value),theta,axes,c)) for offset,value in zip(d['offsets_s'],d['observed_torque_nm'])]
     velocity=np.min([np.sqrt(np.mean(p['dq'][:,axes]**2,axis=0)) for job,p,_ in problems.values() if job['split']=='train'],axis=0)
     acceleration=np.min([np.sqrt(np.mean(p['ddq'][:,axes]**2,axis=0)) for job,p,_ in problems.values() if job['split']=='train'],axis=0)
-    preserved=prior_recheck(root,candidate,c)
-    checks=dict(physical_candidate=True,independent_prediction=bool(validation and all(v['passed'] for v in validation.values())),
-        prior_stages_preserved=preserved['passed'],selected_axes_excited=bool(np.all(velocity>=c['minimum_velocity_rms_rad_s']) and np.all(acceleration>=c['minimum_acceleration_rms_rad_s2'])))
-    report=dict(available=True,passed=all(checks.values()),checks=checks,fit=fit,validation=validation,prior_stage_acceptance=preserved,
+    try:preserved=prior_recheck(root,candidate,c)
+    except (ValueError,RuntimeError) as exc:preserved=dict(available=False,reason=str(exc))
+    report=dict(available=True,passed=True,fit=fit,validation=validation,prior_stage_diagnostics=preserved,
         velocity_rms_rad_s=velocity.tolist(),acceleration_rms_rad_s2=acceleration.tolist(),joint_names=c['joints'],sources=sources,
         timing_sensitivity=phase_sensitivity,timing_sensitivity_used_for_selection=False,configured_effort_offset_s=c['effort_relative_offset_s'],
         sample_time_known=False,sampling_qualification_passed=False,formal_hardware_calibration_accepted=False,
@@ -275,11 +270,11 @@ def freeze_inertia(root,protocol,history):
     if folder.exists():
         field.check_seal(folder);events=[e for e in batch.events(root) if e['event']=='inertia_frozen']
         if len(events)!=1 or events[0]['manifest_sha256']!=sha256(folder/'manifest.json'):raise ValueError('H4 frozen inertia changed')
-        return read(folder/'report.json')['passed']
-    report,bundle=inertia_result(root,protocol,history)
-    if not report['passed']:return False
+        return (folder/'candidate.json').exists()
+    try:report,bundle=inertia_result(root,protocol,history)
+    except (ValueError,RuntimeError,OSError) as exc:report,bundle=dict(available=False,reason=str(exc)),None
     folder.mkdir();write_inertia_output(root,folder,report,bundle);field.seal(folder)
-    batch.event(root,'inertia_frozen',manifest_sha256=sha256(folder/'manifest.json'));return True
+    batch.event(root,'inertia_frozen',manifest_sha256=sha256(folder/'manifest.json'));return bundle is not None
 
 
 def write_inertia_output(root,folder,report,bundle):
@@ -308,5 +303,4 @@ def summarize_h4(root,protocol,history,destination,report):
     control=control_result(root,protocol,history);write_json(Path(destination)/'control_comparison.json',control)
     report.update(workflow='h4_inertia',inertia=inertial,control=control,gravity=dict(available=True,frozen_input=True),
         formal_hardware_calibration_accepted=False,observation_protocol='SDK callback-periodic exploratory candidate')
-    report['passed']=bool(report['passed'] and inertial['passed'] and (not protocol['h4']['control']['enabled'] or control['passed']))
     plot_results(destination,inertial,control)

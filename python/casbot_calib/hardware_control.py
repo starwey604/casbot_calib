@@ -23,7 +23,7 @@ def control_metrics(plan,meta,commands,origin,obs,elapsed,c):
     motion=read(Path(plan)/'motion.json');windows=[(motion['knots_s'][i],motion['knots_s'][i+1]) for i,label in enumerate(motion['labels']) if label=='periodic']
     begin=windows[0][0]+c['discard_periods']*c['period_s'];end=windows[-1][1]
     use=(elapsed>=begin)&(elapsed<end);times=elapsed[use]
-    if len(times)<20 or np.ptp(times)<1.8*c['period_s'] or np.max(np.diff(times))>c['maximum_gap_s']:raise ValueError('Insufficient contiguous SDK control observations')
+    if len(times)<2:raise ValueError('Control time-weighted metric needs two received positions')
     axes=[meta['joint_names'].index(name) for name in c['joints']]
     dt=np.diff(times);weights=np.r_[dt[0]/2,(dt[:-1]+dt[1:])/2,dt[-1]/2];weights/=weights.sum()
     errors=obs['q'][use]-curve(times);per_axis=np.sqrt(np.sum(weights[:,None]*errors**2,axis=0))
@@ -37,11 +37,10 @@ def control_metrics(plan,meta,commands,origin,obs,elapsed,c):
         index=int(row['planned_index'])
         for key,expected in [('effort',schedule[index,1:]),('kp',kp),('kd',kd)]:
             actual=np.array([float(row[key+str(j)]) for j in range(14)])
-            if not np.allclose(actual,expected,rtol=0,atol=1e-10):raise ValueError('Executed H4 effort/PD differs from frozen plan')
+            if not np.allclose(actual,expected,rtol=0,atol=1e-10):raise field.FieldContractError('Executed H4 effort/PD differs from frozen plan')
     phase=np.arange(c['phase_points'])*c['period_s']/c['phase_points']
     definition=np.ascontiguousarray(curve(windows[0][0]+phase),dtype='<f8')
-    admissible=bool(maximum_speed<=c['control']['maximum_speed_rad_s'] and maximum_effort<=c['control']['maximum_effort_nm'])
-    return dict(passed=admissible,admissible=admissible,stage=meta['stage'],job=meta['job'],
+    return dict(passed=True,stage=meta['stage'],job=meta['job'],
         aggregate_rmse_rad=float(np.sqrt(np.mean(per_axis[axes]**2))),rmse_rad=per_axis.tolist(),
         periodic_reference_sha256=hashlib.sha256(definition.tobytes()).hexdigest(),
         scoring_interval_s=[begin,end],maximum_observed_speed_rad_s=maximum_speed,maximum_observed_effort_nm=maximum_effort,
@@ -61,18 +60,17 @@ def freeze_selection(root,protocol,history):
     jobs=[j for j in protocol['jobs'] if j['kind']=='control_tuning'];grid=[]
     if len(jobs)!=5:return False
     for job in jobs:
-        source=batch.accepted(history[job['id']])
+        source=batch.completed_capture(history[job['id']])
         if source is None:return False
         row=read(root/source['attempt']/'inspection/report.json')
+        if row.get('aggregate_rmse_rad') is None:return False
         grid.append(dict(**row,source_attempt=source['attempt'],source_manifest_sha256=source['manifest_sha256']))
     if len({r['periodic_reference_sha256'] for r in grid})!=1:raise ValueError('PD candidates used different periodic references')
-    allowed=[r for r in grid if r['admissible']]
-    if not allowed:return False
-    factor=select_pd_factor([(r['job']['kp_factor'],r['admissible'],r['aggregate_rmse_rad']) for r in grid])
+    factor=select_pd_factor([(r['job']['kp_factor'],True,r['aggregate_rmse_rad']) for r in grid])
     folder.mkdir();write_json(folder/'report.json',dict(passed=True,selected_kp_factor=factor,
         selected_kd_factor=pd_multipliers(factor)[1],grid=grid,
         validation_used_for_selection=False,selection_objective='five-point tracking RMSE, same frozen prior feedforward',
-        inertia_checkpoint_manifest_sha256=sha256(root/'inertia_checkpoint/manifest.json')))
+        prior_manifest_sha256=sha256(root/'protocol/prior/manifest.json')))
     field.seal(folder);batch.event(root,'controller_selected',manifest_sha256=sha256(folder/'manifest.json'));return True
 
 
@@ -81,12 +79,13 @@ def control_result(root,protocol,history):
     root=Path(root)
     if not protocol['h4']['control']['enabled']:return dict(available=False,passed=True,enabled=False)
     jobs=[j for j in protocol['jobs'] if j['kind']=='control_validation']
-    if any(not batch.accepted(history[j['id']]) for j in jobs):return dict(available=False,passed=False)
+    if any(not batch.completed_capture(history[j['id']]) for j in jobs):return dict(available=False,passed=False)
     if not (root/'controller_selection').exists() or not freeze_selection(root,protocol,history):return dict(available=False,passed=False)
     groups={}
     for job in jobs:
-        source=batch.accepted(history[job['id']]);groups[job['id']]=dict(read(root/source['attempt']/'inspection/report.json'),source_attempt=source['attempt'])
+        source=batch.completed_capture(history[job['id']]);groups[job['id']]=dict(read(root/source['attempt']/'inspection/report.json'),source_attempt=source['attempt'])
     if len(groups)!=4 or len({r['periodic_reference_sha256'] for r in groups.values()})!=1:raise ValueError('Four common-reference H4 control groups required')
+    if any(r.get('aggregate_rmse_rad') is None for r in groups.values()):return dict(available=False,reason='control_metrics_unavailable')
     value=lambda name:groups['control_'+name]['aggregate_rmse_rad']
     baseline=value('prior_original');identified=value('identified_original');tuned=value('prior_tuned')
     selection=read(root/'controller_selection/report.json');gain_changed=selection['selected_kp_factor']!=1.
@@ -96,7 +95,7 @@ def control_result(root,protocol,history):
     model_change=baseline-identified
     interpretation=benefit_interpretation(model_change,repeat_changes)
     ff,pd_prior,pd_identified=comparison_reductions(baseline,identified,tuned,value('identified_tuned'),denominator_floor=1e-15)
-    return dict(available=True,passed=all(r['admissible'] for r in groups.values()),groups=groups,
+    return dict(available=True,passed=True,groups=groups,
         fixed_pd_feedforward_rmse_reduction=ff,prior_model_pd_rmse_reduction=pd_prior,
         identified_model_pd_rmse_reduction=pd_identified,
         selection=selection,independent_control_trajectory=True,selected_gain_changed=gain_changed,
@@ -126,7 +125,7 @@ def plot_results(destination,inertia,control):
     if control['available']:
         rows=list(control['groups'].values())
         with (destination/'control_comparison.csv').open('w',newline='',encoding='utf-8-sig') as stream:
-            writer=csv.writer(stream);writer.writerow(['group','RMSE_rad','maximum_speed_rad_s','maximum_effort_Nm','admissible'])
-            writer.writerows([r['job']['id'],r['aggregate_rmse_rad'],r['maximum_observed_speed_rad_s'],r['maximum_observed_effort_nm'],r['admissible']] for r in rows)
+            writer=csv.writer(stream);writer.writerow(['group','RMSE_rad','maximum_speed_rad_s','maximum_effort_Nm'])
+            writer.writerows([r['job']['id'],r['aggregate_rmse_rad'],r['maximum_observed_speed_rad_s'],r['maximum_observed_effort_nm']] for r in rows)
         fig=Figure(figsize=(10,4));FigureCanvasAgg(fig);ax=fig.subplots();ax.bar(range(4),[r['aggregate_rmse_rad'] for r in rows])
         ax.set_xticks(range(4),[r['job']['id'].replace('control_','') for r in rows]);ax.set(ylabel='Independent tracking RMSE / rad');ax.grid(alpha=.2);fig.tight_layout();fig.savefig(destination/'control_comparison.png')

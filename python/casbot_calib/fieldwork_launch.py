@@ -15,6 +15,7 @@ from .fieldwork_storage import new_cache,cache_for,recover_workspace,CacheMonito
 def prepare_gui(args):
     mock=None;monitor=None
     owned=getattr(args,'mock',False);recover=getattr(args,'recover',None)
+    if getattr(args,'mock_diagnostics',False) and not owned:raise ValueError('--mock-diagnostics只用于自建Mock')
     if owned and (args.session or recover or args.preview):raise ValueError('--mock不能与已有会话、恢复或离线预览同时使用')
     if args.preview and (args.session or recover):raise ValueError('离线预览不加载已有会话；请省略--session/--recover')
     if args.session and recover:raise ValueError('--session与--recover不能同时使用')
@@ -32,11 +33,24 @@ def prepare_gui(args):
         if owned:
             if args.scope not in (None,'localhost_contract_mock'):raise ValueError('--mock只支持localhost_contract_mock')
             from .hardware_field import load_profile
-            if load_profile(args.profile).get('connection'):raise ValueError('--mock使用基础profile，不使用旧Mock实例的client_profile')
+            if load_profile(args.profile,manual=True).get('connection'):raise ValueError('--mock使用基础profile，不使用旧Mock实例的client_profile')
+            import json,yaml
+            from .fieldwork_settings import mock_next_path,MOCK_DEFAULTS
+            cfg=yaml.safe_load(Path('configs/fieldwork_mock.yaml').read_text())
+            preference=mock_next_path()
+            if preference.exists():
+                pref=json.loads(preference.read_text())
+                if pref['model_context']!=cfg['model_context']:raise ValueError('下次Mock设置模型不一致：'+str(preference))
+                limits=pref['limits']
+                if set(limits)!=set(MOCK_DEFAULTS):raise ValueError('下次Mock设置不完整：'+str(preference))
+                cfg.update(effort_limit_nm=limits['effort_limit_nm'],kp_limit=limits['kp_limit'],kd_limit=limits['kd_limit'],watchdog_ns=round(limits['watchdog_s']*1e9))
+                cfg['plant']['torque_limit_nm']=limits['torque_limit_nm']
+            mock_config=cache/'mock_config.yaml';mock_config.write_text(yaml.safe_dump(cfg))
             owner=uuid.uuid4().hex
             mock=Child([sys.executable,'-m','casbot_calib.fieldwork_mock','--output',str(cache/'mock'),
-                '--domain-id',str(args.domain_id),'--owner-id',owner,'--profile',str(args.profile),
-                '--pause-file',str(cache/'recording_paused.json')],cache/'mock_launcher.log',pause_file=cache/'recording_paused.json')
+                '--config',str(mock_config),'--domain-id',str(args.domain_id),'--owner-id',owner,'--profile',str(args.profile),
+                '--pause-file',str(cache/'recording_paused.json'),
+                *(['--diagnostics'] if getattr(args,'mock_diagnostics',False) else [])],cache/'mock_launcher.log',pause_file=cache/'recording_paused.json')
             mock.pulse(dict(clock_id=clock_id(),owner_id=owner,monotonic_ns=time.monotonic_ns(),cancel=None))
             deadline=time.monotonic()+45;profile=None
             while profile is None:

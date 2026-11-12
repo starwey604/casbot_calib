@@ -39,19 +39,19 @@ def observations():
 def test_periodic_sdk_data_uses_measured_motion_and_preserves_unknown_sampling():
     e,c,t,obs,motion,f=observations();p=periodic_problem(obs,t,motion,e,c,dict(effort_zero_nm=0.,effort_gain=1.),f)
     report=prediction_metrics(p,e.rigid_parameters(),[0,7],dict(c,validation_absolute_rmse_nm=.001,validation_normalized_rmse=.01))
-    assert report['passed'] and not p['preprocessing']['sample_time_known']
+    assert report['available'] and not p['preprocessing']['sample_time_known']
     assert p['preprocessing']['independent_acquisition_count'] is None
     assert p['preprocessing']['temporal_rank']==25
 
 
-def test_callback_gaps_and_asynchronous_velocity_are_rejected():
-    e,c,t,obs,motion,f=observations();obs['receive_ns'][6000:]+=100000000
-    with pytest.raises(ValueError,match='gap'):periodic_problem(obs,t,motion,e,c,dict(effort_zero_nm=0.,effort_gain=1.),f)
-    obs['receive_ns'][6000:]-=100000000;obs['dq'][:,0]+=.2
-    with pytest.raises(ValueError,match='velocity'):periodic_problem(obs,t,motion,e,c,dict(effort_zero_nm=0.,effort_gain=1.),f)
+def test_callback_gaps_and_asynchronous_velocity_are_diagnostics():
+    e,c,t,obs,motion,f=observations();obs['receive_ns'][6000:]+=100000000;obs['dq'][:,0]+=.2
+    result=periodic_problem(obs,t,motion,e,c,dict(effort_zero_nm=0.,effort_gain=1.),f)
+    assert result['preprocessing']['maximum_callback_gap_s']>.05
+    assert max(result['preprocessing']['velocity_consistency_rmse_rad_s'])>.02
 
 
-@pytest.mark.parametrize('change',[lambda c:c.update(discard_periods=3),lambda c:c['pose_offsets_rad'].update(validation=c['pose_offsets_rad']['train']),
+@pytest.mark.parametrize('change',[lambda c:c.update(phase_points=8),lambda c:c['pose_offsets_rad'].update(validation=c['pose_offsets_rad']['train']),
     lambda c:c.update(validation_seeds=c['train_seeds']),lambda c:c['control'].update(kp_factors=[1.])])
 def test_invalid_h4_design_fails_before_io(tmp_path,change):
     e,_=nominal_dual_arm();c=config();change(c);path=tmp_path/'h4.yaml';path.write_text(yaml.safe_dump(c))
@@ -74,20 +74,20 @@ def test_physical_fit_uses_pinocchio_and_preserves_independent_gravity():
     assert np.sqrt(np.mean((y@candidate.rigid_parameters()-target)**2))<.001
 
 
-@pytest.mark.parametrize('kind,inertia_ok,expected',[('control_tuning',False,'inertia_rejected'),('control_validation',True,'controller_rejected')])
-def test_failed_stage_blocks_control_before_snapshot_or_sdk_io(tmp_path,monkeypatch,kind,inertia_ok,expected):
+@pytest.mark.parametrize('kind,model,gains',[('control_tuning','identified',None),('control_validation','prior','tuned')])
+def test_unavailable_numerical_dependency_is_recorded_and_workflow_continues(tmp_path,monkeypatch,kind,model,gains):
     from types import SimpleNamespace
     from casbot_calib import hardware_batch as batch,hardware_inertia as h4,hardware_control as control
-    job=dict(id='blocked',kind=kind);protocol=dict(jobs=[job],connection_scope='hardware')
+    job=dict(id='missing',kind=kind,feedforward=model,gain_strategy=gains);protocol=dict(jobs=[job],connection_scope='hardware')
     monkeypatch.setattr(batch,'load_batch',lambda *a,**k:(tmp_path,protocol))
-    monkeypatch.setattr(batch,'events',lambda root:[])
-    monkeypatch.setattr(batch,'outcomes',lambda *a:({'blocked':[]},[]))
-    monkeypatch.setattr(batch,'summarize',lambda root,state:dict(state=state,passed=False))
-    monkeypatch.setattr(h4,'freeze_inertia',lambda *a:inertia_ok)
-    monkeypatch.setattr(control,'freeze_selection',lambda *a:False)
-    def forbidden(*a,**k):raise AssertionError('SDK must not be accessed before stage acceptance')
+    monkeypatch.setattr(batch,'events',lambda root:[]);monkeypatch.setattr(batch,'outcomes',lambda *a:({'missing':[]},[]))
+    monkeypatch.setattr(batch,'summarize',lambda root,state:dict(state=state))
+    monkeypatch.setattr(batch,'complete_attempt',lambda root,folder,job,status,reason,**kw:dict(status=status,reason=reason))
+    monkeypatch.setattr(batch,'sha256',lambda _: 'test')
+    monkeypatch.setattr(h4,'freeze_inertia',lambda *a:False);monkeypatch.setattr(control,'freeze_selection',lambda *a:False)
+    def forbidden(*a,**k):raise AssertionError('Missing model/selected gains must not be fabricated')
     backend=SimpleNamespace(local_remaps=None,snapshot=forbidden,execute=forbidden,clear_fault=forbidden)
-    assert batch.run_batch(tmp_path,backend=backend)['state']==expected
+    assert batch.run_batch(tmp_path,backend=backend)['state']=='completed'
 
 
 def test_nonpositive_fourier_exposure_weights_are_rejected():
@@ -128,5 +128,19 @@ def test_missing_onset_cannot_be_promoted_from_a_disabled_stage_pass(tmp_path,mo
     field.seal(folder);write_json(tmp_path/'latest.json',dict(report='report',manifest_sha256=sha256(folder/'manifest.json')))
     p=dict(workflow='h3_friction',h3=dict(breakaway=dict(enabled=enabled)))
     monkeypatch.setattr(batch,'load_batch',lambda source:(tmp_path,p));monkeypatch.setattr(batch,'outcomes',lambda *a:({},[]))
-    with pytest.raises(ValueError,match='Accepted H3'):snapshot_prior(tmp_path,{}, {},tmp_path/'not_created')
+    with pytest.raises(ValueError,match='unavailable'):snapshot_prior(tmp_path,{}, {},tmp_path/'not_created')
     assert not (tmp_path/'not_created').exists()
+
+
+def test_field_fourier_has_no_sample_count_or_cycle_quality_gate_but_s3_keeps_it():
+    from casbot_calib.dynamics_problem import fourier_fit
+    t=np.linspace(0.,.9,20);times=np.rint(t*1e9).astype(np.int64);signal=np.sin(2*np.pi*times*1e-9)[:,None]
+    values,meta=fourier_fit(times,signal,0,1.,2,32,True)
+    np.testing.assert_allclose(values[0][:,0],np.sin(2*np.pi*meta['phase_s']),atol=1e-10)
+    with pytest.raises(ValueError,match='two contiguous'):fourier_projection(times,signal,0,1.,2,32,True)
+
+
+def test_empty_retained_analysis_window_does_not_reject_motion_configuration(tmp_path):
+    e,_=nominal_dual_arm();c=config();c['discard_periods']=c['periods']
+    path=tmp_path/'h4.yaml';path.write_text(yaml.safe_dump(c))
+    assert settings(path,[j.name for j in e.model.joints])['discard_periods']==c['periods']

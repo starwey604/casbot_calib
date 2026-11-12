@@ -47,7 +47,7 @@ def observe(root, relative, cancel_check, publish):
     try:
         result=capture(path,directory/'capture',duration_s=10.,domain_id=session.metadata['domain_id'],
         scope='localhost_contract_mock' if remaps else 'hardware_read_only',live_callback=line,
-        cancel_check=cancel_check,until_stopped=True,tolerate_recording_io_error=True,recording_pause_file=recording_pause_file(session.root))
+        cancel_check=cancel_check,until_stopped=True,tolerate_recording_io_error=True,recording_flush_period_ms=20,recording_pause_file=recording_pause_file(session.root))
     finally:
         if monitor:monitor.close()
     return dict(observation=relative,result=result)

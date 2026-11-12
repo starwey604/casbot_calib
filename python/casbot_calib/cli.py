@@ -35,10 +35,6 @@ def main(argv=None):
     batch_plan.add_argument('--domain-id',type=int,required=True);batch_plan.add_argument('--output',type=Path,required=True)
     batch_run=sub.add_parser('hardware-run-batch',help='ACTUAL SDK batch execution; terminal faults never resume')
     batch_run.add_argument('folder',type=Path);batch_run.add_argument('--resume',action='store_true');batch_run.add_argument('--max-jobs',type=int)
-    direction_template=sub.add_parser('hardware-direction-template',help='Export human physical-direction review template bound to observations')
-    direction_template.add_argument('folder',type=Path);direction_template.add_argument('--output',type=Path,required=True)
-    direction_review=sub.add_parser('hardware-direction-review',help='Import human direction observations; no device writes')
-    direction_review.add_argument('folder',type=Path);direction_review.add_argument('--file',type=Path,required=True)
     batch_analyse=sub.add_parser('hardware-analyse-batch',help='Read-only H2 reports and accepted static-pair gravity fitting')
     batch_analyse.add_argument('folder',type=Path);batch_analyse.add_argument('--output',type=Path,required=True)
     batch_render=sub.add_parser('hardware-render-batch',help='Read-only geometry replay of sealed batch attempts')
@@ -72,6 +68,8 @@ def main(argv=None):
     dynamics_verify=sub.add_parser('verify-dynamics-urdf',help='Recheck an exported inertial URDF and runtime sidecar without fitting or truth')
     dynamics_verify.add_argument('folder',type=Path);dynamics_verify.add_argument('--output',type=Path,required=True)
     vendor_capture=sub.add_parser('vendor-capture',help='S1 subscription-only SDK state recording; no motion or mode changes')
+    vendor_capture.add_argument('--until-stopped',action='store_true',help=argparse.SUPPRESS)
+    vendor_capture.add_argument('--recording-flush-period-ms',type=int,default=0,help=argparse.SUPPRESS)
     vendor_capture.add_argument('--recording-pause-file',type=Path,help=argparse.SUPPRESS)
     vendor_capture.add_argument('--config',type=Path,default=Path('configs/vendor_s1.yaml'))
     vendor_capture.add_argument('--output',type=Path,required=True);vendor_capture.add_argument('--duration',type=float,default=10.)
@@ -234,18 +232,16 @@ def main(argv=None):
         result=plan_friction(args.config,args.profile,args.gravity,args.output,domain_id=args.domain_id)
         print(f"H3状态：{result['state']}；现场候选不等于正式采样资格 -> {args.output}")
         return 0
-    if args.command in ('hardware-plan-batch','hardware-run-batch','hardware-direction-template','hardware-direction-review','hardware-analyse-batch','hardware-render-batch'):
-        from .hardware_batch import plan_batch,run_batch,write_direction_template,import_direction_review,analyse_batch
+    if args.command in ('hardware-plan-batch','hardware-run-batch','hardware-analyse-batch','hardware-render-batch'):
+        from .hardware_batch import plan_batch,run_batch,analyse_batch
         if args.command=='hardware-plan-batch':result=plan_batch(args.config,args.profile,args.output,preset=args.preset,domain_id=args.domain_id)
         elif args.command=='hardware-run-batch':result=run_batch(args.folder,resume=args.resume,max_jobs=args.max_jobs)
-        elif args.command=='hardware-direction-template':result=write_direction_template(args.folder,args.output)
-        elif args.command=='hardware-direction-review':result=import_direction_review(args.folder,args.file)
         elif args.command=='hardware-render-batch':
             from .hardware_batch_viewer import render_batch
             result=render_batch(args.folder,args.output,fps=args.fps,max_seconds_per_attempt=args.max_seconds_per_attempt)
         else:result=analyse_batch(args.folder,args.output)
         print(f"现场批次状态：{result.get('state','完成')}；正式标定资格不由采集状态替代")
-        return 0 if result.get('passed') or result.get('state') in ('planned','checkpoint','awaiting_direction_review','direction_review_recorded','interrupted_at_checkpoint','interrupted') else 1
+        return 0 if result.get('passed') or result.get('state') in ('planned','checkpoint','interrupted_at_checkpoint','interrupted') else 1
     if args.command.startswith('hardware-'):
         from .hardware_field import snapshot_field,prepare_jog,prepare_field,execute_field,analyse_field
         if args.command=='hardware-snapshot':result=snapshot_field(args.config,args.output,args.domain_id)
@@ -306,6 +302,7 @@ def main(argv=None):
     if args.command=='vendor-capture':
         from .vendor_capture import capture
         result=capture(args.config,args.output,duration_s=args.duration,domain_id=args.domain_id,scope=args.scope,
+            recording_flush_period_ms=args.recording_flush_period_ms,until_stopped=args.until_stopped,
             **(dict(recording_pause_file=args.recording_pause_file) if args.recording_pause_file else {}))
         print(f"SDK只读采集：{'完成' if result['completed'] else '中断或失败，原始记录保留'} -> {args.output}")
         return 0 if result['completed'] else 1

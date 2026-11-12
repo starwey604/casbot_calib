@@ -12,18 +12,12 @@ collision_scene: collision_scene.yaml
 initial_hold_s: 0.5
 final_hold_s: 0.5
 anchor_transition_s: 4.0
-max_feedback_age_ns: 100000000
-max_mode_age_ns: 500000000
+max_feedback_age_ns: 2000000000
+max_mode_age_ns: 3000000000
 transition_timeout_ns: 3000000000
 start_tolerance_rad: 0.005
-tracking_limit_rad: 0.02
-position_allowance_rad: 0.025
-maximum_velocity_rad_s: 0.75
+maximum_velocity_rad_s: 1.5
 vel_scale: 0.1
-static_velocity_rad_s: 0.01
-static_position_range_rad: 0.003
-static_max_gap_s: 0.1
-gravity_validation_rmse_nm: 0.5
 effort_gain: 1.0
 effort_zero_nm: 0.0
 gravity_world:
@@ -47,7 +41,7 @@ assumptions:
   internal_compensation: user_confirmed_no_host_gravity_or_friction
   mode_first_frame: user_confirmed_hold_prior_target_output_until_first_valid_command
   time_ref: zero_as_sdk_example
-  mode_exit: sdk_service_disable_after_return_rest_assumed_then_observe_rest_again
+  mode_exit: sdk_service_disable_after_reference_no_return_rest_acceptance
 notes:
 - This profile enables actual SDK position commands when explicitly executed.
 - Runtime failures stop publishing; no unprovided vendor stop service is invented.

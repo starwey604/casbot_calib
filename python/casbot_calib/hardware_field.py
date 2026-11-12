@@ -20,7 +20,11 @@ from .vendor_identity import sha256
 from .vendor_position import executor_binary
 
 
-def load_profile(path):
+class FieldContractError(ValueError):
+    """Changed sealed inputs, execution mismatch or failed geometric proof."""
+
+
+def load_profile(path, *, manual=False):
     path = Path(path).resolve(); config = yaml.safe_load(path.read_text(encoding='utf-8'))
     if config.get('schema_version') != 'casbot_hardware_field_v1' or config.get('execution_scope') != 'hardware_position_stream':
         raise ValueError('Explicit hardware field profile required')
@@ -32,22 +36,22 @@ def load_profile(path):
         raise ValueError('Unsupported field feedback type')
     if config['assumptions']['arm_subset'] != 'user_confirmed_14_arm_axes_leave_waist_head_hands_unchanged' or config['assumptions']['disconnect'] != 'user_assumed_robot_self_protection_when_stream_stops':
         raise ValueError('Record the agreed arm subset and assumed disconnect behavior')
-    for key in ('initial_hold_s', 'final_hold_s', 'anchor_transition_s', 'max_feedback_age_ns', 'max_mode_age_ns',
-                'transition_timeout_ns', 'start_tolerance_rad', 'tracking_limit_rad', 'position_allowance_rad',
-                'maximum_velocity_rad_s', 'vel_scale', 'static_velocity_rad_s', 'static_position_range_rad',
-                'static_max_gap_s', 'gravity_validation_rmse_nm'):
-        if not np.isfinite(config[key]) or config[key] <= 0:
-            raise ValueError('Positive finite field limit required: ' + key)
-    if config['vel_scale'] > 1 or config['position_allowance_rad'] < config['tracking_limit_rad']:
-        raise ValueError('Invalid field speed scale or tracking envelope')
-    if config.get('gravity_feedforward','none') not in ('none','nominal'):raise ValueError('Explicit nominal/none bootstrap gravity policy required')
-    for key in ('effort_gain', 'effort_zero_nm'):
-        value = np.broadcast_to(np.asarray(config[key], dtype=float), (14,))
-        if not np.isfinite(value).all() or (key == 'effort_gain' and np.any(value == 0)):
-            raise ValueError('Finite nonzero effort scale / finite zero required')
-    gravity = np.asarray(config['gravity_world'], dtype=float)
-    if gravity.shape != (3,) or not np.isfinite(gravity).all() or np.linalg.norm(gravity) <= 0:
-        raise ValueError('Finite nonzero installation gravity vector required')
+    if not manual:
+        for key in ('initial_hold_s', 'final_hold_s', 'anchor_transition_s', 'max_feedback_age_ns', 'max_mode_age_ns',
+                    'transition_timeout_ns', 'start_tolerance_rad',
+                    'maximum_velocity_rad_s', 'vel_scale'):
+            if not np.isfinite(config[key]) or config[key] <= 0:
+                raise ValueError('Positive finite field limit required: ' + key)
+        if config['vel_scale'] > 1:
+            raise ValueError('Invalid field speed scale')
+        if config.get('gravity_feedforward','none') not in ('none','nominal'):raise ValueError('Explicit nominal/none bootstrap gravity policy required')
+        for key in ('effort_gain', 'effort_zero_nm'):
+            value = np.broadcast_to(np.asarray(config[key], dtype=float), (14,))
+            if not np.isfinite(value).all() or (key == 'effort_gain' and np.any(value == 0)):
+                raise ValueError('Finite nonzero effort scale / finite zero required')
+        gravity = np.asarray(config['gravity_world'], dtype=float)
+        if gravity.shape != (3,) or not np.isfinite(gravity).all() or np.linalg.norm(gravity) <= 0:
+            raise ValueError('Finite nonzero installation gravity vector required')
     config['scene'] = yaml.safe_load((path.parent / config['collision_scene']).read_text(encoding='utf-8'))
     collision_for(config)
     config['model_context']=context_for(config).identity
@@ -75,14 +79,19 @@ def check_seal(root):
     # Static preset manifests wrap the map; field bundles use the map directly.
     entries = manifest.get('files', manifest)
     actual = {str(p.relative_to(root)) for p in root.rglob('*') if p.is_file() and p != root / 'manifest.json'}
-    if actual != set(entries): raise ValueError('Field manifest coverage changed')
+    if actual != set(entries): raise FieldContractError('Field manifest coverage changed')
     for name, digest in entries.items():
         path = (root / name).resolve()
         if not path.is_relative_to(root.resolve()) or sha256(path) != digest:
-            raise ValueError('Frozen field input changed: ' + name)
+            raise FieldContractError('Frozen field input changed: ' + name)
 
 
-def params(config, names):
+def params(config, names, *, manual=False):
+    if manual:
+        return dict(execution_scope=config['execution_scope'],joint_names=names,
+            **{k:config[k] for k in ('joint_topic','feedback_type','mode_topic','command_topic','mode_service','stop_service',
+                'max_feedback_age_ns','max_mode_age_ns','transition_timeout_ns','maximum_velocity_rad_s')},
+            command_period_ns=1_000_000_000//config['command_hz'],vel_scale=config.get('vel_scale',.1))
     experiment={}
     if config.get('gravity_feedforward')=='nominal':
         experiment=dict(gravity_feedforward_enabled=True,
@@ -95,11 +104,22 @@ def params(config, names):
     return dict(execution_scope=config['execution_scope'], joint_names=names,
         **{k: config[k] for k in ('joint_topic', 'feedback_type', 'mode_topic', 'command_topic', 'mode_service', 'stop_service',
             'max_feedback_age_ns', 'max_mode_age_ns', 'transition_timeout_ns', 'start_tolerance_rad',
-            'tracking_limit_rad', 'position_allowance_rad', 'maximum_velocity_rad_s', 'vel_scale')},
+            'maximum_velocity_rad_s', 'vel_scale')},
         command_period_ns=1_000_000_000 // config['command_hz'], **experiment)
 
 
-def run_executor(config, output, domain_id, *, snapshot=False, plan=None, timeout_s=30, local_remaps=None,cancel_check=None, manual_command=None, manual_effort_limit_nm=10., on_output=None, recording_pause_file=None):
+def print_field_limit(line):
+    if not line.startswith('FIELDWORK_LIMIT '): return
+    from .fieldwork_status import joint_label
+    value = json.loads(line[len('FIELDWORK_LIMIT '):])
+    if value['action'] == 'recovered':
+        print('反馈已回到观察范围；发送继续。', flush=True); return
+    field = dict(position_lower='位置下限',position_upper='位置上限',velocity='速度绝对值')[value['field']]
+    action = '仅记录，继续发送' if value['action'] == 'warn' else '已停止发送'
+    print(f"{joint_label(value['joint'])}：{field}超限，反馈 {value['value']:.6f} {value['unit']}，阈值 {value['threshold']:.6f} {value['unit']}；{action}。", flush=True)
+
+
+def run_executor(config, output, domain_id, *, snapshot=False, plan=None, timeout_s=30, local_remaps=None,cancel_check=None, manual_command=None, manual_effort_limit_nm=10., manual_policy=None, on_output=None, recording_pause_file=None):
     if not 0 <= domain_id <= 232:
         raise ValueError('Explicit ROS domain 0..232 required')
     from .sdk_connection import connection_remaps
@@ -109,7 +129,9 @@ def run_executor(config, output, domain_id, *, snapshot=False, plan=None, timeou
         if snapshot or plan is not None:
             raise ValueError('Manual stream cannot consume a frozen trajectory or snapshot mode')
         config = dict(config, gravity_feedforward='none', breakaway_parameters={})
-    values = params(config, [j.name for j in engine.model.joints]); values['snapshot_only'] = snapshot
+    elif on_output is None:
+        on_output = print_field_limit
+    values = params(config, [j.name for j in engine.model.joints],**(dict(manual=True) if manual_policy else {})); values['snapshot_only'] = snapshot
     root = Path(output).resolve(); root.mkdir(parents=True, exist_ok=False)
     values['output'] = str(root / 'execution')
     if not snapshot:
@@ -119,6 +141,7 @@ def run_executor(config, output, domain_id, *, snapshot=False, plan=None, timeou
         else:
             values.update(manual_stream=True, manual_command_file=str(Path(manual_command).resolve()),
                           manual_effort_limit_nm=manual_effort_limit_nm)
+            if manual_policy:values['manual_policy_file']=str(Path(manual_policy).resolve())
     if recording_pause_file:
         if manual_command is None:raise ValueError('Recording pause is exclusive to the manual workspace')
         values['recording_pause_file']=str(recording_pause_file)
@@ -144,12 +167,16 @@ def run_executor(config, output, domain_id, *, snapshot=False, plan=None, timeou
     observation_path = root / 'observation.yaml'; observation_path.write_text(yaml.safe_dump(observation))
     import sys
     recorder_command=[sys.executable,'-m','casbot_calib.cli','vendor-capture','--config',str(observation_path),
-        '--output',str(root/'raw_state'),'--duration',str(timeout_s+5),'--domain-id',str(domain_id),
+        '--output',str(root/'raw_state'),'--duration',str(timeout_s+5 if timeout_s is not None else 10),'--domain-id',str(domain_id),
         '--scope','localhost_contract_mock' if local_remaps else 'hardware_read_only']
+    if manual_command is not None:recorder_command+=['--recording-flush-period-ms','20']
+    if timeout_s is None:recorder_command+=['--until-stopped']
     if recording_pause_file:recorder_command+=['--recording-pause-file',str(recording_pause_file)]
-    with recording_process(recorder_command,environment,root/'recorder.log',root/'raw_state/raw/recorder.json',**(dict(cancel_check=cancel_check) if cancel_check else {})) as recorder:
+    with recording_process(recorder_command,environment,root/'recorder.log',root/'raw_state/raw/recorder.json',**(dict(cancel_check=cancel_check) if cancel_check else {}),
+            **(dict(ready_timeout_s=config.get('manual_recording_start_timeout_s',10.)) if manual_policy else {})) as recorder:
         process_result=run_process(command,environment,root/'process.log',timeout_s=timeout_s,recorder=recorder,cancel_check=cancel_check,**(dict(on_output=on_output) if on_output else {}),
-            **(dict(recording_pause_file=recording_pause_file) if recording_pause_file else {}))
+            **(dict(recording_pause_file=recording_pause_file) if recording_pause_file else {}),
+            **(dict(stop_timeout_s=config.get('manual_stop_timeout_s',3.)+5) if manual_policy else {}))
     code=process_result.returncode;interruption=process_result.interruption
     path = root / 'execution/result.json'
     result = json.loads(path.read_text()) if path.exists() else dict(passed=False, reason='executor_did_not_finish' if process_result.started else 'executor_not_started',
@@ -189,7 +216,7 @@ def snapshot_binding(snapshot, config=None):
         source_domain_id=source.get('domain_id'))
 
 
-def prepare_field(profile, static_plan, snapshot, output, *, max_poses_per_split=None, candidate_ids=None, settle_extra_s=0.):
+def prepare_field(profile, static_plan, snapshot, output, *, max_poses_per_split=None, candidate_ids=None):
     config = load_profile(profile); static_plan = Path(static_plan).resolve(); snapshot = Path(snapshot).resolve()
     check_seal(static_plan); start = _read_snapshot(snapshot)
     binding = snapshot_binding(snapshot, config)
@@ -204,8 +231,6 @@ def prepare_field(profile, static_plan, snapshot, output, *, max_poses_per_split
         raise ValueError('Field and static collision scenes differ')
     if max_poses_per_split is not None and (type(max_poses_per_split) is not int or max_poses_per_split < 1):
         raise ValueError('Positive commissioning pose cap required')
-    if not np.isfinite(settle_extra_s) or settle_extra_s < 0:
-        raise ValueError('Nonnegative static retry settling extension required')
     candidates = json.loads((static_plan / 'candidates.json').read_text()); selected = {}
     for arm in ('left', 'right'):
         for split in ('train', 'validation'):
@@ -217,32 +242,46 @@ def prepare_field(profile, static_plan, snapshot, output, *, max_poses_per_split
             raise ValueError('Explicit distinct selected static candidates required')
         selected = {key: selected[key] for key in candidate_ids}
     root = output_outside(output, static_plan, snapshot); root.mkdir(parents=True, exist_ok=False)
+    motions = [dict(json.loads((static_plan / 'plans' / name / 'motion.json').read_text()), trial_name=name)
+        for name in source_report['planned_execution_order']]
+    motions = [m for m in motions if m['conditions']['candidate_id'] in selected]
+    selection = dict(pose_cap_per_arm_split=max_poses_per_split, selected_candidate_ids=list(selected),
+        preset_manifest_sha256=sha256(static_plan / 'manifest.json'))
+    recipe = dict(kind='static', home_rad=preset['home_rad'], planning_envelope=preset['planning_envelope'],
+        motions=motions, selection=selection)
+    motion, trials = _static_motion(config, start, recipe)
+    return finish_plan(root, config, motion, trials, dict(**selection, **binding, replan_recipe=recipe))
+
+
+def _static_motion(config, start, recipe):
+    """Rebuild the same selected static targets from a newly measured start."""
     motion = Motion('hardware_static_sequence', 'gravity', start)
     motion.add(config['initial_hold_s'], start, label='observed_start_hold')
-    add_bounded_move(motion, preset['home_rad'], config['anchor_transition_s'], preset['planning_envelope'], 'to_preset_anchor')
+    add_bounded_move(motion, recipe['home_rad'], config['anchor_transition_s'], recipe['planning_envelope'], 'to_preset_anchor')
     trials = []
-    for name in source_report['planned_execution_order']:
-        metadata = json.loads((static_plan / 'plans' / name / 'motion.json').read_text())
-        if metadata['conditions']['candidate_id'] not in selected: continue
+    for metadata in recipe['motions']:
+        name = metadata['trial_name']
         begin = motion.duration; knots = metadata['knots_s']; labels = metadata['labels']; measure = None
         for i, label in enumerate(labels):
             state = np.asarray(metadata['states'][i + 1])
             if np.max(abs(state[1:])) > 1e-12: raise ValueError('Static field expects rest-to-rest preset segments')
             a = motion.duration
-            motion.add(knots[i + 1] - knots[i] + (settle_extra_s if label == 'settle' else 0), state[0], label=label)
+            motion.add(knots[i + 1] - knots[i], state[0], label=label)
             if label == 'static_measure': measure = (a, motion.duration)
         if measure is None: raise ValueError('Missing static measurement window')
         trials.append(dict(name=name, conditions=metadata['conditions'], begin_s=begin, end_s=motion.duration,
             measure_begin_s=measure[0], measure_end_s=measure[1]))
-    add_bounded_move(motion, start, config['anchor_transition_s'], preset['planning_envelope'], 'return_observed_start')
+    add_bounded_move(motion, start, config['anchor_transition_s'], recipe['planning_envelope'], 'return_observed_start')
     motion.add(config['final_hold_s'], start, label='observed_start_final_hold')
-    return finish_plan(root, config, motion, trials, dict(pose_cap_per_arm_split=max_poses_per_split,
-        selected_candidate_ids=list(selected), settle_extra_s=settle_extra_s,
-        **binding, preset_manifest_sha256=sha256(static_plan / 'manifest.json')))
+    return motion, trials
 
 
 def prepare_jog(profile, snapshot, output, joint_name, amplitude_deg=1., *, anchor_rad=None):
-    config = load_profile(profile); start = _read_snapshot(snapshot); engine, _ = model_for(config)
+    return _prepare_jog(load_profile(profile), snapshot, output, joint_name, amplitude_deg, anchor_rad=anchor_rad)
+
+
+def _prepare_jog(config, snapshot, output, joint_name, amplitude_deg, *, anchor_rad=None, bindings=None):
+    start = _read_snapshot(snapshot); engine, _ = model_for(config)
     binding = snapshot_binding(snapshot, config)
     names = [j.name for j in engine.model.joints]
     if joint_name not in names or not np.isfinite(amplitude_deg) or not 0 < amplitude_deg <= 5:
@@ -273,7 +312,34 @@ def prepare_jog(profile, snapshot, output, joint_name, amplitude_deg=1., *, anch
     motion.conditions.update(comparison_window_s=[comparison_begin, comparison_end],
         comparison_reference_sha256=hashlib.sha256(json.dumps(definition, sort_keys=True).encode()).hexdigest(),
         comparison_anchor_rad=anchor.tolist())
-    return finish_plan(root, config, motion, [], binding)
+    recipe = dict(kind='jog', joint=joint_name, amplitude_deg=amplitude_deg,
+        anchor_rad=None if anchor_rad is None else anchor.tolist())
+    return finish_plan(root, config, motion, [], dict(**binding, **(bindings or {}), replan_recipe=recipe))
+
+
+def replan_field(plan, snapshot, output):
+    """Use sealed H1 recipes, not changed source YAML or an uncertified q offset."""
+    root = Path(plan).resolve(); check_seal(root)
+    metadata = json.loads((root / 'plan.json').read_text()); recipe = metadata['replan_recipe']
+    config = metadata['config']; binding = snapshot_binding(snapshot, config)
+    if metadata.get('source_domain_id') is not None and binding['source_domain_id'] != metadata['source_domain_id']:
+        raise ValueError('Start replan must use the original ROS domain')
+    binary, sdk = executor_binary()
+    if sha256(binary) != metadata['executor_sha256'] or sdk != metadata['sdk_identity']:
+        raise ValueError('Executor/SDK changed during start replan; create a new plan')
+    binding['replanned_from_manifest_sha256'] = sha256(root / 'manifest.json')
+    output_outside(output, root, snapshot)
+    if recipe['kind'] == 'jog':
+        return _prepare_jog(config, snapshot, output, recipe['joint'], recipe['amplitude_deg'],
+            anchor_rad=recipe['anchor_rad'], bindings={'replanned_from_manifest_sha256': binding['replanned_from_manifest_sha256']})
+    if recipe['kind'] == 'zero':
+        from .fieldwork_zero import prepare_zero
+        return prepare_zero(config, snapshot, output, recipe['target_rad'], recipe['duration_s'], bindings=binding)
+    if recipe['kind'] != 'static': raise ValueError('Unsupported field start-replan recipe')
+    start = _read_snapshot(snapshot); destination = Path(output).resolve(); destination.mkdir(parents=True, exist_ok=False)
+    motion, trials = _static_motion(config, start, recipe)
+    return finish_plan(destination, config, motion, trials,
+        dict(**recipe['selection'], **binding, replan_recipe=recipe))
 
 
 def finish_plan(root, config, motion, trials, bindings):
@@ -305,13 +371,13 @@ def finish_plan(root, config, motion, trials, bindings):
         command_period_ns=period, trials=trials, **bindings,
         executor_sha256=sha256(binary), sdk_identity=sdk, hardware_command_path_implemented=True,
         physical_motion_qualified=False, tracking_tube_certified=False,
-        collision_scope='nominal reference and sampled-command interpolant; tracking guard is runtime commissioning protection, not a certified stop/tracking tube',
+        collision_scope='nominal reference and sampled-command interpolant; no runtime tracking-error gate or certified stop/tracking tube',
         source_assumptions=config['assumptions'])
     write_json(root / 'plan.json', report); seal(root)
     return report
 
 
-def execute_field(plan, output, domain_id, *, local_remaps=None,cancel_check=None):
+def execute_field(plan, output, domain_id, *, local_remaps=None,cancel_check=None,replan_start=True):
     root = Path(plan).resolve(); check_seal(root); metadata = json.loads((root / 'plan.json').read_text())
     output_outside(output, root)
     if metadata.get('source_domain_id') is not None and metadata['source_domain_id'] != domain_id:
@@ -322,8 +388,81 @@ def execute_field(plan, output, domain_id, *, local_remaps=None,cancel_check=Non
     engine, source = model_for(metadata['config'])
     if source['sha256'] != metadata['source_model_sha256'] or metadata['joint_names'] != [j.name for j in engine.model.joints]:
         raise ValueError('Field model changed')
-    return run_executor(metadata['config'], output, domain_id, plan=root / 'position_plan.csv',
+    result = run_executor(metadata['config'], output, domain_id, plan=root / 'position_plan.csv',
         timeout_s=metadata['duration_s'] + 45, local_remaps=local_remaps,cancel_check=cancel_check)
+    if replan_start and start_replan_required(result):
+        if 'replan_recipe' not in metadata:
+            print('起点已变化，尚未申请模式或发送指令；旧计划没有重规划配方，请重新快照/规划。', flush=True)
+            return result
+        return _execute_start_replans(root, Path(output).resolve(), domain_id, result,
+            local_remaps=local_remaps, cancel_check=cancel_check)
+    return result
+
+
+def start_replan_required(result):
+    """Only a proven pre-control rejection is eligible; never recover SDK faults."""
+    return (not result.get('passed') and result.get('requires_start_replan') is True
+        and result.get('reason') == 'start_pose_changed' and result.get('mode_requested') is False
+        and result.get('published_commands') == 0 and not result.get('fault')
+        and not result.get('supervisor_interruption'))
+
+
+def announce_start_replan(result):
+    error = result.get('start_pose_error_rad', [])
+    detail = f'；最大偏差 {max(abs(x) for x in error):.6f} rad' if error else ''
+    print('起点已变化'+detail+'；尚未申请模式或发送指令，正在重新读取并规划当前单元。Ctrl+C可取消。', flush=True)
+
+
+def _execute_start_replans(original, output, domain_id, rejected, *, local_remaps, cancel_check):
+    # The ordinary capture layout is unchanged unless its start is rejected.
+    # Move the completed rejected bundle intact into a collection, never edit it.
+    archive = output / 'start_replans/attempt_000/capture'; archive.mkdir(parents=True)
+    for path in list(output.iterdir()):
+        if path.name != 'start_replans': path.rename(archive / path.name)
+    attempts = [dict(plan=str(original), capture=str(archive.relative_to(output)), result=rejected)]
+    current = original; result = rejected; effective = {}
+    try:
+        while start_replan_required(result):
+            announce_start_replan(result)
+            folder = output / 'start_replans' / f'attempt_{len(attempts):03d}'; folder.mkdir()
+            metadata = json.loads((current / 'plan.json').read_text())
+            result = run_executor(metadata['config'], folder / 'snapshot', domain_id,
+                snapshot=True, local_remaps=local_remaps, cancel_check=cancel_check)
+            attempt = dict(snapshot=str((folder / 'snapshot').relative_to(output)))
+            attempts.append(attempt)
+            if not result['passed']:
+                attempt['result'] = result; break
+            replan_field(current, folder / 'snapshot', folder / 'plan')
+            current = folder / 'plan'
+            result = execute_field(current, folder / 'capture', domain_id, local_remaps=local_remaps,
+                cancel_check=cancel_check, replan_start=False)
+            effective = dict(effective_plan=str(current.relative_to(output)),
+                effective_capture=str((folder / 'capture').relative_to(output)))
+            attempt.update(plan=effective['effective_plan'], capture=effective['effective_capture'], result=result)
+    except (Exception, KeyboardInterrupt) as exc:
+        result = dict(passed=False, reason='start_replan_interrupted' if isinstance(exc, KeyboardInterrupt) else 'start_replan_failed', error=str(exc))
+        raise
+    finally:
+        write_json(output / 'start_replans.json', dict(attempts=attempts))
+        result = dict(result, schema_version='casbot_field_start_replans_v1', snapshot_only=False,
+            original_plan_manifest_sha256=sha256(original / 'manifest.json'), **effective)
+        write_json(output / 'result.json', result); seal(output)
+    return result
+
+
+def resolve_field_capture(plan, capture):
+    """Keep hardware-analyse's original plan/capture entry points after a replan."""
+    plan, capture = Path(plan).resolve(), Path(capture).resolve()
+    result = json.loads((capture / 'result.json').read_text())
+    if result.get('schema_version') != 'casbot_field_start_replans_v1': return plan, capture
+    check_seal(plan); check_seal(capture)
+    if sha256(plan / 'manifest.json') != result['original_plan_manifest_sha256']:
+        raise ValueError('Start-replan collection belongs to a different original plan')
+    if not result['passed']: raise ValueError('Completed field sequence required; start-replan collection did not finish')
+    paths = [(capture / result[key]).resolve() for key in ('effective_plan', 'effective_capture')]
+    if any(not path.is_relative_to(capture) or path == capture for path in paths):
+        raise ValueError('Start-replan artifacts must belong to this capture collection')
+    return tuple(paths)
 
 
 def read_feedback(path, *, require_effort=True):
@@ -339,56 +478,53 @@ def read_feedback(path, *, require_effort=True):
     return dict(receive_ns=receive, publish_stamp_ns=stamps, **arrays)
 
 
-class StaticWindowError(ValueError):
-    """A normally completed capture may be reacquired with more settling."""
-
-
 def static_means(metadata, obs, elapsed, config):
     means = []
     for trial in metadata['trials']:
         use = (elapsed >= trial['measure_begin_s']) & (elapsed < trial['measure_end_s'])
         count = int(use.sum())
-        if count < 2: raise StaticWindowError('No received static window: ' + trial['name'])
+        if not count:
+            means.append(dict(name=trial['name'],conditions=trial['conditions'],q=None,torque=None,
+                received_publications=0,available=False,sample_time_known=False))
+            continue
         times = elapsed[use]; q = obs['q'][use]; v = obs['dq'][use]
-        if (times[-1] - times[0] < .8 * (trial['measure_end_s'] - trial['measure_begin_s']) or
-            np.max(np.diff(times)) > config['static_max_gap_s'] or np.max(abs(v)) > config['static_velocity_rad_s'] or
-            np.max(np.ptp(q, axis=0)) > config['static_position_range_rad']):
-            raise StaticWindowError('Unsettled/incomplete received static window: ' + trial['name'])
         torque = (obs['effort_raw'][use] - config['effort_zero_nm']) * config['effort_gain']
         means.append(dict(name=trial['name'], conditions=trial['conditions'], q=q.mean(axis=0),
-            torque=torque.mean(axis=0), received_publications=count, independent_acquisition_count=None,
+            torque=torque.mean(axis=0), received_publications=count, available=True,
+            observed_duration_s=float(times[-1]-times[0]),maximum_received_speed_rad_s=float(np.max(abs(v))),
+            position_span_rad=np.ptp(q,axis=0),maximum_callback_gap_s=float(np.max(np.diff(times))) if count>1 else None, independent_acquisition_count=None,
             sample_time_known=False, time_basis='local callback windows relative to executed plan; not acquisition time'))
     return means
 
 
 def field_observations(plan, capture):
     """Shared immutable SDK capture checks; time remains callback availability."""
-    root = Path(plan).resolve(); capture = Path(capture).resolve(); check_seal(root); check_seal(capture)
+    root, capture = resolve_field_capture(plan, capture); check_seal(root); check_seal(capture)
     metadata = json.loads((root / 'plan.json').read_text()); result = json.loads((capture / 'result.json').read_text())
     if not result['passed']: raise ValueError('Completed field sequence required; failed captures remain diagnostic only')
     request = json.loads((capture / 'request.json').read_text())
     if request['config'] != metadata['config'] or request['executor_sha256'] != metadata['executor_sha256']:
-        raise ValueError('Capture differs from frozen field plan')
+        raise FieldContractError('Capture differs from frozen field plan')
     if request['source_plan_csv_sha256'] != sha256(root / 'position_plan.csv'):
-        raise ValueError('Capture executed a different position plan')
+        raise FieldContractError('Capture executed a different position plan')
     with (capture / 'execution/commands.csv').open() as stream: commands = list(csv.DictReader(stream))
     if not commands: raise ValueError('Missing executed command history')
     origin = int(commands[0]['planned_ns']) - int(commands[0]['planned_index']) * metadata['command_period_ns']
     if any(int(r['planned_ns']) - int(r['planned_index']) * metadata['command_period_ns'] != origin for r in commands):
-        raise ValueError('Field command clock origin changed')
+        raise FieldContractError('Field command clock origin changed')
     obs = read_feedback(capture / 'execution/feedback.csv', require_effort=metadata.get('stage') != 'position'); config = metadata['config']
     elapsed = (obs['receive_ns'] - np.int64(origin)) * 1e-9
     engine, _ = model_for(config)
     model = engine.model; model.gravity_world = np.asarray(config.get('gravity_world', model.gravity_world)); engine = type(engine)(model)
     actual_collision = certify_polyline(collision_for(config,engine), obs['q'],
-        (obs['receive_ns'] - obs['receive_ns'][0]) * 1e-9, clearance_m=config['scene']['clearance_m'],
-        max_gap_s=config['static_max_gap_s'])
-    if not actual_collision['passed']: raise ValueError('Received field path interpolant failed collision gate')
+        (obs['receive_ns'] - obs['receive_ns'][0]) * 1e-9, clearance_m=config['scene']['clearance_m'])
+    if not actual_collision['passed']: raise FieldContractError('Received field path interpolant failed collision gate')
     return metadata,commands,origin,obs,elapsed,actual_collision
 
 
 def analyse_field(plan, capture, output, *, windows_only=False):
     root = Path(plan).resolve(); capture = Path(capture).resolve(); output_outside(output,root,capture)
+    root, capture = resolve_field_capture(root, capture)
     metadata,commands,origin,obs,elapsed,actual_collision=field_observations(root,capture)
     config=metadata['config']
     if metadata.get('stage') == 'position':
@@ -402,15 +538,14 @@ def analyse_field(plan, capture, output, *, windows_only=False):
         error = q - curve(t); moving = np.ptp(curve(t), axis=0) > .001 if len(t) else np.zeros(14, dtype=bool)
         reference_span = np.ptp(curve(t), axis=0) if len(t) else np.zeros(14)
         observed_span = np.ptp(q, axis=0) if len(t) else np.zeros(14)
-        motion_observed = bool(np.any(moving) and np.all(observed_span[moving] >= .5 * reference_span[moving]))
         lag = None; boundary = None
         if len(t) > 20 and np.any(moving):
             objective = lambda delta: float(np.mean((q[:, moving] - curve(np.clip(t - delta, 0, curve.x[-1]))[:, moving]) ** 2))
             fitted = minimize_scalar(objective, bounds=(0., .15), method='bounded', options={'xatol': 1e-6})
             lag = float(fitted.x * 1000); boundary = bool(fitted.x < .0001 or fitted.x > .1499)
         output = Path(output).resolve(); output.mkdir(parents=True, exist_ok=False)
-        report = dict(passed=motion_observed, stage='position', source_assumptions=config['assumptions'],
-            motion_observed=motion_observed, commanded_span_rad=reference_span,
+        report = dict(passed=True, analysis_available=True, stage='position', source_assumptions=config['assumptions'],
+            commanded_span_rad=reference_span,
             comparison_window_s=[begin, end], comparison_reference_sha256=conditions.get('comparison_reference_sha256'),
             comparison_feedback_receive_frequency=rates(obs['receive_ns'][active]),
             comparison_command_publish_frequency=rates(np.array([int(r['publish_ns']) for r in commands
@@ -450,14 +585,13 @@ def write_gravity_candidate(means, config, output, metadata):
     model = engine.model; model.gravity_world = np.asarray(config.get('gravity_world', model.gravity_world)); engine = type(engine)(model)
     batches = {'train': [], 'validation': []}; by_pose = {}; spreads = []
     for row in means:
+        if row.get('q') is None or row.get('torque') is None:continue
         c = row['conditions']; by_pose.setdefault((c['batch'], c['pose']), []).append(row)
     for (split, pose), rows in by_pose.items():
-        if len(rows) != 2 or {r['conditions']['approach'] for r in rows} != {-1, 1}:
-            raise ValueError('Complete opposite-approach pair required')
         q = np.array([r['q'] for r in rows]); z = np.zeros_like(q)
         y = engine.regressor_batch(q, z, z)['regressor'].mean(axis=0)
         torque = np.mean([r['torque'] for r in rows], axis=0)
-        spreads.append(abs(np.asarray(rows[0]['torque']) - rows[1]['torque']) / 2)
+        spreads.append(np.ptp(np.array([r['torque'] for r in rows]),axis=0)/2)
         batches[split].append((y, torque, pose))
     if not all(batches.values()): raise ValueError('Disjoint training/validation pairs required')
     y = np.array([r[0] for r in batches['train']]); target = np.array([r[1] for r in batches['train']])
@@ -484,7 +618,6 @@ def write_gravity_candidate(means, config, output, metadata):
         frequency_scope='local command publication and feedback callback; not motor acquisition or device adoption rate',
         validation_rmse_nm=rmse, nominal_validation_rmse_nm=nominal_rmse,
         paired_approach_half_spread_nm=np.max(spreads, axis=0),
-        commissioning_validation_passed=bool(np.max(rmse) <= config['gravity_validation_rmse_nm']),
         training_poses=[r[2] for r in batches['train']], validation_poses=[r[2] for r in batches['validation']],
         scope='exploratory field gravity under recorded assumptions; not qualified S3/S4/P0 acceptance',
         hardware_calibration_accepted=False, physical_stop_verified=False, sample_time_known=False,

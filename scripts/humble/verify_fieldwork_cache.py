@@ -12,13 +12,13 @@ import uuid
 
 def crash_case(root,domain):
     import subprocess,sys
-    command=[sys.executable,'-m','casbot_calib.fieldwork_cli','gui','--mock','--domain-id',str(domain),'--cache-limit-mib','32']
+    command=[sys.executable,'-m','casbot_calib.fieldwork_cli','gui','--mock','--mock-diagnostics','--domain-id',str(domain),'--cache-limit-mib','32']
     with (root/'gui.log').open('x') as log:
         child=subprocess.Popen(command,stdout=log,stderr=subprocess.STDOUT)
         try:
             deadline=time.monotonic()+45;frame=None
             while time.monotonic()<deadline:
-                frames=list((root/'cache').glob('sessions/*/workspace/view/frame.npy'))
+                frames=list((root/'cache').glob('sessions/*/workspace/view/rendered.json'))
                 if frames:frame=frames[0];break
                 if child.poll() is not None:raise RuntimeError('GUI提前退出，查看gui.log')
                 time.sleep(.05)
@@ -97,13 +97,13 @@ def main():
                     queue.remove(item)
             elapsed=time.monotonic()-state['at'];step=state['step']
             if time.monotonic()-state['start']>75:
-                checks[scenario+'_timeout']=False;hello_imgui.get_runner_params().app_shall_exit=True;return
+                checks[scenario+'_timeout']=False;ui.frames=desk.frame+1;return
             if scenario=='snapshot':
                 if desk.frame>70 and step!='done' and desk.q is not None and desk.rendered_frames>0:
                     checks['saved_snapshot_is_readonly']=desk.read_only and not desk.observing and not desk.sending
                     checks['saved_feedback_is_displayed']=desk.q is not None and desk.rendered_frames>0
                     checks['saved_commands_are_restored']=desk.commands is not None and desk.first_q is not None
-                    shot('snapshot');hello_imgui.get_runner_params().app_shall_exit=True;stage('done')
+                    shot('snapshot');ui.frames=desk.frame+1;stage('done')
                 return
             if step=='connect' and desk.frame>8:
                 if scenario=='recover':checks['recovery_does_not_auto_connect']=not desk.observing and desk.q is not None
@@ -116,7 +116,7 @@ def main():
                 click(desk,'recover_'+trace['other_cache_id']);stage('reopen')
             elif scenario=='recover' and step=='reopen' and str(desk.root)==trace['other_workspace']:
                 checks['gui_cache_menu_opens_another_workspace']=not desk.observing and not desk.sending
-                hello_imgui.get_runner_params().app_shall_exit=True;stage('done')
+                ui.frames=desk.frame+1;stage('done')
             elif scenario=='live':
                 if step=='feedback' and elapsed>.6 and desk.commands is not None and desk.feedback['kp'] is not None and desk.connection_channels.get('joint',{}).get('publishers')==1:
                     checks['automatic_mock_profile_matches']=desk.connection_channels.get('joint',{}).get('publishers')==1

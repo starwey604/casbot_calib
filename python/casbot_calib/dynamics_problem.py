@@ -18,6 +18,14 @@ def fourier_projection(time_ns,values,origin_ns,period_s,harmonics,phase_points,
     t=(np.asarray(time_ns,dtype=np.int64)-int(origin_ns))*1e-9
     if len(t)<4*(2*harmonics+1) or np.ptp(t)<1.8*period_s or np.any(np.diff(t)<=0):
         raise ValueError('At least two contiguous steady periods with distinct times required')
+    return fourier_fit(time_ns,values,origin_ns,period_s,harmonics,phase_points,derivatives,
+        weights=weights,phase_offset_s=phase_offset_s,diagnostics=diagnostics)
+
+
+def fourier_fit(time_ns,values,origin_ns,period_s,harmonics,phase_points,derivatives=False,*,weights=None,phase_offset_s=0.,diagnostics=False):
+    """Numerical Fourier least squares; rank/validity only, no sampling qualification."""
+    t=(np.asarray(time_ns,dtype=np.int64)-int(origin_ns))*1e-9
+    if not len(t) or np.any(np.diff(t)<=0):raise ValueError('Distinct increasing Fourier event times required')
     if period_s<=0 or harmonics<1 or phase_points<=2*harmonics+1:raise ValueError('Invalid periodic fit settings')
     def design(times,order=0):
         columns=[np.ones(len(times)) if order==0 else np.zeros(len(times))]

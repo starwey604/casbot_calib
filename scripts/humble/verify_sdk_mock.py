@@ -142,7 +142,7 @@ def main():
             checks['real_executor_normal_path']=run['passed'] and run['returncode']==0
             if not run['passed']:raise RuntimeError('Physical SDK Mock static failed; inspect retained capture')
             analysis=analyse_field(root/'plan',root/'capture',root/'analysis')
-            checks['gravity_and_urdf_reload']=analysis['passed'] and analysis['commissioning_validation_passed']
+            checks['gravity_and_urdf_reload']=analysis['passed'] and analysis['fit_succeeded']
             checks['assumptions_not_promoted']=not analysis['hardware_calibration_accepted'] and not analysis['sample_time_known']
             checks['repeated_cache_seen']=admin['duplicates']>0
             before=admin['received'];admin['fail_after']=before+130;admin['watchdog']=False
@@ -265,21 +265,16 @@ def verify_h2(root,state,profile,preset,domain,remaps,names):
                 state['unstable_static']=False
                 if inject:self.inject_quality=False
     backend=FixtureBackend()
-    first=batch.run_batch(folder)
-    checks['h2_waits_for_bound_human_review']=first['state']=='awaiting_direction_review'
-    review=root/'h2_direction_review.yaml';batch.write_direction_template(folder,review)
-    data=yaml.safe_load(review.read_text());data['observer']='isolated ROS protocol fixture; not physical direction evidence'
-    for row in data['joints']:row['observed_same_direction']=True
-    review.write_text(yaml.safe_dump(data));batch.import_direction_review(folder,review)
-    final=batch.run_batch(folder,resume=True,backend=backend)
+    final=batch.run_batch(folder,backend=backend)
+    checks['h2_no_human_review_gate']=final['state']=='completed'
     checks['h2_complete']=final['passed'] and final['gravity']['available']
     history,_=batch.outcomes(folder,batch.load_batch(folder)[1])
-    checks['h2_quality_retry_retained']=any(any(r['status']=='quality_retry' for r in rows) and batch.accepted(rows) for rows in history.values())
+    checks['h2_no_static_quality_retries']=all(len(rows)==1 for rows in history.values())
     checks['h2_same_reference_across_tiers']=final['frequency_references_consistent'] and len({r['comparison_reference_sha256'] for r in final['frequency']})==1
     from casbot_calib.hardware_batch_viewer import render_batch
     view=render_batch(folder,root/'h2_replay',fps=4,max_seconds_per_attempt=.4)
     checks['h2_geometry_only_replay']=view['passed'] and view['device_writes']==0
-    interrupted_config=json.loads(json.dumps(config));interrupted_config['direction']['require_review']=False
+    interrupted_config=json.loads(json.dumps(config))
     interrupted_config['frequency']['enabled']=False;interrupted_config['static']['enabled']=False
     path2=root/'h2_interrupt.yaml';path2.write_text(yaml.safe_dump(interrupted_config))
     paused=root/'h2_interrupted';batch.plan_batch(path2,profile,paused,domain_id=domain,connection_scope='localhost_contract_mock')

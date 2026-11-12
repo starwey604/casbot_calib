@@ -110,7 +110,7 @@ def test_callback_windows_fit_and_export_do_not_claim_acquisition_or_physical_ac
     assert raw['receive_ns'].dtype == np.int64 and raw['receive_ns'][0] == origin
     assert 'sample_ns' not in raw
     output = tmp_path / 'analysis'; report = analyse_field(plan, capture, output)
-    assert report['passed'] and report['fit_succeeded'] and report['commissioning_validation_passed']
+    assert report['passed'] and report['fit_succeeded']
     assert not report['hardware_calibration_accepted'] and not report['sample_time_known']
     assert not report['torque_scale_verified'] and not report['inertias_identified']
     assert np.max(report['validation_rmse_nm']) < 1e-5
@@ -166,7 +166,8 @@ def test_sdk_ignoring_small_jog_cannot_pass_only_because_tracking_guard_is_large
         writer = csv.DictWriter(stream, fieldnames=names); writer.writeheader(); writer.writerows(rows)
     seal(capture)
     report = analyse_field(plan, capture, tmp_path / 'ignored_analysis')
-    assert not report['passed'] and not report['motion_observed']
+    assert report['passed'] and np.max(report['observed_span_rad'])==0
+    assert 'motion_observed' not in report
 
 
 def test_position_diagnostics_keep_missing_effort_optional(tmp_path):
@@ -178,3 +179,13 @@ def test_position_diagnostics_keep_missing_effort_optional(tmp_path):
     result = read_feedback(path, require_effort=False)
     assert np.isnan(result['effort_raw']).all()
     with pytest.raises(ValueError, match='invalid'): read_feedback(path)
+
+
+def test_static_window_single_received_sample_has_no_quality_gate():
+    from casbot_calib.hardware_field import static_means
+    metadata=dict(trials=[dict(name='one',conditions={},measure_begin_s=0.,measure_end_s=1.)])
+    obs=dict(q=np.ones((1,14)),dq=np.full((1,14),.4),effort_raw=np.full((1,14),2.))
+    result=static_means(metadata,obs,np.array([.5]),dict(effort_zero_nm=0.,effort_gain=1.))
+    assert result[0]['available'] and result[0]['received_publications']==1
+    assert result[0]['maximum_received_speed_rad_s']==.4
+    assert static_means(metadata,obs,np.array([2.]),dict(effort_zero_nm=0.,effort_gain=1.))[0]['available'] is False

@@ -1,9 +1,9 @@
 {
   "schema_version": "casbot_fieldwork_limits_plan_v1",
-  "status": "round_1_partial_delivery_rounds_2_to_4_pending",
+  "status": "round_2_manual_policy_delivered_selected_mock_controls_delivered_round_3_and_advanced_mock_pending",
   "plan": "docs/fieldwork_limits_behavior_plan.md",
   "scope": "当前手动GUI→Python监督→C++位置发送器→SDK Mock→原生14轴设备；附相关但不调用的旧入口对照。非全仓库P0/S3/S4验收阈值清单。",
-  "policy": "只修改新手动入口；既有H1–H4/S2/S3/S4合同保留；SDK执行/通信/模式故障不自动resume。",
+  "policy": "手动GUI与现场H1–H4按用户最新决定演进；现场质量/人工review/90%发送率/静态重试门禁已删除。SDK执行/通信/模式故障不resume，S2/S3/S4/P0资格独立保留。",
   "items": [
     {
       "audit_id": "L01",
@@ -15,7 +15,8 @@
       "planned_behavior": "越界草稿就地说明并拒绝，不改最后有效目标，不改URDF。",
       "gui_location": "逐轴操作范围",
       "implementation_round": 2,
-      "status": "planned_not_implemented"
+      "status": "implemented_manual_policy_round_2",
+      "progress": "输入边界独立版本化，全轴默认/逐轴覆盖；不会夹取已有目标，列出冲突轴和值。"
     },
     {
       "audit_id": "L02",
@@ -27,7 +28,8 @@
       "planned_behavior": "位置调试默认暂停参考并显示实测位置；原始方式默认告警。暂停保持已有输出，不宣称机器人已停止。",
       "gui_location": "逐轴观察阈值与触发动作",
       "implementation_round": 2,
-      "status": "planned_not_implemented"
+      "status": "implemented_manual_policy_round_2",
+      "progress": "新原始五字段控制默认告警，可选结束；无暂停功能，在线版本须原生确认。"
     },
     {
       "audit_id": "L03",
@@ -39,7 +41,8 @@
       "planned_behavior": "仅限制MIT目标速度输入；不得暗改实际反馈越速判据。",
       "gui_location": "目标速度输入范围",
       "implementation_round": 2,
-      "status": "planned_not_implemented"
+      "status": "implemented_manual_policy_round_2",
+      "progress": "目标速度输入与反馈速度观察阈值已分离，原生分别验证。"
     },
     {
       "audit_id": "L04",
@@ -51,7 +54,8 @@
       "planned_behavior": "位置调试暂停参考/原始方式告警；显示全部越限轴，支持告警或结束控制配置。",
       "gui_location": "运行观察阈值",
       "implementation_round": 2,
-      "status": "planned_not_implemented"
+      "status": "implemented_manual_policy_round_2",
+      "progress": "0.75仅作默认观察阈值，可逐轴调整/继承并选择动作。"
     },
     {
       "audit_id": "L05",
@@ -63,8 +67,9 @@
       "planned_behavior": "前馈范围仅约束用户直接effort；删除重力偏置/裁剪计划，不生成模型力矩。",
       "gui_location": "逐轴前馈范围",
       "implementation_round": 2,
-      "status": "planned_not_implemented",
-      "decision_update": "2026-11-12用户取消模型重力辅助，采用无补偿休息姿态Mock（肩滚转±20°）"
+      "status": "implemented_manual_policy_round_2",
+      "decision_update": "2026-11-12用户取消模型重力辅助，采用无补偿休息姿态Mock（肩滚转±20°）",
+      "progress": "已进入版本化限制面板，具体生效时机和默认值见current_guide；旧入口合同保留。"
     },
     {
       "audit_id": "L06",
@@ -76,7 +81,8 @@
       "planned_behavior": "保留零Kp；范围/已知Mock能力冲突就地说明，不把1000当厂家额定上限。",
       "gui_location": "逐轴Kp范围",
       "implementation_round": 2,
-      "status": "planned_not_implemented"
+      "status": "implemented_manual_policy_round_2",
+      "progress": "已进入版本化限制面板，具体生效时机和默认值见current_guide；旧入口合同保留。"
     },
     {
       "audit_id": "L07",
@@ -88,7 +94,8 @@
       "planned_behavior": "保留零Kd；范围/已知Mock能力冲突就地说明，不把100当厂家额定上限。",
       "gui_location": "逐轴Kd范围",
       "implementation_round": 2,
-      "status": "planned_not_implemented"
+      "status": "implemented_manual_policy_round_2",
+      "progress": "已进入版本化限制面板，具体生效时机和默认值见current_guide；旧入口合同保留。"
     },
     {
       "audit_id": "L08",
@@ -100,7 +107,8 @@
       "planned_behavior": "端点超界拒绝这次短轨迹，说明轴和端点，不结束会话。",
       "gui_location": "短轨迹设置",
       "implementation_round": 2,
-      "status": "planned_not_implemented"
+      "status": "implemented_manual_policy_round_2",
+      "progress": "已进入版本化限制面板，具体生效时机和默认值见current_guide；旧入口合同保留。"
     },
     {
       "audit_id": "L09",
@@ -112,7 +120,8 @@
       "planned_behavior": "无效时长就地提示；到时正常完成，不归类SDK故障。",
       "gui_location": "短轨迹设置",
       "implementation_round": 2,
-      "status": "planned_not_implemented"
+      "status": "implemented_manual_policy_round_2",
+      "progress": "已进入版本化限制面板，具体生效时机和默认值见current_guide；旧入口合同保留。"
     },
     {
       "audit_id": "L10",
@@ -124,8 +133,8 @@
       "planned_behavior": "按轴持续显示；默认连续满足时间0ms，条件满足继续待启动请求；取消后不再启动。",
       "gui_location": "启动停稳条件",
       "implementation_round": 1,
-      "status": "partially_implemented",
-      "progress": "逐轴等待/持续时间/取消已接入；阈值与连续时间编辑留第2轮。"
+      "status": "implemented_manual_policy_round_2",
+      "progress": "启动速度与连续稳定时间均可调；未满足继续可取消等待。"
     },
     {
       "audit_id": "L11",
@@ -137,8 +146,8 @@
       "planned_behavior": "启动未收到数据则等待；运行失联结束当前控制，不自动resume，GUI和只读监视保留。",
       "gui_location": "高级通信设置",
       "implementation_round": 1,
-      "status": "implemented_round_1",
-      "progress": "手动启动无完整反馈可取消等待；运行超时给出接收间隔和阈值，结束控制但保留只读观测。"
+      "status": "implemented_manual_policy_round_2",
+      "progress": "已进入版本化限制面板，具体生效时机和默认值见current_guide；旧入口合同保留。"
     },
     {
       "audit_id": "L12",
@@ -150,8 +159,8 @@
       "planned_behavior": "启动显示等待模式消息；运行消息失联结束控制并显示最后接收时刻。",
       "gui_location": "高级通信设置",
       "implementation_round": 1,
-      "status": "implemented_round_1",
-      "progress": "启动等模式消息；运行模式接收超时事件带接收间隔/阈值。"
+      "status": "implemented_manual_policy_round_2",
+      "progress": "已进入版本化限制面板，具体生效时机和默认值见current_guide；旧入口合同保留。"
     },
     {
       "audit_id": "L13",
@@ -176,8 +185,8 @@
       "planned_behavior": "显示请求、等待时长和拒绝/无回执原因；失败结束这次启动，不自动重复RPC。",
       "gui_location": "高级通信设置",
       "implementation_round": 1,
-      "status": "implemented_round_1",
-      "progress": "模式请求/拒绝/超时以中文事件显示；请求等待时长可见。"
+      "status": "implemented_manual_policy_round_2",
+      "progress": "已进入版本化限制面板，具体生效时机和默认值见current_guide；旧入口合同保留。"
     },
     {
       "audit_id": "L15",
@@ -189,8 +198,8 @@
       "planned_behavior": "显示已停止发送但仍有运动/无反馈；观察超时不关闭GUI，不覆盖最初触发原因。",
       "gui_location": "停止后观察设置",
       "implementation_round": 1,
-      "status": "partially_implemented",
-      "progress": "停止后继续观测，逐轴运动值/阈值上报；首因保留、后续状态单列。观察条件编辑留第2轮。"
+      "status": "implemented_manual_policy_round_2",
+      "progress": "停止观察速度、连续时间、最长等待独立可调；不改变首因。"
     },
     {
       "audit_id": "L16",
@@ -228,7 +237,8 @@
       "planned_behavior": "超时停止命令流；后续打开GUI显示最后原因，不自动续发。owner/钟域不符单独说明。",
       "gui_location": "高级通信设置",
       "implementation_round": 2,
-      "status": "planned_not_implemented"
+      "status": "implemented_manual_policy_round_2",
+      "progress": "窗口心跳时限写入起始设置，由控制worker采用；默认2s，故障仍终止。"
     },
     {
       "audit_id": "L19",
@@ -240,7 +250,8 @@
       "planned_behavior": "默认直到用户结束；允许用户选定定时结束，按正常停止处理。",
       "gui_location": "会话时长",
       "implementation_round": 2,
-      "status": "planned_not_implemented"
+      "status": "implemented_manual_policy_round_2",
+      "progress": "新设置路径默认无总时长截止；用户定时结束单独归为正常结束。"
     },
     {
       "audit_id": "L20",
@@ -266,7 +277,7 @@
       "gui_location": "高级记录设置/启动状态",
       "implementation_round": 1,
       "status": "partially_implemented",
-      "progress": "启动过程可取消，取消不会稍后启动发送器；记录器启动失败由操作结果显示，细化错误分类尚待完成。"
+      "progress": "记录器启动等待已可调；启动取消和错误显示保留，启动失败的进一步细分分类仍未完成。"
     },
     {
       "audit_id": "L22",
@@ -291,7 +302,8 @@
       "planned_behavior": "发送侧对已知Mock能力冲突提前说明；Mock拒收保留具体原因，不能只等看门狗表现。厂家无回执则标未知。",
       "gui_location": "Mock设备设置，需重启的值标明下次生效",
       "implementation_round": 4,
-      "status": "planned_not_implemented"
+      "status": "implemented_manual_policy_round_2",
+      "progress": "Mock前馈接受阈值独立可配，下次自有Mock启动采用；实机未知。"
     },
     {
       "audit_id": "L24",
@@ -303,8 +315,9 @@
       "planned_behavior": "手动Mock的活动/待机/断流重力项均关闭；原标定Mock的重力+前馈截断合同不变。",
       "gui_location": "Mock设备设置与实际发送值",
       "implementation_round": 4,
-      "status": "planned_not_implemented",
-      "decision_update": "2026-11-12用户取消模型重力辅助，采用无补偿休息姿态Mock（肩滚转±20°）"
+      "status": "implemented_manual_no_gravity",
+      "decision_update": "2026-11-12用户取消模型重力辅助，采用无补偿休息姿态Mock（肩滚转±20°）",
+      "progress": "手动各阶段无重力补偿，已知前馈接受和总请求分别显示；原标定重力路径保留。"
     },
     {
       "audit_id": "L25",
@@ -316,7 +329,8 @@
       "planned_behavior": "把100从内核默认常量变成明确Mock参数；显示有效上限，不能以提高GUI前馈范围冒充已改变设备总请求上限。",
       "gui_location": "Mock设备设置",
       "implementation_round": 4,
-      "status": "planned_not_implemented"
+      "status": "implemented_manual_policy_round_2",
+      "progress": "总请求限幅透传原生设备，独立7Nm饱和测试；不同于前馈接受上限。"
     },
     {
       "audit_id": "L26",
@@ -328,7 +342,8 @@
       "planned_behavior": "显示SDK确有的状态；当前SDK无实际饱和标志则标未知，独立Mock测试核验截断；GUI不读取evaluation/plant真值。",
       "gui_location": "输出/设备状态",
       "implementation_round": 4,
-      "status": "planned_not_implemented"
+      "status": "implemented_unknown_not_synthesized",
+      "progress": "指南明确SDK未给饱和标志，不读取私有plant真值冒充；内核另做独立限幅验证。"
     },
     {
       "audit_id": "L27",
@@ -340,7 +355,8 @@
       "planned_behavior": "触发时显示Mock断流保护和输出切换，控制层按模式中断处理，不自动resume。",
       "gui_location": "Mock设备设置",
       "implementation_round": 4,
-      "status": "planned_not_implemented"
+      "status": "implemented_manual_policy_round_2",
+      "progress": "下一次自有Mock看门狗可设，0.01–1s为支持范围；不自动重启当前实例。"
     },
     {
       "audit_id": "L28",
@@ -376,7 +392,8 @@
       "planned_behavior": "下限仅作用默认值生成，不能抬高用户显式的零PD。上限来自明确Mock能力配置，去掉散落的常量重复。",
       "gui_location": "Mock默认PD与设备能力设置",
       "implementation_round": 4,
-      "status": "planned_not_implemented"
+      "status": "partially_implemented",
+      "progress": "接受Kp/Kd上限可配且下次启动采用；默认PD生成规则/下限仍在Mock配置。"
     },
     {
       "audit_id": "L31",
@@ -400,7 +417,8 @@
       "planned_behavior": "time_ref=0维持当前实现；vel_scale不在Mock里假装实际限速倍率。无效参数在发送前说明。",
       "gui_location": "高级协议设置",
       "implementation_round": 2,
-      "status": "planned_not_implemented"
+      "status": "protocol_retained_documented",
+      "progress": "等待与通信页显示vel_scale及其未验证含义；time_ref仍固定0，数值协议约束保留。"
     },
     {
       "audit_id": "L33",
@@ -412,7 +430,8 @@
       "planned_behavior": "先保留已支持的100/250/500Hz，不凭空扩大资格；下次开始控制生效，显示实际发送统计。",
       "gui_location": "高级通信设置",
       "implementation_round": 2,
-      "status": "planned_not_implemented"
+      "status": "implemented_manual_policy_round_2",
+      "progress": "等待与通信页可选100/250/500Hz，下次控制生效，起始记录留档。"
     },
     {
       "audit_id": "L34",
@@ -508,7 +527,8 @@
       "planned_behavior": "不再要求手动不使用的H1静态/拟合/轨迹字段存在或为正；原H1–H4仍保留。",
       "gui_location": "手动专用配置",
       "implementation_round": 2,
-      "status": "planned_not_implemented"
+      "status": "implemented_manual_policy_round_2",
+      "progress": "manual=True加载与params分支不依赖H1静态/拟合/轨迹字段；H1原校验不改。"
     },
     {
       "audit_id": "L42",
@@ -520,8 +540,9 @@
       "planned_behavior": "保留模型/连接含义，手动发送器强制无模型补偿；不从H1继承重力开启策略。",
       "gui_location": "手动专用配置/控制方式",
       "implementation_round": 2,
-      "status": "planned_not_implemented",
-      "decision_update": "2026-11-12用户取消模型重力辅助，采用无补偿休息姿态Mock（肩滚转±20°）"
+      "status": "implemented_manual_policy_round_2",
+      "decision_update": "2026-11-12用户取消模型重力辅助，采用无补偿休息姿态Mock（肩滚转±20°）",
+      "progress": "手动加载不要求力矩尺度/重力拟合字段，仍保留模型/连接/14轴声明，发送强制无补偿。"
     },
     {
       "audit_id": "L43",
@@ -546,7 +567,8 @@
       "planned_behavior": "错误列出期望与实际域号/scope/端点；允许在未连接时修正，不自动扫描猜测目标。",
       "gui_location": "连接设置",
       "implementation_round": 2,
-      "status": "planned_not_implemented"
+      "status": "planned_not_implemented",
+      "progress": "原用途和含义保留；本轮不开放更换活动连接或正式资格，详见current_guide。"
     },
     {
       "audit_id": "L45",
@@ -558,7 +580,8 @@
       "planned_behavior": "指出冲突对象及如何选择正确配置，不能只报初始化失败。",
       "gui_location": "连接/模型信息",
       "implementation_round": 2,
-      "status": "planned_not_implemented"
+      "status": "planned_not_implemented",
+      "progress": "原用途和含义保留；本轮不开放更换活动连接或正式资格，详见current_guide。"
     },
     {
       "audit_id": "L46",
@@ -570,7 +593,8 @@
       "planned_behavior": "不改旧记录；新手动策略版本化保存，在线应用有回执。新控制会话可在现有GUI内创建，不要求重开命令行。",
       "gui_location": "设置应用状态/历史记录",
       "implementation_round": 2,
-      "status": "planned_not_implemented"
+      "status": "implemented_manual_policy_round_2",
+      "progress": "策略版本、起始JSON、原生完整生效CSV随快照保存；旧无策略记录不回填。"
     },
     {
       "audit_id": "L47",
@@ -646,7 +670,8 @@
       "planned_behavior": "用独立可见的手动观察策略，不让旧tracking/allowance字段继续误导操作者。",
       "gui_location": "手动观察阈值",
       "implementation_round": 2,
-      "status": "planned_not_implemented"
+      "status": "implemented_manual_policy_round_2",
+      "progress": "手动不使用旧跟踪/老化包络，加载已解耦；新独立观察策略可调。"
     },
     {
       "audit_id": "L53",
@@ -654,11 +679,12 @@
       "baseline_value": "闭合回起点、连续碰撞检查、参考运动速度/加速度/jerk、静态窗口质量等",
       "baseline_effect": "手动邮箱路径不调用H1 prepare/finish_plan、gate_motion；GUI短轨迹也不走该离线认证。",
       "source": "hardware_field.py:108-121; position_executor.cpp:91-100,207-213; fieldwork_gui.py:304-310",
-      "decision": "保留在原入口，不搬进手动GUI",
-      "planned_behavior": "手动短轨迹做自己的输入与参考检查；H1/标定离线路径规则继续按原合同工作。",
+      "decision": "现场删除正常结束回位验收，保留参考规划；旧S2独立",
+      "planned_behavior": "显式保存零位回零允许单程；共用参考规划，不加隐藏补偿。",
       "gui_location": "各自入口",
       "implementation_round": 2,
-      "status": "planned_not_implemented"
+      "status": "field_return_acceptance_removed_explicit_zero_shared_entry_delivered",
+      "progress": "2026-11-12：H1–H4删除最终误差/停稳/等待及退出后重复检查；GUI新增显式回零调用共享参考规划，手动五字段仍不做连续参考认证。 现场质量与review/发送率/重试预算也按后续决定删除，原S3/S4/P0不改。"
     },
     {
       "audit_id": "L54",
@@ -670,7 +696,8 @@
       "planned_behavior": "当前GUI不调用的ArmFeedbackGuard/单轴Simulator/H3守卫不作为本轮手动保护补丁。",
       "gui_location": "各自入口",
       "implementation_round": 2,
-      "status": "planned_not_implemented"
+      "status": "implemented_manual_policy_round_2",
+      "progress": "旧保护保持原入口用途，本轮未删除或搬入新手动策略。"
     },
     {
       "audit_id": "L55",
@@ -682,7 +709,8 @@
       "planned_behavior": "不自动把URDF速度/力矩当真实驱动上限，也不悄悄拿它替换用户操作范围。",
       "gui_location": "模型信息/操作限制/Mock设备限制",
       "implementation_round": 2,
-      "status": "planned_not_implemented"
+      "status": "planned_not_implemented",
+      "progress": "原用途和含义保留；本轮不开放更换活动连接或正式资格，详见current_guide。"
     },
     {
       "audit_id": "L56",
@@ -694,7 +722,8 @@
       "planned_behavior": "500Hz期望/250ms诊断阈值显示其用途，不能和实际发送器100ms超时混用。",
       "gui_location": "通信诊断说明",
       "implementation_round": 2,
-      "status": "planned_not_implemented"
+      "status": "planned_not_implemented",
+      "progress": "原用途和含义保留；本轮不开放更换活动连接或正式资格，详见current_guide。"
     },
     {
       "audit_id": "L57",
@@ -765,5 +794,6 @@
     "cpp_sender": "ros/casbot_calib_vendor/src/",
     "cpp_includes": "ros/casbot_calib_vendor/include/",
     "native": "cpp/src/ or cpp/include/casbot_calib/"
-  }
+  },
+  "current_guide": "docs/fieldwork_manual_limits.md"
 }

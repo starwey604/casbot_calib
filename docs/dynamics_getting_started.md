@@ -8,9 +8,11 @@
 
 需要自动组织现场方向、频率和静态批次时，使用[H2整批采集](hardware_batch_h2.md)。受控中断可续采，SDK故障只log并终止整批，当前不恢复故障会话。
 
-首次到场先用[现场CLI和GUI](../fieldwork/README.md)：`bash fieldwork/run.sh --help`。F1保持只读，采集显式传入`--domain-id`、`--scope`和新`--output`。GUI提供各轴位置与速度/Kp/Kd/前馈力矩滑条、反馈驱动模型、短轨迹及命令/反馈/视频记录；“开始发送”后拖动直接下发五字段，不填写人工审核或备注。初始化来源、Mock演练与实机命令见该指南。 本地演练推荐`bash fieldwork/run.sh gui --mock --domain-id 181 --software-rendering`，无需手工配对profile/输出目录；默认自动缓存，在GUI内保存正式记录。 启动未停稳会显示原因并等待，可取消；控制故障后窗口与只读观测保留，显式“重读 / 新控制”开始另一会话。
+现场CLI在申请模式/发送前发现起点变化时，会重新读取并规划当前单元；不是SDK故障恢复。新现场profile的关节/模式接收超时默认为2秒/3秒；旧封存计划和GUI工作区不自动改值。详见[起点与记录规则](hardware_execution_path.md)。
 
-H2重力候选通过联调验证后，按[H3指南](hardware_friction_h3.md)继续多速度运动摩擦和零PD起动实验；完成H3后，再按[H4指南](hardware_inertia_h4.md)继续加速度激励、惯量候选、前序复核及独立控制对照。前序验证失败会阻断后续。
+首次到场先用[现场CLI和GUI](../fieldwork/README.md)：`bash fieldwork/run.sh --help`。F1保持只读，采集显式传入`--domain-id`、`--scope`和新`--output`。GUI提供各轴位置与速度/Kp/Kd/前馈力矩滑条、反馈驱动模型、短轨迹及命令/反馈/视频记录；“开始发送”后拖动直接下发五字段，不填写人工审核或备注。初始化来源、Mock演练与实机命令见该指南。 本地演练推荐`bash fieldwork/run.sh gui --mock --domain-id 181 --software-rendering`，无需手工配对profile/输出目录；默认自动缓存，在GUI内保存正式记录。 启动未停稳会显示原因并等待，可取消；控制故障后窗口与只读观测保留，显式“重读 / 新控制”开始另一会话。 “限制设置”可分开调整目标输入与反馈观察阈值；新手动控制默认越限告警，可选结束。用法见[可调限制](fieldwork_manual_limits.md)。 CLI/GUI均提供[采集零位与一键回零](../fieldwork/README.md#采集零位与一键回零)，固定保存`fieldwork/zero.yaml`，无需逐次指定输出名。
+
+H2生成重力数值候选后，按[H3指南](hardware_friction_h3.md)继续多速度运动摩擦和零PD起动实验；完成H3后，再按[H4指南](hardware_inertia_h4.md)继续加速度激励、惯量候选、前序复核及独立控制对照。现场残差与数据质量不阻断后续；缺少实际数值模型时，仅相应依赖动作不能执行。
 
 需要提前演练实际SDK路径时，按[统一SDK Mock指南](sdk_mock_unification.md)启动sdk-mock；H1/H2/H3/H4只切换连接profile，继续共用同一执行、采集和分析入口。原有虚拟时间Mock适合数值回归，SDK Mock用于验证实际接口与时序条件。
 

@@ -50,13 +50,13 @@ class PipeHeartbeat:
 
 class Child:
     """One producer for heartbeat, background reader drains live output even during UI stalls."""
-    def __init__(self, command, log, *, environment=None, pause_file=None):
+    def __init__(self, command, log, *, environment=None, pause_file=None, pass_fds=()):
         self.pause_file=Path(pause_file) if pause_file else None
         self.log=Path(log).open('x'); self.messages=queue.SimpleQueue(); self.log_error=None
         self.latest_feedback=None;self.feedback_lock=threading.Lock()
         try:
             self.process=subprocess.Popen(command,stdin=subprocess.PIPE,stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,text=True,bufsize=1,env=environment)
+                stderr=subprocess.STDOUT,text=True,bufsize=1,env=environment,pass_fds=pass_fds)
         except Exception:
             self.log.close();raise
         os.set_blocking(self.process.stdin.fileno(),False)

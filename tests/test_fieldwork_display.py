@@ -12,22 +12,9 @@ def test_graphics_thread_default_respects_explicit_override(monkeypatch):
     monkeypatch.delenv('LP_NUM_THREADS',raising=False)
     monkeypatch.setenv('OMP_NUM_THREADS','3')
     display.configure_graphics_environment()
-    assert os.environ['LP_NUM_THREADS']=='2' and os.environ['OMP_NUM_THREADS']=='3'
+    assert os.environ['LP_NUM_THREADS']=='0' and os.environ['OMP_NUM_THREADS']=='3'
     monkeypatch.setenv('LP_NUM_THREADS','4');display.configure_graphics_environment()
     assert os.environ['LP_NUM_THREADS']=='4'
-
-
-def test_pacer_waits_without_catching_up_after_stall(monkeypatch):
-    now=[0.];sleeps=[]
-    monkeypatch.setattr(display.time,'monotonic',lambda:now[0])
-    def sleep(delay):sleeps.append(delay);now[0]+=delay
-    monkeypatch.setattr(display.time,'sleep',sleep)
-    pacer=display.FramePacer(30);pacer()
-    now[0]+=.01;pacer()
-    assert sleeps==pytest.approx([1/30-.01])
-    now[0]=10.;pacer() # A delayed frame does not accumulate a catch-up backlog.
-    assert len(sleeps)==1
-    pacer();assert sleeps[-1]==pytest.approx(1/30)
 
 
 def test_display_mailbox_atomic_without_evidence_fsync(tmp_path,monkeypatch):

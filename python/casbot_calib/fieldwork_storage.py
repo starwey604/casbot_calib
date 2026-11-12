@@ -165,7 +165,8 @@ def save_snapshot(workspace,destination):
     for control in sorted((target/'controls').glob('*')):
         if not (control/'protocol/manifest.json').exists():continue
         for directory in sorted((control/'runs').glob('*')):
-            execution=directory/'capture/execution'
+            from .fieldwork_control import recording_capture
+            execution=recording_capture(directory)/'execution'
             if (not (directory/'recording/recording.json').exists()
                 and all((execution/name).exists() for name in ('commands.csv','feedback.csv','events.csv'))):
                 from .fieldwork_control import Session,export_recording

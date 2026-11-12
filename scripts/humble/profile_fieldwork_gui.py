@@ -23,7 +23,16 @@ def processes():
         children={pid for pid,row in rows.items() if row['parent'] in owned}
         if children<=owned:break
         owned|=children
-    return {pid:rows[pid] for pid in owned if pid in rows}
+    result={pid:rows[pid] for pid in owned if pid in rows}
+    for pid,row in result.items():
+        tasks={}
+        for path in Path('/proc',str(pid),'task').glob('[0-9]*'):
+            try:
+                stat=(path/'stat').read_text();fields=stat[stat.rfind(')')+2:].split()
+                tasks[path.name]=dict(ticks=int(fields[11])+int(fields[12]),name=stat[stat.index('(')+1:stat.rfind(')')])
+            except OSError:pass
+        row['tasks']=tasks
+    return result
 
 
 def main():
@@ -31,6 +40,9 @@ def main():
     parser.add_argument('--output',required=True,type=Path)
     parser.add_argument('--domain-id',type=int,required=True)
     parser.add_argument('--seconds',type=float,default=10.)
+    parser.add_argument('--hide-seconds',type=float,default=0.,help='hide and restore own window while streaming')
+    parser.add_argument('--save-live',action='store_true',help='save a live prefix snapshot during sending')
+    parser.add_argument('--verify-damage',action='store_true',help='compare each cached framebuffer with a full draw, no screenshots')
     parser.add_argument('--short-trajectory',action='store_true',help='exercise GUI-generated 2s small trajectory instead of 5Hz edits')
     parser.add_argument('--exercise-input',action='store_true',help='inject ImGui mouse events without moving the system pointer')
     parser.add_argument('--stall-seconds',type=float,default=0.,help='freeze UI after sending phase, testing heartbeat timeout')
@@ -38,20 +50,24 @@ def main():
     from casbot_calib import fieldwork_gui
     ui=argparse.Namespace(mock=True,session=None,recover=None,preview=False,output=None,
         profile='configs/hardware_field.yaml',domain_id=args.domain_id,scope=None,
-        cache_limit_mib=512,frames=None,screenshot=None)
+        cache_limit_mib=512,frames=None,screenshot=None,verify_damage=args.verify_damage)
     os.environ['CASBOT_FIELDWORK_CACHE']=str(root/'cache')
-    original=fieldwork_gui.Desk.gui;start=time.monotonic();state={'phase':'warmup','draw_s':0.};reports=[];graphics={}
+    original=fieldwork_gui.Desk.gui;original_poll=fieldwork_gui.Desk.poll;start=time.monotonic();state={'phase':'warmup','draw_s':0.};reports=[];graphics={}
     def begin(desk,phase):
-        state.update(phase=phase,at=time.monotonic(),before=processes(),frame=desk.frame,
+        rendered=json.loads((desk.root/'view/rendered.json').read_text())['rendered_frames']
+        state.update(worker_rendered=rendered,phase=phase,at=time.monotonic(),before=processes(),frame=desk.frame,
             rendered=desk.rendered_frames,edits=0,draw_start=state['draw_s'])
     def finish(desk):
         elapsed=time.monotonic()-state['at'];after=processes();rows=[]
+        rendered=json.loads((desk.root/'view/rendered.json').read_text())['rendered_frames']
         for pid,row in after.items():
             old=state['before'].get(pid)
-            if old:rows.append(dict(pid=pid,name=row['name'],command=row['command'],threads=row['threads'],cpu_percent=
+            if old:rows.append(dict(pid=pid,name=row['name'],command=row['command'],threads=row['threads'],
+                thread_cpu=[dict(tid=tid,name=t['name'],cpu_percent=(t['ticks']-old['tasks'].get(tid,t)['ticks'])/os.sysconf('SC_CLK_TCK')/elapsed*100)
+                    for tid,t in row['tasks'].items()],cpu_percent=
                 (row['ticks']-old['ticks'])/os.sysconf('SC_CLK_TCK')/elapsed*100))
         reports.append(dict(phase=state['phase'],seconds=elapsed,gui_fps=(desk.frame-state['frame'])/elapsed,
-            view_fps=(desk.rendered_frames-state['rendered'])/elapsed,processes=rows,
+            view_fps=(desk.rendered_frames-state['rendered'])/elapsed,renderer_fps=(rendered-state['worker_rendered'])/elapsed,processes=rows,
             draw_ms=1000*(state['draw_s']-state['draw_start'])/(desk.frame-state['frame']),
             total_cpu_percent=sum(row['cpu_percent'] for row in rows)))
     def draw(desk):
@@ -80,24 +96,46 @@ def main():
             if not desk.sending:raise RuntimeError('unexpected control stop: '+str(desk.operator.displayed))
             if now-state['at']>=args.seconds:
                 finish(desk)
+                if args.hide_seconds:
+                    import glfw
+                    state['window']=glfw.get_current_context();state['hide_until']=time.monotonic()+args.hide_seconds
+                    state['before_hide_receive']=desk.receive_ns;state['before_hide_texture']=desk.rendered_frames
+                    desk.selected=(desk.selected+1)%14
+                    desk.short=dict(start=time.monotonic(),duration=2.,amplitude=.005,anchor=float(desk.commands['position'][0]),joint=0)
+                    glfw.hide_window(state['window']);state['phase']='hidden';return
                 if args.stall_seconds:
                     state['before_stall']=desk.receive_ns;time.sleep(args.stall_seconds)
                 else:desk.stop()
                 state['phase']='stopping'
-            else:
-                edit=int((now-state['at'])*5)
-                if not args.short_trajectory and edit>state['edits']:
-                    desk.change('position',0,state['anchor']+.005*math.sin(2*math.pi*(now-state['at'])/4))
-                    state['edits']=edit
+        elif phase=='restoring' and desk.rendered_frames>state['before_hide_texture']:
+            state['restored_image']=True;desk.stop();state['phase']='stopping'
         elif phase=='stopping' and not desk.busy:
             state['control_response']=desk.response;state['workspace']=str(desk.root)
             state['observer_survived']=desk.observing and (not args.stall_seconds or desk.receive_ns>state['before_stall'])
             state['needs_reinitialize']=desk.needs_reinitialize
             state['visible_code']=(desk.operator.displayed or {}).get('code')
             ui.frames=desk.frame+1;state['phase']='done'
+    def poll(desk):
+        original_poll(desk)
+        if args.save_live and state['phase']=='sending' and time.monotonic()-state['at']>1 and not state.get('save_requested'):
+            desk.save_path=str(root/'saved_live');desk.begin_save();state['save_requested']=True
+        if state['phase']=='hidden':
+            now=time.monotonic();report=json.loads((desk.root/'view/rendered.json').read_text())
+            if now>state['hide_until']-args.hide_seconds+.5 and 'hidden_frames' not in state:state['hidden_frames']=report['rendered_frames']
+            if now>=state['hide_until']:
+                import glfw
+                state['hidden_checks']=dict(control_continues=desk.sending,feedback_continues=desk.receive_ns>state['before_hide_receive'],
+                    renderer_paused=report['rendered_frames']==state['hidden_frames'])
+                glfw.show_window(state['window']);state['phase']='restoring'
+        if state['phase']=='sending' and not args.short_trajectory:
+            elapsed=time.monotonic()-state['at'];edit=int(elapsed*5)
+            if edit>state['edits']:
+                desk.change('position',0,state['anchor']+.005*math.sin(2*math.pi*(edit/5)/4))
+                state['edits']=edit
+    fieldwork_gui.Desk.poll=poll
     fieldwork_gui.Desk.gui=draw
     try:fieldwork_gui.run_gui(ui)
-    finally:fieldwork_gui.Desk.gui=original
+    finally:fieldwork_gui.Desk.gui=original;fieldwork_gui.Desk.poll=original_poll
     workspace=Path(state['workspace']);run=next(workspace.glob('controls/*/runs/*'))
     with (run/'capture/execution/commands.csv').open() as stream:commands=list(csv.DictReader(stream))
     with (run/'capture/execution/events.csv').open() as stream:events=list(csv.DictReader(stream))
@@ -111,6 +149,9 @@ def main():
         checks['heartbeat_cause_visible']=state['visible_code']=='frontend_heartbeat_timeout'
         checks['heartbeat_terminated_control']=not state['control_response']['result']['controlled_stop']
     else:checks['normal_stop']=state['control_response']['result']['controlled_stop']
+    if args.hide_seconds:
+        checks.update(state['hidden_checks']);checks['image_restored']=state.get('restored_image',False)
+    if args.save_live:checks['live_snapshot_saved']=(root/'saved_live/saved_session.json').exists()
     short_frames=state.get('short_frames',[])
     short_fps=(len(short_frames)-1)/(short_frames[-1]-short_frames[0]) if len(short_frames)>1 else None
     if args.short_trajectory:

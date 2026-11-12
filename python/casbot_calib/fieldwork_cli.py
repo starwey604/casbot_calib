@@ -1,4 +1,4 @@
-"""Human-facing read-only field CLI; analysis/orchestration are GUI-independent."""
+"""Read-only field checks and explicit zero motion; GUI-independent services."""
 import argparse
 import json
 from pathlib import Path
@@ -51,7 +51,7 @@ class Terminal:
 
 
 def parser():
-    result = argparse.ArgumentParser(prog='casbot-fieldwork', description='现场联调：只读预检/采集/报告，以及显式GUI逐轴控制。')
+    result = argparse.ArgumentParser(prog='casbot-fieldwork', description='现场联调：只读检查、CLI/GUI保存零位与显式回零、GUI五字段控制。')
     commands = result.add_subparsers(dest='command', required=True)
     for name, label, duration in [('preflight', '环境、发现与反馈预检', 5.),
                                   ('observe', '全轴原始采集与接收节奏报告', 30.),
@@ -70,10 +70,21 @@ def parser():
     report.add_argument('folder', type=Path)
     report.add_argument('--output', type=Path, required=True, help='源会话之外的新目录')
     report.add_argument('--json', action='store_true')
+    for name, label in [('zero-capture', '将当前实际14轴位置保存为工作区零位（只读）'),
+                        ('zero-return', '显式发送单程轨迹到已保存零位')]:
+        item = commands.add_parser(name, help=label)
+        item.add_argument('--profile', type=Path, default=Path('configs/hardware_field.yaml'))
+        item.add_argument('--domain-id', type=int, required=True)
+        item.add_argument('--scope', choices=('hardware_position_stream', 'localhost_contract_mock'), required=True)
+        if name == 'zero-return':
+            item.add_argument('--duration', type=float, default=5., help='回零过渡至少用时/秒，按参考速度包络可自动延长')
+            item.add_argument('--kp', type=float, default=20.)
+            item.add_argument('--kd', type=float, default=2.)
     gui = commands.add_parser('gui', help='GUI五字段滑条调参；开始发送后拖动会实际发送SDK指令')
     gui.add_argument('--profile', type=Path, default=Path('configs/hardware_field.yaml'))
     gui.add_argument('--output', type=Path, help='可选：显式运行工作区；省略时自动缓存，GUI内手动保存')
     gui.add_argument('--session', type=Path, help='已有运行工作区或只读快照；不会自动连接或发送')
+    gui.add_argument('--mock-diagnostics',action='store_true',help='自建Mock额外记录模型内部高频诊断；原始SDK记录始终开启')
     gui.add_argument('--mock',action='store_true',help='显式启动GUI独占的本地SDK Mock，自动配对profile')
     gui.add_argument('--recover',nargs='?',const='latest',help='打开自动缓存记录，默认最近一次；不会自动连接或发送')
     gui.add_argument('--cache-limit-mib',type=float,default=512.,help='单次自动缓存容量/MiB，默认512；满后停止追加记录')
@@ -88,6 +99,25 @@ def parser():
 
 def main(argv=None):
     args = parser().parse_args(argv)
+    if args.command in ('zero-capture', 'zero-return'):
+        try:
+            from .fieldwork_zero import capture_zero, return_zero, ZERO_FILE
+            from .hardware_field import load_profile
+            config = load_profile(args.profile, manual=args.command=='zero-capture')
+            print('零位文件：'+str(ZERO_FILE), flush=True)
+            if args.command == 'zero-capture':
+                print('正在只读采集实际位置；不会写入编码器零位或申请运动控制。', flush=True)
+                result = capture_zero(config, args.domain_id, args.scope)
+                print('已更新保存零位。记录：'+result['recording'])
+            else:
+                result = return_zero(config, args.domain_id, args.scope, duration_s=args.duration, kp=args.kp, kd=args.kd)
+                reason = result['result'].get('fault') or result['result'].get('reason')
+                print(('回零参考已发送并退出模式' if result['passed'] else '回零未完成：'+str(reason))+'；记录：'+result['recording'])
+            return 0 if result['passed'] else 1
+        except (OSError, ValueError, RuntimeError) as exc:
+            print(f'现场零位：{exc}', file=sys.stderr); return 1
+        except KeyboardInterrupt:
+            print('零位操作已中断。', file=sys.stderr); return 130
     if args.command == 'gui':
         try:
             from .fieldwork_gui import run_gui

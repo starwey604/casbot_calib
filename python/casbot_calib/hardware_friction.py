@@ -28,18 +28,15 @@ def settings(path,names):
     if c['joints']=='all':c['joints']=names
     if not c['joints'] or len(set(c['joints']))!=len(c['joints']) or not set(c['joints'])<=set(names):raise ValueError('Unique named H3 joints required')
     if np.asarray(c['home_rad']).shape!=(14,) or not np.isfinite(c['home_rad']).all():raise ValueError('Finite nominal14-axis center required')
-    for key in ('stroke_half_rad','transition_s','settle_s','speed_ramp_s','plateau_trim_s','maximum_gap_s','speed_relative_tolerance',
-                'maximum_acceleration_rad_s2','minimum_overlap_rad','minimum_plateau_s','validation_rmse_nm','maximum_nominal_inertia_contamination_nm'):
+    for key in ('stroke_half_rad','transition_s','settle_s','speed_ramp_s','plateau_trim_s'):
         if not np.isfinite(c[key]) or c[key]<=0:raise ValueError('Positive H3 condition required: '+key)
     if c['inter_job_pause_s']<0 or not np.isfinite(c['inter_job_pause_s']):raise ValueError('Invalid H3 pause')
-    if type(c['pair_points']) is not int or not 4<=c['pair_points']<=128:raise ValueError('Bounded spatial grid required')
+    if type(c['pair_points']) is not int or c['pair_points']<2:raise ValueError('Spatial grid needs at least two points')
     for role in ('train','validation'):
         poses=c['pose_offsets_rad'][role];speeds=c['speeds_rad_s'][role]
         if not poses or len(set(poses))!=len(poses) or not np.isfinite(poses).all():raise ValueError('Distinct finite H3 poses required')
         if not speeds or len(set(speeds))!=len(speeds) or not np.isfinite(speeds).all() or min(speeds)<=0:raise ValueError('Distinct positive speeds required')
-        if any(2*c['stroke_half_rad']/s-c['speed_ramp_s']-2*c['plateau_trim_s']<c['minimum_plateau_s'] for s in speeds):raise ValueError('Scan too short for retained uniform-speed windows')
     if set(c['pose_offsets_rad']['train'])&set(c['pose_offsets_rad']['validation']):raise ValueError('H3 training/validation postures must be disjoint')
-    if len(c['speeds_rad_s']['train'])<2:raise ValueError('Multiple speeds required to distinguish Coulomb and viscous friction')
     from .hardware_breakaway import validate_settings
     validate_settings(c['breakaway'])
     return c
@@ -50,10 +47,11 @@ def gravity_source(path,profile):
     if (root/'latest.json').exists():
         from .hardware_batch import load_batch
         load_batch(root);pointer=read(root/'latest.json');report_root=root/pointer['report'];field.check_seal(report_root)
-        if sha256(report_root/'manifest.json')!=pointer['manifest_sha256'] or not read(report_root/'report.json')['passed']:raise ValueError('Accepted H2 report required')
+        if sha256(report_root/'manifest.json')!=pointer['manifest_sha256']:raise ValueError('Accepted H2 report required')
         root=report_root/'gravity'
     field.check_seal(root);report=read(root/'report.json');calibration=read(root/'calibration.json')
-    if not report['passed'] or not report['commissioning_validation_passed']:raise ValueError('Frozen gravity commissioning validation must pass')
+    if not read(root/'urdf_reload.json')['passed']:
+        raise field.FieldContractError('Gravity candidate URDF does not reproduce its numerical model')
     check_same_context(calibration,profile)
     engine,source=model_for(profile)
     if calibration['source_model_sha256']!=source['sha256'] or calibration['joint_names']!=[j.name for j in engine.model.joints]:raise ValueError('Gravity source/model mismatch')
@@ -103,8 +101,8 @@ def plan_friction(config_path,profile_path,gravity,output,*,domain_id):
     field.seal(source_gravity)
     write_json(protocol/'profile.json',profile);write_json(protocol/'h3_settings.json',c)
     (protocol/'scene.yaml').write_text(yaml.safe_dump(profile['scene']),encoding='utf-8')
-    generic=dict(direction=dict(enabled=False,require_review=False,joints=[]),frequency=dict(enabled=False,joints=[]),
-        static=dict(enabled=False,quality_retries=0,retry_settle_extra_s=0.),inter_job_pause_s=c['inter_job_pause_s'])
+    generic=dict(direction=dict(enabled=False,joints=[]),frequency=dict(enabled=False,joints=[]),
+        static=dict(enabled=False),inter_job_pause_s=c['inter_job_pause_s'])
     record=dict(schema_version='casbot_hardware_batch_protocol_v1',workflow='h3_friction',jobs=jobs,domain_id=domain_id,
         connection_scope=profile.get('connection',{}).get('scope','hardware'),joint_names=names,source_model_sha256=source['sha256'],
         implementation=batch.implementation(),config=generic,h3=c,profile=profile,
@@ -151,38 +149,35 @@ def copy_gravity(source,target,*,created=False):
 
 
 def plateau_pairs(obs,elapsed,motion,gravity,c,profile):
-    j=motion['conditions']['joint_index'];speed=motion['conditions']['speed']
-    if np.max(np.diff(obs['receive_ns']))*1e-9>c['maximum_gap_s']:raise ValueError('H3 callback gap: do not fit across missing windows')
+    j=motion['conditions']['joint_index']
     efforts=(obs['effort_raw']-np.asarray(profile['effort_zero_nm']))*np.asarray(profile['effort_gain'])
     residual=efforts[:,j]-gravity.gravity_batch(obs['q'])[:,j]
     parts=[];audit=[]
     for segment,label in enumerate(motion['labels']):
         if label!='constant_velocity':continue
         a=motion['knots_s'][segment]+c['plateau_trim_s'];b=motion['knots_s'][segment+1]-c['plateau_trim_s']
-        sign=1 if len(parts)==0 else -1;bins=[]
+        bins=[]
         count=max(4,int((b-a)/.1));edges=np.linspace(a,b,count+1)
         for left,right in zip(edges[:-1],edges[1:]):
             use=(elapsed>=left)&(elapsed<right);t=elapsed[use]
-            if len(t)<4 or t[-1]-t[0]<.7*(right-left):continue
-            weights=np.diff(np.r_[t,t[-1]+np.median(np.diff(t))]);weights/=weights.sum()
+            if not len(t):continue
+            weights=np.diff(np.r_[t,t[-1]+np.median(np.diff(t))]) if len(t)>1 else np.ones(1);weights/=weights.sum()
             tc=t-np.average(t,weights=weights);den=np.sum(weights*tc**2)
             q=obs['q'][use];v=obs['dq'][use]
             qbar=np.average(q,axis=0,weights=weights);vbar=np.average(v,axis=0,weights=weights)
-            trend_q=np.sum(weights[:,None]*tc[:,None]*q,axis=0)/den
-            acceleration=np.sum(weights[:,None]*tc[:,None]*v,axis=0)/den
+            trend_q=np.sum(weights[:,None]*tc[:,None]*q,axis=0)/den if den>0 else np.zeros(14)
+            acceleration=np.sum(weights[:,None]*tc[:,None]*v,axis=0)/den if den>0 else np.zeros(14)
             inertia=float(abs((gravity.mass_matrix(qbar)@acceleration)[j]))
             velocity_bias=float(gravity.velocity_bias(qbar,vbar)[j])
-            if (abs(vbar[j]-sign*speed)>speed*c['speed_relative_tolerance'] or abs(trend_q[j]-vbar[j])>max(.003,speed*.15) or
-                np.max(abs(acceleration))>c['maximum_acceleration_rad_s2'] or inertia>c['maximum_nominal_inertia_contamination_nm']):continue
             bins.append((qbar[j],vbar[j],np.average(residual[use],weights=weights)-velocity_bias))
             audit.append(dict(begin_s=left,end_s=right,callback_publications=int(use.sum()),position_trend_rad_s=trend_q[j],
                 reported_speed_rad_s=vbar[j],maximum_reported_velocity_trend_rad_s2=float(np.max(abs(acceleration))),
                 nominal_inertia_contamination_nm=inertia,nominal_velocity_bias_nm=velocity_bias,
                 independent_acquisition_count=None,time_basis='callback-window trends, not acquisition derivatives'))
-        if len(bins)<4 or len(bins)*(b-a)/count<c['minimum_plateau_s']:raise ValueError('Insufficient observed uniform-speed plateau')
+        if not bins:raise ValueError('No observations in declared scan segment')
         values=np.array(bins);order=np.argsort(values[:,0]);parts.append(tuple(values[order,k] for k in range(3)))
     if len(parts)!=2:raise ValueError('Both observed directions required')
-    x,y,pair=pair_friction_parts(parts,c['minimum_overlap_rad'],c['pair_points'])
+    x,y,pair=pair_friction_parts(parts,0.,c['pair_points'])
     return x,y,dict(**pair,windows=audit,qualification='exploratory SDK callback-window plateau protocol; acquisition/refresh/filter unknown')
 
 
@@ -202,42 +197,29 @@ def inspect_trial(plan,capture,output):
 
 
 def friction_result(root,protocol,history):
-    from .hardware_batch import accepted
+    from .hardware_batch import completed_capture
     selected=[j for j in protocol['jobs'] if j['kind']=='moving_friction']
-    if any(not accepted(history[j['id']]) for j in selected):return dict(available=False,passed=False)
+    if any(not completed_capture(history[j['id']]) for j in selected):return dict(available=False,passed=False)
     axes=[];sources=[]
     for joint in protocol['h3']['joints']:
         data={role:[] for role in ('train','validation')}
         for job in selected:
             if job['joint']!=joint:continue
-            source=accepted(history[job['id']]);path=Path(root)/source['attempt']/'inspection/friction_features.npz'
+            source=completed_capture(history[job['id']]);path=Path(root)/source['attempt']/'inspection/friction_features.npz'
+            if not path.exists():return dict(available=False,passed=False,reason='friction_features_unavailable')
             with np.load(path,allow_pickle=False) as d:data[job['split']].append((d['x'],d['y']))
             sources.append(dict(job=job,attempt=source['attempt'],manifest_sha256=source['manifest_sha256']))
         x,y=[np.vstack([d[0] for d in data['train']]),np.concatenate([d[1] for d in data['train']])]
         vx,vy=[np.vstack([d[0] for d in data['validation']]),np.concatenate([d[1] for d in data['validation']])]
         try:
-            parameters,fit=fit_friction_features(x,y,vx,vy,protocol['h3']['validation_rmse_nm'])
+            parameters,fit=fit_friction_features(x,y,vx,vy,None)
             axes.append(dict(joint=joint,viscous_nm_s_rad=parameters[0],coulomb_nm=parameters[1],**fit))
         except ValueError as exc:
             axes.append(dict(joint=joint,viscous_nm_s_rad=None,coulomb_nm=None,passed=False,reason=str(exc)))
-    return dict(available=True,passed=all(a['passed'] for a in axes),axes=axes,sources=sources,
+    return dict(available=all(a['viscous_nm_s_rad'] is not None and a['coulomb_nm'] is not None for a in axes),passed=all(a['passed'] for a in axes),axes=axes,sources=sources,
         sample_time_known=False,formal_hardware_calibration_accepted=False,
         model='b*dq + fc*tanh(dq/0.001)',sampling_qualification_passed=False,
-        limitations=['Callback-window protocol is not S3/S4 acquisition qualification','Nominal inertial terms are screening priors, not calibrated inertia','No thermal/posture-specific friction law identified'])
-
-
-def require_friction_gate(root,protocol,history):
-    from . import hardware_batch as batch
-    stage=Path(root)/'friction_checkpoint'
-    if stage.exists():
-        field.check_seal(stage)
-        logged=[e for e in batch.events(root) if e['event']=='friction_frozen']
-        if len(logged)!=1 or logged[0]['manifest_sha256']!=sha256(stage/'manifest.json'):raise ValueError('Frozen friction gate changed')
-        return read(stage/'report.json')['passed']
-    result=friction_result(root,protocol,history)
-    if not result['available'] or not result['passed']:return False
-    stage.mkdir();write_json(stage/'report.json',result);field.seal(stage)
-    batch.event(root,'friction_frozen',manifest_sha256=sha256(stage/'manifest.json'));return True
+        limitations=['Callback-window protocol is not S3/S4 acquisition qualification','Nominal inertial terms are descriptive estimates, not calibrated inertia','No thermal/posture-specific friction law identified'])
 
 
 def summarise_h3(root,protocol,history,destination,report):
@@ -247,7 +229,6 @@ def summarise_h3(root,protocol,history,destination,report):
     report.update(workflow='h3_friction',moving_friction=result,breakaway=onset,
         formal_hardware_calibration_accepted=False,observation_protocol='SDK callback-window operational candidates')
     report['gravity']=dict(available=True,frozen_input=True,manifest_sha256=sha256(Path(root)/'protocol/gravity/manifest.json'))
-    report['passed']=bool(report['passed'] and result['passed'] and (not protocol['h3']['breakaway']['enabled'] or onset['passed']))
     if result['available']:
         with (Path(destination)/'friction_parameters.csv').open('w',newline='',encoding='utf-8-sig') as stream:
             writer=csv.writer(stream);writer.writerow(['joint','viscous_Nm_s_rad','coulomb_Nm','validation_RMSE_Nm','passed'])

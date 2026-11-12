@@ -1,4 +1,4 @@
-"""H2 event durability, bounded retries, terminal faults and reference isolation."""
+"""H2 event durability, ungated collection, terminal faults and reference isolation."""
 import csv
 import json
 from pathlib import Path
@@ -90,13 +90,6 @@ def create(fixture, *, change=None, name='session'):
     return root
 
 
-def approve(root, tmp_path):
-    path=tmp_path/'directions.yaml';batch.write_direction_template(root,path)
-    review=yaml.safe_load(path.read_text());review['observer']='local protocol fixture observer'
-    for row in review['joints']:row['observed_same_direction']=True
-    path.write_text(yaml.safe_dump(review));batch.import_direction_review(root,path)
-
-
 def test_frozen_randomized_tiers_and_pose_roles(fixture):
     root=create(fixture);_,p=batch.load_batch(root)
     f=[j for j in p['jobs'] if j['kind']=='frequency']
@@ -108,37 +101,30 @@ def test_frozen_randomized_tiers_and_pose_roles(fixture):
     assert batch.read(root/'latest.json')['report'].startswith('reports/')
 
 
-def test_direction_review_checkpoint_resume_and_shared_frequency_reference(fixture):
+def test_batch_runs_all_jobs_without_review_and_keeps_shared_reference(fixture):
     root=create(fixture);backend=FakeBackend(fixture['snapshot'])
     result=batch.run_batch(root,backend=backend)
-    assert result['state']=='awaiting_direction_review' and backend.executions==1
-    first_manifest=sha256(root/'attempts/direction_00/attempt_000/manifest.json')
-    approve(root,fixture['root'])
-    result=batch.run_batch(root,resume=True,backend=backend)
     assert result['passed'] and result['collection_complete'] and result['gravity']['available']
-    assert result['direction_review_complete'] and not result['full14_direction_scope']
+    assert result['schema_version']=='casbot_hardware_batch_report_v2'
+    assert 'direction_review_complete' not in result
     assert not result['formal_hardware_calibration_accepted']
     assert len({r['comparison_reference_sha256'] for r in result['frequency']})==1
-    assert first_manifest==sha256(root/'attempts/direction_00/attempt_000/manifest.json')
     assert backend.executions==6 and backend.snapshots==6 and backend.clears==0
 
 
-def test_retries_preserve_failed_pairs_and_extend_only_settling(fixture):
-    root=create(fixture,change=lambda c:c['direction'].update(require_review=False))
-    backend=FakeBackend(fixture['snapshot'],unstable=True)
+def test_unstable_static_data_is_recorded_once_without_retry(fixture):
+    root=create(fixture);backend=FakeBackend(fixture['snapshot'],unstable=True)
     result=batch.run_batch(root,backend=backend)
-    assert result['passed']
-    first=root/'attempts/static_000/attempt_000';second=root/'attempts/static_000/attempt_001'
-    assert batch.read(first/'outcome.json')['status']=='quality_retry'
-    assert batch.read(second/'outcome.json')['status']=='accepted'
-    a=batch.read(first/'plan/plan.json');b=batch.read(second/'plan/plan.json')
-    assert b['settle_extra_s']-a['settle_extra_s']==1.
-    assert b['duration_s']-a['duration_s']==pytest.approx(2.,abs=.003)  # both approaches
+    assert result['passed'] and backend.executions==6
+    first=root/'attempts/static_000/attempt_000'
+    assert batch.read(first/'outcome.json')['status']=='recorded'
+    assert not (first.parent/'attempt_001').exists()
+    assert any(w['maximum_received_speed_rad_s']>=.02 for w in batch.read(first/'inspection/static_windows.json'))
     assert backend.clears==0
 
 
 def test_controlled_interruption_resumes_new_attempt_not_original_files(fixture):
-    root=create(fixture,change=lambda c:c['direction'].update(require_review=False))
+    root=create(fixture)
     backend=FakeBackend(fixture['snapshot'],interrupt=True)
     result=batch.run_batch(root,backend=backend)
     assert result['state']=='interrupted' and backend.executions==1
@@ -161,6 +147,50 @@ def test_fault_stub_logs_and_terminates_whole_session_without_resume(fixture,cap
     assert backend.executions==backend.clears==1
 
 
+def test_start_change_rebuilds_only_current_job_without_spending_quality_budget(fixture):
+    from test_hardware_start_replan import rejection
+    root=create(fixture)
+    class DriftingBackend(FakeBackend):
+        def snapshot(self,profile,output,domain_id):
+            result=super().snapshot(profile,output,domain_id)
+            path=Path(output)/'execution/snapshot.csv'
+            with path.open() as stream:rows=list(csv.DictReader(stream))
+            rows[0]['q0']=str(float(rows[0]['q0'])+.006*self.snapshots)
+            with path.open('w',newline='') as stream:
+                writer=csv.DictWriter(stream,fieldnames=list(rows[0]));writer.writeheader();writer.writerows(rows)
+            field.seal(output);return result
+        def execute(self,plan,output,domain_id):
+            result=super().execute(plan,output,domain_id)
+            if self.executions<=2:
+                result=rejection();write_json(Path(output)/'result.json',result)
+                (Path(output)/'execution/commands.csv').write_text('planned_index,planned_ns,publish_ns,phase\n')
+                field.seal(output)
+            return result
+    backend=DriftingBackend(fixture['snapshot'])
+    result=batch.run_batch(root,backend=backend,max_jobs=1)
+    assert result['state']=='checkpoint' and backend.executions==backend.snapshots==3 and backend.clears==0
+    rows,_=batch.outcomes(root,batch.load_batch(root)[1])
+    assert [r['status'] for r in rows['direction_00']]==['start_replan','start_replan','recorded']
+    parents=[root/r['attempt'] for r in rows['direction_00']]
+    starts=[batch.read(p/'plan/plan.json')['observed_start_rad'][0] for p in parents]
+    np.testing.assert_allclose(np.diff(starts),.006)
+    assert not any(e['event']=='terminal_fault' for e in batch.events(root))
+    for p in parents:field.check_seal(p)
+
+
+def test_start_change_after_control_is_not_automatically_retried(fixture):
+    from test_hardware_start_replan import rejection
+    root=create(fixture)
+    class UnsafeRetryBackend(FakeBackend):
+        def execute(self,plan,output,domain_id):
+            super().execute(plan,output,domain_id)
+            result=rejection(mode_requested=True)
+            write_json(Path(output)/'result.json',result);field.seal(output);return result
+    backend=UnsafeRetryBackend(fixture['snapshot'])
+    result=batch.run_batch(root,backend=backend)
+    assert result['state']=='faulted' and backend.executions==backend.clears==1
+
+
 def test_missing_incomplete_outcome_is_terminal_and_retained(fixture):
     root=create(fixture);backend=FakeBackend(fixture['snapshot'])
     target=root/'attempts/direction_00/attempt_000';target.mkdir(parents=True)
@@ -171,13 +201,13 @@ def test_missing_incomplete_outcome_is_terminal_and_retained(fixture):
     assert (target/'partial.csv').read_text()=='retained'
 
 
-def test_default_rate_rejection_does_not_run_static_or_refit_per_rate(fixture):
-    root=create(fixture,change=lambda c:c['direction'].update(require_review=False))
-    backend=FakeBackend(fixture['snapshot'],slow_hz=500)
+def test_low_default_rate_is_measured_without_blocking_static(fixture):
+    root=create(fixture);backend=FakeBackend(fixture['snapshot'],slow_hz=500)
     result=batch.run_batch(root,backend=backend)
-    assert result['state']=='default_frequency_rejected' and not result['passed']
-    assert all(r['status']=='pending' for r in result['jobs'] if r['kind']=='static')
-    assert backend.executions==4 and backend.clears==0
+    assert result['state']=='completed' and result['passed']
+    assert all(r['status']=='recorded' for r in result['jobs'])
+    assert any(r['measured_hz']<r['hz']*.9 for r in result['frequency'])
+    assert backend.executions==6 and backend.clears==0
 
 
 def test_resealed_protocol_and_changed_event_are_rejected_before_io(fixture):
@@ -193,18 +223,15 @@ def test_concurrent_collection_lock_rejects_second_owner(fixture):
             with batch.batch_lock(root):pass
 
 
-def test_stale_human_review_digest_cannot_unlock_frequency(fixture):
-    root=create(fixture);backend=FakeBackend(fixture['snapshot']);batch.run_batch(root,backend=backend)
-    path=fixture['root']/'stale.yaml';batch.write_direction_template(root,path)
-    review=yaml.safe_load(path.read_text());review['observer']='reviewer'
-    review['joints'][0].update(observed_same_direction=True,attempt_manifest_sha256='wrong')
-    path.write_text(yaml.safe_dump(review))
-    with pytest.raises(ValueError,match='stale'):batch.import_direction_review(root,path)
-    assert backend.executions==1
+def test_review_api_and_config_requirements_are_removed(fixture):
+    assert not hasattr(batch,'write_direction_template') and not hasattr(batch,'import_direction_review')
+    c=batch.settings(fixture['path'],['left_shoulder_pitch_joint'])
+    assert 'require_review' not in c['direction'] and 'quality_retries' not in c['static']
+    assert 'minimum_publish_ratio' not in c['frequency']
 
 
 def test_checkpoint_skips_completed_capture_and_read_only_reanalysis(fixture):
-    root=create(fixture,change=lambda c:c['direction'].update(require_review=False))
+    root=create(fixture)
     backend=FakeBackend(fixture['snapshot'])
     result=batch.run_batch(root,backend=backend,max_jobs=2);assert result['state']=='checkpoint'
     completed=backend.executions
@@ -214,30 +241,28 @@ def test_checkpoint_skips_completed_capture_and_read_only_reanalysis(fixture):
     assert batch.run_batch(root,resume=True,backend=backend)['passed']
 
 
-def test_quality_budget_exhaustion_cannot_be_reset_by_resume(fixture):
-    def configure(c):
-        c['direction'].update(require_review=False)
-        c['frequency']['enabled']=False
-        c['static']['quality_retries']=1
-    root=create(fixture,change=configure)
-    class UnsettledBackend(FakeBackend):
+def test_analysis_unavailable_does_not_retry_lock_or_stop_batch(fixture):
+    root=create(fixture)
+    class MissingAnalysis(FakeBackend):
         def inspect(self,plan,capture,output,*,static=False):
-            if static:raise field.StaticWindowError('Persistent unstable static window')
-            return super().inspect(plan,capture,output,static=static)
-    backend=UnsettledBackend(fixture['snapshot'])
-    report=batch.run_batch(root,backend=backend)
-    assert report['state']=='data_rejected' and backend.clears==0
-    before=backend.executions
-    assert batch.run_batch(root,resume=True,backend=backend)['state']=='data_rejected'
-    assert backend.executions==before
-    rows,_=batch.outcomes(root,batch.load_batch(root)[1])
-    assert [r['status'] for r in rows['static_000']]==['quality_retry','quality_exhausted']
-    assert not rows['static_001']
+            if static:raise ValueError('No numerical observations available')
+            result=super().inspect(plan,capture,output,static=static)
+            result['passed']=False
+            return result
+    backend=MissingAnalysis(fixture['snapshot']);report=batch.run_batch(root,backend=backend)
+    assert report['state']=='completed' and report['passed'] and report['collection_complete']
+    assert not report['gravity']['available'] and backend.clears==0
+    assert backend.executions==6
+    history,_=batch.outcomes(root,batch.load_batch(root)[1])
+    assert all(len(rows)==1 and rows[0]['status']=='recorded' for rows in history.values())
+    assert not any(e['event']=='terminal_fault' for e in batch.events(root))
+    assert batch.run_batch(root,resume=True,backend=backend)['passed']
+    assert backend.executions==6
 
 
 def test_replay_uses_delivered_pose_and_holds_between_attempts(fixture):
     from casbot_calib.hardware_batch_viewer import BatchReplaySource
-    root=create(fixture,change=lambda c:c['direction'].update(require_review=False))
+    root=create(fixture)
     backend=FakeBackend(fixture['snapshot'])
     batch.run_batch(root,backend=backend,max_jobs=2)
     before={str(p.relative_to(root)):sha256(p) for p in (root/'attempts').rglob('manifest.json')}
@@ -258,3 +283,25 @@ def test_replay_uses_delivered_pose_and_holds_between_attempts(fixture):
     np.testing.assert_array_equal(following.q,next_data['q'][0])
     assert following.sample_ns==-1
     assert before=={str(p.relative_to(root)):sha256(p) for p in (root/'attempts').rglob('manifest.json')}
+
+
+def test_execution_or_geometry_contract_error_still_ends_batch(fixture):
+    root=create(fixture)
+    class BrokenContract(FakeBackend):
+        def inspect(self,*args,**kwargs):raise field.FieldContractError('Executed a different frozen command')
+    backend=BrokenContract(fixture['snapshot']);report=batch.run_batch(root,backend=backend)
+    assert report['state']=='faulted' and backend.executions==backend.clears==1
+    with pytest.raises(RuntimeError,match='cannot resume'):batch.run_batch(root,resume=True,backend=backend)
+
+
+def test_processed_report_does_not_claim_skipped_model_dependent_job_was_collected(fixture,monkeypatch):
+    from casbot_calib import hardware_inertia as inertia
+    root=create(fixture);_,protocol=batch.load_batch(root)
+    protocol['jobs']=[dict(protocol['jobs'][0],kind='control_validation',feedforward='identified',gain_strategy='original')]
+    protocol['config']['static']['enabled']=False
+    monkeypatch.setattr(batch,'load_batch',lambda *a,**k:(root,protocol))
+    monkeypatch.setattr(inertia,'freeze_inertia',lambda *a:False)
+    backend=FakeBackend(fixture['snapshot']);report=batch.run_batch(root,backend=backend)
+    assert report['passed'] and report['workflow_processed'] and report['state']=='completed'
+    assert not report['collection_complete'] and report['jobs_not_run'][0]['status']=='not_run_missing_input'
+    assert backend.snapshots==backend.executions==backend.clears==0

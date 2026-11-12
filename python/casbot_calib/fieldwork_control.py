@@ -26,7 +26,7 @@ def tuning_config(config):
 
 
 def create_session(profile, output, domain_id, scope, *, workspace=False):
-    config = field.load_profile(profile)
+    config = field.load_profile(profile,manual=True)
     tuning_config(config)
     if type(domain_id) is not int or not 0 <= domain_id <= 232:
         raise ValueError('必须显式输入现场确认的ROS域号')
@@ -105,17 +105,17 @@ class Session:
         self.metadata = read(self.root/'protocol/session.json')
         if self.metadata.get('schema_version') != self.schema:
             raise ValueError('旧验收向导会话不能作为手动调参会话；请新建目录')
-        self.config = field.load_profile(self.root/'protocol/profile.yaml')
+        self.config = field.load_profile(self.root/'protocol/profile.yaml',manual=True)
         self.names = self.metadata['joint_names']
 
     def status(self):
         journal = events(self.root)
-        starts = [e['run'] for e in journal if e['event'] == 'stream_started']
-        ends = {e['run'] for e in journal if e['event'] == 'stream_finished'}
+        starts = [e['run'] for e in journal if e['event'] in ('stream_started','zero_started')]
+        ends = {e['run'] for e in journal if e['event'] in ('stream_finished','zero_finished')}
         fault = any(e['event'] == 'terminal_fault' for e in journal)
         return dict(**self.metadata, runs=starts, blocked_reason='会话故障或未封存，需新建会话' if fault or set(starts)-ends else None)
 
-    def stream(self, relative, command_file, cancel_check=None, initial_values=None, on_event=None, recording_pause_file=None):
+    def stream(self, relative, command_file, cancel_check=None, initial_values=None, on_event=None, recording_pause_file=None, settings=None):
         if self.status()['blocked_reason']:
             raise ValueError(self.status()['blocked_reason'])
         directory = (self.root/relative).resolve()
@@ -125,16 +125,30 @@ class Session:
             raise ValueError('指令邮箱必须属于本次运行')
         if Path(command_file).exists():
             raise ValueError('连接时邮箱必须为空，先读取再开始发送')
+        policy_path=None
+        config=self.config
+        if settings is not None:
+            from . import fieldwork_settings as policy
+            engine,_=field.model_for(config)
+            lower=[j.lower for j in engine.model.joints];upper=[j.upper for j in engine.model.joints]
+            settings=policy.validate(settings,self.names,self.metadata['model_context'],lower,upper)
+            atomic_json(directory/'settings_initial.json',settings)
+            policy_path=directory/'limits.csv';policy.write_wire(policy_path,settings,lower,upper)
+            config=dict(config,manual_stop_timeout_s=settings['general']['stop_timeout_s'],
+                manual_recording_start_timeout_s=settings['general']['recording_start_timeout_s'],command_hz=int(settings['general']['command_hz']),
+                max_feedback_age_ns=round(settings['general']['feedback_timeout_s']*1e9),max_mode_age_ns=round(settings['general']['mode_timeout_s']*1e9),
+                transition_timeout_ns=round(settings['general']['rpc_timeout_s']*1e9),maximum_velocity_rad_s=float(np.max(policy.resolve(settings,lower,upper)['input_velocity'])))
         if initial_values is not None:
             engine,_ = field.model_for(self.config)
-            values=validate_commands(initial_values,[j.lower for j in engine.model.joints],
-                [j.upper for j in engine.model.joints],self.metadata['manual_tuning'],self.config['maximum_velocity_rad_s'])
+            bounds=policy.command_bounds(settings,lower,upper) if settings is not None else (
+                [j.lower for j in engine.model.joints],[j.upper for j in engine.model.joints],self.metadata['manual_tuning'],self.config['maximum_velocity_rad_s'])
+            values=validate_commands(initial_values,*bounds)
             write_command(command_file,0,values)
         native_events=[];diagnostics=[]
         def output(line):
             from .fieldwork_status import describe
-            if line.startswith('FIELDWORK_EVENT '):
-                value=describe(json.loads(line[len('FIELDWORK_EVENT '):]));native_events.append(value)
+            if line.startswith(('FIELDWORK_EVENT ','FIELDWORK_SETTINGS ')):
+                value=describe(json.loads(line.split(' ',1)[1]));native_events.append(value)
                 if on_event:on_event(value)
             elif line.startswith('FIELDWORK_NOTICE ') and on_event:
                 value=json.loads(line[len('FIELDWORK_NOTICE '):]);on_event(describe(dict(value,action='recording_warning')))
@@ -142,18 +156,20 @@ class Session:
                 diagnostics.append(line.strip());del diagnostics[:-8]
         event(self.root, 'stream_started', run=relative)
         try:
-            result = field.run_executor(self.config, directory/'capture', self.metadata['domain_id'],
+            result = field.run_executor(config, directory/'capture', self.metadata['domain_id'],
                 manual_command=command_file, manual_effort_limit_nm=self.metadata['manual_tuning']['effort_limit_nm'],
-                timeout_s=24*3600, cancel_check=cancel_check, on_output=output if on_event else None,
+                timeout_s=None if settings is not None else 24*3600,
+                **(dict(manual_policy=policy_path) if policy_path else {}), cancel_check=cancel_check, on_output=output,
                 **(dict(recording_pause_file=recording_pause_file) if recording_pause_file else {}))
             controlled = result.get('fault') == 'interrupted' and result.get('supervisor_interruption') in ('operator_cancel', 'frontend_closed')
+            controlled=controlled or (settings is not None and result.get('fault')=='duration_complete')
             event(self.root, 'stream_finished', run=relative, controlled_stop=controlled)
             if not controlled:
                 event(self.root, 'terminal_fault', run=relative, reason=result.get('fault') or result['reason'])
             # Archive events, keeping the original initiating fault distinct from stop observations.
             atomic_json(directory/'control_status.json',dict(events=native_events,
                 first_fault=next((e for e in native_events if e.get('action')=='end_control'),None)))
-            recording_error=None
+            recording_error='控制CSV录制已暂停；已写前缀保留，数据不完整' if result.get('recording_paused') else None
             try:
                 if recording_pause_file and Path(recording_pause_file).exists():raise ValueError('缓存已满；原始前缀保留，记录导出不完整')
                 if recording_pause_file is None:export_recording(self, directory) # Automatic spools derive comparison files only on explicit save.
@@ -185,10 +201,19 @@ class Workspace(Session):
         return relative
 
 
+def recording_capture(directory):
+    """Resolve the executed zero reference after a pre-control start replan."""
+    directory=Path(directory);capture=directory/'capture'
+    result=read(capture/'result.json') if (capture/'result.json').exists() else {}
+    if result.get('schema_version')=='casbot_field_start_replans_v1' and result.get('passed'):
+        return field.resolve_field_capture(directory/'plan',capture)[1]
+    return capture
+
+
 def export_recording(session, directory):
     """Comparison CSVs keep native publish/receive clocks, all frames and missing values."""
     import shutil
-    capture = directory/'capture'; output = directory/'recording'; output.mkdir(exist_ok=True)
+    capture = recording_capture(directory); output = directory/'recording'; output.mkdir(exist_ok=True)
     for filename in ('commands.csv', 'feedback.csv', 'events.csv'):
         shutil.copyfile(capture/'execution'/filename, output/filename)
     from .vendor_data import normalize_packet
@@ -209,7 +234,8 @@ def export_recording(session, directory):
                     writer.writerow([packet['channel'],packet['receive_ns'],stamp.get('sec',''),stamp.get('nanosec',''),
                         *[x for key in keys for x in (value[key] if value[key] is not None else ['']*14)]])
     init = read(directory/'initial.json') if (directory/'initial.json').exists() else None
-    atomic_json(output/'recording.json', dict(**run_marker(), joint_names=session.names,
+    execution_result=read(capture/'execution/result.json') if (capture/'execution/result.json').exists() else {}
+    atomic_json(output/'recording.json', dict(execution_recording_status='paused_prefix' if execution_result.get('recording_paused') else 'finalized_prefix' if execution_result else 'live_prefix',**run_marker(), joint_names=session.names,
         model_context=session.metadata['model_context'], scope=session.metadata['scope'], initial=init,
         timestamp_semantics=dict(publish_ns='sender steady clock', receive_ns='callback steady clock',
             publish_stamp_ns='SDK publication stamp, NOT acquisition'), sample_time_known=False,

@@ -1,4 +1,4 @@
-"""H3 observed-plateau fitting, stage gating and SDK ramp planning contracts."""
+"""H3 observed-plateau fitting, ungated collection and SDK ramp planning contracts."""
 import csv
 from pathlib import Path
 import shutil
@@ -96,8 +96,7 @@ def test_moving_friction_shared_batch_resume_and_readonly_fit(fixture):
     assert backend.executions==3 and backend.clears==0
 
 
-@pytest.mark.parametrize('change',[lambda c:c['pose_offsets_rad'].update(validation=c['pose_offsets_rad']['train']),
-    lambda c:c['speeds_rad_s'].update(train=[.03]),lambda c:c.update(stroke_half_rad=.001)])
+@pytest.mark.parametrize('change',[lambda c:c['pose_offsets_rad'].update(validation=c['pose_offsets_rad']['train'])])
 def test_invalid_experiment_design_is_rejected_before_io(fixture,change):
     c=fixture['config'];change(c);fixture['path'].write_text(yaml.safe_dump(c))
     with pytest.raises(ValueError):create(fixture)
@@ -126,10 +125,18 @@ def test_breakaway_plan_uses_external_gravity_and_padded_return(fixture):
     assert max(motion['conditions']['position_allowance_rad'])==.006
 
 
-def test_callback_gap_is_not_smoothed_across(fixture):
-    obs=dict(receive_ns=np.array([0,100000000],dtype=np.int64))
-    motion=dict(conditions=dict(joint_index=0,speed=.03))
-    with pytest.raises(ValueError,match='gap'):h3.plateau_pairs(obs,None,motion,None,fixture['config'],{})
+def test_callback_gaps_and_nonuniform_motion_remain_in_plateau_data(fixture):
+    t=np.arange(0.,2.,.1);q=np.zeros((len(t),14));q[:,0]=np.r_[np.linspace(0.,.1,10),np.linspace(.1,0.,10)]
+    v=np.zeros_like(q);v[:,0]=np.r_[np.full(10,.4),np.full(10,-.4)]
+    obs=dict(receive_ns=np.rint(t*1e9).astype(np.int64),q=q,dq=v,effort_raw=np.zeros_like(q))
+    motion=dict(conditions=dict(joint_index=0,speed=.03),labels=['constant_velocity']*2,knots_s=[0.,1.,2.])
+    class Gravity:
+        def gravity_batch(self,q):return np.zeros_like(q)
+        def mass_matrix(self,q):return np.eye(14)
+        def velocity_bias(self,q,v):return np.zeros(14)
+    x,y,audit=h3.plateau_pairs(obs,t,motion,Gravity(),fixture['config'],dict(effort_zero_nm=0.,effort_gain=1.))
+    assert len(x)==fixture['config']['pair_points'] and audit['windows']
+    assert any(abs(w['reported_speed_rad_s'])>.3 for w in audit['windows'])
 
 
 def test_joint_box_refinement_certifies_conservative_bound_and_rejects_real_collision():
@@ -145,3 +152,18 @@ def test_joint_box_refinement_certifies_conservative_bound_and_rejects_real_coll
     assert not unsafe['passed']
     p=Profile(False);p.pair_clearance_m=np.array([.016])
     assert not certify_reference_box(p,evaluate,1.,[0.],[.001])['passed']
+
+
+def test_field_rmse_has_no_threshold_and_formal_fit_retains_its_threshold():
+    x=np.column_stack([np.linspace(.01,.1,20),np.ones(20)]);y=x@np.array([.08,.03])
+    _,formal=fit_friction_features(x,y,x,y+1.,.025)
+    _,field_report=fit_friction_features(x,y,x,y+1.,None)
+    assert not formal['passed'] and field_report['passed']
+    assert formal['validation_rmse_nm']==pytest.approx(field_report['validation_rmse_nm'])
+
+
+def test_single_speed_collection_does_not_require_a_friction_fit(fixture):
+    c=fixture['config'];c['speeds_rad_s']['train']=[.03]
+    fixture['path'].write_text(yaml.safe_dump(c))
+    root=create(fixture)
+    assert len(batch.load_batch(root)[1]['jobs'])==2

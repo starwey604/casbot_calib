@@ -1,4 +1,5 @@
 #pragma once
+#include "numeric_text.hpp"
 #include <rclcpp/rclcpp.hpp>
 #include <sensor_msgs/msg/joint_state.hpp>
 #include <array>
@@ -36,7 +37,7 @@ inline std::string json_quote(const std::string& value) {
 inline std::string columns(const std::string& name) {
   std::string s; for (int j=0;j<14;++j) s+=","+name+std::to_string(j); return s;
 }
-template<class Values> void values(std::ostream& out, const Values& v) {for (auto x:v) out << ',' << x;}
+template<class Values> void values(std::ostream& out, const Values& v) {for(auto x:v){out.put(',');vendor_text::number(out,x);}}
 inline std::vector<double> csv(const std::string& line) {
   std::istringstream in(line); std::string s; std::vector<double> result;
   while (std::getline(in,s,',')) {std::size_t used; double value=std::stod(s,&used);

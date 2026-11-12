@@ -3,7 +3,7 @@ JOINT_LABELS = ['肩俯仰','肩滚转','肩偏航','肘俯仰','腕偏航','腕
 _SUFFIXES = ['shoulder_pitch_joint','shoulder_roll_joint','shoulder_yaw_joint','elbow_pitch_joint',
              'wrist_yaw_joint','wrist_pitch_joint','wrist_roll_joint']
 TITLES = {
- 'frontend_heartbeat_timeout':'界面超过2秒没有更新存活信号，本次控制已结束',
+ 'frontend_heartbeat_timeout':'界面超过配置时限未更新存活信号，本次控制已结束',
  'frontend_owner_changed':'控制窗口所有者发生变化，本次控制已结束',
  'frontend_clock_mismatch':'界面与发送器钟域不一致，本次控制已结束',
  'frontend_heartbeat_invalid':'界面存活消息格式无效，本次控制已结束',
@@ -21,6 +21,12 @@ TITLES = {
  'waiting_mode_service':'等待上身模式服务被发现',
  'request_upper_debug':'正在请求上身调试模式',
  'mode_confirmed':'模式已确认，正在发送五字段指令',
+ 'waiting_stationary_window':'关节速度已符合条件，等待持续稳定窗口',
+ 'duration_complete':'达到设置的控制时长，已停止发送',
+ 'observed_warning':'关节反馈超出观察阈值；发送继续',
+ 'observed_recovered':'反馈已回到观察范围；发送继续',
+ 'settings_applied':'限制版本已由发送器确认',
+ 'settings_rejected':'发送器未采纳新限制；保留原设置',
  'observed_limit':'收到的关节反馈超限，已停止发送',
  'stale_feedback':'关节反馈接收超时，已停止发送',
  'stale_mode':'模式消息接收超时，已停止发送',
@@ -53,11 +59,14 @@ def joint_label(name):
 def describe(native):
     code=native['code'];action=native.get('action','')
     result=dict(native,title=TITLES.get(code,'后台状态：'+code))
-    result['severity']='error' if action=='end_control' else 'warning' if code in ('stop_unconfirmed','recording_io_error') else 'info'
+    result['severity']='error' if action=='end_control' else 'warning' if code in ('stop_unconfirmed','recording_io_error','observed_warning','settings_rejected') else 'info'
     if action=='wait':
         result['effect']='尚未切模式、未发送指令；条件满足后继续待启动请求，可随时取消。'
         if code=='waiting_start_command':result['effect']='尚未发送指令；点击开始发送后才会切模式。'
     elif action=='request_mode':result['effect']='已发出模式请求，等待SDK应答；尚未发送关节指令。'
+    elif action=='warning':result['effect']='仅告警，不改变五字段目标；位置越界只记录，速度越限动作可在限制面板调整。'
+    elif action=='recording_warning':result['effect']=native.get('message','')
+    elif action=='settings':result['effect']=native.get('message','版本 '+str(native.get('revision','')))
     elif action=='sending':result['effect']='五字段发送中；没有隐藏重力补偿。'
     elif action=='end_control':result['effect']='当前控制不会自动恢复；只读连接继续，可以查看反馈和记录。'
     elif action=='observe_after_stop':result['effect']='停止发布不等于物理急停；只读反馈继续更新。'

@@ -162,7 +162,7 @@ def pair_friction_parts(parts,minimum_overlap=.02,points=48):
 
 
 def fit_friction_features(x,y,vx,vy,maximum_rmse):
-    """Shared nonnegative Coulomb/viscous solve; observation qualification is external."""
+    """Shared nonnegative solve; None omits the field-only RMSE gate, formal callers supply it."""
     x=np.asarray(x);y=np.asarray(y);vx=np.asarray(vx);vy=np.asarray(vy)
     scale=np.maximum(np.linalg.norm(x,axis=0),1e-12);s=np.linalg.svd(x/scale,compute_uv=False)
     rank=int(np.count_nonzero(s>s[0]*1e-7))
@@ -171,7 +171,7 @@ def fit_friction_features(x,y,vx,vy,maximum_rmse):
         jac=lambda p:x.copy(),xtol=1e-12,ftol=1e-12,gtol=1e-12)
     rmse=float(np.sqrt(np.mean((vx@result.x-vy)**2)))
     return result.x,dict(rank=rank,singular_values=s.tolist(),validation_rmse_nm=rmse,success=result.success,
-        passed=bool(result.success and rmse<=maximum_rmse))
+        passed=bool(result.success and (maximum_rmse is None or rmse<=maximum_rmse)))
 
 
 def identify_friction(root,output,gravity,driver_report=None,*,records=None,config=None,sampling_policy='legacy'):
