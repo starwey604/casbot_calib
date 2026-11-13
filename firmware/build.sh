@@ -9,9 +9,17 @@ if [[ ! -x .venv/bin/west || ! -f zephyr/zephyr-env.sh || ! -d .west ]]; then
     exit 1
 fi
 
+app=trical_bridge
+output=trical_bridge
+if [[ "${1:-}" == "--rate-test" ]]; then
+    app=tests/qas_rate
+    output=qas_rate
+    shift
+fi
+
 # Keep this workspace independent of any globally exported/shared Zephyr tree.
 export ZEPHYR_BASE="$workspace/zephyr"
 exec .venv/bin/west build \
     -b promicro_nrf52840/nrf52840/uf2 \
-    -d "$workspace/build/trical_bridge" \
-    "$workspace/trical_bridge" "$@"
+    -d "$workspace/build/$output" \
+    "$workspace/$app" "$@"

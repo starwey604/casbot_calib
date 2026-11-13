@@ -37,6 +37,9 @@ Zephyr 固定为 `v4.5.0`；CMSIS、Nordic HAL 和 Segger RTT 的版本由该版
 # 增量构建
 bash firmware/build.sh
 
+# 独立 QAS 频率测试 app
+bash firmware/build.sh --rate-test
+
 # 配置或依赖改变后清洁重建
 bash firmware/build.sh -p always
 ```
@@ -56,19 +59,19 @@ USB VID/PID 暂沿用 Zephyr 的开发默认值 `2fe3:0004`，对外发布固件
 
 ## 当前固件行为
 
-- 初始化 BLE Central/GATT Client，配置三个连接槽位；不扫描、不广播、不自动连接仪表。
-- 使用 Zephyr 新 USB device stack，在启动时初始化一个 CDC ACM 接口，复用上游板级节点。
-- CDC ACM 留作后续数据通道，当前不发送仪表数据，也不处理主机命令。
-- 日志走 RTT 的丢弃模式，不占用 USB 数据口；未连接 RTT 调试器时不等待其读取普通日志。
-- 关闭本应用不用的外部 UART、I²C、SPI、PWM、ADC 和 IEEE 802.15.4 节点。
+- 支持显式扫描、按地址/类型连接三槽 QAS 仪表、GATT 发现和 CCC 确认后订阅。
+- 支持 QAS 参数查询/设值和 `MEAS`，两种写入模式明确区分；保留原始通知，不自动清零、恢复出厂或 OTA。
+- USB CDC ACM 使用有界非阻塞队列输出 JSONL；日志走 RTT。断开串口会停止实验并断开 BLE，不自动重连。
+- 普通应用在 `trical_bridge/`，独立频率测试在 `tests/qas_rate/`，共用 `trical_bridge/lib/`。
+- [USB 读写指南](docs/qas_usb.md)提供主机工具和行协议；[频率实验](tests/qas_rate/README.md)提供运行方式、统计含义和旧脚本缺陷分析。
 
-QAS GATT 发现、`MEAS` 轮询、协议解析、三表配置和主机 USB reader 留到后续实现。
-协议来源是 `~/codings/guanglu-qas-ble` 的逆向与实测资料，构建不依赖该目录。
-真实仪表采样时刻、三表同步及静态配对协议尚未验证；现有 K1–K5/SDK 标定入口保持原行为。
+仪表采样时刻、单位/尺度/mastering、三表静态配对尚未实测；本轮未烧录或连接实物，现有 K1–K5/SDK 标定入口保持原行为。
+构建不依赖外部协议分析仓库。
 
 ## 构建证据
 
-本轮构建结果记录在 [BUILD_VERIFICATION.md](BUILD_VERIFICATION.md)。
+QAS 移植与测试结果见 [QAS_PORT_VERIFICATION.md](QAS_PORT_VERIFICATION.md)；
+首版固件构建记录保留在 [BUILD_VERIFICATION.md](BUILD_VERIFICATION.md)。
 
 参考：[Zephyr 应用工作区](https://docs.zephyrproject.org/latest/develop/application/index.html)、
 [Pro Micro nRF52840](https://docs.zephyrproject.org/latest/boards/others/promicro_nrf52840/doc/index.html)、
