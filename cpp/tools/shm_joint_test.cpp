@@ -53,8 +53,8 @@ void print_status(const StatusFrame& s) {
            <<" joint_count="<<int(s.joint_count)<<" (print slots, not count-derived validity)\n";
   for(int j=0;j<35;++j) {
     const auto& a=s.joints[j];
-    std::cout<<"slot="<<j;
-    if(j>=12 && j<=25) std::cout<<" arm_ID="<<j-11<<" "<<arm_names[j-12]<<" q_rad="<<arm_position(s,j-12);
+    std::cout<<"id="<<j;
+    if(j>=12 && j<=25) std::cout<<" "<<arm_names[j-12]<<" q_rad="<<arm_position(s,j-12);
     else std::cout<<(j>=29?" reserved":" non_arm");
     std::cout<<" pos_raw="<<a.position<<" vel_raw="<<a.velocity<<" torque_raw="<<a.torque
       <<" status=0x"<<std::hex<<a.status_word<<std::dec<<" mode="<<a.mode<<" error="<<a.error_code<<'\n';
@@ -260,25 +260,25 @@ void run(Channel& channel,StatusFrame state,const CommandFrame& hand,const Eigen
   recorder.finish();
   std::ofstream result(root/"result.txt");
   result<<"execution_completed="<<(failure.empty()?1:0)<<"\nreason="<<(failure.empty()?"completed_with_disable_ack":failure)
-    <<"\narm_id="<<joint+1<<"\namplitude_rad="<<amplitude<<"\nkp="<<kp<<"\nkd="<<kd
+    <<"\njoint_id="<<joint+12<<"\namplitude_rad="<<amplitude<<"\nkp="<<kp<<"\nkd="<<kd
     <<"\nfirst_stream_mono_ns="<<first_stream<<"\nmax_send_gap_ns="<<max_send_gap
     <<"\nrecording_stopped="<<recorder.stopped<<"\nphysical_stop_observed=unknown\n";
   if(!failure.empty())throw std::runtime_error(failure);
 }
 void snapshot_output(const std::filesystem::path& root,const StatusFrame& state,const casbot::ArmModel& model) {
   binary(root/"status.bin",state);print_status(state);
-  std::ofstream csv(root/"arms.csv");csv<<std::setprecision(17)<<"id,slot,joint,q,lower,upper,minus_0_5,plus_0_5,within_limits\n";
+  std::ofstream csv(root/"arms.csv");csv<<std::setprecision(17)<<"id,joint,q,lower,upper,minus_0_5,plus_0_5,within_limits\n";
   for(int j=0;j<14;++j) {
     const double q=arm_position(state,j);const auto& m=model.joints[j];
-    csv<<j+1<<','<<j+12<<','<<arm_names[j]<<','<<q<<','<<m.lower<<','<<m.upper<<','<<q-.5<<','<<q+.5<<','<<jog_within_limits(q,m.lower,m.upper,.5)<<'\n';
-    std::cout<<"LIMIT arm_ID="<<j+1<<" q="<<q<<" minus="<<q-.5<<" plus="<<q+.5<<" URDF=["<<m.lower<<','<<m.upper<<"] "
+    csv<<j+12<<','<<arm_names[j]<<','<<q<<','<<m.lower<<','<<m.upper<<','<<q-.5<<','<<q+.5<<','<<jog_within_limits(q,m.lower,m.upper,.5)<<'\n';
+    std::cout<<"LIMIT id="<<j+12<<" q="<<q<<" minus="<<q-.5<<" plus="<<q+.5<<" URDF=["<<m.lower<<','<<m.upper<<"] "
       <<(jog_within_limits(q,m.lower,m.upper,.5)?"eligible":"SKIP limit")<<'\n';
   }
 }
 void usage() {
   std::cout<<"shm_joint_test --inspect --output NEW_DIR [--shm /shm_mc]\n"
     <<"shm_joint_test --snapshot --urdf FILE --output NEW_DIR [--shm /shm_mc]\n"
-    <<"shm_joint_test --execute --joint-id 1..14 --urdf FILE --scene FILE --hand-background command.bin --output NEW_DIR\n"
+    <<"shm_joint_test --execute --joint-id 12..25 --urdf FILE --scene FILE --hand-background command.bin --output NEW_DIR\n"
     <<"  [--amplitude .5] [--segment-s 5] [--kp 20] [--kd 2] [--shm /shm_mc]\n"
     <<"inspect is O_RDONLY; snapshot consumes status only, requires exclusive window.\n"
     <<"execute disables legs/waist/head, holds other arm axes; hand bytes explicitly frozen from given file.\n";
@@ -287,7 +287,7 @@ void usage() {
 int main(int argc,char** argv) {
   std::cout<<std::setprecision(9);std::signal(SIGINT,signal_stop);std::signal(SIGTERM,signal_stop);std::signal(SIGHUP,signal_stop);std::signal(SIGPIPE,SIG_IGN);
   try {
-    std::string mode,name="/shm_mc",output,urdf,scene,background;int id=1;double amplitude=.5,segment=5,kp=20,kd=2;
+    std::string mode,name="/shm_mc",output,urdf,scene,background;int id=12;double amplitude=.5,segment=5,kp=20,kd=2;
     for(int a=1;a<argc;++a) {
       const std::string key=argv[a];
       if(key=="--help"){usage();return 0;}
@@ -304,7 +304,8 @@ int main(int argc,char** argv) {
       }
     }
     if(output.empty()||mode.empty())throw std::runtime_error("Mode and new output directory required");
-    if(id<1||id>14||!std::isfinite(amplitude)||amplitude<=0||amplitude>.5||!std::isfinite(segment)||segment<1||
+    const auto index=arm_index(id);
+    if(!std::isfinite(amplitude)||amplitude<=0||amplitude>.5||!std::isfinite(segment)||segment<1||
        !std::isfinite(kp)||kp<0||kp>100||!std::isfinite(kd)||kd<0||kd>10)throw std::runtime_error("Invalid test settings");
     if(!std::filesystem::path(output).parent_path().empty())std::filesystem::create_directories(std::filesystem::path(output).parent_path());
     if(!std::filesystem::create_directory(output))throw std::runtime_error("Output must be a new directory");
@@ -320,16 +321,16 @@ int main(int argc,char** argv) {
     snapshot_output(output,state,model.model());
     if(mode=="--snapshot")return 0;
     if(scene.empty()||background.empty())throw std::runtime_error("Collision scene and explicit hand command background required");
-    const auto q0=positions(state);const auto& joint=model.model().joints[id-1];
+    const auto q0=positions(state);const auto& joint=model.model().joints[index];
     if(4.375*amplitude/segment>std::min(1.5,joint.velocity_limit))throw std::runtime_error("Jog reference exceeds configured/URDF velocity limit");
-    if(!jog_within_limits(q0[id-1],joint.lower,joint.upper,amplitude)) {
+    if(!jog_within_limits(q0[index],joint.lower,joint.upper,amplitude)) {
       std::ofstream(std::filesystem::path(output)/"result.txt")<<"execution_completed=0\nreason=SKIP_urdf_limit\ncommands_sent=0\n";
       return 4;
     }
     for(int j=0;j<14;++j)if(q0[j]<model.model().joints[j].lower||q0[j]>model.model().joints[j].upper)
-      throw std::runtime_error("Measured start outside URDF limit at arm ID "+std::to_string(j+1));
+      throw std::runtime_error("Measured start outside URDF limit at joint ID "+std::to_string(j+12));
     Scene collision(scene,model,urdf);std::ofstream proof(std::filesystem::path(output)/"collision_reference.txt");
-    if(!collision.certify(q0,id-1,amplitude,proof)) {
+    if(!collision.certify(q0,index,amplitude,proof)) {
       std::ofstream(std::filesystem::path(output)/"result.txt")<<"execution_completed=0\nreason=SKIP_collision\ncommands_sent=0\n";
       return 4;
     }
@@ -339,8 +340,8 @@ int main(int argc,char** argv) {
     binary(std::filesystem::path(output)/"hand_background_source.bin",hand);
     std::ofstream(std::filesystem::path(output)/"settings.txt")<<"mode=arm_jog_experiment\nnon_arm=disabled\nhand_policy=explicit_frozen_command_bytes\nurdf="<<urdf<<"\nscene="<<scene<<'\n';
     const auto parent=getppid();if(parent<=1 || prctl(PR_SET_PDEATHSIG,SIGTERM) || getppid()!=parent)throw std::runtime_error("No live supervisor");
-    std::cout<<"START arm_ID="<<id<<" slot="<<id+11<<" q0="<<q0[id-1]<<" amplitude="<<amplitude<<" kp="<<kp<<" kd="<<kd<<"\n";
-    run(channel,state,hand,q0,id-1,amplitude,segment,kp,kd,output);
+    std::cout<<"START id="<<id<<" q0="<<q0[index]<<" amplitude="<<amplitude<<" kp="<<kp<<" kd="<<kd<<"\n";
+    run(channel,state,hand,q0,index,amplitude,segment,kp,kd,output);
     return 0;
   } catch(const std::exception& e) {std::cerr<<"ERROR "<<e.what()<<'\n';return 1;}
 }

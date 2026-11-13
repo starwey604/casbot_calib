@@ -15,7 +15,11 @@ inline constexpr std::array<const char*,14> arm_names{
   "left_elbow_pitch_joint","left_wrist_yaw_joint","left_wrist_pitch_joint","left_wrist_roll_joint",
   "right_shoulder_pitch_joint","right_shoulder_roll_joint","right_shoulder_yaw_joint",
   "right_elbow_pitch_joint","right_wrist_yaw_joint","right_wrist_pitch_joint","right_wrist_roll_joint"};
-inline void check_arm(std::size_t j) { if (j>=14) throw std::out_of_range("Arm ID must be 1..14"); }
+inline void check_arm(std::size_t j) { if (j>=14) throw std::out_of_range("Internal arm index must be 0..13"); }
+inline std::size_t arm_index(int id) {
+  if (id<12 || id>25) throw std::out_of_range("Joint ID must be 12..25 (arms only)");
+  return static_cast<std::size_t>(id-12);
+}
 inline double arm_position(const StatusFrame& s, std::size_t j) {
   check_arm(j); return arm_direction[j]*static_cast<double>(s.joints[j+12].position)*1e-6+arm_offset[j];
 }

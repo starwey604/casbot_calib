@@ -58,7 +58,7 @@ int main(int argc,char** argv) {
     const auto pid=fork();
     if(pid==0) {
       const int fd=open(log.c_str(),O_WRONLY|O_CREAT|O_EXCL,0600);dup2(fd,1);dup2(fd,2);close(fd);
-      execl(argv[1],argv[1],"--execute","--shm",name.c_str(),"--joint-id",limit?"4":"6","--amplitude",limit?"0.5":"0.01","--segment-s",limit?"5":"1",
+      execl(argv[1],argv[1],"--execute","--shm",name.c_str(),"--joint-id",limit?"15":"17","--amplitude",limit?"0.5":"0.01","--segment-s",limit?"5":"1",
         "--urdf",argv[2],"--scene",argv[3],"--hand-background",argv[4],"--output",output.c_str(),static_cast<char*>(nullptr));
       _exit(127);
     }

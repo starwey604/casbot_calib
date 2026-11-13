@@ -4,6 +4,12 @@
 void check(bool v) { if(!v) throw std::runtime_error("Arm jog test failed"); }
 int main() {
   using namespace casbot::shm;
+  check(arm_index(12)==0 && arm_index(25)==13);
+  for(int id: {1,11,26}) {
+    bool rejected=false;
+    try { (void)arm_index(id); } catch(const std::out_of_range&) { rejected=true; }
+    check(rejected);
+  }
   check(jog_within_limits(0,-.5,.5,.5));
   check(!jog_within_limits(.01,-.5,.5,.5));
   check(!jog_within_limits(-.01,-.5,.5,.5));

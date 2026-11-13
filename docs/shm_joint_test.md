@@ -6,8 +6,8 @@
 
 ## ID 与完整背景帧
 
-- ID1–7为左肩pitch/roll/yaw、肘pitch、腕yaw/pitch/roll，对应SHM槽12–18。
-- ID8–14为右侧同顺序，对应槽19–25。界面ID不是CAN电机ID；全部35个槽仍按真实槽号打印，29–34标为保留槽。
+- ID12–18为左肩pitch/roll/yaw、肘pitch、腕yaw/pitch/roll；ID19–25为右侧同顺序。ID直接使用PDF中的SHM数组下标，不引入1–14别名，也不代表CAN电机ID。入口拒绝12–25以外的运动ID。全部35个槽仍按真实ID打印，29–34标为保留槽。
+- 早期v1记录里的`arm_ID1–14`是内部别名，依次对应真实ID12–25；旧记录保持原样，新入口和新记录统一真实ID。
 - 腿0–11、头26/27、腰28发送`0x06`失能，目标填当前原始位置，不向零位跳转；不做腿部串并联坐标运动。
 - 双臂先失能、切MIT、使能到起点保持；当次只改变所选轴，其余双臂目标固定为本次读取值。力矩前馈始终0，不暗加重力/摩擦。
 - 手部不纳入运动试验。通过显式`--hand-background`文件冻结原命令的手部字段；只取其中双手字节和hand_count，不重放其中腿/腰/头/双臂旧目标，也不复制反馈总力矩到前馈。该手部背景选择随记录保存。
@@ -54,10 +54,10 @@ install/shm-core/bin/shm_channel_start --fresh-master /shm_mc
 "$tool" --snapshot --urdf "$urdf" --output artifacts/my_shm_test/snapshot
 
 # 会切换状态、使能双臂并发运动命令；一次一个ID。
-"$tool" --execute --joint-id 1 --urdf "$urdf" \
+"$tool" --execute --joint-id 12 --urdf "$urdf" \
   --scene artifacts/my_shm_test/collision.scene \
   --hand-background artifacts/my_shm_test/before_stop/command.bin \
-  --output artifacts/my_shm_test/id1
+  --output artifacts/my_shm_test/id12
 ```
 
 每轴重新读取起点并检查双向限位；碰撞规划后又读新帧核对起点连接（0.005rad）。检查不通过就不使能、不发轨迹；不会用上轴旧起点继续。代理运行一例，用户观察反馈后再继续下一例。`--amplitude`只允许显式减小到(0,0.5]，不自动调整；`--kp/--kd/--segment-s`可显式修改，速度仍不超过URDF及1.5rad/s上限。
