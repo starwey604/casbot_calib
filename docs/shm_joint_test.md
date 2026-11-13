@@ -4,9 +4,9 @@
 
 **2026-11-13用户指定现场条件**：先测双臂14轴，所有状态照常打印；机器人有固定支撑，腿/腰/头可以失能，现场有外置远程继电器保护。此轮是中间件控制流程探索，不需要先完成正式标定观测资格。
 
-## 当前Orin窗口直接执行
+## 已部署旧版本的Orin窗口直接执行
 
-本次主站已启动并完成握手；**没有重启Orin时，不要重复停业务或运行`shm_channel_start`**。SSH登录后运行下面的命令，每次只测一轴：
+下列是2026-11-13已验证旧版本的直接用法；新[fieldwork CLI](../fieldwork/shm/README.md)待到场部署。该次主站已启动并完成握手；**没有重启Orin时，不要重复停业务或运行`shm_channel_start`**。SSH登录后运行下面的命令，每次只测一轴：
 
 ```bash
 cd /home/nvidia/casbot_calib_shm
@@ -99,7 +99,7 @@ install/shm-core/bin/shm_channel_start --fresh-master /shm_mc
 - `status.bin`、`hand_background_source.bin`、`settings.txt`保存起点、手部背景和`collision_check=disabled_by_user`。旧运行中的`collision_reference.txt`只属于当时启用检查的版本。
 - `result.txt`：执行结果、原因、最大成功发送间隔与记录前缀状态；`execution_completed`不表示物理往返误差或正式标定通过。
 
-控制周期与磁盘/终端打印分离；有界记录队列满或写盘失败时停录保留前缀，控制不因慢日志阻塞。每秒打印一次全轴状态；不依靠SSH输出维持周期。
+控制周期与磁盘/终端打印分离；有界记录队列满或写盘失败时停录保留前缀，控制不因慢日志阻塞。初始全轴状态打印并持续保存完整原始帧；新fieldwork入口将终端日志写入本例文件，并显示阶段变化，不依靠SSH输出维持周期。
 
 私有`shm_channel_tests`检查真实IPC布局、保留一槽的满/空行为及连接不清索引；`shm_jog_tests`检查方向/零偏、截断、双向限位与波形。`shm_joint_integration`使用独占私有协议夹具测试使能—轨迹—失能、故障结束和限位拒绝零下发；夹具不是物理Mock，不作为实机运动证明。
 
@@ -134,3 +134,7 @@ install/shm-core/bin/shm_channel_start --fresh-master /shm_mc
 - 原始命令/状态、CSV及起点/设置在Orin `artifacts/shm_joint_test_20261113/id12_v4_status_mask/`，本机副本位于同根目录 `orin/id12_v4_status_mask/`，数值汇总为本机 `analysis.json`。
 
 用户随后现场反馈：**“正常。没问题。能看到在动。”** 记为本次ID12可见运动正常的现场观察，和上述原始反馈/流程结果共同归档。停在ID12检查点，尚未跑其它13轴。主站继续留在本次独占窗口，不自动恢复ROS业务。
+
+### 用户随后自行尝试ID13
+
+用户报告：ID12暂时没问题，随后换ID13试了一次，Orin似乎卡住；用户决定暂不深究。尚未取得这次运行的命令、原始数据与退出结果，原因未定，不能归为Bash操作问题，也不能记为ID13完成。下次到场先确认当前开机/主站与测试进程状态，再开新会话，不resume旧尝试。后续优先建设fieldwork逐例记录和报告，见[实施顺序](shm_migration_plan.md#6-id12之后先交付明天可用的shm-fieldwork)。

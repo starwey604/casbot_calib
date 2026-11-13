@@ -1,0 +1,387 @@
+#include "field_runtime.hpp"
+#include <casbot_calib/shm/channel.hpp>
+#include <casbot_calib/shm/clock.hpp>
+#include <casbot_calib/shm/arm_jog.hpp>
+#include <casbot_calib/arm_dynamics.hpp>
+#include <atomic>
+#include <chrono>
+#include <condition_variable>
+#include <csignal>
+#include <deque>
+#include <filesystem>
+#include <fstream>
+#include <iomanip>
+#include <iostream>
+#include <iterator>
+#include <limits>
+#include <mutex>
+#include <string>
+#include <thread>
+#include <fcntl.h>
+#include <sys/file.h>
+#include <sys/mman.h>
+#include <sys/prctl.h>
+#include <time.h>
+#include <unistd.h>
+
+namespace casbot::shm {
+namespace {
+volatile std::sig_atomic_t interrupted=0;
+void signal_stop(int) { interrupted=1; }
+std::int64_t mono() {
+  timespec t{}; if(clock_gettime(CLOCK_MONOTONIC,&t)) throw std::runtime_error("clock_gettime");
+  return t.tv_sec*1000000000LL+t.tv_nsec;
+}
+void sleep_to(std::int64_t deadline) {
+  timespec t{deadline/1000000000LL,deadline%1000000000LL};
+  while(clock_nanosleep(CLOCK_MONOTONIC,TIMER_ABSTIME,&t,nullptr)==EINTR && !interrupted) {}
+}
+template<class Frame> void binary(const std::filesystem::path& path,const Frame& frame) {
+  std::ofstream f(path,std::ios::binary); f.exceptions(std::ios::badbit|std::ios::failbit);
+  f.write(reinterpret_cast<const char*>(&frame),sizeof(frame));
+}
+struct OwnerLease {
+  int fd=-1;
+  explicit OwnerLease(std::string name) {
+    if(name.empty()||name[0]!='/')name='/'+name;
+    fd=shm_open(name.c_str(),O_RDONLY,0);
+    if(fd<0)throw std::runtime_error("Owner lease: SHM not available");
+    if(flock(fd,LOCK_EX|LOCK_NB)) {close(fd);fd=-1;throw std::runtime_error("Another fieldwork owner is using this SHM endpoint");}
+  }
+  ~OwnerLease(){if(fd>=0)close(fd);}
+};
+struct Options {
+  std::string mode,name="/shm_mc",output,urdf,background,which="C03";
+  int id=12;double amplitude=.5,segment=5,kp=20,kd=2,duration=3,quiet=3;
+  bool other_disabled=false;
+};
+CommandFrame read_background(const std::string& file) {
+  std::ifstream f(file,std::ios::binary);
+  const std::vector<char> data{std::istreambuf_iterator<char>(f),std::istreambuf_iterator<char>()};
+  auto c=decode_command(data.data(),data.size());
+  if(c.hand_count>2)throw std::runtime_error("Invalid hand background count");
+  return c;
+}
+Eigen::VectorXd positions(const StatusFrame& s) {
+  Eigen::VectorXd q(14); for(int j=0;j<14;++j)q[j]=arm_position(s,j); return q;
+}
+void print_status(const StatusFrame& s) {
+  std::cout<<"STATE frame="<<s.frame_counter<<" source_timestamp_ms="<<s.timestamp<<" joint_count="<<int(s.joint_count)<<'\n';
+  for(int j=0;j<35;++j) {
+    const auto& a=s.joints[j];std::cout<<"id="<<j;
+    if(j>=12&&j<=25)std::cout<<" "<<arm_names[j-12]<<" q_rad="<<arm_position(s,j-12);
+    else std::cout<<(j>=29?" reserved":" non_arm");
+    std::cout<<" pos_raw="<<a.position<<" vel_raw="<<a.velocity<<" torque_raw="<<a.torque
+      <<" status=0x"<<std::hex<<a.status_word<<std::dec<<" mode="<<a.mode<<" error="<<a.error_code<<'\n';
+  }
+  for(int h=0;h<2;++h)for(int j=0;j<6;++j) {
+    const auto& a=s.hands[h].joints[j];
+    std::cout<<"hand="<<h<<" item="<<j<<" pos_raw="<<a.position<<" vel_raw="<<a.velocity
+      <<" current_raw="<<a.current<<" status="<<a.status<<'\n';
+  }
+}
+StatusFrame fresh(Channel& channel) {
+  StatusFrame s{};const auto end=mono()+2000000000LL;bool have=false;std::uint64_t first=0;
+  while(mono()<end&&!interrupted) {
+    if(channel.receive(s)){if(have&&s.frame_counter!=first)return s;first=s.frame_counter;have=true;}
+    std::this_thread::sleep_for(std::chrono::microseconds(200));
+  }
+  throw std::runtime_error(interrupted?"operator_interrupt":"No fresh changing master frame counter within 2 seconds");
+}
+using Pair=ClockPair;
+class ClockMap : public SourceClock {
+ public:
+  Pair pair() {
+    const auto before=mono();timespec w{};
+    if(clock_gettime(CLOCK_REALTIME,&w))throw std::runtime_error("clock_gettime realtime");
+    const auto after=mono();
+    return accept(before,w.tv_sec*1000000000LL+w.tv_nsec,after);
+  }
+};
+struct Record {
+  std::int64_t at=0,send_at=0,receive_at=0,observation=0;
+  int phase=0,segment=0;bool sent=false,received=false,passive=false;
+  CommandFrame cmd{};StatusFrame state{};QueueDiagnostics queues{};bool has_queues=false;std::string event;Pair clock{};bool has_pair=false;
+};
+class Recorder {
+  std::mutex mutex_;std::condition_variable ready_;std::deque<Record> queue_;
+  bool done_=false;std::thread worker_;std::filesystem::path root_;
+  std::ofstream commands_,feedback_,events_,raw_cmd_,raw_status_,pairs_,passive_cmd_,queues_;
+ public:
+  std::atomic<bool> stopped{false};
+  explicit Recorder(const std::filesystem::path& root):root_(root) {
+    commands_.open(root/"commands.csv");feedback_.open(root/"feedback.csv");events_.open(root/"events.csv");
+    raw_cmd_.open(root/"commands.bin",std::ios::binary);raw_status_.open(root/"feedback.bin",std::ios::binary);pairs_.open(root/"clock_pairs.csv");passive_cmd_.open(root/"passive_commands.bin",std::ios::binary);queues_.open(root/"queues.csv");
+    for(auto* s:{&commands_,&feedback_,&events_,&raw_cmd_,&raw_status_,&pairs_,&passive_cmd_,&queues_})s->exceptions(std::ios::badbit|std::ios::failbit);
+    commands_<<std::setprecision(17)<<"send_mono_ns,phase,frame_counter";
+    feedback_<<std::setprecision(17)<<"receive_mono_ns,source_timestamp_ms,frame_counter,observation_time_ns,clock_segment,passive";
+    for(int j=0;j<14;++j){commands_<<",q"<<j;feedback_<<",q"<<j;}
+    for(int j=0;j<14;++j){commands_<<",v"<<j<<",effort"<<j<<",kp"<<j<<",kd"<<j;feedback_<<",v"<<j<<",effort"<<j;}
+    for(int j=0;j<35;++j)feedback_<<",status"<<j<<",mode"<<j<<",error"<<j;
+    commands_<<'\n';feedback_<<'\n';events_<<"mono_ns,phase,event\n";
+    pairs_<<"mono_before_ns,wall_ns,mono_after_ns,offset_ns,clock_segment,jump_detected\n";
+    queues_<<"mono_ns,passive,cmd_count,cmd_write,cmd_read,cmd_published,status_count,status_write,status_read,status_published\n";
+    worker_=std::thread([this] {
+      try {
+        std::int64_t last_flush=0;
+        while(true) {
+          Record r;
+          {std::unique_lock<std::mutex> lock(mutex_);ready_.wait(lock,[&]{return done_||!queue_.empty();});
+            if(queue_.empty())break;r=std::move(queue_.front());queue_.pop_front();}
+          if(!r.event.empty()) {
+            events_<<r.at<<','<<r.phase<<','<<r.event<<'\n';events_.flush();
+            if(r.event=="kill_ready"||r.event=="passive_ready") {
+              std::ofstream marker(root_/(r.event+".txt"));marker<<r.at<<'\n';marker.flush();
+            }
+          }
+          if(r.has_queues) {
+            const auto& c=r.queues.command;const auto& s=r.queues.status;
+            queues_<<r.at<<','<<r.passive<<','<<c.count<<','<<c.write_index<<','<<c.read_index<<','<<c.published_index
+              <<','<<s.count<<','<<s.write_index<<','<<s.read_index<<','<<s.published_index<<'\n';
+          }
+          if(r.has_pair) {const auto& p=r.clock;pairs_<<p.before<<','<<p.wall<<','<<p.after<<','<<p.offset<<','<<p.segment<<','<<p.jumped<<'\n';}
+          if(r.sent) {
+            raw_cmd_.write(reinterpret_cast<const char*>(&r.send_at),8);raw_cmd_.write(reinterpret_cast<const char*>(&r.cmd),sizeof(r.cmd));
+            commands_<<r.send_at<<','<<r.phase<<','<<r.cmd.frame_counter;
+            for(int j=0;j<14;++j)commands_<<','<<(arm_direction[j]*double(r.cmd.joints[j+12].position)*1e-6+arm_offset[j]);
+            for(int j=0;j<14;++j){const auto& a=r.cmd.joints[j+12];commands_<<','<<arm_direction[j]*static_cast<double>(a.velocity)*1e-6<<','<<arm_direction[j]*a.torque*.01<<','<<a.kp*.1<<','<<a.kd*.1;}
+            commands_<<'\n';
+          }
+          if(r.received && r.passive) {
+            passive_cmd_.write(reinterpret_cast<const char*>(&r.receive_at),8);
+            passive_cmd_.write(reinterpret_cast<const char*>(&r.cmd),sizeof(r.cmd));
+          }
+          if(r.received) {
+            raw_status_.write(reinterpret_cast<const char*>(&r.receive_at),8);raw_status_.write(reinterpret_cast<const char*>(&r.state),sizeof(r.state));
+            feedback_<<r.receive_at<<','<<r.state.timestamp<<','<<r.state.frame_counter<<','<<r.observation<<','<<r.segment<<','<<r.passive;
+            for(int j=0;j<14;++j)feedback_<<','<<arm_position(r.state,j);
+            for(int j=0;j<14;++j){const auto& a=r.state.joints[j+12];feedback_<<','<<arm_direction[j]*static_cast<double>(a.velocity)*1e-6<<','<<arm_direction[j]*a.torque*.01;}
+            for(const auto& a:r.state.joints)feedback_<<','<<a.status_word<<','<<a.mode<<','<<a.error_code;
+            feedback_<<'\n';
+          }
+          if(r.at-last_flush>=20000000){flush();last_flush=r.at;}
+        }
+        flush();
+      }catch(const std::exception&){stopped=true;}
+    });
+  }
+  void flush(){for(auto* s:{&commands_,&feedback_,&events_,&raw_cmd_,&raw_status_,&pairs_,&passive_cmd_,&queues_})s->flush();}
+  void push(Record r) {
+    if(stopped)return;
+    {std::lock_guard<std::mutex> lock(mutex_);if(queue_.size()>=4096){stopped=true;return;}queue_.push_back(std::move(r));}
+    ready_.notify_one();
+  }
+  void event(int phase,const std::string& event) {Record r;r.at=mono();r.phase=phase;r.event=event;push(std::move(r));}
+  void finish(){{std::lock_guard<std::mutex> lock(mutex_);done_=true;}ready_.notify_one();if(worker_.joinable())worker_.join();}
+  ~Recorder(){finish();}
+};
+bool selected(int j,const Options& o){return !o.other_disabled||((j<7)==(o.id<19));}
+CommandFrame baseline(const StatusFrame& s,const CommandFrame& hand,const Eigen::VectorXd& q,const Options& o) {
+  CommandFrame c{};c.joint_count=29;c.hand_count=hand.hand_count;c.hands=hand.hands;
+  for(int i=0;i<29;++i){c.joints[i].position=s.joints[i].position;c.joints[i].control_word=6;c.joints[i].mode=s.joints[i].mode;}
+  for(int j=0;j<14;++j)arm_target(c,j,q[j],0,o.kp,o.kd);
+  return c;
+}
+bool arm_ack(const StatusFrame& s,unsigned word,const Options& o,bool mit=false) {
+  for(int j=0;j<14;++j) {
+    const auto& a=s.joints[j+12];
+    const unsigned expected=selected(j,o)?word:0x21;
+    if(!drive_state_is(a.status_word,expected)||(mit&&selected(j,o)&&a.mode!=-1))return false;
+  }
+  return true;
+}
+void write_result(const std::filesystem::path& root,const std::string& reason,bool completed,
+                  bool recording_stopped,std::int64_t first=0,std::int64_t max_gap=0,
+                  std::int64_t writes=0,std::int64_t failures=0,std::int64_t first_write=0,bool ack=false) {
+  std::ofstream result(root/"result.txt");
+  result<<"execution_completed="<<completed<<"\nreason="<<reason<<"\nfirst_stream_mono_ns="<<first
+    <<"\nfirst_command_mono_ns="<<first<<"\nfirst_shm_write_mono_ns="<<first_write
+    <<"\nmax_send_gap_ns="<<max_gap<<"\ncommands_sent="<<writes<<"\nsend_skipped="<<failures
+    <<"\nrecording_stopped="<<recording_stopped<<"\ndisable_ack="<<ack<<"\nphysical_stop_observed=unknown\n";
+}
+void observe(const Options& o) {
+  const auto root=std::filesystem::path(o.output);
+  std::unique_ptr<OwnerLease> lease;std::unique_ptr<Channel> channel;
+  const bool passive=o.mode=="--passive-observe";
+  if(!passive){lease=std::make_unique<OwnerLease>(o.name);channel=std::make_unique<Channel>(o.name);}
+  Recorder recorder(root);ClockMap clock;const auto begin=mono();auto next=begin,last_receive=begin,last_pair=begin-std::int64_t(1000000000);
+  std::string failure;bool ready=false;
+  recorder.event(-1,passive?"passive_observe_begin":"observe_begin");
+  try {
+    while(mono()-begin<static_cast<std::int64_t>(o.duration*1e9)&&!interrupted) {
+      Record r;r.at=mono();r.phase=-1;r.passive=passive;
+      if(r.at-last_pair>=1000000000LL){r.clock=clock.pair();r.has_pair=true;last_pair=r.at;}
+      if(passive){auto snap=passive_snapshot(o.name);r.state=snap.status;r.cmd=snap.command;r.queues={snap.command_queue,snap.status_queue};r.has_queues=true;r.received=true;}
+      else {r.received=channel->receive(r.state);if(r.has_pair){r.queues=channel->diagnostics();r.has_queues=true;}}
+      if(r.received) {
+        r.receive_at=mono();last_receive=r.receive_at;r.observation=clock.observation(r.state.timestamp);r.segment=clock.segment();
+        if(!ready){binary(root/"status.bin",r.state);print_status(r.state);ready=true;recorder.event(-1,passive?"passive_ready":"observe_ready");}
+      }
+      recorder.push(std::move(r));
+      if(mono()-last_receive>2000000000LL)throw std::runtime_error("feedback_timeout");
+      next+=passive?10000000:1000000;if(next<mono())next=mono()+(passive?10000000:1000000);sleep_to(next);
+    }
+    if(!ready)throw std::runtime_error("No feedback recorded");
+  }catch(const std::exception& e){failure=e.what();}
+  recorder.event(-1,failure.empty()?"observe_end":failure);recorder.finish();
+  write_result(root,failure.empty()?(interrupted?"operator_interrupt":"observe_completed"):failure,failure.empty(),recorder.stopped);
+  if(!failure.empty())throw std::runtime_error(failure);
+}
+void run(Channel& channel,StatusFrame state,const CommandFrame& hand,const Eigen::VectorXd& q0,const Options& o) {
+  const auto root=std::filesystem::path(o.output);Recorder recorder(root);ClockMap clock;
+  auto command=baseline(state,hand,q0,o);binary(root/"background.bin",command);
+  const auto t0=mono();std::int64_t next=t0,phase_begin=t0,last_receive=t0,last_send=t0,first_stream=0,max_gap=0,first_write=0,last_pair=t0-1000000000LL,writes=0,skips=0;
+  int phase=0;bool phase_sent=false,done=false,disable_ack=false;std::string failure;
+  const bool jogging=o.which=="C03"||o.which=="C04";
+  auto send=[&](std::int64_t now){command.frame_counter++;command.timestamp=now/1000000;return channel.send(command);};
+  auto change=[&](int p,const char* event){phase=p;phase_begin=mono();phase_sent=false;recorder.event(p,event);};
+  recorder.event(0,"disabling");
+  try {
+    while(!done) {
+      const auto now=mono();
+      if(interrupted)throw std::runtime_error("operator_interrupt");
+      Record r;r.at=now;
+      if(now-last_pair>=1000000000LL){r.clock=clock.pair();r.has_pair=true;last_pair=now;r.queues=channel.diagnostics();r.has_queues=true;}
+      r.received=channel.receive(state);r.receive_at=r.received?mono():0;
+      if(r.received)last_receive=r.receive_at;
+      if(now-last_receive>2000000000LL)throw std::runtime_error("feedback_timeout");
+      if(phase!=6&&now-last_send>2000000000LL)throw std::runtime_error("command_queue_timeout");
+      for(int i=0;i<29;++i)if(state.joints[i].error_code)throw std::runtime_error("drive_error_slot_"+std::to_string(i)+"_"+std::to_string(state.joints[i].error_code));
+      if(phase!=3&&phase!=6&&now-phase_begin>3000000000LL)throw std::runtime_error("transition_timeout_phase_"+std::to_string(phase));
+      if(phase_sent&&now-phase_begin>20000000) {
+        if(phase==0) {
+          bool ack=arm_ack(state,0x21,o);
+          for(int j=0;j<29;++j)if((j<12||j>25)&&(state.joints[j].status_word&4))ack=false;
+          if(ack)change(1,"switching_mit");
+        }else if(phase==1&&arm_ack(state,0x21,o,true))change(2,"enabling_at_start");
+        else if(phase==2&&arm_ack(state,0x27,o,true))change(3,jogging?"jog_begin":"hold_begin");
+        else if(phase==4&&arm_ack(state,0x21,o)){done=true;disable_ack=true;recorder.event(4,"disable_ack");}
+      }
+      for(int j=0;j<14;++j) {
+        if(phase>=1&&selected(j,o))command.joints[j+12].mode=-1;
+        command.joints[j+12].control_word=((phase==2||phase==3||phase==7)&&selected(j,o))?15:6;
+      }
+      if(phase==3||phase==7) {
+        if(!arm_ack(state,0x27,o,true))throw std::runtime_error("enabled_mode_lost");
+        const double elapsed=first_stream?(now-first_stream)*1e-9:0;
+        if(jogging){const auto value=jog_at(elapsed,o.segment,o.amplitude);arm_target(command,arm_index(o.id),q0[arm_index(o.id)]+value.position,value.velocity,o.kp,o.kd);}
+        if(phase==3&&elapsed>=(jogging?3*o.segment+.5:o.duration)) {
+          if(o.which=="C05")change(6,"command_writes_stopped");
+          else if(o.which=="C06")change(7,"kill_ready");
+          else change(4,"exiting_disable");
+        }
+      }
+      if(phase==6&&now-phase_begin>=static_cast<std::int64_t>(o.quiet*1e9))change(4,"quiet_observation_end_disable");
+      // Recompute controlword after a phase change; quiet means NO writes.
+      for(int j=0;j<14;++j)command.joints[j+12].control_word=((phase==2||phase==3||phase==7)&&selected(j,o))?15:6;
+      if(phase!=6) {
+        r.sent=send(now);r.send_at=r.sent?mono():0;
+        if(r.sent){max_gap=std::max(max_gap,r.send_at-last_send);last_send=r.send_at;phase_sent=true;++writes;if(!first_write)first_write=r.send_at;if(phase==3&&!first_stream)first_stream=r.send_at;}
+        else ++skips;
+      }else last_send=now; // Deliberate silence is not a queue timeout.
+      r.phase=phase;r.cmd=command;r.state=state;r.segment=clock.segment();
+      if(r.received)r.observation=clock.observation(state.timestamp);
+      recorder.push(std::move(r));
+      next+=1000000;if(next<mono())next=mono()+1000000;sleep_to(next);
+    }
+  }catch(const std::exception& e) {
+    failure=e.what();recorder.event(5,failure);
+    for(int j=12;j<26;++j){command.joints[j].control_word=6;command.joints[j].velocity=0;command.joints[j].torque=0;}
+    const auto end=mono()+200000000;
+    while(mono()<end) {
+      try {
+        Record r;r.at=mono();r.phase=5;r.received=channel.receive(state);r.receive_at=r.received?mono():0;
+        r.sent=send(r.at);r.send_at=r.sent?mono():0;r.cmd=command;r.state=state;r.segment=clock.segment();
+        if(r.received)r.observation=clock.observation(state.timestamp);
+        if(r.sent)++writes;else ++skips;recorder.push(std::move(r));
+        if(r.received&&arm_ack(state,0x21,o)){disable_ack=true;break;}
+      }catch(const std::exception&){break;}
+      std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+  }
+  recorder.finish();
+  write_result(root,failure.empty()?"completed_with_disable_ack":failure,failure.empty(),recorder.stopped,first_stream,max_gap,writes,skips,first_write,disable_ack);
+  std::ofstream(root/"result.txt",std::ios::app)<<"joint_id="<<o.id<<"\namplitude_rad="<<o.amplitude<<"\nkp="<<o.kp<<"\nkd="<<o.kd<<'\n';
+  if(!failure.empty())throw std::runtime_error(failure);
+}
+void snapshot_output(const std::filesystem::path& root,const StatusFrame& state,const casbot::ArmModel& model,double amplitude) {
+  binary(root/"status.bin",state);print_status(state);
+  std::ofstream csv(root/"arms.csv");csv<<std::setprecision(17)<<"id,joint,q,lower,upper,minus_0_5,plus_0_5,within_limits,requested_amplitude_rad,requested_minus,requested_plus,requested_within_limits\n";
+  for(int j=0;j<14;++j){const double q=arm_position(state,j);const auto& m=model.joints[j];
+    csv<<j+12<<','<<arm_names[j]<<','<<q<<','<<m.lower<<','<<m.upper<<','<<q-.5<<','<<q+.5<<','<<jog_within_limits(q,m.lower,m.upper,.5)<<','<<amplitude<<','<<q-amplitude<<','<<q+amplitude<<','<<jog_within_limits(q,m.lower,m.upper,amplitude)<<'\n';}
+}
+void usage() {
+  std::cout<<"shm_executor --inspect|--snapshot|--observe|--passive-observe|--execute --output NEW_DIR\n"
+    <<"  [--shm /shm_mc] [--urdf FILE] [--hand-background FILE]\n"
+    <<"  [--case C01..C06] [--joint-id 12..25] [--duration 3] [--quiet-s 3]\n"
+    <<"  [--amplitude .5] [--segment-s 5] [--kp 20] [--kd 2] [--other-arm hold|disabled]\n"
+    <<"C06 continues finite holding until supervisor terminates this owned sender; watchdog 3s.\n"
+    <<"Inspect/passive are O_RDONLY; observe/snapshot consume status exclusively.\n";
+}
+}
+int field_main(int argc,char** argv) {
+  interrupted=0;Options o;bool created=false;
+  std::cout<<std::setprecision(9);std::signal(SIGINT,signal_stop);std::signal(SIGTERM,signal_stop);std::signal(SIGHUP,signal_stop);std::signal(SIGPIPE,SIG_IGN);
+  try {
+    for(int a=1;a<argc;++a) {
+      const std::string key=argv[a];
+      if(key=="--help"){usage();return 0;}
+      if(key=="--inspect"||key=="--snapshot"||key=="--execute"||key=="--observe"||key=="--passive-observe"){
+        if(!o.mode.empty())throw std::runtime_error("Choose one mode");o.mode=key;continue;}
+      if(a+1>=argc)throw std::runtime_error("Missing option value");const std::string value=argv[++a];
+      if(key=="--shm")o.name=value;else if(key=="--output")o.output=value;else if(key=="--urdf")o.urdf=value;
+      else if(key=="--hand-background")o.background=value;else if(key=="--case")o.which=value;
+      else if(key=="--other-arm"){if(value!="hold"&&value!="disabled")throw std::runtime_error("Invalid other-arm policy");o.other_disabled=value=="disabled";}
+      else {std::size_t used=0;
+        if(key=="--joint-id")o.id=std::stoi(value,&used);
+        else if(key=="--amplitude")o.amplitude=std::stod(value,&used);else if(key=="--segment-s")o.segment=std::stod(value,&used);
+        else if(key=="--kp")o.kp=std::stod(value,&used);else if(key=="--kd")o.kd=std::stod(value,&used);
+        else if(key=="--duration")o.duration=std::stod(value,&used);else if(key=="--quiet-s")o.quiet=std::stod(value,&used);
+        else throw std::runtime_error("Unknown option: "+key);
+        if(used!=value.size())throw std::runtime_error("Invalid numeric option: "+key);
+      }
+    }
+    if(o.output.empty()||o.mode.empty())throw std::runtime_error("Mode and new output directory required");
+    const auto index=arm_index(o.id);
+    if(o.which!="C01"&&o.which!="C02"&&o.which!="C03"&&o.which!="C04"&&o.which!="C05"&&o.which!="C06")throw std::runtime_error("Unsupported active case");
+    if(!std::isfinite(o.amplitude)||o.amplitude<=0||o.amplitude>.5||!std::isfinite(o.segment)||o.segment<1||
+      !std::isfinite(o.kp)||o.kp<0||o.kp>100||!std::isfinite(o.kd)||o.kd<0||o.kd>10||
+      !std::isfinite(o.duration)||o.duration<=0||o.duration>3600||!std::isfinite(o.quiet)||o.quiet<=0||o.quiet>60)throw std::runtime_error("Invalid test settings");
+    const auto root=std::filesystem::path(o.output);if(!root.parent_path().empty())std::filesystem::create_directories(root.parent_path());
+    if(!std::filesystem::create_directory(root))throw std::runtime_error("Output must be a new directory");created=true;
+    std::ofstream(root/"settings.txt")<<"case="<<(o.mode=="--execute"?o.which:"read_only")<<"\nshm="<<o.name<<"\nmode="<<o.mode
+      <<"\nnon_arm="<<(o.mode=="--execute"?"disabled":"not_commanded")
+      <<"\nhand_policy="<<(o.mode=="--execute"?"explicit_frozen_command_bytes":"not_commanded")<<"\nurdf="<<o.urdf
+      <<"\ncollision_check="<<(o.mode=="--execute"?"disabled_by_user":"not_applicable")<<"\njoint_id="<<o.id<<"\namplitude="<<o.amplitude<<"\nsegment_s="<<o.segment<<"\nkp="<<o.kp<<"\nkd="<<o.kd<<"\nother_arm="<<(o.other_disabled?"disabled":"hold")<<'\n';
+    if(o.mode=="--inspect"){
+      const auto s=passive_snapshot(o.name);binary(root/"command.bin",s.command);binary(root/"status.bin",s.status);
+      binary(root/"command_queue.bin",s.command_queue);binary(root/"status_queue.bin",s.status_queue);print_status(s.status);
+      write_result(root,"passive_snapshot_not_live_proof",true,false);return 0;
+    }
+    const auto parent=getppid();if(parent<=1||prctl(PR_SET_PDEATHSIG,SIGTERM)||getppid()!=parent)throw std::runtime_error("No live supervisor");
+    if(o.mode=="--observe"||o.mode=="--passive-observe"){observe(o);return 0;}
+    if(o.urdf.empty())throw std::runtime_error("Explicit 14-axis URDF required");
+    const auto model=casbot::ArmDynamics::from_urdf(o.urdf);
+    if(model.model().joints.size()!=14)throw std::runtime_error("Expected reduced 14-axis model");
+    for(int j=0;j<14;++j)if(model.model().joints[j].name!=arm_names[j])throw std::runtime_error("URDF arm order mismatch");
+    OwnerLease lease(o.name);Channel channel(o.name);auto state=fresh(channel);
+    snapshot_output(root,state,model.model(),o.amplitude);
+    if(o.mode=="--snapshot"){write_result(root,"snapshot_completed_no_commands",true,false);return 0;}
+    if(o.background.empty())throw std::runtime_error("Explicit hand command background required");
+    const auto q0=positions(state);const auto& joint=model.model().joints[index];
+    const bool jogging=o.which=="C03"||o.which=="C04";
+    if(jogging&&4.375*o.amplitude/o.segment>std::min(1.5,joint.velocity_limit))throw std::runtime_error("Jog reference exceeds configured/URDF velocity limit");
+    if(jogging&&!jog_within_limits(q0[index],joint.lower,joint.upper,o.amplitude)){
+      write_result(root,"SKIP_urdf_limit",false,false);return 4;
+    }
+    for(int j=0;j<14;++j)if(q0[j]<model.model().joints[j].lower||q0[j]>model.model().joints[j].upper)throw std::runtime_error("Measured start outside URDF limit at joint ID "+std::to_string(j+12));
+    state=fresh(channel);if((positions(state)-q0).cwiseAbs().maxCoeff()>.005)throw std::runtime_error("Start changed during preflight; no commands sent");
+    const auto hand=read_background(o.background);binary(root/"hand_background_source.bin",hand);
+    run(channel,state,hand,q0,o);return 0;
+  }catch(const std::exception& e){
+    std::cerr<<"ERROR "<<e.what()<<'\n';
+    if(created&&!std::filesystem::exists(std::filesystem::path(o.output)/"result.txt"))write_result(o.output,e.what(),false,false);
+    return 1;
+  }
+}
+}  // namespace casbot::shm

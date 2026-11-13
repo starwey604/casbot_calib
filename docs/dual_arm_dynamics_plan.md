@@ -147,7 +147,7 @@ $$Y_{\text{gravity}} \theta = \hat{\tau}_{\text{gravity}}$$
 ## 🚀 五、常用命令速查表
 
 ### 1. 现场实机联调与分阶段标定（H1 → H4）
-详细步骤参见 [fieldwork 现场手册](../fieldwork/README.md) 与 [实机 CLI 路径](hardware_execution_path.md)：
+详细步骤参见 [fieldwork 现场手册](../fieldwork/ros/README.md) 与 [实机 CLI 路径](hardware_execution_path.md)：
 
 ```bash
 read -r -p "请输入现场确认的 ROS_DOMAIN_ID: " calib_domain_id

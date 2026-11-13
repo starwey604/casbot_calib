@@ -145,6 +145,13 @@ bool Channel::receive(StatusFrame& f) {
   if (impl_->role != ChannelRole::client) throw std::logic_error("Wrong channel role");
   return pop(static_cast<char*>(impl_->memory) + status_offset, impl_->back, f);
 }
+QueueDiagnostics Channel::diagnostics() const {
+  auto sample=[](const void* memory) {
+    const auto* h=static_cast<const QueueHeader*>(memory);
+    return QueueHeader{h->magic,h->capacity,load(&h->count),load(&h->write_index),load(&h->read_index),load(&h->published_index)};
+  };
+  return {sample(impl_->memory),sample(static_cast<const char*>(impl_->memory)+status_offset)};
+}
 bool Channel::fixture_receive(CommandFrame& f) {
   if (impl_->role != ChannelRole::fixture_master) throw std::logic_error("Wrong channel role");
   return pop(impl_->memory, impl_->front, f);
@@ -157,7 +164,7 @@ PassiveSnapshot passive_snapshot(const std::string& name) {
   const int fd = shm_open(normalized(name).c_str(), O_RDONLY, 0);
   if (fd < 0) throw error("passive shm_open");
   struct Close { int fd; ~Close() { close(fd); } } close_fd{fd};
-  auto read_latest = [&](std::size_t offset, void* frame, std::size_t size) {
+  auto read_latest = [&](std::size_t offset, void* frame, std::size_t size, QueueHeader& header) {
     for (int attempt = 0; attempt < 32; ++attempt) {
       QueueHeader before{}, after{};
       if (pread(fd, &before, sizeof(before), offset) != sizeof(before)) throw error("pread header");
@@ -166,13 +173,13 @@ PassiveSnapshot passive_snapshot(const std::string& name) {
       const auto slot = (before.published_index - 1) % before.capacity;
       if (pread(fd, frame, size, offset + sizeof(QueueHeader) + slot * size) != static_cast<ssize_t>(size)) throw error("pread frame");
       if (pread(fd, &after, sizeof(after), offset) != sizeof(after)) throw error("pread header");
-      if (std::memcmp(&before, &after, sizeof(before)) == 0) return;
+      if (std::memcmp(&before, &after, sizeof(before)) == 0) {header=after;return;}
     }
     throw std::runtime_error("Passive snapshot changed during read; retry later");
   };
   PassiveSnapshot result{};
-  read_latest(0, &result.command, sizeof(result.command));
-  read_latest(status_offset, &result.status, sizeof(result.status));
+  read_latest(0, &result.command, sizeof(result.command), result.command_queue);
+  read_latest(status_offset, &result.status, sizeof(result.status), result.status_queue);
   return result;
 }
 }  // namespace casbot::shm

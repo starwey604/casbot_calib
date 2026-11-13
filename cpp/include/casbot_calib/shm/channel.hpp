@@ -11,6 +11,7 @@ struct QueueHeader {
 static_assert(sizeof(QueueHeader) == 40 && offsetof(QueueHeader, published_index) == 32);
 constexpr std::size_t channel_bytes = 16 * 1024 * 1024;
 constexpr std::size_t status_offset = channel_bytes / 2;
+struct QueueDiagnostics { QueueHeader command, status; };
 enum class ChannelRole { client, fixture_master };
 
 // Attach never truncates, clears indices, creates semaphores, or posts _start.
@@ -23,6 +24,8 @@ class Channel {
   Channel& operator=(const Channel&) = delete;
   bool send(const CommandFrame& frame);
   bool receive(StatusFrame& frame);
+  // Diagnostic scalar loads, not a coherent control snapshot or second consumer.
+  QueueDiagnostics diagnostics() const;
   // Explicit first-client handshake, only for entirely fresh zero queues and
   // zero back/front/start semaphores. Never used to recover a live mutex.
   void activate_fresh_master();
@@ -33,7 +36,10 @@ class Channel {
   std::unique_ptr<Impl> impl_;
 };
 
-struct PassiveSnapshot { CommandFrame command; StatusFrame status; };
+struct PassiveSnapshot {
+  CommandFrame command; StatusFrame status;
+  QueueHeader command_queue, status_queue;
+};
 // O_RDONLY/pread only. Evidence snapshot, not a coherent control observation.
 PassiveSnapshot passive_snapshot(const std::string& name);
 }  // namespace casbot::shm

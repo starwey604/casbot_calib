@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Native build only. Does not source ROS, install packages, or open SHM.
+# Native build/test only. No ROS setup or package installs. Tests use private SHM, never shm_mc.
 set -euo pipefail
 repo=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)
 build_dir="$repo/build/shm-native"

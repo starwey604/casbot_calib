@@ -18,7 +18,7 @@
 - **当前运行`observed_limit`仍结束控制，不是暂停。** 可调设置/软阈值动作在第2轮实现；平滑位置交接和真正暂停留后续轮次；连续名义重力辅助已撤销。当前手动Mock的待机/断流也不加模型重力，使用低负载休息姿态和显式PD/effort。
 - 启动静止阈值仍为0.02 rad/s、连续时间0ms；默认24小时控制截止和完整H1 profile依赖留待第2轮去除。第4轮再接Mock总请求上限与设备设置。
 
-当前使用方式见[现场指南](../fieldwork/README.md)。本机验收汇总在`artifacts/fieldwork_limits_round1_delivery_v1/delivery.json`，其中区分协议夹具、原生机械Mock和实际GUI证据。
+当前使用方式见[现场指南](../fieldwork/ros/README.md)。本机验收汇总在`artifacts/fieldwork_limits_round1_delivery_v1/delivery.json`，其中区分协议夹具、原生机械Mock和实际GUI证据。
 
 ## 操作者首先应该看到具体状态
 

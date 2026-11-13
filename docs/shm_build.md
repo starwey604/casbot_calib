@@ -1,6 +1,6 @@
 # SHM 原生构建与 Orin 源码部署
 
-首个增量交付可独立构建、安装和消费的 `casbot_calib::shm` 协议库，以及离线诊断工具 `shm_abi_check`。工具检查35槽布局并输出JSON，不打开共享内存。现已追加IPC和[`shm_joint_test`双臂原型](shm_joint_test.md)，由`--with-core`编译；完整`shm_executor`与物理`shm_mock_server`仍待后续，没有用同名空程序替代它们。
+首个增量交付可独立构建、安装和消费的 `casbot_calib::shm` 协议库，以及离线诊断工具 `shm_abi_check`。工具检查35槽布局并输出JSON，不打开共享内存。现已追加IPC和[`shm_joint_test`双臂原型](shm_joint_test.md)，由`--with-core`编译；现已提供共用runtime的`shm_executor`与[fieldwork C00–C06入口](../fieldwork/shm/README.md)，支持观测/保持/逐轴及停止专项；通用CSV/手动流与物理`shm_mock_server`仍待后续。
 
 ## 构建、测试和安装
 

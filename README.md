@@ -10,7 +10,7 @@
   * **[双臂动力学标定方案详解 (`docs/dual_arm_dynamics_plan.md`)](docs/dual_arm_dynamics_plan.md)**：140 维刚体参数、Clarabel 伪惯性 PSD 锥规划、H1–H4 分阶段解耦原理（重力正反消去 / 摩擦位置配对 / 零 PD 起动斜坡 / 傅里叶周期惯量投影）及手腕路线 A/B 详解。
   * **[双臂千分计运动学标定方案详解 (`docs/kinematics_trical_plan.md`)](docs/kinematics_trical_plan.md)**：TriCal 三表接触投影原理、DVT2 四球台架分阶段碰撞门禁、雅可比自动对中状态机、60 维 MDH/Hayati 两层鲁棒辨识、K1–K4 流程及 **[K5 原生 ROS 2 SDK 实时流闭环适配](docs/kinematics_k5_sdk_realtime.md)** 详解。
   * **[TriCal BLE–USB 开发板固件 (`firmware/README.md`)](firmware/README.md)**：独立 Zephyr 工作区，面向 Pro Micro nRF52840；已实现 QAS 读写与独立频率测试 app，尚未实测真实仪表。
-* **🛠️ 出差现场第一站（CLI 预检 + GUI 手动调参台）**：请直接阅读 **[实机接入与现场联调手册 (`fieldwork/README.md`)](fieldwork/README.md)**。
+* **🛠️ 出差现场第一站（CLI 预检 + GUI 手动调参台）**：请直接阅读 **[现场工具入口（SHM / ROS）](fieldwork/README.md)**。
   * 支持只读通信预检（`preflight` / `observe` / `reconnect`）、采集安全零位与一键平滑回零（`fieldwork/zero.yaml`）。
   * 提供 14 轴 **MIT 五字段（`position / velocity / kp / kd / effort`）** 实时滑条调参 GUI、单轴短轨迹往返测试、3D 实时姿态跟随、可调限制面板及会话自动缓存/视频导出。
   * 本地演练一键启动：`bash fieldwork/run.sh gui --mock --domain-id 181 --software-rendering`
@@ -30,7 +30,7 @@
 
 **已有探针可用[SDK 反馈敏感性评估器](docs/sdk_feedback_sensitivity.md)只读比较 A／B 两条路线**：`casbot-fieldwork sensitivity --source 会话 --output 新目录`，同一数据与扰动下报告惯量变化、方向一致性及首次观测越界点，不启动采集、不锁现场流程。 追加 `--reference-assessment 旧评估目录` 可比较同配方独立会话，见[右腕 roll 复测](docs/sdk_wrist_roll_repeat.md)。
 
-现场已保存的GUI记录可直接按 [A优先判断流程](fieldwork/README.md#4-用已保存的数据判断能否优先采用-a) 运行 `fieldwork/run.sh a-evidence`，比较发送档位、局部惯量与时序／身体运动敏感性。
+现场已保存的GUI记录可直接按 [A优先判断流程](fieldwork/ros/README.md#4-用已保存的数据判断能否优先采用-a) 运行 `fieldwork/run.sh a-evidence`，比较发送档位、局部惯量与时序／身体运动敏感性。
 
 ---
 

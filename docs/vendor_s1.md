@@ -4,7 +4,7 @@
 
 根据统一显示的需求，新增`ros-view`：现有原生ROS Mock与厂商ROS反馈均通过薄消息适配转换成共享`StateFrame`，再进入同一几何渲染器。文件跟随和离线回放保留为其他输入源，实时显示不再依赖采集文件。
 
-现场预检与断线恢复观测可使用[只读CLI](../fieldwork/README.md)，复用本记录器并显式开启`record_discovery`，额外保存`raw/discovery.jsonl`的topic/service清单、目标端点QoS及空发布者列表。原S1入口默认不开启此扩展，既有记录格式和资格保持；新文件存在时纳入原始采集摘要。端点快照时间是本地发现观测，不是物理断线或设备采样时刻。
+现场预检与断线恢复观测可使用[只读CLI](../fieldwork/ros/README.md)，复用本记录器并显式开启`record_discovery`，额外保存`raw/discovery.jsonl`的topic/service清单、目标端点QoS及空发布者列表。原S1入口默认不开启此扩展，既有记录格式和资格保持；新文件存在时纳入原始采集摘要。端点快照时间是本地发现观测，不是物理断线或设备采样时刻。
 
 **验收范围为本机真实ROS双进程、厂商原消息的合成协议样本。未连接实机、未验证物理网络，也没有开放动力学阶段。** 这些样本只是测试消息，不由另一套机械仿真产生，不替代现有Pinocchio/Boost Mock。SDK版本核对及尚缺设备能力见[源码评估](casbot02_sdk_source_intake.md)。
 
