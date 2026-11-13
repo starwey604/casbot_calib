@@ -4,6 +4,34 @@
 
 **2026-11-13用户指定现场条件**：先测双臂14轴，所有状态照常打印；机器人有固定支撑，腿/腰/头可以失能，现场有外置远程继电器保护。此轮是中间件控制流程探索，不需要先完成正式标定观测资格。
 
+## 当前Orin窗口直接执行
+
+本次主站已启动并完成握手；**没有重启Orin时，不要重复停业务或运行`shm_channel_start`**。SSH登录后运行下面的命令，每次只测一轴：
+
+```bash
+cd /home/nvidia/casbot_calib_shm
+id=12                         # 左肩pitch；左臂12–18，右臂19–25
+run="artifacts/shm_manual/$(date +%s%N)_id${id}"
+install/shm-core/bin/shm_joint_test --execute --joint-id "$id" \
+  --urdf python/casbot_calib/assets/models/casbot_hl12p1_dvt2/derived/bare_flange_1105_03_gauge_v2/model.urdf \
+  --hand-background artifacts/shm_joint_test_20261113/before_stop/command.bin \
+  --amplitude 0.5 --segment-s 5 --kp 20 --kd 2 \
+  --output "$run"
+cat "$run/result.txt"
+```
+
+这条命令会使能双臂、保持其它双臂轴的本次读取目标，并仅对所选轴发送`q0 → q0−0.5 → q0+0.5 → q0`，约15.5秒后请求双臂失能；腿/腰/头失能，手部沿用本次明确保存的背景字节。只检查URDF位置/参考速度，不检查碰撞。`Ctrl-C`请求有界失能退出；实机停止异常时由现场使用外置继电器。
+
+仅查看状态与限位、不发控制帧时：
+
+```bash
+install/shm-core/bin/shm_joint_test --snapshot \
+  --urdf python/casbot_calib/assets/models/casbot_hl12p1_dvt2/derived/bare_flange_1105_03_gauge_v2/model.urdf \
+  --output "artifacts/shm_manual/$(date +%s%N)_snapshot"
+```
+
+只在本次独占窗口运行一个读取/控制进程，不与逐轴命令同时开快照。若Orin已重启，先按下文“现场先读，再单轴执行”重新保存手部背景、停业务、启动主站并握手，不能直接套用当前窗口命令。
+
 ## ID 与完整背景帧
 
 - ID12–18为左肩pitch/roll/yaw、肘pitch、腕yaw/pitch/roll；ID19–25为右侧同顺序。ID直接使用PDF中的SHM数组下标，不引入1–14别名，也不代表CAN电机ID。入口拒绝12–25以外的运动ID。全部35个槽仍按真实ID打印，29–34标为保留槽。
@@ -105,4 +133,4 @@ install/shm-core/bin/shm_channel_start --fresh-master /shm_mc
 - 成功入队15583帧、记录反馈15582帧；最大成功入队间隔1.054095ms，记录未停录。29个电机关节反馈错误码均为0；ID12观测到0x0231/0x0237及mode 0/−1。
 - 原始命令/状态、CSV及起点/设置在Orin `artifacts/shm_joint_test_20261113/id12_v4_status_mask/`，本机副本位于同根目录 `orin/id12_v4_status_mask/`，数值汇总为本机 `analysis.json`。
 
-停在ID12检查点，尚未跑其它13轴。实物方向、抽动、其它部位变化及物理停止由用户观察回填；不以使能/失能应答替代该观察。主站继续留在本次独占窗口，不自动恢复ROS业务。
+用户随后现场反馈：**“正常。没问题。能看到在动。”** 记为本次ID12可见运动正常的现场观察，和上述原始反馈/流程结果共同归档。停在ID12检查点，尚未跑其它13轴。主站继续留在本次独占窗口，不自动恢复ROS业务。
