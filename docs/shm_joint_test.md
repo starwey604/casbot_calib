@@ -44,6 +44,8 @@ urdf=python/casbot_calib/assets/models/casbot_hl12p1_dvt2/derived/bare_flange_11
 
 随后按[既定停业务流程](jetson_shm_interface_recon_20261113.md#用户确定的停业务后独占测试流程)，停止独立服务和launcher，只启动EtherCAT主站。此窗口中按用户假设认定无其它控制程序插队，直到下次重启；本程序不执行停业务脚本或恢复旧业务。
 
+显式入口为`bash scripts/shm/prepare_field.sh artifacts/my_shm_test/takeover`（会中断现有控制，日志目录须新建）；它只包装已核对的厂家停止/启动顺序，不由构建或部署入口隐式调用。主站启动后先检查该目录的`station.log`及进程，再取新快照。
+
 ```bash
 # 独占窗口内只出队读取：打印全轴并生成双臂±0.5rad资格表。
 "$tool" --snapshot --urdf "$urdf" --output artifacts/my_shm_test/snapshot
