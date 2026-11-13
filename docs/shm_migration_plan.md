@@ -8,7 +8,7 @@
 
 - `ros`：保存 `f360a11` 的完整 ROS/SDK 路径，包括当前文档与 TriCal 固件，不因主线迁移跟着重构。
 - `main`：新增独立 SHM 路径，按下述阶段提交可用增量。每阶段提交后保持工作区无未提交改动；构建和运行产物留在已忽略目录。
-- 不先整目录删除 `ros/`。先从中提取仍有价值的无 ROS 工具，再迁移调用方；某条主线路径已有 SHM 替代、调用及测试已更新时，可以删除被替代的 ROS 适配，无需长期维护双后端兼容开关。
+- 按2026-11-14最新决定，主线主动退役孤立/过时ROS链路，不长期维护双后端；旧实现回`ros`分支查看。删除前抽出仍被主线消费的数学/文件/记录工具，调用方、CLI、配置和CI一起迁移或退役，不留下可见但不能工作的入口；不要求每个旧ROS实验都重做SHM对应物。具体删除批次见第7节。
 - 原 ROS 使用方式留在 `ros` 分支；主线中的旧记录不改写，SHM 新记录显式标记传输与时间语义，不能为了复用读取器伪造 ROS 消息、CDR、SDK 身份或域号。
 
 ## 2. 构建判断：Humble 通过是第一步，Orin 还需原生验收
@@ -214,3 +214,80 @@ ID13疑似卡住暂不专项排障。下一次运行仍保留本例命令、终�
 | 后续上层 | CSV参考→H1短轨迹→A时间适配→H2–H4→手动GUI/回零→K5 | 每个消费者按新SHM记录含义接入，复用数值内核；不再启动第二个原始消费者 |
 
 现在用户在家，只做本地开发/私有测试，不连接真实SHM、不跑停业务或运动脚本。Orin原生编译与私有联跑在可连接时完成，真实用例等明天用户在场。F1/F2的现场CLI、公共runtime与私有协议联跑现已落地；原生Orin新版本运行及实际C00–C06验证仍待明天现场。任意五字段/CSV输入、GUI和物理Mock继续按后续阶段实施。
+
+## 7. 下一轮：通用executor、物理Mock与ROS退役（2026-11-14计划）
+
+本轮只制订计划，尚未执行以下源码迁移/删除。基于`627e5dd`继续开发；当前fieldwork单例入口和既有记录保持可用，现场C00–C06结论不作为私有开发的等待条件。
+
+### 推荐顺序：先清旧支线，再打物理闭环，随后迁移上层并删除SDK底座
+
+| 增量 | 主要交付 | 同批退役/修复 | 完成条件 |
+| --- | --- | --- | --- |
+| R1 公共能力归位＋第一批删除 | 提取后续确实使用的无ROS工具；固定SHM五字段/参考/记录契约 | 退役老ROS stream benchmark、viewer订阅入口及legacy S2夹具链；清掉对应CLI/测试/配置/CI依赖 | 现有SHM fieldwork及离线数值入口仍可运行；没有残留import、CLI和构建目标引用已删链路 |
+| R2 通用executor＋物理Mock | 完整五字段codec、计划参考求值、双臂物理`shm_mock_server`、`fieldwork/shm --mock` | 复用R1公共能力，不复制ROS executor/server | 两个独立进程通过真实ABI跑参考；数据体现PD/重力/惯量及整数边界；失能/断流/故障路径正确；Humble、Orin分别原生编译及私有联跑 |
+| R3 第一条上层SHM链 | H1短轨迹/静态采集与A观测时间消费者，继而H2–H4 | 分离`hardware_field.py`里的SDK启动器与可复用规划/分析；退役对应vendor采集/归一化依赖 | 新记录能重新分析；不启动第二个SHM recorder；同毫秒和跳钟处理与既定含义一致 |
+| R4 GUI/K5消费者与SDK底座退役 | 手动五字段、保存零位/回零、GUI反馈与记录、TriCal持续流逐批迁移 | 删除剩余SDK服务/消息/客户端、`fieldwork/ros`及根转发入口、相关ROS脚本/配置/依赖；更新正式入口和CI | 主线有效入口不再要求rclpy/rclcpp/ament/colcon；离线核心及模型/数学测试保留；ROS旧流程在备份分支使用 |
+
+R1和R2组成下一次主要交付，R3/R4不挤入同一个大提交。删除不以备份为顾虑，但以依赖图决定成组边界。
+
+### 7.1 executor：保留跑通的控制流程，增加真正通用的输入
+
+当前`shm_executor`仍是现场用例执行器：`field_runtime.cpp`同时承担CLI解析、状态机和记录；`arm_target()`将前馈写死为0。下一步拆成有实际调用方的小组件：
+
+- `arm_codec`：双臂q/v/effort/PD双向转换、方向/零偏、整数范围、量化与编码后有效值；不在GUI和Mock各维护一份换算表。
+- `reference`：本机单调时间下的参考求值；读文件、配置解析、校验和预计算在周期前完成。
+- `executor`：唯一SHM owner、进入/运行/退出状态机、完整F0和每次控制状态；既有C00–C06调用该组件，不再复制控制循环。
+- `recorder`：保留全35槽/双手、原始时间和时钟配对，记录实际成功入队及编码后的命令；后台磁盘/界面不参与周期。
+
+**参考方向选定为复用`staged_motion.Motion`的七次Hermite轨迹。** 现有对象已保存knots以及每个结点q/dq/ddq/jerk。将这些冻结为参考bundle，C++按当前单调时间求同一条曲线；不把500Hz位置表重新做一套隐式线性插值。CSV保留为导入/导出与检查表，不能恢复原曲线的输入按显式新参考处理并重新验证。
+
+- 轨迹模式：q与目标速度来自同一参考的值/导数；Kp/Kd及前馈独立冻结，明确其时间表和保持/过渡规则。首版固定PD，前馈表显式ZOH并由规划器输出足够密的时间点；需要更平滑时由参考生成阶段提供，不在执行时自动补偿。
+- 手动模式：position、velocity、Kp、Kd、effort仍是可独立指定的五字段，不强迫velocity等于位置目标的导数，允许零PD/非零前馈。
+- 原生循环仍1ms绝对单调时钟调度，晚到跳到当前参考、不补发历史帧；队列满计数，状态切换只在成功写入后推进。
+- fieldwork手动/逐轴不隐藏补偿；H1等标定配方需要重力时由规划侧明确生成前馈。
+- 当前fieldwork双臂用例不查碰撞的例外保持原范围；上层标定参考继续使用既有规划/碰撞合同。
+
+### 7.2 Mock：新SHM外壳，复用唯一物理内核
+
+新增`cpp/tools/shm_mock_server.cpp`及`cpp/src/shm/`适配，使用既有`SimulatedArmDevice`/`ArmSimulationSession`、Pinocchio和Boost积分器。`shm_field_fixture`继续是快速协议夹具，不被改名冒充物理Mock。
+
+现有内核的实际缺口是**逐轴驱动使能状态**：`ArmCommand`只有q/dq/torque/kp/kd，`ArmSimulationSession`没有Controlword/失能语义。需要在通用物理设备边界补充带时间的使能掩码/事件，并保持旧调用默认全使能：
+
+- 驱动使能时计算本地五字段PD＋前馈，纯前馈/零PD照常有效。
+- 理想驱动基线中，失能切断有源输出，机械状态继续在重力/摩擦/耦合作用下演化；不能冻结q，也不能把Kp=Kd=0当失能。使能与命令按明确事件顺序生效，旧pending命令不能在失能后重新打开输出。
+- 固定基座不等于每个关节有抱闸。机械支撑/制动若进入Mock，必须是单独显式的模拟场景设置，不用隐藏重力保持伪装；实际抱闸/失能衰减未确认的部分记为模型假设。
+- 反馈从物理current按显式gain换算Nm，再经过方向和整数编码；0.01Nm/LSB保留，不复制目标到位置反馈，不为亚刻度效果人为加噪声。
+- SHM首版明确配置：1ms交换、50µs积分、无人工延迟/噪声、无内部重力/摩擦补偿；响应时间和力矩限幅单独配置，基线值作为合成假设，不从SDK默认的1.35ms/0.7ms延迟继承。
+- 无新命令时沿用上次已采用的命令/驱动状态；不加SDK watchdog自动保护。故障状态保持，不自动清故障或重新使能。
+- 仅双臂做物理；腿/腰/头/手提供明确标为协议夹具的背景响应。
+
+`CALIB_BUILD_SHM_MOCK`单独控制该目标，要求CORE与SHM开启；不需要Python绑定/ROS。`fieldwork/shm/run.sh --mock`的实际参数位置在实现时统一到对应子命令：自动创建本次独占私有端点、生成本次明确的模拟背景、启动Mock与同一个executor、结束只清理自有资源。每例使用明确初态，不为长期无支撑失能状态偷偷加保持。
+
+修改物理核心时，补使能/失能、重力自由响应、零PD前馈、步长减半及原核心回归；同步重建实际Python绑定。旧调用的时序、物理和默认值保持原合同，不将新的SHM默认改到全部SDK/离线模拟上。
+
+### 7.3 ROS删除清单：删整条已退役链，不留假兼容入口
+
+**第一批，R1可直接退役的独立旧支线：**
+
+- `ros/casbot_calib_transport/`中的`mock_host`/`stream_client`及其ROS benchmark链；`python/casbot_calib/ros_benchmark.py`、`ros_state.py`、对应`ros-benchmark`/`ros-view`命令与专用测试。
+- `ros/casbot_calib_vendor/src/mock_sdk_bridge.cpp`、`legacy_position_guard.hpp`及legacy S2专用目标/用例。`vendor_position.py`目前仍被`hardware_field.py`导入，不能先删整个文件：先提取当前仍用的binary定位/通用分析，再移除S2入口与实现。
+- 被以上链路独占的配置、探针脚本、colcon构建项；主线CI中ROS benchmark及`--ros-report`消费/旧release聚合依赖一同退役，不填假成功或把SHM指标改名写进旧ROS报告。
+
+**先搬公共部分、再删外壳：**
+
+- `trical_stream.hpp`、`numeric_text.hpp`、`file_stamp.hpp`、`manual_policy.hpp`、`async_csv.hpp`、`gzip_chunks.hpp`：只迁移新消费者确实需要的部分及测试到非ROS公共目录。当前原生recorder已具备的能力不再平行复制。
+- `vendor_identity.py`的通用文件绑定工具目前被模型/静态规划/辨识等大量模块导入；提到中性模块后再删SDK身份审计部分，不按文件名直接整删。
+- `vendor_data.py`、`vendor_position_analysis.py`、`raw_archive.py`、`fieldwork_streaming.py`等分别混有旧记录解析、公共数学/流式能力，按调用关系拆开。旧SDK采集和缓存不迁入新记录契约，纯数值核保留。
+
+**随后随消费者迁移退役：**
+
+- `state_recorder.cpp`、`position_executor.cpp`、`sdk_mock_server.cpp`、`vendor_common.hpp`及`vendor_capture.py`、`sdk_connection.py`、`sdk_process.py`、`sdk_mock.py`的ROS专用部分。
+- 依赖SDK的`hardware_field`启动/封存、旧GUI observer/launch/mock、SDK腕部采集脚本及`trical_sdk`外壳；保留其中规划、数学分析、可视化组件，改接SHM后删旧外壳。
+- 当自定义msg不再有消费者时删除`ros/casbot_calib_interfaces/`；当vendor包不再使用ament核心包装时删除`ros/casbot_calib_core/`，最终移除整个`ros/`及旧ROS依赖安装/发现入口。
+- 最终删除`fieldwork/ros/`和根目录ROS转发脚本，将正式fieldwork入口转到SHM；不保留空壳或“去备份分支”占位可执行程序。历史文档集中标为ROS分支归档，当前README/帮助只给实际可用主线命令。
+
+保留本机Humble/distrobox容器入口和已验证算法库：这是当前编译工具链，不是应随ROS通信删除的东西。后续去掉`run.sh`的隐式ROS source/colcon路径时，按显式依赖前缀及实际动态库加载验证；不要求为去ROS先搬走`/opt/ros/humble`里的Pinocchio/Coal。Linux SHM测试与跨平台离线核心测试分开，Windows不承担POSIX SHM验收。
+
+### 下一增量的完成线
+
+一条命令启动私有物理Mock，同一executor完成一条小幅C3参考，报告能看到实际PD/惯量响应与整数反馈；原有fieldwork用例继续可用；第一批ROS旧支线及其CLI/测试/CI依赖已退役。随后在Orin原生编译并跑同样的私有闭环，真实运动仍等现场显式调用。通用GUI、全部H1–H4与K5迁移不算进这一增量的完成条件。
