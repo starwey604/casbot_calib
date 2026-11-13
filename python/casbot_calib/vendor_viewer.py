@@ -5,7 +5,7 @@ from time import monotonic_ns, monotonic, sleep
 import numpy as np
 from .telemetry import StateFrame, TelemetryAdapter, JointMapping
 from .vendor_data import normalize_packet
-from .vendor_identity import sha256
+from .artifact_io import sha256
 
 
 def pose_frame(config, row, clock):

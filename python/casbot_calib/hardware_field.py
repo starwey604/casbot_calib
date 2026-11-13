@@ -17,8 +17,8 @@ from .model_runtime import model_for, collision_for, urdf_for, check_same_contex
 from .staged_motion import Motion, gate_motion
 from .static_field import _move as add_bounded_move
 from .run_marker import run_marker
-from .vendor_identity import sha256
-from .vendor_position import executor_binary
+from .artifact_io import sha256
+from .sdk_binary import executor_binary
 
 
 class FieldContractError(ValueError):
@@ -558,7 +558,7 @@ def analyse_field(plan, capture, output, *, windows_only=False):
     metadata,commands,origin,obs,elapsed,actual_collision=field_observations(root,capture)
     config=metadata['config']
     if metadata.get('stage') == 'position':
-        from .vendor_position_analysis import rates
+        from .stream_metrics import position_rates as rates
         from scipy.interpolate import BPoly
         from scipy.optimize import minimize_scalar
         with np.load(root / 'reference.npz', allow_pickle=False) as data: curve = BPoly(data['coefficients'], data['breakpoints'])
@@ -600,7 +600,7 @@ def analyse_field(plan, capture, output, *, windows_only=False):
             hardware_calibration_accepted=False, **bindings)
     else:
         report = write_gravity_candidate(means, config, output, metadata)
-        from .vendor_position_analysis import rates
+        from .stream_metrics import position_rates as rates
         report.update(command_publish_frequency=rates(np.array([int(r['publish_ns']) for r in commands], dtype=np.int64)),
             feedback_receive_frequency=rates(obs['receive_ns']), **bindings)
     write_json(output / 'report.json', report); seal(output)

@@ -88,7 +88,7 @@ def _fresh(root,name):
     return path
 
 
-def run_suite(folder,config,resume=False,fps=12,ros_report=None):
+def run_suite(folder,config,resume=False,fps=12):
     from .staged_protocol import require_legacy_execution
     require_legacy_execution(config)
     from .staged_workflow import run_staged
@@ -97,5 +97,5 @@ def run_suite(folder,config,resume=False,fps=12,ros_report=None):
     root=Path(folder);run_staged(root,config,'all',resume)
     verification=_fresh(root,'comprehensive');checked=verify_staged(root,verification)
     if not checked['passed']:raise RuntimeError('Comprehensive validation failed; presentation delivery blocked')
-    presentation=_fresh(root,'presentation');render_staged(root,presentation,fps=fps,ros_report=ros_report)
+    presentation=_fresh(root,'presentation');render_staged(root,presentation,fps=fps)
     return finalize(root,verification,presentation)

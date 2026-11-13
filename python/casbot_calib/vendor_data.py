@@ -3,7 +3,7 @@ import json
 from pathlib import Path
 import numpy as np
 import yaml
-from .vendor_identity import sha256
+from .artifact_io import sha256
 
 
 def load_config(path):

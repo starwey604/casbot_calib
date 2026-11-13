@@ -19,7 +19,7 @@ import yaml
 from . import hardware_field as field
 from .data import write_json, jsonable
 from .model_runtime import model_for
-from .vendor_identity import sha256
+from .artifact_io import sha256
 
 
 def read(path):

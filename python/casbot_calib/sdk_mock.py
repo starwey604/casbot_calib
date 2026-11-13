@@ -12,7 +12,7 @@ from .data import write_json
 from .model_runtime import model_for, collision_for, context_for, dynamics_scene, urdf_for, check_same_context
 from .hardware_field import load_profile, seal
 from .sdk_connection import mock_connection
-from .vendor_identity import sha256
+from .artifact_io import sha256
 
 
 def mock_config(path):

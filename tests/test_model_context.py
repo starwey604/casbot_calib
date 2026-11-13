@@ -15,7 +15,7 @@ from casbot_calib.kinematic_parameters import KinematicParameters
 from casbot_calib.kinematic_export import export_urdf
 from casbot_calib.dynamic_export import export_dynamics_urdf, load_exported_dynamics, verify_dynamics_export
 from casbot_calib.rigid_identification import model_from_parameters
-from casbot_calib.vendor_identity import sha256
+from casbot_calib.artifact_io import sha256
 from casbot_calib.vendor_viewer import scene_for_vendor
 from casbot_calib.urdf_resources import resource_elements, resolved_resource
 

@@ -9,7 +9,7 @@ import yaml
 from casbot_calib import hardware_batch as batch
 from casbot_calib import hardware_field as field
 from casbot_calib.data import write_json
-from casbot_calib.vendor_identity import sha256
+from casbot_calib.artifact_io import sha256
 from test_hardware_field import make_inputs, make_capture
 
 ROOT = Path(__file__).resolve().parents[1]

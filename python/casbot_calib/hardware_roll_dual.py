@@ -13,7 +13,7 @@ from .hardware_wrist_exploration import FLAGS,read,require_local
 from .model_runtime import model_for
 from .data import write_json
 from .run_marker import run_marker
-from .vendor_identity import sha256
+from .artifact_io import sha256
 
 SCHEMA='casbot_sdk_wrist_roll_dual_v2'
 LEGACY_SCHEMA='casbot_sdk_wrist_roll_dual_v1'

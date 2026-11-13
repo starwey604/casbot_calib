@@ -6,7 +6,7 @@ from . import hardware_field as field
 from .data import write_json
 from .staged_motion import Motion
 from .static_field import _move as bounded_move
-from .vendor_identity import sha256
+from .artifact_io import sha256
 
 
 def validate_settings(c):

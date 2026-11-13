@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 import shutil
 from casbot_calib.data import write_json
-from casbot_calib.vendor_identity import sha256
+from casbot_calib.artifact_io import sha256
 
 
 def main():

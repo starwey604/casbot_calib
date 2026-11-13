@@ -16,7 +16,7 @@ from .rigid_identification import model_from_parameters
 from .staged_motion import Motion,add_friction_sweep
 from .static_field import _move as bounded_move
 from .staged_identification import pair_friction_parts,fit_friction_features
-from .vendor_identity import sha256
+from .artifact_io import sha256
 
 
 def read(path):return json.loads(Path(path).read_text())

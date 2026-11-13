@@ -4,7 +4,7 @@ from pathlib import Path
 import numpy as np
 from scipy.linalg import lstsq
 from .dynamics_qualification import qualified_observations
-from .vendor_identity import sha256
+from .artifact_io import sha256
 
 
 def fourier_projection(time_ns,values,origin_ns,period_s,harmonics,phase_points,derivatives=False,*,weights=None,phase_offset_s=0.,diagnostics=False):

@@ -1,18 +1,12 @@
 """SDK source identity; no ROS imports and no robot access."""
 import argparse
-import hashlib
 import json
 from pathlib import Path
 import re
 import subprocess
+from .artifact_io import sha256
 
 
-def sha256(path):
-    digest = hashlib.sha256()
-    with Path(path).open('rb') as stream:
-        for chunk in iter(lambda: stream.read(1024*1024), b''):
-            digest.update(chunk)
-    return digest.hexdigest()
 
 
 def sdk_identity(root):

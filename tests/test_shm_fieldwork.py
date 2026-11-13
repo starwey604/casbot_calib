@@ -12,6 +12,8 @@ import pytest
 
 from casbot_calib import shm_fieldwork as fw
 
+pytestmark = pytest.mark.skipif(sys.platform != 'linux', reason='POSIX SHM fieldwork requires Linux')
+
 ROOT = Path(__file__).resolve().parents[1]
 NATIVE = Path(os.environ.get('CASBOT_SHM_TEST_BIN', ROOT/'build/humble/cpp/src/shm'))
 

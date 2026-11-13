@@ -1,249 +1,67 @@
-# CASBOT Calibration (`casbot_calib`)
+# CASBOT Calibration
 
-`casbot_calib` 是一个专为 **CASBOT 机器人（单臂与双臂系统）** 设计的动力学参数辨识、分阶段标定（Staged Calibration）、碰撞检测及仿真验证工具链。
+C++动力学/碰撞/模拟核心，Python规划与辨识，以及Orin本机EtherCAT共享内存执行。
 
-本项目采用 **C++ 高性能底层计算 + Python 灵活工作流编排 + ROS 2 Humble 实时通信** 的混合架构，支持从离线激励轨迹生成、安全边界与自碰撞预检（Preflight Check）、真机/仿真数据采集，到摩擦、重力与惯量参数分步辨识及可视化报告生成的完整闭环。
+## 先选入口
 
-## 📌 现场实机联调与标定导航
-
-* **📘 核心标定方案原理总览（通俗详解版）**：
-  * **[双臂动力学标定方案详解 (`docs/dual_arm_dynamics_plan.md`)](docs/dual_arm_dynamics_plan.md)**：140 维刚体参数、Clarabel 伪惯性 PSD 锥规划、H1–H4 分阶段解耦原理（重力正反消去 / 摩擦位置配对 / 零 PD 起动斜坡 / 傅里叶周期惯量投影）及手腕路线 A/B 详解。
-  * **[双臂千分计运动学标定方案详解 (`docs/kinematics_trical_plan.md`)](docs/kinematics_trical_plan.md)**：TriCal 三表接触投影原理、DVT2 四球台架分阶段碰撞门禁、雅可比自动对中状态机、60 维 MDH/Hayati 两层鲁棒辨识、K1–K4 流程及 **[K5 原生 ROS 2 SDK 实时流闭环适配](docs/kinematics_k5_sdk_realtime.md)** 详解。
-  * **[TriCal BLE–USB 开发板固件 (`firmware/README.md`)](firmware/README.md)**：独立 Zephyr 工作区，面向 Pro Micro nRF52840；已实现 QAS 读写与独立频率测试 app，尚未实测真实仪表。
-* **🛠️ 出差现场第一站（CLI 预检 + GUI 手动调参台）**：请直接阅读 **[现场工具入口（SHM / ROS）](fieldwork/README.md)**。
-  * 支持只读通信预检（`preflight` / `observe` / `reconnect`）、采集安全零位与一键平滑回零（`fieldwork/zero.yaml`）。
-  * 提供 14 轴 **MIT 五字段（`position / velocity / kp / kd / effort`）** 实时滑条调参 GUI、单轴短轨迹往返测试、3D 实时姿态跟随、可调限制面板及会话自动缓存/视频导出。
-  * 本地演练一键启动：`bash fieldwork/run.sh gui --mock --domain-id 181 --software-rendering`
-* **🤖 命令行（CLI）实机联调与分阶段标定（H1 → H4）**：见 **[实机 CLI 联调与标定路径](docs/hardware_execution_path.md)**。
-  * **H1**：只读起姿快照、单轴 1° 往返（Jog）、小批量静态采集。
-  * **H2**：[整批基础采集指南](docs/hardware_batch_h2.md)（14 轴方向往返、100/250/500Hz 频率测试、64 姿态静态重力采集，支持断点续采）。
-  * **H3**：[运动摩擦与起动摩擦指南](docs/hardware_friction_h3.md)（多姿态正反匀速 + 零 PD 力矩斜坡）。
-  * **H4**：[惯量与控制验证指南](docs/hardware_inertia_h4.md)（多姿态周期加速度激励、Pinocchio 物理一致惯量拟合、五档 PD 与前馈控制对照）。
-* **📖 首次上手与背景参考**：
-  * 到场只读留证、厂家辅助验证与结果回填：[现场测试与回填手册](docs/sdk_field_validation.md)
-  * 环境安装与离线仿真演练：[动力学标定启动指南](docs/dynamics_getting_started.md)
-  * 统一本地 SDK 物理模拟器说明：[统一 SDK Mock 指南](docs/sdk_mock_unification.md)
-  * 厂家接口约定与实机待核对项：[SDK 前置条件与厂家答复汇总](docs/sdk_hardware_prerequisites.md)
-  * 当前默认机器人模型：`casbot_hl12p1_dvt2_bare_flange_1105_03_gauge_v2`（DVT2 裸法兰整机模型，迁移说明见 [N4 收尾](docs/dvt2_n4_closeout.md)）。
-
-* **🔬 SDK 腕部专项探索**：见[双频协议](docs/sdk_wrist_roll_dual_protocol.md)与[实际双频两条记录](docs/sdk_wrist_roll_dual_capture.md)。右腕 roll 使用 5ms 共享缓存、2.5Hz＋10Hz 双频；c00 正反两条的预定主模型局部方向差为 8.96%，尚未扩展为完整 P0 R2。`freeze`只封存协议，显式`collect`才启动本机 Mock。新协议按[云端 H4 接入](docs/cloud_h4_integration.md)采用质量只报告语义，原 10% 研究门槛、正式 test 与旧封存结果保持各自口径。
-
-**已有探针可用[SDK 反馈敏感性评估器](docs/sdk_feedback_sensitivity.md)只读比较 A／B 两条路线**：`casbot-fieldwork sensitivity --source 会话 --output 新目录`，同一数据与扰动下报告惯量变化、方向一致性及首次观测越界点，不启动采集、不锁现场流程。 追加 `--reference-assessment 旧评估目录` 可比较同配方独立会话，见[右腕 roll 复测](docs/sdk_wrist_roll_repeat.md)。
-
-现场已保存的GUI记录可直接按 [A优先判断流程](fieldwork/ros/README.md#4-用已保存的数据判断能否优先采用-a) 运行 `fieldwork/run.sh a-evidence`，比较发送档位、局部惯量与时序／身体运动敏感性。
-
----
-
-## 🎯 核心目标与功能特性
-
-### 1. 机器人动力学与物理参数辨识
-* **分阶段标定工作流（Staged Calibration）**：支持静摩擦/启动力矩（Breakaway）、库仑与粘性摩擦（Friction Sampling）、重力补偿（Gravity Batch）以及惯性张量（Inertia Probe）的解耦与分步辨识。
-* **物理一致性拟合（Physical Consistency）**：结合 Pinocchio 等刚体动力学库，确保辨识出的单臂/双臂动力学参数满足物理可实现性约束。
-* **激励轨迹优化**：内置针对单臂与双臂协同的激励轨迹生成与优化器（`excitation.py` / `dual_excitation.py`）。
-
-### 2. 安全防护与碰撞检测（Safety & Collision Guard）
-* **C++ 碰撞与安全监控**：底层集成高效的几何碰撞检测（`collision.cpp`）与关节运动安全守卫（`arm_guard.cpp`）。
-* **起飞前预检（Preflight Check）**：在轨迹下发至真机或仿真器前，自动评估关节限位、速度/力矩边界以及双臂自碰撞/环境碰撞风险。
-
-### 3. 混合仿真与 ROS 2 Humble 实时传输
-* **多后端仿真支持**：内置轻量级 C++ 动力学积分器与仿真器，并提供标准化的 URDF/XML 模型资产（支持与 MuJoCo / Pinocchio 对接）。
-* **ROS 2 通信桥接**：提供 `casbot_calib_interfaces` 和 `casbot_calib_transport` 功能包，支持高频关节状态观测（`JointObservation`）、控制指令下发（`JointCommand`）及事件同步（`CommandEvent`）。
-
-### 4. 可视化与自动化实验报告
-* **3D 姿态与轨迹查看器（Viewer）**：支持标定轨迹、碰撞几何体及遥测数据（Telemetry）的交互式回放与预览。
-* **自动化基准测试与报告**：自动对比标定前后的力矩预测残差，输出结构化评估报告与可视化图表。
-
----
-
-## 📂 仓库目录结构
-
-```text
-casbot_calib/
-├── configs/                # 标定工作流、双臂动力学、碰撞场景及 ROS 传输的 YAML/JSON 配置文件
-├── cpp/                    # C++ 核心库（动力学计算、碰撞检测、安全守卫、仿真器及 pybind11 绑定）
-│   ├── include/casbot_calib/
-│   ├── src/
-│   └── tests/              # C++ 单元测试与集成测试
-├── python/casbot_calib/    # Python 核心包（CLI、分阶段标定逻辑、轨迹激励、参数辨识、可视化）
-│   └── assets/             # 机器人 URDF、XML 模型、碰撞网格与 FK 参考基准数据
-├── ros/                    # ROS 2 (Humble) 工作空间源码
-│   ├── casbot_calib_core/       # 核心 C++ 库的 ROS 2 封装
-│   ├── casbot_calib_interfaces/ # 自定义 ROS 2 消息接口 (JointCommand, JointObservation 等)
-│   └── casbot_calib_transport/  # 实时流客户端 (stream_client) 与模拟主机 (mock_host)
-├── scripts/                # 辅助脚本与 ROS 2 Humble 自动化环境部署/验证脚本集
-│   └── humble/             # 容器化、系统依赖安装、ROS 编译与里程碑验证脚本
-├── docs/                   # 架构设计、标定计划、数据表与验证文档
-├── firmware/               # TriCal BLE–USB 桥；独立 Zephyr 工作区与开发板应用
-├── tests/                  # Python 端完整单元测试集 (pytest)
-├── CMakeLists.txt          # 顶层 CMake 构建配置
-├── pyproject.toml          # Python 包构建与依赖声明
-├── environment.yml         # 保留作历史对照的 Conda 环境配置
-└── environment-viewer.yml  # 历史 Conda Viewer 配置；Humble 主环境不混用
-```
-
----
-
-## 🛠️ 环境配置与安装指南
-
-当前主环境统一为 **Ubuntu 22.04 + ROS 2 Humble + `.venv-humble`**，用于离线标定、可视化和 ROS 通信；首次安装见 [启动指南](docs/dynamics_getting_started.md)。Conda 配置保留作历史对照，不与 Humble 的 PATH、ABI 或构建缓存混用。
-
-### 方式一：历史 Conda 环境（保留作对照）
-
-仓库提供了标准环境配置文件以及锁文件（`conda-lock.yml`），以确保跨平台依赖的一致性。
-
-#### 1. 创建并激活主标定环境
-```bash
-# 使用 environment.yml 创建主环境
-conda env create -f environment.yml
-
-# 或者，如果您安装了 conda-lock，可使用锁文件进行精确复现：
-# conda-lock install -n casbot_calib conda-lock.yml
-
-conda activate casbot_calib
-```
-
-#### 2. 编译 C++ 扩展并安装 Python 包
-本项目使用 `CMake` 与 `pyproject.toml` 管理 C++/Python 混合编译：
-```bash
-# 以可编辑模式安装 Python 包（会自动触发底层 C++ 绑定编译）
-pip install -e . --no-build-isolation
-```
-*(注：旧 Conda 对照使用 `cmake --preset conda` 与 `cmake --build --preset conda`；Humble 使用独立的 `humble` 预设。)*
-
-#### 3. 配置可视化环境（可选）
-为避免 3D 渲染库与核心数值计算库产生依赖冲突，项目提供了独立的 Viewer 环境配置：
-```bash
-conda env create -f environment-viewer.yml
-# 或使用锁文件: conda-lock install -n casbot_calib_viewer conda-viewer-lock.yml
-```
-
----
-
-### 方式二：ROS 2 Humble 与容器化环境配置（当前主环境）
-
-针对需要运行 ROS 2 实时传输节点（`casbot_calib_transport`）或进行完整里程碑验证的场景，仓库在 `scripts/humble/` 目录下提供了一键式配置脚本。
-
-#### 1. 原生 Ubuntu 22.04 (ROS 2 Humble) 配置
-在已安装 ROS 2 Humble、配置好 ROS 软件源的 Ubuntu 22.04 **原生系统**上，按顺序执行以下脚本；容器环境请改用下一节的 `setup.sh`，不要在此处混用两套入口。从空白系统准备见 [启动指南](docs/dynamics_getting_started.md)：
-```bash
-# 1. 安装项目系统级依赖
-bash scripts/humble/install_system.sh
-
-# 2. 配置 Python 虚拟环境并安装锁定的依赖 (requirements.lock)
-bash scripts/humble/setup_python.sh
-
-# 3. 安装 C++/Python 绑定
-bash scripts/humble/run.sh python -m pip install -e . --no-deps --no-build-isolation \
-  --config-settings=build-dir=build/humble --config-settings=cmake.define.CALIB_BUILD_PYTHON=ON
-
-# 4. 编译 ROS 2 工作空间 (casbot_calib_core, interfaces, transport)
-bash scripts/humble/run.sh bash scripts/humble/build_ros.sh
-```
-
-#### 2. 使用已有 Docker/distrobox 环境
-
-环境安装与构建统一入口，在宿主仓库根目录执行：
+- **[SHM现场工具](fieldwork/shm/README.md)**：C00–C06逐例观测、接管、双臂动作和停止专项，原始帧、时钟与人工观察一起留证。
+- **[SHM构建与Git部署](docs/shm_build.md)**：本机Humble与Orin使用同一份源码分别原生编译。
+- **[SHM迁移与ROS退役](docs/shm_migration_plan.md)**：当前实现范围及下一步。
+- [动力学原理](docs/dual_arm_dynamics_plan.md)、[运动学K1–K5](docs/kinematics_trical_plan.md)、[TriCal固件](firmware/README.md)。
 
 ```bash
-bash scripts/humble/setup.sh --dry-run   # 只打印命令，不接触容器
-bash scripts/humble/setup.sh             # 前置检查 → 系统依赖 → venv → 构建 → 验证
-bash scripts/humble/setup.sh --doctor    # 只体检并输出 JSON
+bash fieldwork/shm/run.sh list
+bash fieldwork/shm/run.sh run C03 --joint-id 12  # 仅预览，不连接/发送
 ```
 
-`setup.sh` 按阶段执行并跳过已完成阶段；检测到既有 `.venv-humble` 时不会重建 venv。它要求容器已存在且与宿主共享仓库绝对路径，但**不创建容器、不安装基础 ROS**。阶段状态在 `build/humble-setup/`，参数与手动分步写法见 [Humble 环境说明](docs/humble_environment.md)。
+真实动作需要显式`--execute`，先按现场手册完成支撑、停业务、仅主站和首次握手。当前双臂逐轴用例按用户授权只查URDF位置/参考速度，不查碰撞；H1–H4/K5的原规划规则独立。
 
-首次安装完成后，日常调用形式为：
+## 构建与软件测试
+
+```bash
+# Orin或已具备算法依赖的Linux：不需要ROS通信、colcon或Python绑定。
+bash scripts/shm/build.sh --with-core --build-dir build/shm-core \
+  --install-prefix "$PWD/install/shm-core" --dependency-prefix /opt/ros/humble
+
+# 本机复用已有Humble/distrobox工具链。
+bash scripts/humble/container.sh cmake --preset humble -DCALIB_BUILD_SHM=ON
+bash scripts/humble/container.sh cmake --build --preset humble
+bash scripts/humble/container.sh ctest --test-dir build/humble -L shm --output-on-failure
+```
+
+Pinocchio/Coal装在`/opt/ros/humble`不意味着SHM程序依赖ROS通信。C++17/CMake3.22为共同基线，x86_64二进制不能直接复制到Orin。
+
+## 离线算法与回放
+
+Pinocchio负责刚体力学与导数，Coal负责碰撞/距离，Boost.Odeint负责积分；MuJoCo只显示几何。
+
 ```bash
 bash scripts/humble/container.sh casbot-calib --help
-```
-
----
-
-## 🚀 快速开始与常用工作流
-
-安装完成后，您可以通过 `casbot-calib` 命令行工具（CLI）或 `python -m casbot_calib` 运行标定与验证任务。下面在宿主仓库根目录使用 Humble 容器入口；输出目录必须不存在。
-
-### 1. 运行命令行工具 (CLI)
-```bash
-# 查看 CLI 支持的子命令与参数说明
-bash scripts/humble/container.sh python -m casbot_calib --help
-```
-
-### 2. 运行标定与工作流演示
-使用 `configs/` 目录下的配置文件启动标准标定或分阶段双臂标定流程：
-```bash
-# 运行基础工作流演示
 bash scripts/humble/container.sh casbot-calib demo \
   --config configs/workflow_demo.yaml --output artifacts/my_demo
-
-# 运行双臂分阶段标定工作流
 bash scripts/humble/container.sh casbot-calib staged-suite \
   --config configs/staged_dual_arm.yaml --output artifacts/my_staged
-```
-
-### 3. 启动三维可视化与遥测回放
-```bash
-# 回放上一步的双臂观测，不重新运行力学计算
 bash scripts/humble/container.sh casbot-calib render-staged \
   artifacts/my_staged --output artifacts/my_staged_video
-
-# 查看统一 ROS 只读显示的参数
-bash scripts/humble/container.sh casbot-calib ros-view --help
 ```
 
-### 4. ROS 2 传输层测试
-在编译好 ROS 2 工作空间后，可以通过脚本加载环境并测试模拟主机与流客户端：
-```bash
-bash scripts/humble/container.sh bash scripts/humble/build_ros.sh
-bash scripts/humble/container.sh bash scripts/humble/ros.sh \
-  casbot-calib ros-benchmark --output artifacts/my_ros_stream
-```
+当前模型为`casbot_hl12p1_dvt2_bare_flange_1105_03_gauge_v2`。模型资产、辨识内核、连续参考/碰撞检查及正式S3/S4/P0数据合同保留。H1–H4与GUI尚在迁移，不能把旧ROS发布stamp或新主站stamp当作驱动采样时刻。
 
----
+## ROS退役范围
 
-## ✅ 测试与验证
+旧ROS stream benchmark、`ros-view`和legacy S2执行链已从main移除；原用法及历史验收在`ros`分支。
 
-本项目包含完善的 C++、Python 及 ROS 2 集成测试套件，确保动力学计算、碰撞检测与参数辨识的准确性。
+剩余SDK/ROS的H1–H4、GUI及TriCal消费者暂留[过渡入口](fieldwork/ros/README.md)，迁到SHM后删除。`fieldwork/run.sh`目前仍转发旧ROS工具，不是SHM入口。不要求每个旧ROS实验都重做SHM版本。
 
-### 运行 Python 单元测试
-```bash
-bash scripts/humble/container.sh env PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 CASBOT_TEST_RENDER=1 python -m pytest -q
-```
+## 目录
 
-### 运行 C++ 核心测试
-```bash
-bash scripts/humble/container.sh ctest --preset humble
-```
+- `cpp/`：算法核心、SHM协议/执行、测试。
+- `python/casbot_calib/`：规划、辨识、数据与现场编排。
+- `fieldwork/shm/`：新现场入口；`fieldwork/ros/`：待退役旧入口。
+- `configs/`、`docs/`：冻结配方、模型/场景、使用与证据。
+- `scripts/shm/`：原生构建、Git部署、私有联跑。
+- `scripts/humble/`：现有本机工具链和离线验证。
+- `ros/`：尚有消费者的SDK包与包装，按迁移清单逐批移除。
+- `firmware/`：独立TriCal BLE–USB固件工作区。
 
-### 运行全流程自动化验证 (Humble 里程碑验证)
-```bash
-# 执行完整的环境检查、编译验证与结果比对
-bash scripts/humble/container.sh bash scripts/humble/validate.sh artifacts/my_regression
-```
-
-若需历史数值对照，还须提供真实存在的冻结基线目录作为第二个参数；未提供时不能宣称完成历史对照。完整分阶段交付使用上面的 `staged-suite`，不是仅运行旧回归脚本。
-
----
-
-## 📚 更多文档
-
-关于算法细节、硬件参数与各阶段验证报告，请参阅 `docs/` 目录下的详细文档：
-
-* **[动力学标定启动指南](docs/dynamics_getting_started.md)**：从安装、Mock 分阶段标定、报告和回放，到静态现场规划、SDK 只读接入及 S4 候选导出。
-* **[SDK实机接入前必须确认的能力](docs/sdk_hardware_prerequisites.md)**：甲方待确认清单、所需证据、阶段开放条件和结论记录要求；实机接入前必读。
-* [双臂千分计运动学K1–K5计划](docs/kinematics_trical_plan.md)、[K2测量闭环](docs/kinematics_trical_k2.md)及[K3几何辨识](docs/kinematics_trical_k3.md)：三表Mock、碰撞门禁、自动对中/稳定采样、六球选点、MDH/Hayati分层求解与候选URDF导出；实机和完整计量验收仍待后续。
-* [K4重复性与中文回放](docs/kinematics_trical_k4.md)：同工装三批独立采集/辨识、冻结选参、公共留出位置约束、独立外测数据契约和MuJoCo只读演示；实物外测/间隔漂移/产品AP-RP仍待验收。
-* [机器人建模与参数说明](docs/model_and_parameters.md)
-* [单臂 (Arm R1) 几何与标定文档](docs/arm_r1.md)
-* [整臂标定计划](docs/whole_arm_calibration_plan.md) & [双臂动力学标定计划](docs/dual_arm_dynamics_plan.md)
-* [碰撞检测与分阶段工作流](docs/collision_staged_workflow.md)
-* [动力学P0数据契约](docs/staged_dynamics_p0_r0.md)、[R1多构型开发](docs/staged_dynamics_p0_r1.md)、[R2算子稳定性](docs/staged_dynamics_p0_r2.md)、[R3频段归因/选参](docs/staged_dynamics_p0_r3.md)及[R4正式验收](docs/staged_dynamics_p0_r4.md)：已通过本机合成测试、独立控制对照和中文回放；不代表实机或全频带性能。
-* [ROS 2 传输层设计文档](docs/ros_transport.md) & [Humble 环境说明](docs/humble_environment.md)
-* [CASBOT2 SDK源码接入评估](docs/casbot02_sdk_source_intake.md)与[S1只读接入](docs/vendor_s1.md)：可选SDK构建、原始CDR记录、字段规范化，以及厂商反馈/原生ROS Mock共用的只读显示；实机控制、力矩/采样能力和物理网络仍待验证。
-* [S2位置流程与频率／响应](docs/vendor_s2.md)：整双臂实测起点、Coal参考门禁、C++ SDK位置流与故障停止；本机100/250/500Hz记录和316项Python测试通过，早期反馈空窗及原始失败也保留，未确认稳定500Hz或实机执行资格。
-* [S3动力学观测资格](docs/vendor_s3.md)：S1/主机CSV/NPZ只读导入，来源与输出力矩尺度、采样时钟、状态和原始带宽逐阶段检查；合格周期记录生成Pinocchio回归问题。当前SDK未知反馈仍阻断，500Hz发布不代替4kHz原始采样，实机执行及S4现场闭环未开放。
-* [S4离线分阶段闭环](docs/vendor_s4.md)：冻结观测角色，复用原求解器按重力→运动摩擦→起动摩擦→惯量拟合并复核前序；新增4kHz双臂起动观测和已冻结候选的Mock控制对照。SDK实机执行仍关闭；旧开发验证不冒充新的正式留出。
-* [动力学候选URDF导出与重加载](docs/dynamic_urdf_export.md)：重力/惯量候选导出、固定手部惯性只聚合一次、Pinocchio刚体与完整运行时模型一致性验证；保留源URDF及原SDK配置，不开放实机。
-* [静态现场扫描预设](docs/static_field_preset.md)：`plan-static-field`生成具名7轴扫描和五轴组合候选，按Pinocchio重力信息选择不重合的训练/验证姿态，Coal检查正反接近及完整进退参考；`verify-static-field`重加载复核。默认每臂24训练+8验证姿态、每姿态两条参考，仅离线规划，不采集反馈或开放实机执行。
-* [可视化工具演示指南](docs/viewer_demo.md)
-* [开发者指南](docs/development.md)
+生成的`artifacts/`、`build/`、`install/`不入Git。离线环境及跨平台用法见[环境说明](docs/humble_environment.md)。

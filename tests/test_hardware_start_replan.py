@@ -150,5 +150,3 @@ def test_new_profiles_default_to_2s_3s_but_explicit_settings_are_preserved(tmp_p
         values['general'].update(feedback_timeout_s=.1, mode_timeout_s=.5)
         saved = policy.save(tmp_path/path.split('/')[-2], values)
         assert policy.load(tmp_path/path.split('/')[-2], {}) == saved
-    legacy = yaml.safe_load(Path('configs/vendor_s2.yaml').read_text())
-    assert legacy['max_feedback_age_ns'] == 60_000_000 and legacy['max_mode_age_ns'] == 300_000_000

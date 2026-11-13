@@ -9,7 +9,7 @@ from verify_vendor_s3 import bundle
 from casbot_calib.data import write_json
 from casbot_calib.dynamics_data import import_dynamics
 from casbot_calib.dynamics_qualification import qualify_dynamics
-from casbot_calib.vendor_identity import sha256
+from casbot_calib.artifact_io import sha256
 from casbot_calib.vendor_staged import reference,freeze_staged
 
 

@@ -16,7 +16,7 @@ from . import _core
 from .data import write_json
 from .dual_model import nominal_dual_arm
 from .rigid_identification import model_from_parameters
-from .vendor_identity import sha256
+from .artifact_io import sha256
 from .urdf_resources import rebase_resources,canonical_resources
 
 SCHEMA='casbot_dynamic_urdf_export_v1'

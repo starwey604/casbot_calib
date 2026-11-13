@@ -14,7 +14,7 @@ from .rigid_identification import fit_rigid,model_from_parameters,parameter_scal
 from .sdk_mock import SDKMockSession
 from .staged_stability_math import operator_difference
 from .run_marker import run_marker
-from .vendor_identity import sha256
+from .artifact_io import sha256
 
 
 def source_binding(source):

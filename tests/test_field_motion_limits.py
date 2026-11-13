@@ -35,10 +35,3 @@ def test_cli_position_warning_has_axis_value_threshold_and_action(capsys):
     assert '1.500000 rad/s' in text and '已停止发送' in text
     field.print_field_limit('FIELDWORK_LIMIT {"action":"recovered"}')
     assert '反馈已回到观察范围；发送继续。' in capsys.readouterr().out
-
-
-def test_legacy_s2_still_owns_its_original_tracking_configuration():
-    from casbot_calib.vendor_position import position_config
-    config = position_config('configs/vendor_s2.yaml')
-    assert config['tracking_guard_rad'] == .002
-    assert config['collision_allowance_rad'] == .003

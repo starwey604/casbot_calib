@@ -14,7 +14,7 @@ from .data import write_json
 from .model_runtime import model_for, collision_for
 from .rigid_identification import parameter_scales
 from .staged_motion import Motion, derivative_bounds, gate_motion
-from .vendor_identity import sha256
+from .artifact_io import sha256
 
 
 def validate_config(config, engine, source):

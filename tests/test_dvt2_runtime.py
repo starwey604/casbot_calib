@@ -151,7 +151,7 @@ def test_staged_collection_records_new_source_and_rejects_mixed_engine(tmp_path,
     from casbot_calib.staged_collection import collect_trial
     from casbot_calib.staged_motion import Motion,gate_motion
     from casbot_calib.staged_identification import recordings
-    from casbot_calib.vendor_identity import sha256
+    from casbot_calib.artifact_io import sha256
     from casbot_calib.dual_model import nominal_dual_arm
     config=yaml.safe_load((CONFIG/'staged_dual_arm.yaml').read_text());config.pop('mock')
     engine,_=model_for(config);collision=collision_for(config,scene=profile['scene'])

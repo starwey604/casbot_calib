@@ -9,7 +9,7 @@ from casbot_calib import _core
 from casbot_calib.dual_model import nominal_dual_arm
 from casbot_calib.rigid_identification import model_from_parameters
 from casbot_calib.dynamic_export import export_dynamics_urdf,load_exported_dynamics,verify_dynamics_export,check_reload,write_inertial_urdf
-from casbot_calib.vendor_identity import sha256
+from casbot_calib.artifact_io import sha256
 
 SOURCE=__import__('casbot_calib.model_context',fromlist=['load_context']).load_context().urdf
 

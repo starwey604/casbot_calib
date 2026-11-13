@@ -102,7 +102,7 @@ def test_frozen_proof_cache_checks_source_and_clearance_policy(actual,tmp_path):
     from casbot_calib.dvt2_trical import seed_reference_cache
     from casbot_calib.data import write_json
     from casbot_calib.staged_motion import Motion
-    from casbot_calib.vendor_identity import sha256
+    from casbot_calib.artifact_io import sha256
     c,e=actual;c=copy.deepcopy(c);c.pop('mock');source=tmp_path/'source';source.mkdir()
     p=profiles(e,c,'left_trical_tcp','A')['free'];home=np.array(c['workflow']['home_rad']);proof=motion_gate(p,home,home,c)
     assert proof['passed']

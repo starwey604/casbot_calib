@@ -11,7 +11,7 @@ from .hardware_friction import read,center,holding_gains,gravity_engine,plateau_
 from .staged_motion import periodic_motion,derivative_bounds
 from .rigid_identification import fit_rigid,model_from_parameters
 from .hardware_periodic import periodic_problem,prediction_metrics
-from .vendor_identity import sha256
+from .artifact_io import sha256
 from .control_policy import PD_FACTORS,CONTROL_GROUPS,scale_pd
 
 

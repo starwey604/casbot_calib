@@ -28,7 +28,7 @@ class ProtocolFixture:
         from crb_ros_msg.msg import UpperJointData
         from casbot_calib.hardware_field import load_profile,model_for
         from casbot_calib.sdk_connection import mock_connection
-        from casbot_calib.vendor_identity import sha256
+        from casbot_calib.artifact_io import sha256
         rclpy.init(signal_handler_options=SignalHandlerOptions.NO);self.rclpy=rclpy
         self.endpoint='/casbot_calib_s2_r1_'+uuid.uuid4().hex[:10]
         config=load_profile('configs/hardware_field.yaml');engine,_=model_for(config)

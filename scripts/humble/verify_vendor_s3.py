@@ -12,7 +12,7 @@ import yaml
 from casbot_calib.dynamics_data import import_dynamics,read_json
 from casbot_calib.dynamics_qualification import qualify_dynamics
 from casbot_calib.dynamics_problem import build_periodic_problem
-from casbot_calib.vendor_identity import sha256
+from casbot_calib.artifact_io import sha256
 from casbot_calib.dual_model import nominal_dual_arm
 
 

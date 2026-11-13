@@ -28,7 +28,6 @@ def main():
     from std_msgs.msg import String
     from casbot_calib.vendor_data import normalize_session, raw_fingerprints
     from casbot_calib.vendor_viewer import VendorLiveSource
-    from casbot_calib.ros_state import RosStateSource
     prefix = '/casbot_calib_s1_'+uuid.uuid4().hex[:10]
     rclpy.init()
     node = rclpy.create_node('vendor_s1_contract_fixture', enable_rosout=False, start_parameter_services=False)
@@ -56,23 +55,19 @@ def main():
                             raise RuntimeError('Recorder failed to match state-only fixture; see process log')
                         rclpy.spin_once(node, timeout_sec=.02)
                     live = VendorLiveSource(capture_root)
-                    ros_live = RosStateSource(config,config['joint_topic'],config['joint_type'],scope='localhost_contract_mock')
                     try:
                         names = [config['joint_names'][0], 'left_thumb_proximal_joint', 'waist_yaw_joint']+config['joint_names'][1:]
                         base_q = {n: .03*(i+1) for i,n in enumerate(config['joint_names'])}
                         pd = {n: (10.+i, .5+i*.1) for i,n in enumerate(n for n in names if 'thumb' not in n)}
                         started = time.monotonic(); next_at = started; sent = 0; stale_seen = False; live_seen = False
-                        read_only_graph = True; ros_seen = False; ros_stale = False
+                        read_only_graph = True
                         while time.monotonic()-started < 3.6:
                             elapsed = time.monotonic()-started
                             rclpy.spin_once(node, timeout_sec=0)
                             frame = live.read()
                             live_seen |= frame is not None
-                            ros_frame = ros_live.read()
-                            ros_seen |= ros_frame is not None and ros_frame.current is None and ros_frame.sample_ns==-1
                             if 1.45 < elapsed < 1.6:
                                 stale_seen |= live.is_stale()
-                                ros_stale |= ros_live.is_stale()
                             # Explicit silence, then reappearance. No simulated mechanics.
                             if 1.0 < elapsed < 1.6:
                                 time.sleep(.002); next_at = time.monotonic(); continue
@@ -121,7 +116,6 @@ def main():
                         code = child.wait(timeout=10)
                     finally:
                         live.close()
-                        ros_live.close()
                     if code: raise RuntimeError(f'Recorder exited {code}; see {case}-process.log')
                 finally:
                     if child.poll() is None:
@@ -131,7 +125,6 @@ def main():
             diagnostics = json.loads((root/(case+'-normalized')/'diagnostics.json').read_text())
             errors = [e for r in diagnostics if r['channel']=='joint' for e in r['errors']]
             checks[case] = dict(read_only_graph=read_only_graph, live_pose=live_seen, live_stale=stale_seen,
-                                direct_ros_pose=ros_seen, direct_ros_stale=ros_stale,
                                 invalid_position_rejected=report['invalid_position_packets']>0,
                                 stale_gap_reported=report['stale_gaps']>=1, stale_end_reported=report['stale_at_capture_end'],
                                 unknown_time=report['unavailable']['sample_time'], dynamics_blocked=not report['dynamics_qualified'],

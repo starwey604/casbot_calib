@@ -2,8 +2,7 @@
 #include "trical_stream.hpp"
 #include "async_csv.hpp"
 #include "manual_policy.hpp"
-#include "legacy_position_guard.hpp"
-// Shared S2/field position stream. Default S2 remains private/localhost only.
+// Remaining explicit ROS field path; legacy S2 execution has been retired.
 #include "vendor_common.hpp"
 #include "sdk_breakaway.hpp"
 #include <casbot_calib/arm_dynamics.hpp>
@@ -54,9 +53,8 @@ class PositionExecutor final : public rclcpp::Node {
     const auto joint=declare_parameter<std::string>("joint_topic"),mode=declare_parameter<std::string>("mode_topic");
     const auto command=declare_parameter<std::string>("command_topic"),service=declare_parameter<std::string>("mode_service"),stop=declare_parameter<std::string>("stop_service");
     command_topic_=command;
-    scope_=declare_parameter<std::string>("execution_scope","localhost_contract_mock");
-    if(scope_=="localhost_contract_mock") vendor::local_topics({joint,mode,command,service,stop});
-    else if(scope_!="hardware_position_stream") throw std::runtime_error("Unknown execution scope");
+    scope_=declare_parameter<std::string>("execution_scope","");
+    if(scope_!="hardware_position_stream") throw std::runtime_error("Legacy S2 retired; explicit hardware_position_stream required");
     hardware_=scope_=="hardware_position_stream";
     if(!trical_file_.empty()&&(!hardware_||!std::getenv("ROS_LOCALHOST_ONLY")||std::string(std::getenv("ROS_LOCALHOST_ONLY"))!="1"||
        get_node_topics_interface()->resolve_topic_name(command).rfind("/casbot_calib_s2_",0)!=0))
@@ -103,8 +101,6 @@ class PositionExecutor final : public rclcpp::Node {
     timeout_=declare_parameter<std::int64_t>("transition_timeout_ns",1000000000);
     startup_timeout_=declare_parameter<std::int64_t>("startup_timeout_ns",10000000000);
     tolerance_=declare_parameter<double>("start_tolerance_rad",.004);
-    if(!hardware_&&!manual_)legacy_guard_=std::make_unique<LegacyPositionGuard>(
-        declare_parameter<double>("tracking_limit_rad",.02),declare_parameter<double>("position_allowance_rad",.03));
     max_velocity_=declare_parameter<double>("maximum_velocity_rad_s",hardware_?1.5:.5);
     vel_scale_=declare_parameter<double>("vel_scale",.1);
     period_=declare_parameter<std::int64_t>("command_period_ns",2000000);
@@ -304,11 +300,7 @@ class PositionExecutor final : public rclcpp::Node {
     const auto index=std::min<std::int64_t>((now-start_)/period_,plan_.size()-1);
     if(index<=last_index_ && phase_=="STREAMING") return;
     const auto& row=plan_[index];
-    if(legacy_guard_) {
-      const auto available_index=std::clamp<std::int64_t>((state_.receive-start_)/period_,0,plan_.size()-1);
-      const auto reason=legacy_guard_->check(state_.q,plan_[available_index],row);
-      if(!reason.empty()){fault(reason);return;}
-    }
+
     if(phase_=="STREAMING") {
       // Late cycles skip planned slots. Never replay a burst of old commands.
       if(index>last_index_+1) skips_+=index-last_index_-1;
@@ -339,7 +331,7 @@ class PositionExecutor final : public rclcpp::Node {
       <<",\"snapshot_only\":"<<(snapshot_?"true":"false")<<",\"hardware_executable\":"<<(hardware_?"true":"false")
       <<",\"execution_scope\":"<<std::quoted(scope_)<<",\"device_disconnect_protection_assumed\":"<<(hardware_?"true":"false")
       <<",\"position_limit_action\":"<<std::quoted(hardware_?"warn":"end_control")
-      <<",\"tracking_gate_enabled\":"<<(legacy_guard_?"true":"false")
+      <<",\"tracking_gate_enabled\":"<<"false"
       <<",\"feedback_rest_observed_after_fault\":"<<(stop_rest_observed_?"true":"false")
       <<",\"physical_stop_verified\":false,\"clock_id\":"<<std::quoted(vendor::clock_id())<<",\"start_pose_error_rad\":[";
     for(int j=0;j<14;++j){if(j)out<<',';out<<std::setprecision(17)<<start_error_[j];}out<<"]}\n";
@@ -576,7 +568,6 @@ class PositionExecutor final : public rclcpp::Node {
   AsyncCsv events_,received_,commands_,limits_log_;
   std::string phase_,mode_,fault_,command_topic_,scope_;std::int64_t began_=0,phase_at_=0,mode_at_=0,start_=0,last_index_=-1,last_publish_=0,stable_at_=0,skips_=0,last_graph_check_=0;
   std::int64_t max_age_,mode_age_,timeout_,period_,startup_timeout_;double tolerance_,max_velocity_,vel_scale_;
-  std::unique_ptr<LegacyPositionGuard> legacy_guard_;
   std::string limits_key_;std::int64_t last_limits_=0;
   std::string notice_key_;std::int64_t notice_since_=0,last_notice_=0;
   bool recording_paused_=false;std::string recording_pause_file_;

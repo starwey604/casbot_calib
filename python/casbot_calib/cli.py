@@ -81,21 +81,6 @@ def main(argv=None):
     vendor_view.add_argument('folder',type=Path);vendor_view.add_argument('--output',type=Path,required=True)
     vendor_view.add_argument('--live',action='store_true');vendor_view.add_argument('--window',action='store_true')
     vendor_view.add_argument('--fps',type=int,default=12)
-    ros_view=sub.add_parser('ros-view',help='Unified subscription-only viewer for native ROS Mock or vendor feedback')
-    ros_view.add_argument('--config',type=Path,default=Path('configs/vendor_s1.yaml'))
-    ros_view.add_argument('--output',type=Path,required=True);ros_view.add_argument('--topic',required=True)
-    ros_view.add_argument('--message-type',choices=('sensor_msgs/msg/JointState','crb_ros_msg/msg/JointStateData','casbot_calib_interfaces/msg/JointObservation'),required=True)
-    ros_view.add_argument('--source-model-id');ros_view.add_argument('--domain-id',type=int,required=True)
-    ros_view.add_argument('--scope',choices=('localhost_ros_mock','hardware_read_only'),required=True)
-    ros_view.add_argument('--window',action='store_true');ros_view.add_argument('--duration',type=float,default=5.)
-    ros_view.add_argument('--fps',type=int,default=12)
-    pos_plan=sub.add_parser('vendor-plan-position',help='S2 observed-start snapshot and collision-gated local SDK position plan')
-    pos_plan.add_argument('--config',type=Path,default=Path('configs/vendor_s2.yaml'));pos_plan.add_argument('--output',type=Path,required=True)
-    pos_plan.add_argument('--endpoint-root',required=True);pos_plan.add_argument('--domain-id',type=int,required=True)
-    pos_run=sub.add_parser('vendor-execute-position',help='S2 isolated local SDK position execution; hardware remains blocked')
-    pos_run.add_argument('plan',type=Path);pos_run.add_argument('--output',type=Path,required=True)
-    pos_analyse=sub.add_parser('vendor-analyse-position',help='S2 read-only position frequency and overall response analysis')
-    pos_analyse.add_argument('folder',type=Path);pos_analyse.add_argument('--output',type=Path,required=True)
     dynamics_import=sub.add_parser('vendor-import-dynamics',help='S3 immutable ROS/host-log import with explicit torque/clock provenance')
     dynamics_import.add_argument('source',type=Path);dynamics_import.add_argument('--source-type',choices=('vendor','host'),required=True)
     dynamics_import.add_argument('--profile',type=Path,default=Path('configs/vendor_s3_unknown.yaml'));dynamics_import.add_argument('--output',type=Path,required=True)
@@ -177,16 +162,10 @@ def main(argv=None):
     staged_render=sub.add_parser('render-staged',help='Chinese geometry-only playback of accepted staged records')
     staged_render.add_argument('folder',type=Path);staged_render.add_argument('--output',type=Path)
     staged_render.add_argument('--fps',type=int,default=12);staged_render.add_argument('--snapshots-only',action='store_true')
-    staged_render.add_argument('--ros-report',type=Path,help='Optional separately captured local ROS analysis JSON')
     staged_suite=sub.add_parser('staged-suite',help='Calibration, comprehensive verification and Chinese viewer delivery')
     staged_suite.add_argument('--config',type=Path,default=Path('configs/staged_dual_arm.yaml'))
     staged_suite.add_argument('--output',type=Path,required=True);staged_suite.add_argument('--resume',action='store_true')
     staged_suite.add_argument('--fps',type=int,default=12)
-    staged_suite.add_argument('--ros-report',type=Path)
-    transport=sub.add_parser('ros-benchmark',help='Local real ROS streaming / timing / frequency Mock (no hardware)')
-    transport.add_argument('--config',type=Path,default=Path('configs/ros_transport.yaml'));transport.add_argument('--output',type=Path,required=True)
-    transport_analysis=sub.add_parser('ros-analyse',help='Re-analyse ROS stream records without running nodes or reading Mock truth')
-    transport_analysis.add_argument('folder',type=Path);transport_analysis.add_argument('--output',type=Path,required=True)
     estimate=sub.add_parser("identify",help="Re-estimate from observations only; no evaluation truth required")
     estimate.add_argument("run_folder",type=Path);estimate.add_argument("--config",type=Path,required=True)
     estimate.add_argument("--output",type=Path,required=True)
@@ -283,23 +262,6 @@ def main(argv=None):
         from .dynamics_problem import build_periodic_problem
         result=build_periodic_problem(args.qualification,args.output)
         print(f"Pinocchio观测方程：秩{result['rank']}/140；尚未拟合或验收参数 -> {args.output}");return 0
-    if args.command=='vendor-plan-position':
-        from .vendor_position import prepare_position
-        prepare_position(args.config,args.output,endpoint_root=args.endpoint_root,domain_id=args.domain_id)
-        print(f'SDK位置计划：已读取起始姿态并通过参考门禁 -> {args.output}');return 0
-    if args.command=='vendor-execute-position':
-        from .vendor_position import execute_position
-        result=execute_position(args.plan,args.output)
-        print(f"SDK位置执行：{result['reason']} -> {args.output}");return 0 if result['passed'] else 1
-    if args.command=='vendor-analyse-position':
-        from .vendor_position_analysis import analyse_position
-        result=analyse_position(args.folder,args.output)
-        print(f"SDK位置分析：{'PASS' if result['passed'] else 'REJECT'} -> {args.output}");return 0 if result['passed'] else 1
-    if args.command=='ros-view':
-        from .ros_state import view_ros
-        result=view_ros(args.config,args.output,topic=args.topic,message_type=args.message_type,domain_id=args.domain_id,
-                        scope=args.scope,source_model_id=args.source_model_id,window=args.window,duration_s=args.duration,fps=args.fps)
-        return 0 if result.get('passed',True) else 1
     if args.command=='vendor-capture':
         from .vendor_capture import capture
         result=capture(args.config,args.output,duration_s=args.duration,domain_id=args.domain_id,scope=args.scope,
@@ -376,7 +338,7 @@ def main(argv=None):
         return 0 if result['passed'] else 1
     if args.command=='render-staged':
         from .staged_presentation import render_staged
-        result=render_staged(args.folder,args.output,fps=args.fps,video=not args.snapshots_only,ros_report=args.ros_report)
+        result=render_staged(args.folder,args.output,fps=args.fps,video=not args.snapshots_only)
         return 0 if result['passed'] else 1
     if args.command=='staged-verify':
         from .staged_validation import verify_staged
@@ -385,7 +347,7 @@ def main(argv=None):
         return 0 if result['passed'] else 1
     if args.command=='staged-suite':
         from .staged_delivery import run_suite
-        result=run_suite(args.output,yaml.safe_load(args.config.read_text(encoding='utf-8')),args.resume,args.fps,args.ros_report)
+        result=run_suite(args.output,yaml.safe_load(args.config.read_text(encoding='utf-8')),args.resume,args.fps)
         print(f"Staged delivery: {'PASS' if result['passed'] else 'FAIL'} -> {args.output}",flush=True)
         return 0 if result['passed'] else 1
     if args.command=='staged-identify':
@@ -431,11 +393,6 @@ def main(argv=None):
         from .dual_workflow import identify_dual_session
         result,_=identify_dual_session(args.folder,args.output)
         print(f"Dual-arm observations: {'PASS' if result['passed'] else 'FAIL'} -> {args.output}")
-        return 0 if result['passed'] else 1
-    if args.command in ('ros-benchmark','ros-analyse'):
-        from .ros_benchmark import run_suite,analyse_suite
-        result=run_suite(args.output,yaml.safe_load(args.config.read_text(encoding='utf-8'))) if args.command=='ros-benchmark' else analyse_suite(args.folder,args.output)
-        print(f"ROS stream: {'PASS' if result['passed'] else 'FAIL'} -> {args.output}",flush=True)
         return 0 if result['passed'] else 1
     if args.command=="arm-check":
         from .arm_report import run_arm_checks

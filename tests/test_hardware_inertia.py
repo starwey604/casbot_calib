@@ -122,7 +122,7 @@ def test_missing_onset_cannot_be_promoted_from_a_disabled_stage_pass(tmp_path,mo
     from casbot_calib import hardware_batch as batch,hardware_field as field
     from casbot_calib.hardware_inertia import snapshot_prior
     from casbot_calib.data import write_json
-    from casbot_calib.vendor_identity import sha256
+    from casbot_calib.artifact_io import sha256
     folder=tmp_path/'report';folder.mkdir()
     write_json(folder/'report.json',dict(passed=True,moving_friction=dict(passed=True),breakaway=dict(passed=True,available=False)))
     field.seal(folder);write_json(tmp_path/'latest.json',dict(report='report',manifest_sha256=sha256(folder/'manifest.json')))

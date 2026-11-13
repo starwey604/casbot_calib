@@ -8,7 +8,7 @@ from .dynamics_data import read_json
 from .dynamics_qualification import qualified_observations
 from .dynamics_problem import periodic_observation_problem
 from .run_marker import run_marker
-from .vendor_identity import sha256
+from .artifact_io import sha256
 from .data import write_json
 
 STAGES=('gravity','friction','breakaway','inertia')

@@ -13,7 +13,7 @@ from .hardware_inertia import settings as h4_settings
 from .hardware_friction import holding_gains
 from .model_runtime import model_for
 from .sdk_mock import SDKMockSession
-from .vendor_identity import sha256
+from .artifact_io import sha256
 
 JOINT=12
 JOBS=[dict(id='c00_right_pitch_neg',direction=-1),dict(id='c00_right_pitch_pos',direction=1)]

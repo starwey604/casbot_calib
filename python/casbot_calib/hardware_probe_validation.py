@@ -12,7 +12,7 @@ from .model_runtime import model_for
 from .rigid_identification import model_from_parameters
 from .sdk_mock import SDKMockSession
 from .run_marker import run_marker
-from .vendor_identity import sha256
+from .artifact_io import sha256
 
 
 def design(source,output):

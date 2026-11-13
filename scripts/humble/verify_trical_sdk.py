@@ -62,7 +62,7 @@ def main():
     from casbot_calib.hardware_field import load_profile,params
     from casbot_calib.kinematics import nominal_kinematics,ball_world
     from casbot_calib.sdk_process import ros_arguments,run_process
-    from casbot_calib.vendor_position import executor_binary
+    from casbot_calib.sdk_binary import executor_binary
     from verify_sdk_mock import MockAdmin
     checks={};faults={}
     with SDKMockSession('configs/sdk_mock.yaml',root/'mock',args.domain_id,diagnostics=False) as mock:

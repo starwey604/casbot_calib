@@ -9,7 +9,7 @@ from casbot_calib.dual_model import nominal_dual_arm
 from casbot_calib.static_field import (candidate_pool, paired_motions, validate_config,
     plan_static_field, verify_static_field, information)
 from casbot_calib.staged_motion import derivative_bounds
-from casbot_calib.vendor_identity import sha256
+from casbot_calib.artifact_io import sha256
 
 ROOT = Path(__file__).resolve().parents[1]
 

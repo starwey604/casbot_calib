@@ -6,7 +6,7 @@ from pathlib import Path
 import subprocess
 import time
 from .vendor_data import load_config, raw_fingerprints
-from .vendor_identity import sha256
+from .artifact_io import sha256
 
 
 def capture(config_path, output, *, duration_s, domain_id, scope,

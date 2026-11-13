@@ -5,7 +5,7 @@ from pathlib import Path
 import numpy as np
 from .dynamics_data import load_dynamics,read_json
 from .run_marker import run_marker
-from .vendor_identity import sha256
+from .artifact_io import sha256
 
 POLICY=dict(version='s3_raw_observations_v2',minimum_dynamic_raw_hz=4000.,maximum_time_error_ns=100000,
             maximum_scale_relative_error=.05,maximum_zero_error_nm=.01,minimum_scale_reference_nm=.2,

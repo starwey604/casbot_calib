@@ -18,7 +18,6 @@ def collect():
     import coal
     import numpy as np
     import pinocchio
-    import rclpy
     from casbot_calib import _core
     assert sys.version_info[:2] == (3, 10)
     assert os.environ.get('ROS_DISTRO') == 'humble'
@@ -36,7 +35,7 @@ def collect():
         platform=platform.platform(), ros_distro=os.environ['ROS_DISTRO'],
         backend=_core.ArmDynamics.backend_version(), integration_backend=_core.SimulationRunner.integration_backend(),
         pinocchio=pinocchio.__version__, coal=getattr(coal, '__version__', 'see apt manifest'),
-        rclpy_path=rclpy.__file__, core_path=_core.__file__, python_versions=versions,
+        core_path=_core.__file__, python_versions=versions,
         cmake=output('cmake', '--version').splitlines()[0], compiler=output('c++', '--version').splitlines()[0],
         system_packages=output('dpkg-query', '-W', '-f=${binary:Package}\t${Version}\n'),
         python_packages=output(sys.executable, '-m', 'pip', 'freeze'),

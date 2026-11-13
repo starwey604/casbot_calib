@@ -291,3 +291,9 @@ R1和R2组成下一次主要交付，R3/R4不挤入同一个大提交。删除�
 ### 下一增量的完成线
 
 一条命令启动私有物理Mock，同一executor完成一条小幅C3参考，报告能看到实际PD/惯量响应与整数反馈；原有fieldwork用例继续可用；第一批ROS旧支线及其CLI/测试/CI依赖已退役。随后在Orin原生编译并跑同样的私有闭环，真实运动仍等现场显式调用。通用GUI、全部H1–H4与K5迁移不算进这一增量的完成条件。
+
+### R1执行记录（2026-11-14）
+
+第一批已退役ROS transport/benchmark、ros-view、legacy S2 bridge/guard/位置规划执行及专用配置/验证脚本；CLI与CI不再引用这些链路，旧release聚合脚本随之退役。通用文件绑定归入`artifact_io.py`，时间统计归入`stream_metrics.py`；剩余SDK调用从`sdk_binary.py`定位原执行器，未替换其运行合同。剩余ROS position_executor要求显式hardware scope，不再存在默认S2执行路径。原生回归记录改为`casbot_native_regression_v2`，不再报告ament消费者通过；旧记录不回写。
+
+验证：全Python测试收集923项，无导入错误；54项相关统计/H1/profile/重规划/S1测试通过；剩余ROS position_executor编译通过。R2物理闭环继续实施，不以完成清理代替下一增量。

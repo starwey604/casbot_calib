@@ -5,7 +5,7 @@ from pathlib import Path
 import numpy as np
 from . import hardware_field as field
 from .hardware_batch import load_batch, outcomes
-from .vendor_identity import sha256
+from .artifact_io import sha256
 from .vendor_viewer import pose_frame, present_pose_source
 
 

@@ -7,7 +7,7 @@ import subprocess
 import sys
 import numpy as np
 from casbot_calib.vendor_staged import StagedObservations
-from casbot_calib.vendor_identity import sha256
+from casbot_calib.artifact_io import sha256
 from casbot_calib.data import write_json
 
 

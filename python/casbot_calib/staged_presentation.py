@@ -65,9 +65,8 @@ def _story(root):
     return rows
 
 
-def render_staged(folder,output=None,fps=12,video=True,ros_report=None):
+def render_staged(folder,output=None,fps=12,video=True):
     if (Path(folder)/'final_protocol.json').exists():
-        if ros_report is not None:raise ValueError('R4 playback labels reused virtual preflight; ROS benchmarks remain separate evidence')
         from .staged_final_presentation import render_final
         return render_final(folder,output,fps=fps,video=video)
     from PIL import Image,ImageDraw
@@ -81,12 +80,6 @@ def render_staged(folder,output=None,fps=12,video=True,ros_report=None):
     session=read('session.json');config=session['config'];engine,_=model_for(config);profile=collision_for(config,scene=session['collision']['scene'])
     context=context_for(config)
     adapter=context.write_view_scene(output/'scene.xml') if context else write_scene(profile,output/'scene.xml')
-    external={};ros_case=None
-    if ros_report is not None:
-        ros_path=Path(ros_report).resolve();external[str(ros_path)]=hashlib.sha256(ros_path.read_bytes()).hexdigest()
-        ros=json.loads(ros_path.read_text())
-        if not ros['passed'] or ros.get('hardware_tested') or ros.get('physical_network_tested'):raise ValueError('Expected accepted local ROS Mock report')
-        ros_case=next(c for c in ros['cases'] if c['name']=='train_500_500')
     story=_story(root);cache={};paths={root/'session.json',root/'workflow.json',root/'control_comparison.json'}
     paths.update(root/value['report'] for value in workflow['stages'].values())
     for row in story:
@@ -144,10 +137,6 @@ def render_staged(folder,output=None,fps=12,video=True,ros_report=None):
                         r=direction['axes'][j];metrics += [('软件方向 / 零位',f"{r['direction']:+d} / {r['software_zero_ticks']} 计数"),('机械零位','待独立实测确认')]
                     elif key=='timing':
                         fit=timing['axes'][j]['fit'];metrics=[('默认命令 / 控制 / 发布','500 / 500 / 500 赫兹'),('电流响应时间常数',f"{fit['current_tau_s']*1000:.3f} 毫秒"),('拟合指令延迟',f"{fit['command_delay_s']*1000:.3f} 毫秒"),('当前画面','虚拟时钟驱动测试')]
-                        if ros_case is not None:
-                            rates=[ros_case[k]['hz'] for k in ('command_publish','command_adoption','feedback_receive')]
-                            metrics += [('本机 ROS 发布 / 采用 / 接收',' / '.join(f'{value:.1f}' for value in rates)+' 赫兹'),
-                                ('本机指令传输 P99',f"{ros_case['command_transport']['milliseconds']['p99']:.3f} 毫秒")]
                         metrics += [('实机以太网频率 / 延迟','待实测，不由本机回环推断')]
                     elif key in ('gravity','acceptance'):
                         metrics += [('重力可观测组合',f"{reports['gravity']['fit']['rank']} / 140"),('独立配对最大误差',f"{reports['gravity']['validation']['maximum_absolute_rmse_nm']:.6f} 牛米"),('前序参数','先验收，再冻结进入惯量阶段')]
@@ -173,9 +162,8 @@ def render_staged(folder,output=None,fps=12,video=True,ros_report=None):
     finally:
         if writer:writer.close()
     if before!={str(p.relative_to(root)):hashlib.sha256(p.read_bytes()).hexdigest() for p in paths}:raise RuntimeError('Playback modified calibration inputs')
-    if any(hashlib.sha256(Path(p).read_bytes()).hexdigest()!=digest for p,digest in external.items()):raise RuntimeError('External ROS report changed during playback')
     result=dict(passed=bool(errors and max(errors)<1e-12),frames=frames,max_fk_error=max(errors),duration_s=frames/fps if video else 0.,
-        truth_read=False,angles_amplified=False,source_sha256=before,external_source_sha256=external,clips=clips,mujoco_usage='mj_kinematics/mj_camlight and rendering only; no integration, dynamics or collision')
+        truth_read=False,angles_amplified=False,source_sha256=before,clips=clips,mujoco_usage='mj_kinematics/mj_camlight and rendering only; no integration, dynamics or collision')
     write_json(output/'presentation.json',result)
     if not result['passed']:raise RuntimeError('Pinocchio/MuJoCo geometry mismatch')
     return result

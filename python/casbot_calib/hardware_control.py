@@ -7,7 +7,7 @@ from scipy.interpolate import BPoly
 from . import hardware_field as field
 from .data import write_json
 from .hardware_friction import read
-from .vendor_identity import sha256
+from .artifact_io import sha256
 from .control_policy import pd_multipliers,select_pd_factor,comparison_reductions
 
 

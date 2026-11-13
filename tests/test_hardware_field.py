@@ -9,7 +9,7 @@ from casbot_calib.data import write_json
 from casbot_calib.dual_model import nominal_dual_arm
 from casbot_calib.static_field import paired_motions
 from casbot_calib.hardware_field import load_profile, seal, check_seal, prepare_field, prepare_jog, analyse_field, read_feedback, output_outside
-from casbot_calib.vendor_identity import sha256
+from casbot_calib.artifact_io import sha256
 
 ROOT = Path(__file__).resolve().parents[1]
 
