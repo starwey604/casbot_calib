@@ -10,15 +10,23 @@ target_include_directories(calib_shm PUBLIC
 target_compile_options(calib_shm PRIVATE -Wall -Wextra -Wpedantic)
 
 if(CALIB_BUILD_CORE)
-  add_library(calib_shm_field STATIC field_runtime.cpp)
+  add_library(calib_shm_field STATIC field_runtime.cpp reference.cpp)
   target_link_libraries(calib_shm_field PUBLIC calib_shm calib_core)
   target_include_directories(calib_shm_field PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
-  foreach(tool IN ITEMS shm_joint_test shm_executor)
+  foreach(tool IN ITEMS shm_joint_test shm_executor shm_reference_check)
     add_executable(${tool} ${PROJECT_SOURCE_DIR}/cpp/tools/${tool}.cpp)
     target_link_libraries(${tool} PRIVATE calib_shm_field)
     set_target_properties(${tool} PROPERTIES INSTALL_RPATH_USE_LINK_PATH TRUE)
     install(TARGETS ${tool} RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR} COMPONENT Shm)
   endforeach()
+endif()
+
+if(CALIB_BUILD_SHM_MOCK)
+  add_executable(shm_mock_server ${PROJECT_SOURCE_DIR}/cpp/tools/shm_mock_server.cpp)
+  target_include_directories(shm_mock_server PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+  target_link_libraries(shm_mock_server PRIVATE calib_shm calib_core)
+  set_target_properties(shm_mock_server PROPERTIES INSTALL_RPATH_USE_LINK_PATH TRUE)
+  install(TARGETS shm_mock_server RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR} COMPONENT Shm)
 endif()
 
 # A real offline ABI diagnostic, not a placeholder motion executor.
@@ -44,6 +52,11 @@ if(BUILD_TESTING)
         ${PROJECT_SOURCE_DIR}/scripts/shm/verify_fieldwork.py
         --bin-dir $<TARGET_FILE_DIR:shm_executor>)
       set_tests_properties(shm_fieldwork_cli PROPERTIES LABELS "shm" TIMEOUT 45)
+      if(CALIB_BUILD_SHM_MOCK)
+        add_test(NAME shm_physics_cli COMMAND ${CALIB_SHM_TEST_PYTHON}
+          ${PROJECT_SOURCE_DIR}/scripts/shm/verify_physics.py --bin-dir $<TARGET_FILE_DIR:shm_executor>)
+        set_tests_properties(shm_physics_cli PROPERTIES LABELS "shm;physics" TIMEOUT 45)
+      endif()
     endif()
   endif()
   add_executable(shm_field_fixture ${PROJECT_SOURCE_DIR}/cpp/tests/shm_field_fixture.cpp)

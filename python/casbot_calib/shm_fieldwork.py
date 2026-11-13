@@ -13,14 +13,7 @@ import time
 import uuid
 import xml.etree.ElementTree as ET
 
-ROOT = Path(__file__).resolve().parents[2]
-URDF = ROOT / 'python/casbot_calib/assets/models/casbot_hl12p1_dvt2/derived/bare_flange_1105_03_gauge_v2/model.urdf'
-DIRECTION = (1, -1, -1, -1, -1, 1, 1, -1, -1, -1, 1, -1, -1, 1)
-OFFSET = (-.019698, .00643665, .005416, .007078, .026015, -.025037, -.007323,
-          -.013976, -.00224065, -.01494833, .007841, -.01723733, -.01549655, .00541233)
-PARTS = ('肩pitch', '肩roll', '肩yaw', '肘pitch', '腕yaw', '腕pitch', '腕roll')
-NAMES = tuple(f'{side}_{part}_joint' for side in ('left', 'right') for part in
-              ('shoulder_pitch', 'shoulder_roll', 'shoulder_yaw', 'elbow_pitch', 'wrist_yaw', 'wrist_pitch', 'wrist_roll'))
+from .shm_data import ROOT, URDF, DIRECTION, OFFSET, PARTS, NAMES
 CASES = {
     'C00': ('全轴被动基线', '不出队、不写命令；原业务退出/主站启停分别保存快照。'),
     'C01': ('首帧与接管', '失能→MIT→按新鲜实际位置使能保持→有限时间后失能。'),
@@ -65,14 +58,17 @@ def parser():
     p = argparse.ArgumentParser(description='SHM现场逐例确认；默认预览，一次一例。无需ROS。')
     sub = p.add_subparsers(dest='action', required=True)
     sub.add_parser('list', help='列用例、当前支持范围和建议顺序')
-    for action in ('inspect', 'snapshot', 'observe', 'probe', 'prepare', 'activate', 'run'):
+    for action in ('inspect', 'snapshot', 'observe', 'probe', 'prepare', 'activate', 'run', 'execute'):
         a = sub.add_parser(action)
         a.add_argument('--output', type=Path, help='新目录；省略则自动生成')
         a.add_argument('--endpoint', type=endpoint, default='/shm_mc')
         a.add_argument('--executor', type=Path, default=ROOT/'install/shm-core/bin/shm_executor')
-        a.add_argument('--urdf', type=Path, default=URDF)
-        if action in ('prepare', 'activate', 'run'):
+        a.add_argument('--urdf', type=Path, default=None)
+        if action in ('prepare', 'activate', 'run', 'execute'):
             a.add_argument('--execute', action='store_true', help='显式实施；不加则只预览')
+        if action in ('observe', 'snapshot', 'run', 'execute'):
+            a.add_argument('--mock', action='store_true', help='独占私有物理SHM Mock，不接实机')
+            a.add_argument('--mock-config', type=Path, default=ROOT/'configs/shm/mock.json')
         if action in ('observe', 'probe', 'run'):
             a.add_argument('--duration', type=finite, default=10 if action != 'run' else 3)
         if action == 'prepare':
@@ -90,6 +86,26 @@ def parser():
             a.add_argument('--termination', choices=('sigterm', 'sigkill'), default='sigterm', help='C06：受控终止或硬杀本次发送器')
             a.add_argument('--hand-background', type=Path)
             a.add_argument('--snapshot', type=Path, help='可选：用于离线预览的快照文件或记录目录；执行仍重读起点')
+        if action == 'execute':
+            a.add_argument('reference',type=Path)
+            a.add_argument('--hand-background',type=Path)
+            a.set_defaults(case='REF',joint_id=12,amplitude=.5,segment_s=5,kp=20,kd=2,duration=3,
+                           quiet_s=3,other_arm='hold',variant='disable',termination='sigterm',snapshot=None)
+    for action in ('plan','fields'):
+        a=sub.add_parser(action,help='离线生成参考，不连接SHM')
+        a.add_argument('--snapshot',type=Path)
+        a.add_argument('--joint-id',type=int,choices=range(12,26),default=12)
+        a.add_argument('--kp',type=finite,default=20);a.add_argument('--kd',type=finite,default=2)
+        a.add_argument('--output',type=Path,required=True)
+        if action=='plan':
+            a.add_argument('--relative',action='store_true',help='相对执行时新鲜起点；仍重新检查URDF')
+            a.add_argument('--amplitude',type=finite,default=.01)
+            a.add_argument('--segment-s',type=finite,default=2)
+        else:
+            a.add_argument('--position',type=finite)
+            a.add_argument('--velocity',type=finite,default=0)
+            a.add_argument('--effort',type=finite,default=0)
+            a.add_argument('--duration',type=finite,default=3)
     a = sub.add_parser('note', help='离线登记用户观察，不连接设备')
     a.add_argument('run', type=Path);a.add_argument('--text', required=True)
     a.add_argument('--phase', default='unspecified')
@@ -104,9 +120,11 @@ def parser():
 def validate(a):
     if a.action == 'prepare' and a.endpoint != '/shm_mc':
         raise ValueError('prepare仅用于厂家shm_mc；私有夹具不需要停业务')
+    if getattr(a,'mock',False) and a.endpoint!='/shm_mc':
+        raise ValueError('--mock自动创建独占端点，不同时指定--endpoint')
     if hasattr(a, 'duration') and not 0 < a.duration <= 3600:
         raise ValueError('duration须在(0,3600]秒')
-    if a.action != 'run':
+    if a.action not in ('run','execute'):
         return
     if not 0 < a.amplitude <= .5 or a.segment_s < 1 or not 0 <= a.kp <= 100 or not 0 <= a.kd <= 10 or not 0 < a.quiet_s <= 60:
         raise ValueError('幅值(0,.5]，每段≥1秒，Kp[0,100]，Kd[0,10]，quiet-s(0,60]')
@@ -114,7 +132,9 @@ def validate(a):
         raise ValueError('背景对照仅在C04用--other-arm disabled显式指定')
     if a.case in ('C07', 'C08') and a.execute:
         raise ValueError(CASES[a.case][1] + '；此入口不发主动命令')
-    if a.execute and a.case != 'C00':
+    if a.case == 'C00' and a.mock:
+        raise ValueError('C00用于既有业务的被动背景；新建Mock请用observe，只读零发送')
+    if a.execute and a.case != 'C00' and not a.mock:
         if not a.hand_background or not a.hand_background.is_file():
             raise ValueError('主动用例需要显式--hand-background（停业务前command.bin，只取手部）')
         data = a.hand_background.read_bytes()
@@ -137,7 +157,7 @@ def preview(a):
                   hands='仅冻结显式背景命令的双手字段和hand_count', reserved='槽29–34及其它保留字节填0',
                   count=dict(joint_count=29, hand_count='来自显式背景，≤2'),
                   exit='失能并等待状态应答；有界异常退出，不清故障/不resume')
-    d = dict(case=a.case, title=CASES[a.case][0], behavior=CASES[a.case][1], endpoint=a.endpoint,
+    d = dict(case=a.case, title=CASES.get(a.case,('通用参考/五字段','执行显式冻结bundle，不继承SDK插值'))[0], behavior=CASES.get(a.case,('','执行显式冻结bundle'))[1], endpoint=a.endpoint,
              joint_id=a.joint_id, joint_label=('左' if a.joint_id < 19 else '右') + PARTS[(a.joint_id-12) % 7],
              amplitude_rad=a.amplitude, segment_s=a.segment_s, kp=a.kp, kd=a.kd, effort_nm=0,
              duration_s=a.duration, quiet_s=a.quiet_s, other_arm=a.other_arm, variant=a.variant,
@@ -185,6 +205,27 @@ def preview(a):
         data = state_path(a.snapshot).read_bytes()
         d['non_arm_targets_raw'] = {str(j): struct.unpack_from('<i', data, 12+j*16+2)[0]
                                     for j in list(range(12))+[26, 27, 28]}
+    if a.action=='execute':
+        d.update(reference=str(a.reference.resolve()),reference_schema=a.bundle['schema'],duration_s=a.duration,
+                 origin=a.bundle.get('origin','absolute'),joint_id=None,joint_label='双臂14轴',
+                 input_notice='直接五字段不隐式平滑' if a.bundle['schema']=='casbot_shm_fields_v1' else '同一条七次Hermite参考的q/v')
+    if a.action=='execute':
+        for key in ('amplitude_rad','segment_s','kp','kd','effort_nm','raw_gain','other_arm','variant','termination'):
+            d.pop(key,None)
+        d['background']['other_arms']='双臂按bundle逐轴目标；进入阶段先保持新鲜实际起点'
+        d['kp']=a.bundle['kp'];d['kd']=a.bundle['kd']
+        if a.bundle['schema']=='casbot_shm_fields_v1':
+            d['fields']={key:a.bundle[key] for key in ('position','velocity','effort')}
+            first=a.bundle['effort']
+        else:
+            d['effort_table_count']=len(a.bundle['effort'])
+            d['effort_table_first']=a.bundle['effort'][0]
+            d['effort_table_last']=a.bundle['effort'][-1]
+            first=a.bundle['effort'][0]['value']
+        d['encoded_initial_effort_nm']=[DIRECTION[j]*math.trunc(DIRECTION[j]*v*100)*.01 for j,v in enumerate(first)]
+    if a.mock:
+        d['background']['hands']='私有Mock明确生成双手零字节协议夹具；不重放实机手背景' if a.hand_background is None else '采用显式手背景，仅在私有Mock使用'
+        d.update(endpoint='new_private_physics_endpoint', mock_config=str(a.mock_config.resolve()), support='fixed_base_physics; no hidden holding')
     return d
 
 
@@ -194,7 +235,7 @@ def new_run(a):
     return root
 
 
-def supervise(command, root, *, disappear=False, termination='sigterm', quiet=3, timeout=60):
+def supervise(command, root, *, disappear=False, termination='sigterm', quiet=3, timeout=60, peer=None):
     """Only signals Popen handles owned by this invocation, never a discovered PID."""
     root = Path(root)
     with (root/'terminal.log').open('wb') as log:
@@ -238,6 +279,8 @@ def supervise(command, root, *, disappear=False, termination='sigterm', quiet=3,
             if disappear:
                 ready = root/'native/kill_ready.txt'
                 while child.poll() is None and not ready.exists():
+                    if peer is not None and peer.poll() is not None:
+                        meta['mock_process_failed']=peer.returncode;stop_owned(child);break
                     if time.monotonic()>limit:
                         meta['supervisor_timeout'] = True;stop_owned(child);break
                     progress();time.sleep(.01)
@@ -260,6 +303,8 @@ def supervise(command, root, *, disappear=False, termination='sigterm', quiet=3,
                         child.wait(timeout=5)
                         probe.wait(timeout=quiet+5)
             while child.poll() is None:
+                if peer is not None and peer.poll() is not None:
+                    meta['mock_process_failed']=peer.returncode;stop_owned(child);break
                 if time.monotonic()>limit:
                     meta['supervisor_timeout'] = True;stop_owned(child);break
                 progress();time.sleep(.05)
@@ -424,11 +469,18 @@ def report(root):
     planned_term = process.get('termination_sent') == 'sigterm' and native and native.get('reason') == 'operator_interrupt'
     probe_result = text_result(root/'probe/result.txt')
     experiment_completed = bool((planned_kill or planned_term) and probe_result and probe_result.get('execution_completed') == '1' and process.get('probe_returncode') == 0)
+    mock_exit = json.loads((root/'mock/exit.json').read_text()) if (root/'mock/exit.json').exists() else None
     setup = case.get('case') in ('prepare', 'activate')
-    completed = (bool(native and native.get('execution_completed') == '1' and process.get('returncode', 0) == 0) or experiment_completed) and not process.get('supervisor_timeout', False)
+    completed = (bool(native and native.get('execution_completed') == '1' and process.get('returncode', 0) == 0) or experiment_completed) and not process.get('supervisor_timeout', False) and 'mock_process_failed' not in process
+    if mock_exit is not None and (mock_exit['returncode']!=0 or mock_exit.get('cleanup_errors')):
+        completed=False
     if setup:
         completed = process.get('returncode') == 0
     reasons = []
+    if mock_exit is not None and (mock_exit['returncode']!=0 or mock_exit.get('cleanup_errors')):
+        reasons.append(f'私有物理Mock退出码={mock_exit["returncode"]}；资源回收错误={mock_exit.get("cleanup_errors", [])}，本例未完成。')
+    if 'mock_process_failed' in process:
+        reasons.append('自有物理Mock异常退出，已结束发送器；未重启或回退到实机。')
     if process.get('supervisor_timeout') or process.get('cleanup_hard_killed_pids'):
         reasons.append('监督超时/有界退出失败：已终止自有进程，物理输出状态未知；未恢复或重试。')
     if planned_kill:
@@ -444,7 +496,7 @@ def report(root):
     result = dict(schema='casbot_shm_field_case_v1', case=case, process=process, native=native,
                   execution_completed=completed, conclusion=observations[-1]['conclusion'] if observations else ('inconclusive' if process or native else 'not_run'),
                   observation_recorded=bool(observations), observations=observations,
-                  feedback=feedback, commands=commands, timing=timing, snapshot=snapshot, recording_notes=reasons,
+                  feedback=feedback, commands=commands, mock_exit=mock_exit, timing=timing, snapshot=snapshot, recording_notes=reasons,
                   probe=summarize_feedback(root/'probe', case.get('codec')) if (root/'probe').is_dir() else None,
                   physical_stop_observed='unknown')
     # Human observations establish only what their text actually says, not an automatic pass.
@@ -506,6 +558,24 @@ def report(root):
 
 
 def run_action(a):
+    if a.action in ('plan','fields'):
+        from .shm_reference import snapshot_positions,jog_bundle,fields_bundle,save_bundle
+        if a.action=='plan' and a.relative:
+            if a.snapshot:raise ValueError('relative不同时使用旧快照起点')
+            q=[0.]*14
+        elif a.snapshot:q=snapshot_positions(a.snapshot)
+        else:raise ValueError('绝对参考/五字段需要--snapshot；相对jog可用--relative')
+        bundle=jog_bundle(q,a.joint_id,a.amplitude,a.segment_s,a.kp,a.kd,relative=a.relative) if a.action=='plan' else fields_bundle(
+            q,a.joint_id,position=a.position,velocity=a.velocity,effort=a.effort,kp=a.kp,kd=a.kd,duration=a.duration)
+        print('离线参考：'+str(save_bundle(a.output,bundle)));return 0
+    if a.action=='execute':
+        a.bundle=json.loads(a.reference.read_text())
+        if a.bundle.get('schema') not in ('casbot_shm_reference_v1','casbot_shm_fields_v1'):raise ValueError('Unsupported SHM reference bundle')
+        a.duration=(a.bundle['duration_ns'] if a.bundle['schema']=='casbot_shm_fields_v1' else a.bundle['knots_ns'][-1])*1e-9
+    if hasattr(a, 'urdf'):
+        if getattr(a, 'mock', False) and a.urdf is None:
+            config=json.loads(a.mock_config.read_text());a.urdf=(a.mock_config.resolve().parent/config['urdf']).resolve()
+        a.urdf=a.urdf or URDF
     validate(a)
     if a.action == 'list':
         for key, (title, behavior) in CASES.items():
@@ -532,7 +602,7 @@ def run_action(a):
             print(f'{case.get("case", "setup")} completed={result.get("execution_completed", False)} '
                   f'observation={result.get("observation_recorded", False)} {file.parent}')
         return 0
-    if a.action == 'run':
+    if a.action in ('run','execute'):
         recipe = preview(a)
         print(json.dumps(recipe, ensure_ascii=False, indent=2))
         if not a.execute:
@@ -541,15 +611,34 @@ def run_action(a):
         print('仅预览：' + ('停独立服务→厂家stop→只启主站，不发关节命令。' if a.action == 'prepare' else '仅对全新主站post一次启动握手；不用于解卡/恢复。'))
         return 0
     root = new_run(a)
-    case = recipe if a.action == 'run' else dict(case='C00' if a.action in ('inspect', 'snapshot', 'observe', 'probe') else a.action,
+    case = recipe if a.action in ('run','execute') else dict(case='C00' if a.action in ('inspect', 'snapshot', 'observe', 'probe') else a.action,
                                                title=a.action, endpoint=a.endpoint)
     case.update(schema='casbot_shm_field_case_v1', created_wall_ns=time.time_ns(), created_mono_ns=time.monotonic_ns(),
                 boot_id=Path('/proc/sys/kernel/random/boot_id').read_text().strip(),
-                support=('not_applicable_private_endpoint' if a.endpoint.startswith('/casbot_calib_test_') else '用户已确认固定支撑，现场负责继电器与试验顺序') if a.action == 'run' else None,
+                support=('not_applicable_private_endpoint' if a.endpoint.startswith('/casbot_calib_test_') else '用户已确认固定支撑，现场负责继电器与试验顺序') if a.action in ('run','execute') else None,
                 codec=dict(profile='orin_35_compat_20261113', direction=DIRECTION, offset_rad=OFFSET,
                            arm_names=NAMES, position_rad_per_lsb=1e-6, velocity_rad_s_per_lsb=1e-6, torque_nm_per_lsb=.01))
     dump(root/'case.json', case)
     print(f'本例记录：{root}', flush=True)
+    if getattr(a, 'mock', False):
+        from .shm_mock import SHMMock
+        try:
+            with SHMMock(root/'mock',a.executor,a.mock_config,urdf=a.urdf) as mock:
+                a.endpoint=mock.endpoint
+                if a.action in ('run','execute') and a.hand_background is None:a.hand_background=mock.background
+                case.update(endpoint=a.endpoint,kind='private_shm_physics',support='fixed_base_with_free_unpowered_joints',
+                            hand_background=str(getattr(a,'hand_background',None)) if getattr(a,'hand_background',None) else None)
+                dump(root/'case.json',case)
+                return _native_action(a,root,peer=mock.process,peer_close=mock.close)
+        except (OSError,RuntimeError,ValueError,subprocess.SubprocessError) as error:
+            if not (root/'process.json').exists():dump(root/'process.json',dict(returncode=2,mock_startup_error=str(error)))
+            report(root)
+            print('私有物理Mock失败：'+str(error),file=sys.stderr)
+            return 2
+    return _native_action(a,root)
+
+
+def _native_action(a,root,peer=None,peer_close=None):
     if a.action == 'prepare':
         command = ['bash', str(ROOT/'scripts/shm/prepare_field.sh')]
         command += ['--start-only', str(a.start_only.resolve())] if a.start_only else [str(root/'takeover')]
@@ -562,7 +651,7 @@ def run_action(a):
         command = [str(a.executor.resolve().with_name('shm_channel_start')), '--fresh-master', a.endpoint]
     else:
         mode = {'inspect':'--inspect', 'snapshot':'--snapshot', 'observe':'--observe', 'probe':'--passive-observe'}.get(a.action)
-        if a.action == 'run':
+        if a.action in ('run','execute'):
             mode = '--inspect' if a.case == 'C00' else '--execute'
         command = [str(a.executor.resolve()), mode, '--shm', a.endpoint, '--output', str(root/'native')]
         if mode in ('--snapshot', '--execute'):
@@ -572,26 +661,32 @@ def run_action(a):
         if mode == '--execute':
             background = root/'hand_background_source.bin'
             background.write_bytes(a.hand_background.read_bytes())
-            command += ['--case', a.case, '--joint-id', str(a.joint_id), '--hand-background', str(background),
-                        '--amplitude', str(a.amplitude), '--segment-s', str(a.segment_s), '--kp', str(a.kp), '--kd', str(a.kd),
-                        '--duration', str(a.duration), '--quiet-s', str(a.quiet_s), '--other-arm', a.other_arm]
+            if a.action=='execute':
+                command += ['--reference',str(a.reference.resolve()),'--hand-background',str(background)]
+            else:
+                command += ['--case', a.case, '--joint-id', str(a.joint_id), '--hand-background', str(background),
+                            '--amplitude', str(a.amplitude), '--segment-s', str(a.segment_s), '--kp', str(a.kp), '--kd', str(a.kd),
+                            '--duration', str(a.duration), '--quiet-s', str(a.quiet_s), '--other-arm', a.other_arm]
     try:
         meta = supervise(command, root, disappear=a.action == 'run' and a.case == 'C06',
                          termination=getattr(a, 'termination', 'sigterm'), quiet=getattr(a, 'quiet_s', 3),
-                         timeout=((3*a.segment_s+.5 if a.case in ('C03', 'C04') else a.duration+a.quiet_s)+20)
-                         if a.action == 'run' else getattr(a, 'duration', 3)+10)
+                         peer=peer, timeout=((3*a.segment_s+.5 if a.case in ('C03', 'C04') else a.duration+a.quiet_s)+20)
+                         if a.action in ('run','execute') else getattr(a, 'duration', 3)+10)
     except OSError as error:
         dump(root/'process.json', dict(command=command, spawn_error=str(error), returncode=127))
         report(root)
         raise ValueError(f'启动失败：{error}；先用--with-core构建安装shm_executor') from error
     if a.action == 'activate':
         print((root/'terminal.log').read_text());report(root);return meta['returncode']
+    if peer_close:peer_close()
     result = report(root)
+    if peer is not None and (peer.returncode != 0 or result['mock_exit'].get('cleanup_errors')):
+        return meta['returncode'] or 1
     if a.action == 'inspect' or (a.action == 'run' and a.case == 'C00'):
         print(f'手部背景文件：{root}/native/command.bin（只用于冻结手部，非整帧回放）')
     if a.action == 'run' and a.case == 'C06' and result['execution_completed']:
         if a.termination == 'sigkill':
-            print('发送器已硬杀，未补发失能；现场用继电器处理持续输出。')
+            print('发送器已硬杀，未补发失能；'+('自有Mock将在观察后退出。' if getattr(a,'mock',False) else '现场用继电器处理持续输出。'))
         return 0
     return meta['returncode'] if meta['returncode'] >= 0 else 128-meta['returncode']
 
@@ -600,7 +695,7 @@ def main(argv=None):
     a = parser().parse_args(argv)
     try:
         return run_action(a)
-    except (ValueError, OSError, KeyError, ET.ParseError, subprocess.SubprocessError) as error:
+    except (ValueError, OSError, KeyError, ET.ParseError, subprocess.SubprocessError, TypeError, IndexError, OverflowError) as error:
         print(f'错误：{error}', file=sys.stderr)
         return 2
 

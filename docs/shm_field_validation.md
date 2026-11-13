@@ -2,7 +2,7 @@
 
 先把**整帧里的各部位怎么处置，以及接管、首帧和停止会发生什么**测清楚，再把策略写进 `shm_executor` 和 SHM Mock。现场由代理运行选定用例、解释记录，用户观察机器人并反馈；一次只运行一个用例，不自动跑完整机。
 
-**当前状态（2026-11-14）：已有独立逐轴原型，ID12控制流程与可见运动已确认；已提供`fieldwork/shm/run.sh`及共享原生`shm_executor`，支持C00–C06的双臂现场流程、持续观测、离线报告和观察登记；头部主动运动、腿腰保持配方、手部动作仍待补。** C00–C03已有部分证据，见末尾台账，不能将它们整体标为未测或已完成。完整操作顺序见[SHM CLI手册](../fieldwork/shm/README.md)。旧ROS入口移至`fieldwork/ros/`，原根目录脚本仍转发，不能把SDK的域号参数带到SHM。已有软件证据见 [Jetson 接口勘察](jetson_shm_interface_recon_20261113.md)，原 ROS SDK 工具继续使用 [fieldwork 手册](../fieldwork/ros/README.md)。
+**当前状态（2026-11-14）：已有独立逐轴原型，ID12控制流程与可见运动已确认；已提供`fieldwork/shm/run.sh`及共享原生`shm_executor`，支持C00–C06的双臂现场流程、持续观测、离线报告和观察登记；通用参考/独立五字段与双臂物理Mock也已在本机实现，新版Orin编译/私有闭环待恢复网络；头部主动运动、腿腰保持配方、手部动作仍待补。** C00–C03已有部分证据，见末尾台账，不能将它们整体标为未测或已完成。完整操作顺序见[SHM CLI手册](../fieldwork/shm/README.md)。旧ROS入口移至`fieldwork/ros/`，原根目录脚本仍转发，不能把SDK的域号参数带到SHM。已有软件证据见 [Jetson 接口勘察](jetson_shm_interface_recon_20261113.md)，原 ROS SDK 工具继续使用 [fieldwork 手册](../fieldwork/ros/README.md)。
 
 执行器、物理 Mock、Humble/Orin 构建与上层接入的实施顺序见 [SHM 代码移植计划](shm_migration_plan.md)。
 
@@ -123,9 +123,9 @@ bash fieldwork/shm/run.sh run C03 --joint-id 13 --hand-background 明确的comma
 bash fieldwork/shm/run.sh run C03 --joint-id 13 --hand-background 明确的command.bin --execute
 ```
 
-C00用`inspect`，C01–C06用`run Cxx`；`prepare`及`activate`各自需要`--execute`，不会隐藏在用例启动中。C02的`--variant hold/disable`分别标记保持/退出观察重点，均在有限保持后失能退出；C04可单独对比`--other-arm hold/disabled`，其它背景仍是用户已授权的失能/冻结手部设置。C05静默时仅接收，结束后请求失能；C06显式选`--termination sigterm/sigkill`，后者不补发失能，现场使用继电器。C03当前只支持双臂12–25，C07/C08没有主动下发入口，不能把整个手册称为已全部实现。
+C00用`inspect`，C01–C06用`run Cxx`；`prepare`及`activate`各自需要`--execute`，不会隐藏在用例启动中。C02的`--variant hold/disable`分别标记保持/退出观察重点，均在有限保持后失能退出；C04可单独对比`--other-arm hold/disabled`，其它背景仍是用户已授权的失能/冻结手部设置。C05静默时仅接收，结束后请求失能；C06显式选`--termination sigterm/sigkill`，后者不补发失能，现场使用继电器。C03当前只支持双臂12–25，C07/C08没有专用逐项配方；通用`fields/execute`已能独立指定五字段，C08实际场景、载荷/尺度核验仍待开展，不能把通用软件能力算作现场确认。
 
-1. **先列出/预览，再显式运行一个用例。** 预览包含部位、F0策略、命令差异、增益编码及退出配方；提供`--snapshot`可离线列起点/限位/原始位置，否则明确执行时重读。支持只读模式；私有协议夹具用于软件联跑，物理Mock尚未完成，开发测试不连接真实`shm_mc`。
+1. **先列出/预览，再显式运行一个用例。** 预览包含部位、F0策略、命令差异、增益编码及退出配方；提供`--snapshot`可离线列起点/限位/原始位置，否则明确执行时重读。支持只读模式；快速协议夹具与双臂物理Mock分开，`--mock`启动本次独占物理端点；开发测试不连接真实`shm_mc`。
 2. **代理负责运行与记录，用户负责现场观察。** 单个用例运行完停在检查点，用户反馈“哪个关节动了/没动、方向、是否松了/抖了”等自然语言；代理保存原话、解释数据，再按用户指示继续/重做/停止。不自动循环全轴，不把“没有反馈”当通过。
 3. **等待反馈不占住控制周期。** 原生 owner 负责定周期收发，SSH/Python、磁盘写入和用户思考不能阻塞它。等待期间是否继续固定目标保持、何时退出，由本用例明确的配方决定；没有已选配方就不能留下无人管理的主动控制。显示正在保持还是已退出，不把提示符当停机。
 4. **停止和失联走明确的执行路径。** 正常结束、用户中止、监督端 EOF/SSH 断开分别记录并执行已选的退出配方；若周期进程已死，不能声称还能软件下发停止，交由现场物理停止。不可用“关进程/关闭窗口”代替已验证的物理停止。
@@ -163,7 +163,7 @@ C00用`inspect`，C01–C06用`run Cxx`；`prepare`及`activate`各自需要`--e
 
 现场结果先落进逐例记录，再更新新 SHM profile、执行器和 Mock 的对应行为；与假设相反就改实现，不把现象改写成通过。Mock 需保留真实队列消费、旧命令延续和 0.01 Nm 量化，而不是沿用 SDK 断流保护来掩盖差异。旧封存数据不回写。
 
-下一步按[ID12之后的fieldwork优先计划](shm_migration_plan.md#6-id12之后先交付明天可用的shm-fieldwork)，单用例入口、记录/报告及持续观测已实现并用私有协议夹具验证，下一步在Orin编译安装并开展现场用例，再补完整物理Mock；现场由代理运行、用户观察，逐项填台账。正式动力学观测另核对逐轴刷新/采样、滤波与尺度；本手册不把 1kHz 软件交换变成旧 S3/S4 的 4kHz 采样证据，也不恢复现场 H1–H4 已删除的质量/review 门禁。
+下一步按[ID12之后的fieldwork优先计划](shm_migration_plan.md#6-id12之后先交付明天可用的shm-fieldwork)，单用例入口、记录/报告及持续观测已实现并用私有协议夹具验证，双臂物理Mock现已在本机实现，下一步在Orin编译安装并跑私有物理闭环，再开展现场用例；现场由代理运行、用户观察，逐项填台账。正式动力学观测另核对逐轴刷新/采样、滤波与尺度；本手册不把 1kHz 软件交换变成旧 S3/S4 的 4kHz 采样证据，也不恢复现场 H1–H4 已删除的质量/review 门禁。
 
 ## 2026-11-14 CLI软件交付与现场接续
 
@@ -172,3 +172,11 @@ C00用`inspect`，C01–C06用`run Cxx`；`prepare`及`activate`各自需要`--e
 - 6项SHM标签CTest通过，包含无第三方Python依赖的C00–C06私有软件联跑和时钟/IPC/布局/关节测试；旧逐轴原型正常/故障/URDF拒绝三例仍通过，记录位于`artifacts/shm_fieldwork_legacy_1794585332504272091/`。
 - 原ROS根入口`bash fieldwork/run.sh --help`经`fieldwork/ros/run.sh`正常转发，原零位数据位置和调用参数保留。
 - 新版本尚未在Orin原生编译/运行。到场先通过既有Git部署入口同步，再按[编译与现场操作](../fieldwork/shm/README.md)安装并跑私有联测；真实C00–C06按单例执行、观察和登记。ID12旧版记录仍按2026-11-13原范围保留。
+
+### R2通用输入与物理Mock（2026-11-14）
+
+`fieldwork/shm`新增`plan`（七次Hermite参考）、`fields`（独立五字段）和`execute`，`observe/snapshot/run C01–C06/execute`可加`--mock`。参数、背景与退出方式见[使用手册](../fieldwork/shm/README.md#通用参考与独立五字段)。参考逐轴固定PD、effort表ZOH，原生按1ms当前单调时刻求值；直接字段不做隐藏平滑。相对参考执行时以新鲜起点平移，再查URDF限位。通用入口属于当前双臂URDF-only fieldwork，不迁移或改变H1–H4/K5碰撞/数据合同。
+
+私有Mock通过相同队列/ABI驱动既有双臂物理内核，保留整数反馈；失能后重力继续，无新命令沿用旧目标，没有SDK watchdog。腿腰头手仅协议夹具。软件验证覆盖真实物理响应、七次求值、零PD前馈、量化、失能、故障终止及自有资源清理；详细证据见[构建记录](shm_build.md#2026-11-14-通用执行器与物理mock的本机结果)。
+
+上述软件结果不更新前面的实机台账。当前Orin直连网络不可用，新版原生编译/私有闭环和现场C00–C06仍待开展；ID12旧版可见运动及ID13未知结果保持原记录。C08的物理尺度、其它部位及停止行为没有因Mock通过而完成。

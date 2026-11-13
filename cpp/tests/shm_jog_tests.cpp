@@ -38,6 +38,18 @@ int main() {
     check(std::abs(arm_position(s,j)-.3)<1.1e-6);
     check(c.joints[j+12].kp==200 && c.joints[j+12].kd==20 && c.joints[j+12].torque==0);
   }
+  for(int j=0;j<14;++j) {
+    arm_target(c,j,-.2,.1234567,0,0,.129);
+    const auto value=arm_command(c,j);
+    check(std::abs(value.position+.2)<1.1e-6&&std::abs(value.velocity-.1234567)<1.1e-6);
+    check(std::abs(value.effort-.12)<1e-12&&value.kp==0&&value.kd==0);
+    arm_status(s,j,-.2,.1234567,.129);const auto observed=arm_feedback(s,j);
+    check(std::abs(observed.position-value.position)<1e-12&&std::abs(observed.effort-.12)<1e-12);
+    arm_target(c,j,0,0,20,2,.009);check(c.joints[j+12].torque==0);
+  }
+  for(double bad:{std::numeric_limits<double>::infinity(),-400.,400.}) {
+    bool refused=false;try{arm_target(c,0,0,0,0,0,bad);}catch(const std::invalid_argument&){refused=true;}check(refused);
+  }
   bool failed=false;
   try { arm_target(c,0,1e10,0,20,2); } catch(const std::invalid_argument&) { failed=true; }
   check(failed);

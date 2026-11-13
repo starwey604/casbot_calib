@@ -2,7 +2,7 @@
 
 先交付**不依赖 ROS、可在本机 Humble 与 Orin 原生编译的 SHM 执行器和物理 Mock**，打通私有端点上的完整指令—动力学—整数反馈链路，再迁移现场上层入口。模型、规划、碰撞和辨识内核继续复用，不按文件数量估算重写比例。
 
-分支基线为 `f360a11`，本地 `ros` 保留该版本，`main` 继续实施。现已有独立 CMake、35槽线格式、真实IPC兼容层、双臂位置/速度指令转换、私有协议夹具和逐轴原型；ID12已完成实机控制流程。当前可用命令及源码部署方式见[原生构建](shm_build.md)与[逐轴原型](shm_joint_test.md)。已增加面向C00–C06的`shm_executor`、共用runtime、时钟映射与fieldwork CLI；通用CSV/手动流、任意五字段输入及物理`shm_mock_server`仍待实现，不将整个M1或M2记为完成。
+分支基线为 `f360a11`，本地 `ros` 保留该版本，`main` 继续实施。现已有独立 CMake、35槽线格式、真实IPC兼容层、双臂位置/速度指令转换、私有协议夹具和逐轴原型；ID12已完成实机控制流程。当前可用命令及源码部署方式见[原生构建](shm_build.md)与[逐轴原型](shm_joint_test.md)。已增加面向C00–C06的`shm_executor`、共用runtime、时钟映射与fieldwork CLI；现已追加七次Hermite参考/独立五字段与双臂物理`shm_mock_server`，本机闭环通过；新版Orin编译及私有联跑待网络恢复，CSV导入/在线手动流与上层消费者仍待迁移。
 
 ## 1. 分支与迁移顺序
 
@@ -21,14 +21,14 @@
 
 根 `CMakeLists.txt` 已按`CALIB_BUILD_CORE`条件查找算法依赖；SHM协议目标可独立构建。当前`shm_joint_test`为读取URDF链接`calib_core`，因此仍需算法依赖。旧vendor目标由`ament/colcon`构建，新执行器不沿用这条构建链。
 
-根 CMake 已提供核心、Python与SHM协议的独立组合，默认保持现有算法构建可用；完整执行器及`CALIB_BUILD_SHM_MOCK`仍待后续。最终边界如下：
+根 CMake 已提供核心、Python与SHM协议的独立组合，默认保持现有算法构建可用；通用执行器及`CALIB_BUILD_SHM_MOCK`已实现。当前边界如下：
 
-| 构建项（拟新增者标明） | 作用 | 依赖边界 |
+| 构建项 | 作用 | 依赖边界 |
 | --- | --- | --- |
 | `CALIB_BUILD_CORE`（已实现，默认 ON） | 现有算法核心及其测试 | Eigen/Boost、Pinocchio、Coal；关闭时不查找这些依赖 |
 | `CALIB_BUILD_PYTHON`（已有） | 现有 `_core` 绑定 | 核心、Python、pybind11；核心关闭时须显式关闭，矛盾组合明确报错 |
-| `CALIB_BUILD_SHM`（已实现协议库，默认 OFF） | 当前协议库/诊断/测试，后续接执行器 | 当前仅C++标准库；IPC加入Linux POSIX、Threads，执行器配置/记录再引入`nlohmann_json`、spdlog、Zlib；不需要ROS/Python/动力学库 |
-| `CALIB_BUILD_SHM_MOCK`（新增，默认 OFF） | 完整物理 `shm_mock_server` | SHM 库与现有 `calib_core`，要求核心和 SHM 开启；不需要 ROS/SDK/Python 绑定 |
+| `CALIB_BUILD_SHM`（默认 OFF） | 协议库/诊断/测试，核心开启时构建执行器 | 协议库用C++标准库/Linux POSIX/Threads；执行器读URDF链接核心，参考解析用已有Boost.PropertyTree，无ROS/Python绑定依赖 |
+| `CALIB_BUILD_SHM_MOCK`（默认 OFF） | 完整物理 `shm_mock_server` | SHM 库与现有 `calib_core`，要求核心和 SHM 开启；不需要 ROS/SDK/Python 绑定 |
 
 `find_package`、测试、安装和导出随对应目标条件化；不只是构建时跳过目标、配置阶段仍强制找全套依赖。复用现有核心，不为第一轮拆一套重复的动力学库；因此完整 Mock 首轮仍需要 Coal，即使其物理积分本身主要使用 Pinocchio。
 
@@ -40,10 +40,10 @@ Orin 按此前记录优先使用系统 Pinocchio 4.0.0、Coal 3.0.3，不继承�
 
 已有 `scripts/shm/build.sh` 调用普通 CMake，接受构建目录、安装前缀和依赖前缀，不启动机器人业务或安装系统软件。`shm-native`/`shm-core` preset 在本机与Orin分别原生使用，架构由编译器识别，不写死x86参数，不使用`-march=native`生成部署包。
 
-最终将支持以下组合。**当前仅核心/SHM协议组合已实现；`CALIB_BUILD_SHM_MOCK`及完整物理Mock留M2，不要把下面的未来Mock选项当现有目标。** 当前提前编译物理核心请使用原生构建手册的`--with-core`。
+以下组合现已可用。轻量协议构建不含需要URDF核心的执行器；完整闭环可直接用构建脚本`--with-mock`。
 
 ```bash
-# 轻量执行器/协议测试：无需 Pinocchio、Coal、ROS 或 Python。
+# 轻量协议工具/测试：无需 Pinocchio、Coal、ROS 或 Python。
 cmake -S . -B build/shm-native -DCMAKE_BUILD_TYPE=Release \
   -DCALIB_BUILD_CORE=OFF -DCALIB_BUILD_PYTHON=OFF \
   -DCALIB_BUILD_SHM=ON -DCALIB_BUILD_SHM_MOCK=OFF -DBUILD_TESTING=ON
@@ -177,13 +177,13 @@ M1 的 ABI/协议测试与 M2 物理联跑都必要：仅两端共用同一份�
 
 本轮fieldwork运行一个用例只起一个owner。以后GUI需要持续观测时，由同一owner接受显式控制子会话并分发反馈，不能另起第二个SHM recorder。先不做这个常驻GUI协议，保持runtime边界即可。
 
-通用executor随后增加封存CSV五字段参考输入：显式参考时间、1kHz按当前单调时刻求值、晚到不补发历史命令；插值/求值规则单独规定并测试，不继承SDK插值假设。该能力是接H1的入口，不要求明天逐轴测试前完成。
+通用输入已在R2按第7节实现为七次Hermite bundle与独立五字段；保留Motion原曲线，不从CSV猜插值。显式参考时间、1kHz当前单调时刻求值、晚到不补发历史命令；H1消费者另在R3接入。
 
-### F3：私有协议联跑已提供，物理Mock随后接入
+### F3：私有协议联跑与物理Mock（本机已接入）
 
 现有`shm_joint_integration`只把命令位置复制成反馈，是协议夹具。本轮增加独立`shm_field_fixture`、无pytest依赖的`scripts/shm/verify_fieldwork.py`（也纳入CTest）和`tests/test_shm_fieldwork.py`，覆盖F1/F2的启动、限位零发送、状态机、故障终止、报告、纯观测零发送、重复owner拒绝、正常中断、C05静默及C06被动探针/未完成前缀恢复。测试只用`/casbot_calib_test_*`，不能默认连接`/shm_mc`。
 
-然后新增独立进程`shm_mock_server`，复用`SimulatedArmDevice/ArmSimulationSession`：
+R2现已新增独立进程`shm_mock_server`，复用`SimulatedArmDevice/ArmSimulationSession`：
 
 - 双臂保留重力、惯量和本地PD；无隐藏重力/摩擦补偿。通过驱动使能状态控制是否施加主动输出，失能不能简单冻结位置。
 - 显式设置SHM基线延迟、噪声、交换/积分周期；不直接继承`ArmSimulationConfig`当前1.35ms命令延迟、0.7ms反馈延迟和噪声默认值。基线不凭空加滤波/噪声，整数反馈量化保留。
@@ -191,7 +191,7 @@ M1 的 ABI/协议测试与 M2 物理联跑都必要：仅两端共用同一份�
 - 队列容量2留空一槽、每周期取命令、无新命令沿用旧目标；不沿用SDK断流自保护。驱动错误按既定故障流程测试。
 - 腿/腰/头/手只提供标明为协议夹具的响应；不做全身动力学移植。
 
-fieldwork的`--mock`最终创建本次独占端点并启动该物理进程，跑相同`observe/hold/jog/report`；只清理自有资源。物理Mock未完成前，不把协议夹具包装成`--mock`交付。
+fieldwork的`--mock`现已创建本次独占端点并启动该物理进程，跑相同`observe/hold/jog/report`；只清理自有资源。协议夹具不作为`--mock`；新版Orin物理闭环仍待原生验收。
 
 ### 明天现场顺序
 
@@ -213,11 +213,11 @@ ID13疑似卡住暂不专项排障。下一次运行仍保留本例命令、终�
 | 第三批 | 双臂物理SHM Mock与相同fieldwork配方 | 独立两进程走原始ABI、物理响应而非目标复制、量化、旧命令延续、失能/故障路径；两架构原生运行 |
 | 后续上层 | CSV参考→H1短轨迹→A时间适配→H2–H4→手动GUI/回零→K5 | 每个消费者按新SHM记录含义接入，复用数值内核；不再启动第二个原始消费者 |
 
-现在用户在家，只做本地开发/私有测试，不连接真实SHM、不跑停业务或运动脚本。Orin原生编译与私有联跑在可连接时完成，真实用例等明天用户在场。F1/F2的现场CLI、公共runtime与私有协议联跑现已落地；原生Orin新版本运行及实际C00–C06验证仍待明天现场。任意五字段/CSV输入、GUI和物理Mock继续按后续阶段实施。
+现在用户在家，只做本地开发/私有测试，不连接真实SHM、不跑停业务或运动脚本。Orin原生编译与私有联跑在可连接时完成，真实用例等明天用户在场。F1/F2的现场CLI、公共runtime与私有协议联跑现已落地；原生Orin新版本运行及实际C00–C06验证仍待明天现场。第7节R2现已实现任意五字段/参考及物理Mock的本机版本；CSV导入、GUI等上层消费者继续分阶段实施。
 
 ## 7. 下一轮：通用executor、物理Mock与ROS退役（2026-11-14计划）
 
-本轮只制订计划，尚未执行以下源码迁移/删除。基于`627e5dd`继续开发；当前fieldwork单例入口和既有记录保持可用，现场C00–C06结论不作为私有开发的等待条件。
+设计基线为`627e5dd`；以下R1已完成、R2本机实现已完成，执行记录见本节末尾；R2的Orin验收及R3/R4仍待完成。当前fieldwork单例入口和既有记录保持可用，现场C00–C06结论不作为私有开发的等待条件。
 
 ### 推荐顺序：先清旧支线，再打物理闭环，随后迁移上层并删除SDK底座
 
@@ -232,7 +232,7 @@ R1和R2组成下一次主要交付，R3/R4不挤入同一个大提交。删除�
 
 ### 7.1 executor：保留跑通的控制流程，增加真正通用的输入
 
-当前`shm_executor`仍是现场用例执行器：`field_runtime.cpp`同时承担CLI解析、状态机和记录；`arm_target()`将前馈写死为0。下一步拆成有实际调用方的小组件：
+原基线的`shm_executor`只支持现场用例、前馈固定0。现已拆出codec、参考、时钟与recorder组件，状态机仍由唯一field runtime复用：
 
 - `arm_codec`：双臂q/v/effort/PD双向转换、方向/零偏、整数范围、量化与编码后有效值；不在GUI和Mock各维护一份换算表。
 - `reference`：本机单调时间下的参考求值；读文件、配置解析、校验和预计算在周期前完成。
@@ -251,7 +251,7 @@ R1和R2组成下一次主要交付，R3/R4不挤入同一个大提交。删除�
 
 新增`cpp/tools/shm_mock_server.cpp`及`cpp/src/shm/`适配，使用既有`SimulatedArmDevice`/`ArmSimulationSession`、Pinocchio和Boost积分器。`shm_field_fixture`继续是快速协议夹具，不被改名冒充物理Mock。
 
-现有内核的实际缺口是**逐轴驱动使能状态**：`ArmCommand`只有q/dq/torque/kp/kd，`ArmSimulationSession`没有Controlword/失能语义。需要在通用物理设备边界补充带时间的使能掩码/事件，并保持旧调用默认全使能：
+已在通用物理设备边界新增带时间的逐轴驱动使能掩码；旧调用默认全使能，`ArmCommand`本身仍是q/dq/torque/kp/kd五字段：
 
 - 驱动使能时计算本地五字段PD＋前馈，纯前馈/零PD照常有效。
 - 理想驱动基线中，失能切断有源输出，机械状态继续在重力/摩擦/耦合作用下演化；不能冻结q，也不能把Kp=Kd=0当失能。使能与命令按明确事件顺序生效，旧pending命令不能在失能后重新打开输出。
@@ -261,7 +261,7 @@ R1和R2组成下一次主要交付，R3/R4不挤入同一个大提交。删除�
 - 无新命令时沿用上次已采用的命令/驱动状态；不加SDK watchdog自动保护。故障状态保持，不自动清故障或重新使能。
 - 仅双臂做物理；腿/腰/头/手提供明确标为协议夹具的背景响应。
 
-`CALIB_BUILD_SHM_MOCK`单独控制该目标，要求CORE与SHM开启；不需要Python绑定/ROS。`fieldwork/shm/run.sh --mock`的实际参数位置在实现时统一到对应子命令：自动创建本次独占私有端点、生成本次明确的模拟背景、启动Mock与同一个executor、结束只清理自有资源。每例使用明确初态，不为长期无支撑失能状态偷偷加保持。
+`CALIB_BUILD_SHM_MOCK`单独控制该目标，要求CORE与SHM开启；不需要Python绑定/ROS。`--mock`加在`observe/snapshot/run/execute`子命令后：自动创建本次独占私有端点、生成本次明确的模拟背景、启动Mock与同一个executor、结束只清理自有资源。每例使用明确初态，不为长期无支撑失能状态偷偷加保持。
 
 修改物理核心时，补使能/失能、重力自由响应、零PD前馈、步长减半及原核心回归；同步重建实际Python绑定。旧调用的时序、物理和默认值保持原合同，不将新的SHM默认改到全部SDK/离线模拟上。
 
@@ -297,3 +297,13 @@ R1和R2组成下一次主要交付，R3/R4不挤入同一个大提交。删除�
 第一批已退役ROS transport/benchmark、ros-view、legacy S2 bridge/guard/位置规划执行及专用配置/验证脚本；CLI与CI不再引用这些链路，旧release聚合脚本随之退役。通用文件绑定归入`artifact_io.py`，时间统计归入`stream_metrics.py`；剩余SDK调用从`sdk_binary.py`定位原执行器，未替换其运行合同。剩余ROS position_executor要求显式hardware scope，不再存在默认S2执行路径。原生回归记录改为`casbot_native_regression_v2`，不再报告ament消费者通过；旧记录不回写。
 
 验证：全Python测试收集923项，无导入错误；54项相关统计/H1/profile/重规划/S1测试通过；剩余ROS position_executor编译通过。R2物理闭环继续实施，不以完成清理代替下一增量。
+
+### R2本机执行记录（2026-11-14）
+
+- `shm_executor --reference`支持`casbot_shm_reference_v1`七次Hermite参考与`casbot_shm_fields_v1`独立五字段。既有Motion按q/dq/ddq/jerk结点导出；PD固定、effort表ZOH，参考限位使用Bernstein包络。实测起点相对参考由原生解析并留起点文件；直接五字段无隐藏插值。CSV导入/在线信箱不在本轮内。
+- 双臂物理Mock通过原始35槽ABI连接同一执行器。独立使能掩码切断有源输出，机械重力继续；零PD前馈有效，命令不重新使能驱动。复用现有惯量/摩擦工厂及物理积分器，默认无补偿/噪声/人工延迟，电流响应1ms、限幅100Nm为合成设置。非双臂组仅协议夹具。
+- `fieldwork/shm`增加`plan/fields/execute`及`--mock`，仍可跑C01–C06。唯一私有端点/进程由本次拥有者回收，对端死亡终止、不连硬件、不reset/resume；手部背景在Mock中显式生成。现场通用参考仍属URDF-only探索，不为H1–H4/K5放行。
+- 本机12项CTest、59项相关Python测试及后续新增4项资源/启动/配置/错误报告测试通过。七次曲线与独立SciPy BPoly的q/dq/ddq/jerk逐项对照；真实物理闭环、量化、失能、故障和静默检查通过。实际Python绑定已刷新。最后复用配置工厂后针对性3项CTest通过。
+- 已安装运行系统Python标准库物理验收，并保留轻量协议单独构建/安装。证据与命令见[构建记录](shm_build.md#2026-11-14-通用执行器与物理mock的本机结果)。
+
+**剩余依赖：新版Orin原生编译/安装及私有闭环。** 当前直连网卡不存在、172.16.0.10的SSH不通；恢复网络后部署已提交源码，用`build.sh --with-mock`并运行`verify_physics.py`，不接真实SHM。R2不宣称两架构全部验收；R3/R4未开始，现场逐例结论不变。

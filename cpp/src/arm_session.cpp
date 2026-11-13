@@ -43,19 +43,22 @@ struct ArmSimulationSession::Impl {
   bool has_last=false,truth;
   std::vector<bool> stuck;
   Eigen::VectorXd slip_sign;
+  Eigen::VectorXi drive_enabled;
   std::vector<ArmFriction> friction_parameters;
   bool all_stuck=false;
   Impl(ArmDynamics p,ArmSimulationConfig config,const Eigen::VectorXd& q,const Eigen::VectorXd& v,bool keep)
     :plant(std::move(p)),c(validated(plant,std::move(config))),n(c.gain.size()),state(initial_state(n,q,v)),
      integrator(state,c.integration_ns),dynamics(plant.workspace()),
      held{0,q,Eigen::VectorXd::Zero(n),Eigen::VectorXd::Zero(n),Eigen::VectorXd::Zero(n),Eigen::VectorXd::Zero(n)},
-     rng(c.seed),truth(keep),stuck(n,false),slip_sign(Eigen::VectorXd::Ones(n)) {
+     rng(c.seed),truth(keep),stuck(n,false),slip_sign(Eigen::VectorXd::Ones(n)),drive_enabled(Eigen::VectorXi::Ones(n)) {
        for(const auto& joint:plant.model().joints)friction_parameters.push_back(joint.friction);
      }
   double uniform() {return (static_cast<double>(rng())+.5)/4294967296.;}
   double normal() {const double a=uniform(),b=uniform();return std::sqrt(-2.*std::log(a))*std::cos(2.*std::acos(-1.)*b);}
   Eigen::VectorXd request(const Eigen::VectorXd& x) const {
-    return held.torque+held.kp.cwiseProduct(held.q-x.head(n))+held.kd.cwiseProduct(held.dq-x.segment(n,n));
+    Eigen::VectorXd result=held.torque+held.kp.cwiseProduct(held.q-x.head(n))+held.kd.cwiseProduct(held.dq-x.segment(n,n));
+    for(Eigen::Index j=0;j<n;++j)if(!drive_enabled[j])result[j]=0.;
+    return result;
   }
   Eigen::VectorXd target(const Eigen::VectorXd& x) const {
     return request(x).cwiseMax(-c.torque_limit).cwiseMin(c.torque_limit).cwiseQuotient(c.gain);
@@ -185,6 +188,14 @@ ArmSimulationSession::~ArmSimulationSession()=default;
 ArmSimulationSession::ArmSimulationSession(ArmSimulationSession&&) noexcept=default;
 ArmSimulationSession& ArmSimulationSession::operator=(ArmSimulationSession&&) noexcept=default;
 Nanoseconds ArmSimulationSession::time_ns() const {return impl_->t;}
+Eigen::Index ArmSimulationSession::joint_count() const {return impl_->n;}
+void ArmSimulationSession::set_drive_enabled(Nanoseconds at,const Eigen::VectorXi& enabled) {
+  auto& s=*impl_;
+  if(at!=s.t||enabled.size()!=s.n||((enabled.array()!=0)&&(enabled.array()!=1)).any())
+    throw std::invalid_argument("Drive event must be binary, per-axis and at current model time");
+  s.drive_enabled=enabled;
+  for(Eigen::Index j=0;j<s.n;++j)if(!enabled[j])s.state[2*s.n+j]=0.;
+}
 void ArmSimulationSession::submit(const ArmCommand& command) {
   auto& s=*impl_;
   const auto valid=[&](const Eigen::VectorXd& x){return x.size()==s.n && x.allFinite();};

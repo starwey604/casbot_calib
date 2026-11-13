@@ -18,6 +18,7 @@ class SimulatedArmDevice {
     latest_.status=Eigen::VectorXi::Zero(q.size());
   }
   void submit(const ArmCommand& command){session_.submit(command);}
+  void set_drive_enabled(Nanoseconds at,const Eigen::VectorXi& enabled){session_.set_drive_enabled(at,enabled);}
   std::vector<ArmSample> advance_to(Nanoseconds now) {
     auto chunk=session_.advance_to(now);
     for(auto& sample:chunk.observations)pending_.push_back(std::move(sample));

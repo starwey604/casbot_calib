@@ -14,7 +14,7 @@ bash fieldwork/shm/run.sh run C03 --joint-id 13
 ## 先编译安装（不连接机器人）
 
 ```bash
-bash scripts/shm/build.sh --with-core --build-dir build/shm-core \
+bash scripts/shm/build.sh --with-mock --build-dir build/shm-core \
   --install-prefix "$PWD/install/shm-core" --dependency-prefix /opt/ros/humble
 ```
 
@@ -26,7 +26,52 @@ bash scripts/shm/build.sh --with-core --build-dir build/shm-core \
 python3 scripts/shm/verify_fieldwork.py --bin-dir build/shm-core/cpp/src/shm
 ```
 
-`build.sh`运行的CTest也包括该项。这里使用目标位置回显的协议夹具，物理Mock仍待实现。
+`build.sh`运行的CTest也包括该项。这个快速检查使用目标位置回显的**协议夹具**；物理闭环另用下面的Mock。只要执行器、不需要物理Mock时，可把`--with-mock`换成`--with-core`。
+
+## 在家先跑物理Mock
+
+本机的算法依赖若装在distrobox里，为下面运行命令加前缀`bash scripts/humble/exec.sh --no-venv --`；Orin原生环境直接运行。
+
+```bash
+# 自动创建私有端点和模拟手部背景；不打开真实shm_mc、不停机器人业务。
+bash fieldwork/shm/run.sh run C03 --joint-id 12 --amplitude .01 --segment-s 1 --mock --execute
+bash fieldwork/shm/run.sh observe --mock --duration 1
+
+# 系统Python标准库即可完成安装后的物理闭环验收。
+python3 scripts/shm/verify_physics.py --bin-dir install/shm-core/bin
+```
+
+`--mock`用于`observe`、`snapshot`、`run C01–C06`或`execute`子命令；预览不启动Mock。每次使用独占`/casbot_calib_test_*`名称，退出回收自有进程和IPC；对端死亡结束本例，不回退到硬件。C00观察原业务退出，新Mock没有这段历史，不支持`run C00 --mock`。
+
+Mock复用`SimulatedArmDevice`/`ArmSimulationSession`、Pinocchio和Boost积分器：双臂本地PD＋前馈、重力、惯量及整数反馈；腿/腰/头/手仅是协议夹具，不是全身物理。配置见`configs/shm/mock.json`，可用`--mock-config FILE`显式替换。基线为1ms交换、50µs积分、1ms电流响应、100Nm总输出限幅、2Nm/A；这些响应/限幅是合成设置。默认无噪声、人工传输延迟或隐藏重力/摩擦补偿。
+
+初始驱动失能，双臂会在重力下自由运动；固定基座不表示关节有抱闸或外部支撑。失能切断有源输出，不冻结位置；零PD仍可输出前馈。无新命令保持原目标和使能状态，没有SDK watchdog。`inertia_scales`、`friction_viscous/coulomb/static`可逐轴配置；干摩擦须显式`stiction_enabled=true`，使用既有耦合粘住/脱离模型。不要用Mock休息姿态或输出限幅推断实机条件。
+
+## 通用参考与独立五字段
+
+先生成参考文件，再预览或显式执行。相对参考以**执行时新鲜反馈**为起点，不需要预先快照：
+
+```bash
+bash fieldwork/shm/run.sh plan --relative --joint-id 12 \
+  --amplitude .01 --segment-s 1 --output artifacts/my_shm_plan
+bash fieldwork/shm/run.sh execute artifacts/my_shm_plan/reference.json
+bash fieldwork/shm/run.sh execute artifacts/my_shm_plan/reference.json --mock --execute
+```
+
+`casbot_shm_reference_v1`冻结14轴名称、整数纳秒结点和q/dq/ddq/jerk，C++求同一条七次Hermite曲线，不将500Hz位置表隐式线性插值。PD逐轴固定；前馈表显式ZOH。`shm_reference.export_motion()`可导出既有`Motion`；CSV导入、在线手动信箱尚未实现。`--relative`生成零偏移参考，原生保存实际起点`native/reference_origin.csv`，平移后检查URDF位置与参考速度。绝对参考可用`plan --snapshot SNAPSHOT`生成，执行前另核对起点误差≤0.005rad。
+
+直接五字段模式让速度与位置目标独立，适合后续单项响应探索：
+
+```bash
+bash fieldwork/shm/run.sh snapshot --mock --output artifacts/my_shm_start
+bash fieldwork/shm/run.sh fields --snapshot artifacts/my_shm_start --joint-id 12 \
+  --velocity .05 --effort .129 --kp 0 --kd 0 --duration .1 --output artifacts/my_shm_fields
+bash fieldwork/shm/run.sh execute artifacts/my_shm_fields/reference.json --mock --execute
+```
+
+`casbot_shm_fields_v1`保存绝对位置及独立velocity/effort/kp/kd，不自动平滑、不把velocity当位置导数；上例0.129Nm编码为0.12Nm。CLI的Kp/Kd施加于全部双臂14轴，位置/速度/前馈覆盖所选轴；需要逐轴不同PD时显式编辑bundle数组。直接字段从streaming阶段生效，结束清除速度/前馈并请求失能；轨迹模式末端静止保持0.5秒后退出。两者都不加隐藏补偿。
+
+这里的通用入口用于当前**URDF位置/参考速度检查的双臂fieldwork探索**，不做碰撞放行，不是H1–H4/K5执行入口。它们的规划/碰撞和数据合同保持原状，尚未迁移。实机执行仍需有效接管窗口和显式`--hand-background FILE`；只改变输入模式，不自动停业务/握手，也不把Mock验证记为C08物理尺度确认。
 
 ## 下次到场重新接入：先留背景，再停业务，只启主站
 
@@ -139,6 +184,7 @@ bash fieldwork/shm/run.sh status artifacts/shm_fieldwork
 - `case.json`：配方、背景策略、模型路径、运行时间原值/boot_id。运行时间不冒充设备身份或可信UTC。
 - `process.json`、`terminal.log`：实际命令、自有PID、退出码、计划终止及时间。
 - `native/background.bin`：本次从新鲜实际状态生成的完整F0；`hand_background_source.bin`：显式手部来源。
+- `native/reference.json`：通用执行实际读取的冻结输入；相对参考另存`reference_origin.csv`。`mock/`保留私有配置、背景来源、服务端日志及退出结果。
 - `native/commands.bin`：8字节小端成功入队完成单调时刻＋744字节原始命令。
 - `native/feedback.bin`：8字节小端接收完成单调时刻＋696字节完整状态。
 - `native/commands.csv`、`feedback.csv`：14轴SI五字段指令、q/v/effort反馈，35槽状态/模式/错误码及原始时间。

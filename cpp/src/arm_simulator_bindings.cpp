@@ -49,6 +49,21 @@ void bind_arm_simulator(py::module_& m) {
   FIELD(torque_limit);FIELD(position_noise);FIELD(current_noise);FIELD(seed);FIELD(gain);FIELD(drop_probability);FIELD(repeat_probability);
   FIELD(stiction_enabled);FIELD(stick_velocity_tolerance);
 #undef FIELD
+  py::class_<ArmSimulationSession>(m,"ArmSimulationSession")
+    .def(py::init<ArmDynamics,ArmSimulationConfig,const Eigen::VectorXd&,const Eigen::VectorXd&,bool>(),
+      py::arg("plant"),py::arg("config"),py::arg("q0"),py::arg("v0"),py::arg("retain_truth")=false)
+    .def_property_readonly("time_ns",&ArmSimulationSession::time_ns)
+    .def("set_drive_enabled",&ArmSimulationSession::set_drive_enabled)
+    .def("submit",[](ArmSimulationSession& session,Nanoseconds at,const Eigen::MatrixXd& values){
+      if(values.cols()!=5)throw std::invalid_argument("Expected command[J,5]");
+      ArmCommand c;c.send_ns=at;c.q=values.col(0);c.dq=values.col(1);c.torque=values.col(2);c.kp=values.col(3);c.kd=values.col(4);session.submit(c);
+    })
+    .def("advance_to",[](ArmSimulationSession& session,Nanoseconds end){
+      ArmSimulationResult result;
+      {py::gil_scoped_release release;result=session.advance_to(end);}
+      const py::ssize_t n=session.joint_count();
+      return pack_result(result,n);
+    });
   auto sensor=py::class_<TricalMockConfig>(m,"TricalMockConfig").def(py::init<>());
 #define FIELD(x) sensor.def_readwrite(#x,&TricalMockConfig::x)
   FIELD(calibration);FIELD(minimum);FIELD(maximum);FIELD(bias);FIELD(encoder_offset);FIELD(face_radius);FIELD(noise_std);FIELD(quantum);

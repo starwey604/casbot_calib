@@ -39,7 +39,8 @@
         "CALIB_BUILD_PYTHON": "OFF",
         "CALIB_BUILD_SHM": "ON",
         "BUILD_TESTING": "ON",
-        "CMAKE_INSTALL_PREFIX": "${sourceDir}/install/shm-native"
+        "CMAKE_INSTALL_PREFIX": "${sourceDir}/install/shm-native",
+        "CALIB_BUILD_SHM_MOCK": "OFF"
       }
     },
     {
@@ -49,6 +50,15 @@
       "cacheVariables": {
         "CALIB_BUILD_CORE": "ON",
         "CMAKE_INSTALL_PREFIX": "${sourceDir}/install/shm-core"
+      }
+    },
+    {
+      "name": "shm-physics",
+      "inherits": "shm-core",
+      "binaryDir": "${sourceDir}/build/shm-physics",
+      "cacheVariables": {
+        "CALIB_BUILD_SHM_MOCK": "ON",
+        "CMAKE_INSTALL_PREFIX": "${sourceDir}/install/shm-physics"
       }
     }
   ],
@@ -74,6 +84,11 @@
     {
       "name": "shm-core",
       "configurePreset": "shm-core",
+      "jobs": 1
+    },
+    {
+      "name": "shm-physics",
+      "configurePreset": "shm-physics",
       "jobs": 1
     }
   ],
@@ -109,6 +124,13 @@
     {
       "name": "shm-core",
       "configurePreset": "shm-core",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "shm-physics",
+      "configurePreset": "shm-physics",
       "output": {
         "outputOnFailure": true
       }

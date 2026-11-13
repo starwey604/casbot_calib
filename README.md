@@ -20,14 +20,22 @@ bash fieldwork/shm/run.sh run C03 --joint-id 12  # 仅预览，不连接/发送
 
 ```bash
 # Orin或已具备算法依赖的Linux：不需要ROS通信、colcon或Python绑定。
-bash scripts/shm/build.sh --with-core --build-dir build/shm-core \
+bash scripts/shm/build.sh --with-mock --build-dir build/shm-core \
   --install-prefix "$PWD/install/shm-core" --dependency-prefix /opt/ros/humble
 
 # 本机复用已有Humble/distrobox工具链。
-bash scripts/humble/container.sh cmake --preset humble -DCALIB_BUILD_SHM=ON
+bash scripts/humble/container.sh cmake --preset humble -DCALIB_BUILD_SHM=ON -DCALIB_BUILD_SHM_MOCK=ON
 bash scripts/humble/container.sh cmake --build --preset humble
 bash scripts/humble/container.sh ctest --test-dir build/humble -L shm --output-on-failure
 ```
+
+编译安装后可一条命令跑私有物理闭环，不连接机器人：
+
+```bash
+bash fieldwork/shm/run.sh run C03 --joint-id 12 --amplitude .01 --segment-s 1 --mock --execute
+```
+
+通用参考用`plan --relative`生成、`execute FILE --mock --execute`运行；独立五字段用`fields`生成。详见现场工具手册。新版Mock/通用参考已在本机Humble验证，Orin原生编译/闭环待恢复网络后完成。
 
 Pinocchio/Coal装在`/opt/ros/humble`不意味着SHM程序依赖ROS通信。C++17/CMake3.22为共同基线，x86_64二进制不能直接复制到Orin。
 

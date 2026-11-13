@@ -4,11 +4,13 @@
 
 **2026-11-13用户确定的SHM接管窗口**：现场先停止独立的`zero_calibration.service`／`arm_debug_tool.service`，再执行厂家`sudo bash /workspace/embed_fusion/bin/launcher.bash stop`，之后只启动EtherCAT中间件及本仓库测试，直到下次Orin重启结束该窗口。窗口内按用户指定假设认定不会有其它控制程序重新启动或插队，不再以证明所有自启动路径不存在作为开发或后续流程的前置条件；重启后重新走停机入口，不自动接回旧会话。这是用户采用的运行安排，不是停机已实测或物理安全停止证明；非目标轴、驱动停止和其它观测合同独立。厂家脚本也会停止旧EtherCAT主站，并且在`/tmp/launcher/flag_manual_run.flag`存在时可能逐项询问，不能把局部停止当全部停止。最初勘察只读；随后在用户显式授权的逐轴试验中已执行停业务、只启动主站并完成新主站握手，当前窗口仍有效。证据及操作顺序见[SHM接管流程](docs/jetson_shm_interface_recon_20261113.md#用户确定的停业务后独占测试流程)。
 
-**2026-11-13用户确定的SHM现场确认方式**：非目标部位、接管首帧和停止/断流按[SHM逐组确认手册](docs/shm_field_validation.md)逐例核对；后续由代理运行选定脚本用例、用户观察并自然语言反馈，不自动跑完整机或新增GUI勾选/H2 review门禁。`fieldwork/shm/run.sh`已提供C00–C06的双臂现场CLI、持续观测、报告和观察登记，原ROS脚本迁至`fieldwork/ros/`且根入口保留转发；头部主动运动、腿腰保持配方、手部动作及C08仍待补。ID12实机流程完成且用户反馈运动正常；用户另尝试ID13并报告Orin疑似卡住，原因/结果未知，暂不专项排障；完整背景帧必须显式定义，不把SDK只发14轴的约定套到SHM整帧。时间采用现有状态毫秒stamp映射到同机单调时间，出队时间另存作诊断，不要求修改主站。本轮CLI于2026-11-14在Humble完成本地软件验证；新版本Orin原生编译/安装及C00–C06实机用例待到场，不把旧ID12结果自动扩到新软件或其它轴。物理SHM Mock仍待后续。
+**2026-11-13用户确定的SHM现场确认方式**：非目标部位、接管首帧和停止/断流按[SHM逐组确认手册](docs/shm_field_validation.md)逐例核对；后续由代理运行选定脚本用例、用户观察并自然语言反馈，不自动跑完整机或新增GUI勾选/H2 review门禁。`fieldwork/shm/run.sh`已提供C00–C06的双臂现场CLI、持续观测、报告和观察登记，原ROS脚本迁至`fieldwork/ros/`且根入口保留转发；头部主动运动、腿腰保持配方、手部动作及C08仍待补。ID12实机流程完成且用户反馈运动正常；用户另尝试ID13并报告Orin疑似卡住，原因/结果未知，暂不专项排障；完整背景帧必须显式定义，不把SDK只发14轴的约定套到SHM整帧。时间采用现有状态毫秒stamp映射到同机单调时间，出队时间另存作诊断，不要求修改主站。本轮CLI于2026-11-14在Humble完成本地软件验证；新版本Orin原生编译/安装及C00–C06实机用例待到场，不把旧ID12结果自动扩到新软件或其它轴。双臂物理SHM Mock及通用参考/独立五字段已在本机实现，使用`--mock`只连本次私有端点；新版Orin编译/闭环待网络恢复，不改变实际现场台账。
 
 **2026-11-13用户决定SHM第4/5/6项延后复核**：命令采用/FIFO/队列满/帧号检查、反馈通道更新/滤波/有效性以及高精度力矩/亚刻度探针效果，按[手册开发默认](docs/shm_field_validation.md#第-456-项采用开发默认源码到位后复核)推进，待源码或后续数据确认；不作为SHM执行器、私有Mock、A适配和现场探索的前置门禁。默认有界FIFO、周期目标队列满跳过本次不补发历史参考、持续发送失败按通信故障处理；同帧三通道暂共用观测时间，不猜测延迟补偿；保留0.01Nm整数尺度，不等待高精度入口、不人为加噪声制造亚刻度信息。软件默认与真实设备证据分开，后续源码不符时改适配与Mock；非目标轴/实际停止的现场安排和原正式观测合同各自保留。
 
-**2026-11-13用户要求的SHM分支与移植准备**：基线`f360a11`由本地`ros`保留，`main`按[移植计划](docs/shm_migration_plan.md)分阶段提交；保留并行任务未提交改动，不将它们夹进本轮提交。第一增量`5f6eefb`已有独立CMake、35槽线格式和离线诊断，通过SSH隧道从本机Git克隆到Orin的`/home/nvidia/casbot_calib_shm`。Humble/Orin均通过核心＋SHM的7项CTest，Orin用Pinocchio4.0.0/Coal3.0.3，无需改版本门槛；[构建和部署](docs/shm_build.md)有复用入口及证据。当前已有IPC、双臂转换、时钟映射和共享原生fieldwork执行层；通用CSV/任意五字段流、物理Mock及其闭环仍待完成，不将此轮称为M1/M2全部交付；Git LFS大资产尚未物化。头文件自维护有证据的兼容层，厂家源码后续对照；按2026-11-14最新授权，孤立/过时ROS支线可直接退役，无须逐一建立SHM替代实验；仍被主线消费的数学/公共工具先提取，调用方/CLI/CI同步修复，不留断入口。不push，不连接真实SHM做开发测试。
+**2026-11-13用户要求的SHM分支与移植准备**：基线`f360a11`由本地`ros`保留，`main`按[移植计划](docs/shm_migration_plan.md)分阶段提交；保留并行任务未提交改动，不将它们夹进本轮提交。第一增量`5f6eefb`已有独立CMake、35槽线格式和离线诊断，通过SSH隧道从本机Git克隆到Orin的`/home/nvidia/casbot_calib_shm`。Humble/Orin均通过核心＋SHM的7项CTest，Orin用Pinocchio4.0.0/Coal3.0.3，无需改版本门槛；[构建和部署](docs/shm_build.md)有复用入口及证据。当前已有IPC、双臂转换、时钟映射和共享原生fieldwork执行层；七次Hermite参考/独立五字段与物理Mock本机闭环已完成；CSV导入、在线手动信箱及H1–H4/A/GUI/K5消费者尚未接入。新版Orin验收待补，不将旧ARM构建结果自动扩到新代码；Orin大LFS资产尚未物化。头文件自维护有证据的兼容层，厂家源码后续对照；按2026-11-14最新授权，孤立/过时ROS支线可直接退役，无须逐一建立SHM替代实验；仍被主线消费的数学/公共工具先提取，调用方/CLI/CI同步修复，不留断入口。不push，不连接真实SHM做开发测试。
+
+**2026-11-14 R1/R2实施**：第一批已删除ROS transport/benchmark、ros-view、legacy S2及专用CLI/配置/脚本/CI消费；公共文件绑定、频率统计、SDK binary定位分别提取到`artifact_io.py`、`stream_metrics.py`、`sdk_binary.py`。剩余SDK H1–H4/GUI/K5消费者暂留，SDK执行器必须显式hardware scope。SHM执行器增加冻结七次Hermite参考（q/dq/ddq/jerk同曲线、固定PD、effort表ZOH）及独立五字段，`fieldwork/shm`增加`plan/fields/execute`。物理Mock复用唯一双臂内核，逐轴使能独立于命令，旧调用默认全使能；失能无有源输出但重力继续，零PD前馈有效。SHM基线1ms交换/50µs积分、无补偿/噪声/人工延迟，电流响应1ms/限幅100Nm是显式合成设置；非双臂仅协议夹具，断流无SDK watchdog。开发只连`/casbot_calib_test_*`，资源由本次owner回收，不回退真实SHM。通用入口仍属URDF-only现场探索，不改变H1–H4/K5碰撞合同；CSV/在线流和上层迁移留R3/R4。Humble核心/绑定/安装私有闭环已验证；当前直连网卡不存在、172.16.0.10 SSH不通，新版Orin原生编译/私有联跑尚未完成。证据与接续见[构建记录](docs/shm_build.md)。
 
 **2026-11-13用户进一步授权SHM原生双臂实测**：先做可执行C++原型打印全轴状态，只运动双臂14轴（直接使用SHM真实ID12–18=左臂、19–25=右臂，不是CAN ID，不引入1–14别名）；机器人有固定支撑，用户允许腿/腰/头失能，现场有外置远程继电器。相对当次实际起点先负0.5rad再正0.5rad并回起点，默认每段5秒、Kp20/Kd2/前馈0；必须检查双向URDF limit，不满足即跳过不夹取/缩幅，**用户随后明确关闭此逐轴原型的碰撞检测，只检查URDF位置及参考速度限位；原H1–H4/K5等入口不变**。代理可按停业务独占流程开展这项显式授权的实机试验，开发和故障注入仍只用私有对象；一次一轴，用户观察后继续。手部只冻结显式给定原命令的手部字段，不重放全身旧目标；首轴由ID12左肩pitch开始，异常不清故障/不重新使能。实现和实际结果见[原生试验](docs/shm_joint_test.md)，继电器不能冒充软件/物理停止已验证。状态应答按`Statusword & 0x006f`解码（ready=0x21、enabled=0x27），不严格比较电压位/非状态位；ID12已完成失能→MIT→使能→轨迹→失能应答，用户反馈“正常。没问题。能看到在动。”，实际幅度未完全跟上目标，记录与执行方式见同一指南。
 
@@ -99,20 +101,20 @@
 - `kinematics.py`负责共享几何身份、具名工具和候选修正，`trical_data.py`负责三表记录，`kinematics_checks.py`仅作K1数值检查。C++ `trical.*`提供理想读数，`trical_mock.*`包装同一持久化ArmSimulationSession产生实际状态读表。`trical_workflow.py`只消费已送达观测，`trical_fixture.py`审计三对测头/目标球接触，`trical_analysis.py`独立复核，`trical_evaluation.py`单独评分。K2不做参数辨识、不模拟表杆接触载荷；实例单一所有者。
 - `kinematic_parameters.py`将MDH/Hayati常数参数映射至原生模型，FK与几何回归量仍走Pinocchio；`kinematic_design.py`仅按公开训练设计选点，`kinematic_identification.py`只读观测/计量输入，`kinematic_workflow.py`复用K2采集并隔离真值，`kinematic_export.py`导出候选几何/URDF，`kinematic_evaluation.py`单独评分。参数已写入origin后不能再次加零位到q。
 - `kinematic_acceptance.py`负责K4预登记、独立采集与无真值新进程验收，冻结同一训练选参后比较重复性；`kinematic_metrology.py`消费独立配准的静态外部位置记录，未知时间/配准不能推断通过；`kinematic_presentation.py`仅按接收时间回放已送达数据。K4三个训练批次共用K3留出验证会话，不等于新空间外测或间隔漂移验收，产品通过标志保持false。
-- `ros/casbot_calib_core`为ament薄封装，`ros/casbot_calib_interfaces`定义协议，`ros/casbot_calib_transport`为C++通信实验端点。
-- `ros/casbot_calib_vendor`是可选SDK适配包，包含独立只读`state_recorder`、本机受限`position_executor`及复用原生物理端的`mock_sdk_bridge`；默认`build_ros.sh`忽略它，`build_vendor.sh`单独构建到`install/vendor`。`vendor_identity.py`核对接口和版本，`vendor_capture.py`启动只读进程，`vendor_data.py`保留未知字段并规范化；`vendor_position.py`负责S2快照／完整门禁与封存执行，`vendor_position_analysis.py`独立报告原始频率／响应／故障。`ros_state.py`适配ROS来源，`vendor_viewer.py`复用同一几何renderer处理ROS、文件流和回放。姿态帧允许缺失dq/current/status，不给实机填零或伪造采样序号。
+- `ros/casbot_calib_core`和`ros/casbot_calib_interfaces`暂为剩余SDK Mock消费者保留；`ros/casbot_calib_transport`已退役，不再新增ROS通信实验。
+- `ros/casbot_calib_vendor`暂保留H1–H4/GUI/K5需要的`state_recorder`、显式hardware scope的`position_executor`与`sdk_mock_server`。`vendor_identity.py`仅保留SDK接口审计，公共文件绑定已搬出；`vendor_capture.py`和`vendor_data.py`供尚未迁移的SDK采集使用。legacy S2的`vendor_position.py`/`vendor_position_analysis.py`、`mock_sdk_bridge`、`legacy_position_guard`以及`ros_state.py`已删除。纯数值/文件回放不因此删除；未知dq/current/status仍不得填成真实反馈。
 - `dynamics_data.py`负责S3不可变观测和来源/尺度/时钟证据，`dynamics_qualification.py`输出各阶段数据资格（从不授予执行权限），`dynamics_problem.py`将合格周期输出力矩投影为既有Pinocchio刚体求解入口。S1未知配置保持保守，不把SDK effort重命名为电流；高频原始记录/经验证替代观测及S4分阶段验收仍是独立门禁。
 - `vendor_staged.py`负责S4角色冻结、观测reader与阶段编排；原`staged_*`数值函数通过显式records/config回调复用，默认旧入口保持原政策。`torque_observations.py`只选择一个总输出力矩通道；S4不伪造current或设备seq。非周期处理要求全记录连续/均匀/同步，腕部30Hz处理不超资格频带；惯量按明确角色分train/validation，不按名字猜。Mock采集脚本可读取合成plant，分析与复核不得读取evaluation；控制对照另存绑定，不能回写已经封存的analysis。
 - `dynamic_export.py`提供[动力学候选URDF导出/重加载](docs/dynamic_urdf_export.md)：消费已接受且封存的S4 gravity/inertia，Pinocchio转换空间惯性，每运动关节写一个等效体；固定手部后代保留几何/帧但不重复添加惯性，固定根部属性不标为已标定。摩擦/转子/世界重力留在配套JSON，重加载不能用JSON刚体值覆盖URDF结果。源模型摘要必须匹配；独立输出、新进程校验，不修改nominal或旧分析。静态候选的惯量不可观测部分仍是先验选择，序列化通过不等于实机/参数唯一性通过。本机375项Python测试（含16项新增）通过，两种候选各32构型验证及禁止访问原分析/evaluation的新进程复核通过，证据为`artifacts/dynamic_urdf_release_v1/delivery.json`。新S4分析记录源模型摘要；旧gravity-only缺绑定时拒绝，旧完整S4可使用封存的inertia候选绑定。
 - `static_field.py`提供[静态现场预设](docs/static_field_preset.md)：`plan-static-field`/`verify-static-field`仅规划/复核，复用Motion、Pinocchio静态回归与Coal完整路径门禁；配置为`configs/static_field_nominal.yaml`。每臂具名7轴扫描+五轴组合，角度是相对配置基准的偏移；保留正反单轴诊断及成对接近，参考信息选24训练+8验证，不能把组合验证遗漏腕部roll的秩13当作完整覆盖。每臂训练/验证需分别覆盖候选池静态方向；不得宣称140参数或各连杆质量/质心唯一。输出为独立参考规划包，不是可直接运行的staged会话或S4观测协议；1s窗口不是测量，保留缓存/采样资格与S2 localhost限制。nominal肩部外展基准不是实机home，现场到基准的路径、实际插值/跟踪包络、限制和停止仍须另验。失败v1/覆盖不足v2保留，最终离线参考为`artifacts/static_field_nominal_v3`及其review。
-- `hardware_field.py`与`configs/hardware_field.yaml`实现H1：实际起姿、单轴小幅、从实测起姿到静态预设再返回的完整序列、原始CDR/整数ns回调/发布stamp/effort记录、探索重力与URDF重加载。`position_executor`共享显式hardware scope（默认S2仍本机），位置/velocity默认配合nominal外部重力effort及主机默认PD；异常停止发布，绝不伪造服务回执。现场fit使用回调窗口，独立采样数未知，不是S3采样资格，正式接受/自动部署保持false。reference与命令插值及观测插值检查不等于真实跟踪/制动包络已获证。快照只读，执行前复核起姿；计划绑定模型/SDK/二进制/ROS domain，分析绑定实际执行CSV摘要。H3已补硬件摩擦/起动候选流程，H4已接惯量与控制候选，不能宣称H1等于完整硬件标定；H2已补整批编排与受控续采，故障恢复按用户要求暂不实现。
+- `hardware_field.py`与`configs/hardware_field.yaml`实现H1：实际起姿、单轴小幅、从实测起姿到静态预设再返回的完整序列、原始CDR/整数ns回调/发布stamp/effort记录、探索重力与URDF重加载。`position_executor`要求显式hardware scope（旧S2实现已退役），位置/velocity默认配合nominal外部重力effort及主机默认PD；异常停止发布，绝不伪造服务回执。现场fit使用回调窗口，独立采样数未知，不是S3采样资格，正式接受/自动部署保持false。reference与命令插值及观测插值检查不等于真实跟踪/制动包络已获证。快照只读，执行前复核起姿；计划绑定模型/SDK/二进制/ROS domain，分析绑定实际执行CSV摘要。H3已补硬件摩擦/起动候选流程，H4已接惯量与控制候选，不能宣称H1等于完整硬件标定；H2已补整批编排与受控续采，故障恢复按用户要求暂不实现。
 - `hardware_batch.py`、`configs/hardware_batch.yaml`及[H2说明](docs/hardware_batch_h2.md)组织冻结批次：方向观测与具名人工结论绑定、同一测得锚点/连续参考下的100/250/500Hz随机重复、静态正反姿态对的原子尝试与有限稳定等待重采。协议/模型/SDK/关键代码不变才续采；事件原子提交并串联摘要，已封存attempt不改写，未知不完整attempt终止。clear_fault默认仅日志占位，调用后整批终止且不能resume。H1的static_means/write_gravity_candidate由H1/H2共用，不复制求解器、不跨记录造采样序列。`hardware_batch_viewer.py`复用统一几何renderer，按单次回调时间回放，试次间不插值、只压缩时间、不放大角度。H2不等于H3/H4硬件摩擦/惯量或正式实机验收。
 - `hardware_friction.py`/`hardware_breakaway.py`、`configs/hardware_friction.yaml`及[H3指南](docs/hardware_friction_h3.md)复用H2批次，冻结H1/H2重力、不同姿态/速度匀速、独立验证后冻结摩擦，再进行零PD静置/反馈守护力矩斜坡。复用`staged_motion.add_friction_sweep`及`staged_identification`空间配对/非负鲁棒拟合；C++ `sdk_breakaway.hpp`只在显式H3时启用，不另建SDK Mock算法。正常续采/故障终止约定不变；回调窗口及起动区间为探索证据，不授予采样资格，旧4kHz政策不降低。候选含JSON/CSV、原始来源及中文只读回放。起动允许偏移的Coal门禁可细分时间×关节盒，保留10mm余量、审计排除表和预算不足拒绝。默认560单元仅完成规划/单元检查，本机ROS演练只覆盖1轴3条匀速+4条斜坡，不宣称全14轴执行通过。
 - H3本轮本机回归441项Python、4项核心C++、2项SDK检查通过；H1/H2统一SDK回归23项及旧S2单条500Hz往返通过。交付见`artifacts/hardware_friction_delivery_v1/delivery.json`。H3ROS验证范围为1轴7尝试，独立记录指令100/50µs比较位置轨迹/峰值通过，粘住切换的逐点速度2.03%差异单列诊断。原始1msSDK观测仍不取得采样资格；本轮未重跑历史114项冻结数值交付。
 - `hardware_inertia.py`/`hardware_periodic.py`/`hardware_control.py`与[H4指南](docs/hardware_inertia_h4.md)接入H3冻结输入、共享多频参考/C3幅值包络激励、回调窗口Fourier适配、原`fit_rigid`物理一致140列求解、独立预测及H3观测重评分。惯量/控制选择通过后才冻结进入下一阶段；五档PD只用selection轨迹，四组control独立，回调误差不逐组优化滞后。完整前馈由Pinocchio批量计算、单独CSV封存并与位置同索引发送；不重复补重力，SDK故障继续整批终止。URDF与摩擦JSON分开，候选不自动部署。未知采样/相位/滤波、弱惯量方向和原专用腕部门禁仍保留，不把低频候选升格为S3/S4/P0。SDK Mock可用inertia_scales改变等效体质心惯性，默认全1；不可让分析读取该合成真值。
 - H4本轮本机交付为`artifacts/hardware_inertia_delivery_v1/delivery.json`：456项Python完整回归、最终18项H4专项（与全量有交叠）、4项核心C++/2项SDK检查及旧S2单条500Hz往返通过。SDK Mock仅1轴12单元通过，默认14轴8条不同参考离线门禁通过，不能宣称全14轴已采集。独立Nm预测RMSE约0.00122，所测M00合成误差1.65%，回归秩17/140。选择1.0倍PD，前馈记录差2.78%小于同增益复测波动，稳定控制收益未证明。原始反馈新进程重建/重拟合禁止evaluation且参数差0，100/50µs记录指令回放通过；无实机/物理网络/正式采样资格。H4使用C3幅值包络，避免长高阶匹配过渡造成回摆；不通过放宽跟踪/反馈/碰撞阈值掩盖失败。v1–v5失败保留。
-- **SDK Mock收敛约定**：新增[统一入口](docs/sdk_mock_unification.md)，`sdk_mock.py`/`configs/sdk_mock.yaml`只启动一个`sdk_mock_server`，通过共享`SimulatedArmDevice`独占其ArmSimulationSession；SDK路径不再运行内部plant ROS桥。通用`mock_host`复用相同设备组件，每次实验仍只有一个物理状态所有者。新SDK Mock固定device_pd=true让原生内核用本地状态计算PD；普通ROS实验默认不受影响。用户已确认CASBOT主机转发五字段、模组本地PD，固定device_pd=true作为SDK路径约定；本地环具体频率仍未知，见[能力证据](docs/sdk_hardware_prerequisites.md#因克斯模组本地pd能力证据)。H1–H4共用SDK客户端、厂商消息和记录，只切换生成profile中的`sdk_connection.py`连接配置，不再另写直接修改q的集成夹具。新服务器仅position插值到配置参考频率，velocity/effort/PD保持；公开反馈不提供内部采样时间/序号/电流，`evaluation/`内部诊断只给独立测试。用户要求先按简单线性插值处理，默认当前参考到新目标2ms明确为合成假设，time_ref=0不解释成已确认时长。新入口无专用stop RPC；旧mock_sdk_bridge仅保留冻结S2回归，不扩成第二条现场开发路径。H3用户确认effort叠加/零PD有效后，当前Mock默认开启对应接口、关闭运行态内部补偿；旧v5条件与证据保留，不能解锁正式实机采样资格。
-- 2026-11-02收敛：`control_policy.py`复用五档PD、缩放和四组差值策略；虚拟采样/SDK回调时间的预处理、资格与接受阈值保持各自原契约。`sdk_process.py`复用H1–H4和legacy S2的参数编码、录制/执行监视及子进程回收；保留S2私有scope/stop语义及现场故障终止规则。SDK Mock行为记录升级backend_v2，五字段下发日志与估算反馈分别命名，不能用外层ROS反馈重新计算的PD充当真实内环请求。旧双进程时序报告保留，不冒充当前基线；新实现用新会话验证。
+- **SDK Mock收敛约定**：新增[统一入口](docs/sdk_mock_unification.md)，`sdk_mock.py`/`configs/sdk_mock.yaml`只启动一个`sdk_mock_server`，通过共享`SimulatedArmDevice`独占其ArmSimulationSession；SDK路径不再运行内部plant ROS桥。通用`mock_host`复用相同设备组件，每次实验仍只有一个物理状态所有者。新SDK Mock固定device_pd=true让原生内核用本地状态计算PD；普通ROS实验默认不受影响。用户已确认CASBOT主机转发五字段、模组本地PD，固定device_pd=true作为SDK路径约定；本地环具体频率仍未知，见[能力证据](docs/sdk_hardware_prerequisites.md#因克斯模组本地pd能力证据)。H1–H4共用SDK客户端、厂商消息和记录，只切换生成profile中的`sdk_connection.py`连接配置，不再另写直接修改q的集成夹具。新服务器仅position插值到配置参考频率，velocity/effort/PD保持；公开反馈不提供内部采样时间/序号/电流，`evaluation/`内部诊断只给独立测试。用户要求先按简单线性插值处理，默认当前参考到新目标2ms明确为合成假设，time_ref=0不解释成已确认时长。新入口无专用stop RPC；旧mock_sdk_bridge及S2执行链已退役，冻结证据在ROS备份分支。H3用户确认effort叠加/零PD有效后，当前Mock默认开启对应接口、关闭运行态内部补偿；旧v5条件与证据保留，不能解锁正式实机采样资格。
+- 2026-11-02收敛：`control_policy.py`复用五档PD、缩放和四组差值策略；虚拟采样/SDK回调时间的预处理、资格与接受阈值保持各自原契约。`sdk_process.py`暂供H1–H4使用，处理参数编码、录制/执行监视及子进程回收；现场故障终止规则保持。legacy S2实现已退役，不新增兼容入口。SDK Mock行为记录升级backend_v2，五字段下发日志与估算反馈分别命名，不能用外层ROS反馈重新计算的PD充当真实内环请求。旧双进程时序报告保留，不冒充当前基线；新实现用新会话验证。
 - 共用执行器启动时允许话题/服务异步发现，在原10s内等服务、期间不下发；超时仍故障终止。H3零PD审计按实际`publish_ns`与确认决策时刻，不按计划槽位推断控制状态。SDK Mock物理推进使用专用线程、SDK使用单线程ROS执行器，进程内队列/快照交接，只有物理线程访问模拟设备；积分异常传回并退出进程，析构先停止并回收物理线程。
 - Mock诊断CSV通过独立spdlog有界阻塞队列写盘，反馈先交接、不等诊断格式化或写盘；退出先回收物理线程，再排空诊断并检查错误。`libspdlog-dev`仅为可选SDK包原生依赖，离线核心/绑定不强制依赖它。采集/回放仍只读正常SDK消息，不读内部诊断。当前收敛验收和适用范围见[统一入口的本轮结果](docs/sdk_mock_unification.md)。
 - `tests/`、`cpp/tests/`、`tests/installation/`分别覆盖Python、C++和安装后消费者。`configs/`存实验条件，`scripts/humble/`存目标环境自动化。
@@ -167,32 +169,30 @@ bash scripts/humble/container.sh env PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 CASBOT_TES
 ```bash
 bash scripts/humble/container.sh python -m pip install -e . --no-deps --no-build-isolation \
   --config-settings=build-dir=build/humble --config-settings=cmake.define.CALIB_BUILD_PYTHON=ON
-bash scripts/humble/container.sh bash scripts/humble/build_ros.sh
+# 仅剩余SDK包需要对应构建；普通核心/SHM不必构建ROS包。
+# bash scripts/humble/container.sh bash scripts/humble/build_vendor.sh
 ```
 
 ROS消息生成/colcon使用系统Python，分析使用同版本venv；脚本同时设置`Python3_EXECUTABLE`与旧`PYTHON_EXECUTABLE`。长时间采集期间不要替换内核；记录实际运行二进制的摘要，而非稍后重建的同路径文件摘要。
 
 ## 运行与验收入口
 
-以下示例输出目录必须不存在；已存在时换名，只有明确继续同一已核验会话才使用`--resume`。完整命令链使用本机已有冻结基线`artifacts/humble_migration/baseline/comparison`；执行前确认存在，缺失时先按迁移计划取得真实基线，不用当前结果冒充旧基线。
+以下示例输出目录必须不存在；只有明确继续同一已核验会话才使用`--resume`。冻结基线`artifacts/humble_migration/baseline/comparison`须实际存在，不能用当前结果冒充旧基线。
 
 ```bash
-# 原A–F/R1/旧双臂回归、构建、安装消费者和wheel检查；不包含新版M2–M6全部实验
+# 当前主线SHM：构建+私有协议与物理闭环，无ROS通信/真实SHM。
+bash scripts/humble/exec.sh --no-venv -- bash scripts/shm/build.sh --with-mock \
+  --build-dir build/shm-core --install-prefix "$PWD/install/shm-core" \
+  --dependency-prefix /opt/ros/humble
+bash scripts/humble/exec.sh --no-venv -- python3 scripts/shm/verify_physics.py --bin-dir install/shm-core/bin
+# 原A–F/R1/旧双臂数值回归、构建、安装消费者和wheel检查。
 bash scripts/humble/container.sh bash scripts/humble/validate.sh artifacts/my_regression \
   artifacts/humble_migration/baseline/comparison
-# 本机真实ROS双端频率/延迟实验及无真值验收
-bash scripts/humble/container.sh bash scripts/humble/ros.sh casbot-calib ros-benchmark --output artifacts/my_ros
-bash scripts/humble/container.sh python scripts/humble/verify_m2.py --folder artifacts/my_ros --regression artifacts/my_regression
-# 新版完整分阶段流程、综合复核与中文视频
-bash scripts/humble/container.sh casbot-calib staged-suite --output artifacts/my_staged --fps 12 \
-  --ros-report artifacts/my_ros/analysis/report.json
-# 汇总已有M1–M6证据；此命令本身不替代前面的实验
-bash scripts/humble/container.sh python scripts/humble/verify_release.py \
-  --regression artifacts/my_regression --ros artifacts/my_ros --staged artifacts/my_staged \
-  --output artifacts/my_staged/release.json
+# 合成分阶段流程；不再消费旧ROS benchmark报告。
+bash scripts/humble/container.sh casbot-calib staged-suite --output artifacts/my_staged --fps 12
 ```
 
-`validate.sh`不传基线时也能运行构建和原实验，但其`baseline_metrics_compared`为0；后续`verify_m2.py`与`verify_release.py`要求实际完成114项对照，不能将前一种结果当作完整证据。不要覆盖冻结基线或放宽原容差。
+`validate.sh`不传基线仍可构建/运行实验，但`baseline_metrics_compared`为0，不能称完成114项基线对照。其当前记录为`casbot_native_regression_v2`，不包含ament消费；`ros.sh`、`verify_m2.py`、`verify_release.py`随独立ROS链退役。历史M1–M6聚合仅从ROS备份分支和冻结证据读取，不覆盖或重新定义旧结果。
 
 `plan-staged`仅规划；`staged-calibrate --through gravity|friction|breakaway|inertia|all`用于阶段采集/辨识；`staged-identify`只重分析；`staged-verify`做综合复核；`render-staged`只读回放。完整合成交付查看`delivery.json`，M1–M6汇总查看`release.json`，单个检查点通过不能代替全部验收。P0的R4使用`staged-calibrate --final-test 父会话 --attribution-analysis R3目录 --config configs/staged_dual_arm_p0.yaml --output 新R4目录`；只读重评分为`staged-identify 父会话 --through final --final-protocol R4目录 --output 新目录`，回放传R4目录。旧`staged-suite`仍为schema 1路径，不能把P0配置直接交给它。
 
@@ -200,10 +200,10 @@ bash scripts/humble/container.sh python scripts/humble/verify_release.py \
 
 ## 后续推进顺序
 
-当前动力学P0 R0–R4已完成本机合成闭环，交付为`artifacts/staged_p0_r4_release/delivery.json`及`r4_delivery.json`。后续优先甲方设备/ROS接口、实际几何与夹具、尺度/方向/时钟/采样带宽资格，再推进实机独立实验。R4频段/控制收益不代表实机或全频带性能；40阶外残差仍单独保留。新分析用新目录，resume要求同一实现/输入。正式test已经采集，禁止再用当前会话选择候选或改阈值；修改模型/方法后须升级协议并使用新独立测试批次。
+当前动力学P0 R0–R4已完成本机合成闭环，交付为`artifacts/staged_p0_r4_release/delivery.json`及`r4_delivery.json`。后续主线为Orin本机SHM接口，逐批迁移消费者，同时核对实际几何/夹具、尺度/方向/观测时间和带宽，再推进实机独立实验。R4频段/控制收益不代表实机或全频带性能；40阶外残差仍单独保留。新分析用新目录，resume要求同一实现/输入。正式test已经采集，禁止再用当前会话选择候选或改阈值；修改模型/方法后须升级协议并使用新独立测试批次。
 
-1. **确认甲方接口与能力配置**：以现有SDK原生ROS topic为首选；ros2_control仅在交付端已提供时复用，不自行新增重复硬件循环。整段轨迹下发能力未知，不依赖它。确认消息类型/模式、单位、关节映射、采用回执、原始采样/时钟、电流滤波/带宽、限幅与停止方式。不要默认回到SOEM/EtherCAT方案。
-2. **实现薄适配并复用现有管线**：优先接甲方已有控制器/hardware_interface，避免另起重复硬件控制循环。保留本机ROS Mock；未知能力显式声明，不填成已知时间/独立力矩。实机连接与下发按用户任务授权范围执行，离线实现和验证可先推进。
+1. **完成SHM双架构私有验收和现场逐例确认**：先恢复Orin网络，部署本次提交、原生编译/安装执行器与物理Mock，只跑私有端点。实机按`fieldwork/shm`单例执行，由用户观察；不自动启动业务/主站，不把接口换成自行编写的EtherCAT主站。
+2. **迁移上层并删除旧SDK底座**：按R3接H1短轨迹与A显式观测时间，再接H2–H4；R4迁移GUI/回零/K5，最后删除ROS专用采集/服务/消息/启动器。复用模型/规划/辨识内核，不启动第二个SHM消费者；新记录不伪造ROS发布stamp或采样时间。第4/5/6项仍采用既定开发默认，不阻断开发。
 3. **做物理网络与设备预检**：独立测物理方向/机械零位、输出增益尺度、时钟映射及频率/延迟；多批次、随机化顺序测试，冻结模型验证，不能逐频重拟合掩盖差异。确认高带宽原始记录或有效替代观测。
 4. **替换真实模型/夹具条件后开展分阶段实机实验**：实际几何、安装重力方向、工具与设备限制到位后重做碰撞/过渡/停止门禁，再按重力→匀速摩擦→重力补偿起动→前序验收→惯量激励→独立验证→控制对照推进。真实试验开始前观测并确认起始姿态，不能照搬Mock初始化。
 5. **推进运动学K5与实测验收**：K4合成复测/回放之后接实际球架/工具计量、独立外测、间隔复标和实机薄适配。K2默认四球左右各两个仅验测量闭环；K3每臂三非共线基准点消除两球连线转动歧义，仍须SVD检查。固定球架世界变换/工具是合成计量锚点，实机未知时不能套用。10mm非接触余量和三对有界行程接触分开审计；几何误差族另加刚体位移预算。三个表与关节不默认同步，球心位置约束不代表姿态精度。更新共享几何/版本后重验碰撞和动力学；实际千分计工具负载单独建模。其他控制/载荷扩展按观测条件分轮推进。

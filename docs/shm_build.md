@@ -1,6 +1,6 @@
 # SHM 原生构建与 Orin 源码部署
 
-首个增量交付可独立构建、安装和消费的 `casbot_calib::shm` 协议库，以及离线诊断工具 `shm_abi_check`。工具检查35槽布局并输出JSON，不打开共享内存。现已追加IPC和[`shm_joint_test`双臂原型](shm_joint_test.md)，由`--with-core`编译；现已提供共用runtime的`shm_executor`与[fieldwork C00–C06入口](../fieldwork/shm/README.md)，支持观测/保持/逐轴及停止专项；通用CSV/手动流与物理`shm_mock_server`仍待后续。
+当前提供可独立消费的`casbot_calib::shm`协议库、IPC/时钟工具、共用runtime的`shm_executor`与[`shm_joint_test`原型](shm_joint_test.md)，以及双臂物理`shm_mock_server`。执行器支持C00–C06、冻结七次Hermite参考和独立五字段。用法见[fieldwork手册](../fieldwork/shm/README.md)；CSV导入、在线手动信箱和H1–H4/GUI/K5消费者仍待迁移。
 
 ## 构建、测试和安装
 
@@ -21,15 +21,28 @@ bash scripts/shm/build.sh
 
 也可直接使用 `cmake --preset shm-native`、`cmake --build --preset shm-native`、`ctest --preset shm-native`。现有 `dev/conda/humble` preset 及核心/Python 默认构建保留。
 
-要提前验证物理 Mock 将依赖的现有动力学核心：
+执行器读取URDF需要核心，完整物理Mock使用`--with-mock`（同时开启核心）：
 
 ```bash
-bash scripts/shm/build.sh --with-core \
+bash scripts/shm/build.sh --with-mock \
   --build-dir build/shm-core --install-prefix "$PWD/install/shm-core" \
   --dependency-prefix /opt/ros/humble
 ```
 
-此组合包含现有核心、模拟设备测试及 SHM 协议测试，不是完整 SHM Mock。算法库前缀显式选择，不 source ROS 或继承厂家运控 `LD_LIBRARY_PATH`。算法包自身可能通过 CMake 查找其 Python 开发依赖；这与本工程 Python 绑定关闭是两回事。
+此组合包含现有核心、模拟设备测试、SHM协议/fieldwork及物理闭环测试。只需要执行器可用`--with-core`。算法库前缀显式选择，不source ROS或继承厂家运控`LD_LIBRARY_PATH`。算法包自身可能通过CMake查找其Python开发依赖；本工程Python绑定仍关闭。
+
+也可用`shm-physics`的configure/build/test preset，并通过`CMAKE_PREFIX_PATH`显式提供算法库前缀。选项`CALIB_BUILD_SHM_MOCK=ON`要求`CALIB_BUILD_CORE=ON`与`CALIB_BUILD_SHM=ON`。参考解析复用已有Boost.PropertyTree，不新增JSON、ROS或SDK运行依赖。
+
+```bash
+# 在本机Humble工具链原生构建：
+bash scripts/humble/exec.sh --no-venv -- bash scripts/shm/build.sh --with-mock \
+  --build-dir build/shm-core --install-prefix "$PWD/install/shm-core" \
+  --dependency-prefix /opt/ros/humble
+# 本机容器内运行安装后的双进程闭环，无numpy/pytest/Python绑定：
+bash scripts/humble/exec.sh --no-venv -- python3 scripts/shm/verify_physics.py --bin-dir install/shm-core/bin
+```
+
+`Shm`组件安装执行器/Mock，`Core`组件安装算法静态库及其消费接口；`--with-core/--with-mock`构建脚本会安装两者。运行仍需Pinocchio/Coal等外部动态库。模型URDF从仓库解析，脚本不复制Models组件。跨架构必须在目标机重编，不能传x86_64二进制到Orin。
 
 ### 安装包的外部调用
 
@@ -63,7 +76,7 @@ bash scripts/shm/deploy_git.sh --host nvidia@172.16.0.10
 - 编译期检查消息/手部大小、关键偏移与外层对齐；固定夹具独立预期字段检查，保留所有字节，拒绝错误长度，验证非对齐输入复制。
 - 独立安装后 `find_package(... COMPONENTS Shm)` 的 C++ 消费者可链接运行。
 - SHM 单独构建不需要算法库；核心开启时原测试继续使用原数值模型。
-- 本轮尚不包含队列同步、定点转换、时钟映射和双进程物理联跑；后续顺序见[移植计划](shm_migration_plan.md)。
+- 队列同步、双臂五字段定点转换、分段时钟映射、原始记录和私有物理联跑均有测试。真实通道采样/滤波、力矩尺度、退出物理行为仍按[现场手册](shm_field_validation.md)确认。
 
 ### 2026-11-13 实际部署结果
 
@@ -81,3 +94,11 @@ Orin 使用 `/opt/ros/humble` 的 Pinocchio 4.0.0、Coal 3.0.3 和系统 Boost 1
 Orin墙钟仍为1970，本轮日期是本地执行记录标记。系统库文件时间晚于墙钟，Make出现`Clock skew`告警，可能重复重链；本轮使用新构建目录完成编译并实际运行测试。未校时或改厂家文件；后续若安排校时，应另用新构建目录，避免沿用跨时钟跳变的增量缓存。
 
 完整远端日志保存在本机 `artifacts/shm_cmake_orin_20261113/native_build.log`，安装消费/动态链接检查在同目录 `installed_consumers.log`。这些是离线代码与安装验证，未运行真实 SHM 或机器人动作；大LFS资产尚未物化。
+
+### 2026-11-14 通用执行器与物理Mock的本机结果
+
+Humble/x86_64已编译完整核心、绑定及SHM/Mock，12项CTest通过。59项相关Python测试通过，后续新增4项自有IPC回收、启动失败、配置和错误报告测试通过；最后的配置工厂复用与反馈类型调整后，模拟设备、codec和物理CLI三项针对性CTest通过。实际加载的Python扩展已更新；全Python测试收集937项，无导入错误（不是937项全部执行）。
+
+安装后的系统Python标准库联跑通过，证据为`artifacts/shm_round2_20261114/installed_physics/verification.json`：同一执行器运行小幅七次参考，物理反馈不等于目标；C05静默区间零写入、驱动保持使能，结束失能并回收私有IPC。最后安装版的一行C03物理运行也已完成，记录为`final_installed_cli/`，执行完成且Mock正常退出/无回收错误。默认10秒无命令观测另存`default_observe/`，没有隐藏保持。协议单独构建/测试/安装仍通过，日志为同目录`protocol_build.log`。
+
+**新版Orin原生验收待补。** 本次原直连网卡已不存在，172.16.0.10的ping/SSH未连通；没有部署新版或接触真实SHM。恢复网络后，先提交并用上面的Git部署入口同步，再在Orin运行`build.sh --with-mock`及安装后的`verify_physics.py`。2026-11-13的ARM结果只覆盖当时版本，不覆盖本次Mock/参考实现。

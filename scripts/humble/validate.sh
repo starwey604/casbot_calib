@@ -6,10 +6,10 @@ baseline_dir=${2:-}
 [[ ! -e "$output_dir" ]] || { echo "Output already exists: $output_dir" >&2; exit 1; }
 mkdir -p "$output_dir"
 output_dir=$(cd -- "$output_dir" && pwd)
-cmake --preset humble -DCALIB_BUILD_PYTHON=ON -DCALIB_BUILD_SHM=ON
+cmake --preset humble -DCALIB_BUILD_PYTHON=ON -DCALIB_BUILD_SHM=ON -DCALIB_BUILD_SHM_MOCK=ON
 python -m pip install -e . --no-deps --no-build-isolation --config-settings=build-dir=build/humble \
   --config-settings=cmake.define.CALIB_BUILD_PYTHON=ON
-cmake --preset humble -DCALIB_BUILD_PYTHON=ON -DCALIB_BUILD_SHM=ON
+cmake --preset humble -DCALIB_BUILD_PYTHON=ON -DCALIB_BUILD_SHM=ON -DCALIB_BUILD_SHM_MOCK=ON
 cmake --build --preset humble
 ctest --preset humble --output-junit "$output_dir/ctest.xml"
 PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 CASBOT_TEST_RENDER=1 python -m pytest -q --junitxml="$output_dir/pytest.xml"
@@ -22,7 +22,7 @@ build/humble-consumer/calib_consumer > "$output_dir/native-consumer.txt"
 python -m pip wheel . --no-deps --no-build-isolation --wheel-dir "$output_dir/packages" \
   --config-settings=build-dir=build/humble --config-settings=cmake.define.CALIB_BUILD_PYTHON=ON
 python scripts/humble/verify_wheel.py --wheel "$output_dir"/packages/*.whl --output "$output_dir/wheel"
-cmake --preset humble -DCALIB_BUILD_PYTHON=ON -DCALIB_BUILD_SHM=ON
+cmake --preset humble -DCALIB_BUILD_PYTHON=ON -DCALIB_BUILD_SHM=ON -DCALIB_BUILD_SHM_MOCK=ON
 casbot-calib suite --configs configs --output "$output_dir/experiments"
 casbot-calib arm-check --output "$output_dir/experiments/R1" --render
 casbot-calib dual-calibrate --output "$output_dir/experiments/D14" --render

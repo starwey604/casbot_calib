@@ -38,8 +38,12 @@ class ArmSimulationSession {
   ArmSimulationSession(ArmSimulationSession&&) noexcept;
   ArmSimulationSession& operator=(ArmSimulationSession&&) noexcept;
   void submit(const ArmCommand& command);
+  // Explicit drive-power event at the current virtual time. Commands never
+  // re-enable a disabled drive; existing callers start with all drives enabled.
+  void set_drive_enabled(Nanoseconds at,const Eigen::VectorXi& enabled);
   ArmSimulationResult advance_to(Nanoseconds end_ns);
   Nanoseconds time_ns() const;
+  Eigen::Index joint_count() const;
  private:
   struct Impl;
   std::unique_ptr<Impl> impl_;
