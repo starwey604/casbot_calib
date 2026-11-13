@@ -1,7 +1,6 @@
 #include <casbot_calib/shm/channel.hpp>
 #include <casbot_calib/shm/arm_jog.hpp>
 #include <casbot_calib/arm_dynamics.hpp>
-#include <casbot_calib/collision.hpp>
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
@@ -15,7 +14,6 @@
 #include <iterator>
 #include <locale>
 #include <mutex>
-#include <set>
 #include <sstream>
 #include <sys/prctl.h>
 #include <thread>
@@ -74,71 +72,6 @@ StatusFrame fresh(Channel& channel) {
   }
   throw std::runtime_error("No fresh changing master frame counter within 2 seconds");
 }
-struct Scene {
-  std::unique_ptr<casbot::CollisionChecker> checker;
-  Eigen::VectorXd thresholds;
-  Scene(const std::string& path,const casbot::ArmDynamics& model,const std::string& urdf) {
-    std::ifstream in(path); std::string tag; int n=0; in>>tag>>n;
-    if(tag!="CASBOT_SHM_COLLISION_V1" || n!=14) throw std::runtime_error("Invalid collision scene header");
-    for(int j=0;j<14;++j) { std::string name;in>>name;if(name!=arm_names[j])throw std::runtime_error("Collision scene joint order mismatch"); }
-    std::ifstream source(urdf,std::ios::binary);const std::string xml{std::istreambuf_iterator<char>(source),std::istreambuf_iterator<char>()};
-    std::string expected;constexpr char hex[]="0123456789abcdef";
-    for(unsigned char c:xml){expected+=hex[c>>4];expected+=hex[c&15];}
-    std::string binding;in>>tag>>binding;
-    if(tag!="URDF_HEX" || binding!=expected || xml.empty())throw std::runtime_error("Collision scene is bound to a different URDF");
-    std::size_t count=0;in>>count;
-    if(count==0 || count>2000)throw std::runtime_error("Invalid geometry count");
-    std::vector<casbot::CollisionGeometry> geometry(count);
-    for(auto& g:geometry) {
-      int attached=0; std::size_t vertices=0,triangles=0;
-      in>>g.name>>g.parent>>attached>>vertices>>triangles;g.attached_to_base=attached;
-      if(vertices<4 || vertices>1000000 || triangles>2000000 || g.parent < -1 || g.parent>=14)
-        throw std::runtime_error("Invalid collision geometry");
-      for(int r=0;r<3;++r)for(int c=0;c<3;++c)in>>g.placement.rotation(r,c);
-      for(int r=0;r<3;++r)in>>g.placement.translation[r];
-      g.vertices.resize(vertices,3);g.triangles.resize(triangles,3);
-      for(Eigen::Index r=0;r<g.vertices.rows();++r)for(int c=0;c<3;++c)in>>g.vertices(r,c);
-      for(Eigen::Index r=0;r<g.triangles.rows();++r)for(int c=0;c<3;++c)in>>g.triangles(r,c);
-      if(!in || !g.vertices.allFinite() || !g.placement.rotation.allFinite() || !g.placement.translation.allFinite())
-        throw std::runtime_error("Truncated/nonfinite collision geometry");
-    }
-    std::size_t pairs=0; in>>pairs;
-    if(pairs==0 || pairs>count*(count-1)/2) throw std::runtime_error("Invalid collision pairs");
-    thresholds.resize(pairs); std::vector<std::pair<int,int>> enabled;
-    std::set<std::pair<int,int>> active;
-    for(std::size_t i=0;i<pairs;++i) {
-      int a,b; in>>a>>b>>thresholds[i];
-      if(a<0 || b<=a || b>=static_cast<int>(count) || !std::isfinite(thresholds[i]) || thresholds[i]<.01 || !active.emplace(a,b).second)
-        throw std::runtime_error("Invalid pair or clearance below 10mm");
-      enabled.emplace_back(a,b);
-    }
-    std::string extra;if(!in || (in>>extra))throw std::runtime_error("Collision scene truncated or has trailing data");
-    std::vector<std::pair<int,int>> excluded;
-    for(int a=0;a<static_cast<int>(count);++a)for(int b=a+1;b<static_cast<int>(count);++b)
-      if(!active.count({a,b}))excluded.emplace_back(a,b);
-    checker=std::make_unique<casbot::CollisionChecker>(model,geometry,excluded);
-    if(checker->pairs()!=enabled)throw std::runtime_error("Native collision pair order differs from frozen scene");
-  }
-  bool certify(const Eigen::VectorXd& q,int joint,double amplitude,std::ostream& report) {
-    const auto radii=checker->motion_radii();
-    struct Interval { double a,b; int depth; };
-    std::vector<Interval> pending{{-amplitude,amplitude,0}};
-    std::size_t queries=0;double minimum=std::numeric_limits<double>::infinity();
-    while(!pending.empty()) {
-      const auto x=pending.back();pending.pop_back();
-      Eigen::MatrixXd pose(1,14);pose.row(0)=q.transpose();pose(0,joint)+=(x.a+x.b)/2;
-      const auto distances=checker->check_batch(pose).distances.row(0).transpose().eval();
-      minimum=std::min(minimum,distances.minCoeff());++queries;
-      if((distances.array()<=thresholds.array()).any()) {report<<"collision_or_clearance min_m="<<minimum<<" queries="<<queries<<'\n';return false;}
-      if(((distances-radii.col(joint)*(x.b-x.a)/2).array()>thresholds.array()).all())continue;
-      if(x.depth>=20 || queries>=200000) {report<<"collision_interval_unresolved min_m="<<minimum<<'\n';return false;}
-      const auto mid=(x.a+x.b)/2;
-      pending.push_back({x.a,mid,x.depth+1});pending.push_back({mid,x.b,x.depth+1});
-    }
-    report<<"collision_certified min_sampled_m="<<minimum<<" queries="<<queries<<" nominal_reference_only\n";
-    return true;
-  }
-};
 struct Record { std::int64_t at,send_at,receive_at; unsigned char phase; bool sent,received; CommandFrame cmd; StatusFrame state; };
 class Recorder {
   std::mutex mutex_; std::condition_variable ready_; std::deque<Record> queue_;
@@ -278,23 +211,24 @@ void snapshot_output(const std::filesystem::path& root,const StatusFrame& state,
 void usage() {
   std::cout<<"shm_joint_test --inspect --output NEW_DIR [--shm /shm_mc]\n"
     <<"shm_joint_test --snapshot --urdf FILE --output NEW_DIR [--shm /shm_mc]\n"
-    <<"shm_joint_test --execute --joint-id 12..25 --urdf FILE --scene FILE --hand-background command.bin --output NEW_DIR\n"
+    <<"shm_joint_test --execute --joint-id 12..25 --urdf FILE --hand-background command.bin --output NEW_DIR\n"
     <<"  [--amplitude .5] [--segment-s 5] [--kp 20] [--kd 2] [--shm /shm_mc]\n"
     <<"inspect is O_RDONLY; snapshot consumes status only, requires exclusive window.\n"
-    <<"execute disables legs/waist/head, holds other arm axes; hand bytes explicitly frozen from given file.\n";
+    <<"execute disables legs/waist/head, holds other arm axes; hand bytes explicitly frozen from given file.\n"
+    <<"Motion preflight checks URDF position/velocity limits; collision checking is disabled.\n";
 }
 }
 int main(int argc,char** argv) {
   std::cout<<std::setprecision(9);std::signal(SIGINT,signal_stop);std::signal(SIGTERM,signal_stop);std::signal(SIGHUP,signal_stop);std::signal(SIGPIPE,SIG_IGN);
   try {
-    std::string mode,name="/shm_mc",output,urdf,scene,background;int id=12;double amplitude=.5,segment=5,kp=20,kd=2;
+    std::string mode,name="/shm_mc",output,urdf,background;int id=12;double amplitude=.5,segment=5,kp=20,kd=2;
     for(int a=1;a<argc;++a) {
       const std::string key=argv[a];
       if(key=="--help"){usage();return 0;}
       if(key=="--inspect"||key=="--snapshot"||key=="--execute") {if(!mode.empty())throw std::runtime_error("Choose one mode");mode=key;continue;}
       if(a+1>=argc)throw std::runtime_error("Missing option value");const std::string value=argv[++a];
       if(key=="--shm")name=value;else if(key=="--output")output=value;else if(key=="--urdf")urdf=value;
-      else if(key=="--scene")scene=value;else if(key=="--hand-background")background=value;
+      else if(key=="--hand-background")background=value;
       else {
         std::size_t used=0;
         if(key=="--joint-id")id=std::stoi(value,&used);
@@ -320,7 +254,7 @@ int main(int argc,char** argv) {
     Channel channel(name);auto state=fresh(channel);
     snapshot_output(output,state,model.model());
     if(mode=="--snapshot")return 0;
-    if(scene.empty()||background.empty())throw std::runtime_error("Collision scene and explicit hand command background required");
+    if(background.empty())throw std::runtime_error("Explicit hand command background required");
     const auto q0=positions(state);const auto& joint=model.model().joints[index];
     if(4.375*amplitude/segment>std::min(1.5,joint.velocity_limit))throw std::runtime_error("Jog reference exceeds configured/URDF velocity limit");
     if(!jog_within_limits(q0[index],joint.lower,joint.upper,amplitude)) {
@@ -329,16 +263,11 @@ int main(int argc,char** argv) {
     }
     for(int j=0;j<14;++j)if(q0[j]<model.model().joints[j].lower||q0[j]>model.model().joints[j].upper)
       throw std::runtime_error("Measured start outside URDF limit at joint ID "+std::to_string(j+12));
-    Scene collision(scene,model,urdf);std::ofstream proof(std::filesystem::path(output)/"collision_reference.txt");
-    if(!collision.certify(q0,index,amplitude,proof)) {
-      std::ofstream(std::filesystem::path(output)/"result.txt")<<"execution_completed=0\nreason=SKIP_collision\ncommands_sent=0\n";
-      return 4;
-    }
     state=fresh(channel);
-    if((positions(state)-q0).cwiseAbs().maxCoeff()>.005)throw std::runtime_error("Start changed during planning; no commands sent");
+    if((positions(state)-q0).cwiseAbs().maxCoeff()>.005)throw std::runtime_error("Start changed during preflight; no commands sent");
     const auto hand=read_background(background);
     binary(std::filesystem::path(output)/"hand_background_source.bin",hand);
-    std::ofstream(std::filesystem::path(output)/"settings.txt")<<"mode=arm_jog_experiment\nnon_arm=disabled\nhand_policy=explicit_frozen_command_bytes\nurdf="<<urdf<<"\nscene="<<scene<<'\n';
+    std::ofstream(std::filesystem::path(output)/"settings.txt")<<"mode=arm_jog_experiment\nnon_arm=disabled\nhand_policy=explicit_frozen_command_bytes\nurdf="<<urdf<<"\ncollision_check=disabled_by_user"<<'\n';
     const auto parent=getppid();if(parent<=1 || prctl(PR_SET_PDEATHSIG,SIGTERM) || getppid()!=parent)throw std::runtime_error("No live supervisor");
     std::cout<<"START id="<<id<<" q0="<<q0[index]<<" amplitude="<<amplitude<<" kp="<<kp<<" kd="<<kd<<"\n";
     run(channel,state,hand,q0,index,amplitude,segment,kp,kd,output);

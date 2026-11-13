@@ -1,6 +1,6 @@
 # 双臂原生 SHM 逐轴试验
 
-`shm_joint_test` 先打印所有电机关节槽和双手原始状态，再按本次实际双臂位置检查 URDF 限位及连续碰撞参考。主动入口一次只跑一个双臂 ID，默认 `q0 → q0−0.5 → q0+0.5 → q0`，每段5秒的C3平滑轨迹，Kp=20、Kd=2、前馈=0；峰值参考速度0.4375rad/s。
+`shm_joint_test` 先打印所有电机关节槽和双手原始状态，再按本次实际双臂位置检查 URDF 位置限位及参考速度。主动入口一次只跑一个双臂 ID，默认 `q0 → q0−0.5 → q0+0.5 → q0`，每段5秒的C3平滑轨迹，Kp=20、Kd=2、前馈=0；峰值参考速度0.4375rad/s。
 
 **2026-11-13用户指定现场条件**：先测双臂14轴，所有状态照常打印；机器人有固定支撑，腿/腰/头可以失能，现场有外置远程继电器保护。此轮是中间件控制流程探索，不需要先完成正式标定观测资格。
 
@@ -12,21 +12,17 @@
 - 双臂先失能、切MIT、使能到起点保持；当次只改变所选轴，其余双臂目标固定为本次读取值。力矩前馈始终0，不暗加重力/摩擦。
 - 手部不纳入运动试验。通过显式`--hand-background`文件冻结原命令的手部字段；只取其中双手字节和hand_count，不重放其中腿/腰/头/双臂旧目标，也不复制反馈总力矩到前馈。该手部背景选择随记录保存。
 
-某轴的`q0−0.5`或`q0+0.5`超出URDF限位时，打印两端目标和限位，写`SKIP_urdf_limit`，**不发任何控制帧**。不夹目标、不自动缩幅。参考碰撞沿用现有裸法兰整机/地面几何、原检查对与10mm阈值；不能证明带手/工具、夹具或真实停机包络。
+某轴的`q0−0.5`或`q0+0.5`超出URDF限位时，打印两端目标和限位，写`SKIP_urdf_limit`，**不发任何控制帧**。不夹目标、不自动缩幅。按用户本轮决定，本试验入口不执行碰撞检测，也不需要碰撞场景文件；原H1–H4/K5等标定与规划入口的碰撞规则不变。
 
-## 编译与场景准备
+## 编译
 
 ```bash
-# 本机Humble导出现有碰撞包的全部几何/检查对；不近似或删对。
-bash scripts/humble/container.sh python scripts/shm/export_scene.py \
-  artifacts/my_shm_test/collision.scene
-
 # Orin上：独立原生编译，使用前一轮已验证的算法库。
 bash scripts/shm/build.sh --with-core --build-dir build/shm-core \
   --install-prefix "$PWD/install/shm-core" --dependency-prefix /opt/ros/humble
 ```
 
-场景文本包含原URDF逐字节绑定；C++入口拒绝不匹配的URDF，直接重建现有Coal几何并用原生运动半径做连续单轴区间证明。把导出的场景文件经SSH传到Orin的本轮`artifacts/`；代码仍走[Git部署入口](shm_build.md#通过-ssh-从本地-git-克隆到-orin)。
+代码通过[Git部署入口](shm_build.md#通过-ssh-从本地-git-克隆到-orin)传到Orin，不再导出或传输碰撞场景。
 
 程序位于`install/shm-core/bin/shm_joint_test`。安装RPATH使用本次显式链接的算法库前缀，不要求加载厂家运控环境。
 
@@ -55,12 +51,11 @@ install/shm-core/bin/shm_channel_start --fresh-master /shm_mc
 
 # 会切换状态、使能双臂并发运动命令；一次一个ID。
 "$tool" --execute --joint-id 12 --urdf "$urdf" \
-  --scene artifacts/my_shm_test/collision.scene \
   --hand-background artifacts/my_shm_test/before_stop/command.bin \
   --output artifacts/my_shm_test/id12
 ```
 
-每轴重新读取起点并检查双向限位；碰撞规划后又读新帧核对起点连接（0.005rad）。检查不通过就不使能、不发轨迹；不会用上轴旧起点继续。代理运行一例，用户观察反馈后再继续下一例。`--amplitude`只允许显式减小到(0,0.5]，不自动调整；`--kp/--kd/--segment-s`可显式修改，速度仍不超过URDF及1.5rad/s上限。
+每轴重新读取起点并检查双向限位；开始发送前又读新帧核对起点连接（0.005rad）。检查不通过就不使能、不发轨迹；不会用上轴旧起点继续。代理运行一例，用户观察反馈后再继续下一例。`--amplitude`只允许显式减小到(0,0.5]，不自动调整；`--kp/--kd/--segment-s`可显式修改，速度仍不超过URDF及1.5rad/s上限。
 
 新主站先等待客户端启动握手，三个信号量均为0时不会产生反馈。`shm_channel_start --fresh-master`仅在两方向计数/索引全0且back/front/start均为0时，按原运控init顺序依次post一次；它启动共享I/O，但不下发电机命令、不清队列。普通连接不post、不重置索引，不能用此入口修复被占用的互斥量或自动恢复故障会话。
 
@@ -73,7 +68,7 @@ install/shm-core/bin/shm_channel_start --fresh-master /shm_mc
 - `arms.csv`：全部14轴当前位置、URDF上下限、双向目标与限位结果。
 - `commands.csv/feedback.csv/events.csv`：成功入队/出队时刻、主站原始毫秒stamp、阶段和位置。成功入队不作模组执行证明；未把stamp当驱动采样时刻。
 - `commands.bin`：每条为8字节小端单调入队完成时刻＋744字节原始命令；`feedback.bin`为8字节接收完成时刻＋696字节原始状态，保留全轴与双手。
-- `status.bin`、`hand_background_source.bin`、`settings.txt`、`collision_reference.txt`保存起点、手部背景及计划依据。
+- `status.bin`、`hand_background_source.bin`、`settings.txt`保存起点、手部背景和`collision_check=disabled_by_user`。旧运行中的`collision_reference.txt`只属于当时启用检查的版本。
 - `result.txt`：执行结果、原因、最大成功发送间隔与记录前缀状态；`execution_completed`不表示物理往返误差或正式标定通过。
 
 控制周期与磁盘/终端打印分离；有界记录队列满或写盘失败时停录保留前缀，控制不因慢日志阻塞。每秒打印一次全轴状态；不依靠SSH输出维持周期。
@@ -91,4 +86,4 @@ install/shm-core/bin/shm_channel_start --fresh-master /shm_mc
 
 材料：Orin仓库 `artifacts/shm_joint_test_20261113/{snapshot_repositioned,id12_v2}/`；本机对应副本位于同根目录的 `orin/`，对比诊断为 `snapshot_repositioned_diagnosis.json` 和 `id12_v2_diagnosis.json`。原始状态与历史别名记录不回写。
 
-下一步由现场将双臂摆到松手后也能保持远离髋部的位置，人员离开运动范围后，再按真实ID12重读起点、重新检查；不沿用旧起点、不自动发命令保持人工摆位，不跳过现有碰撞检查。真实使能/轨迹/失能流程及其状态字应答尚未验证。
+随后用户明确要求关闭本逐轴试验的碰撞检测，只检查URDF limit。当前入口已移除碰撞场景加载与参考证明，保留双向位置/速度限位、起点新读、通信/驱动故障终止及失能流程；不再要求现场为通过模型碰撞检查重新摆位。上述旧检查结果保留原意。真实使能/轨迹/失能流程及其状态字应答待本轮运行回填。
