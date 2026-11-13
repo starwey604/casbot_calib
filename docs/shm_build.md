@@ -50,7 +50,7 @@ bash scripts/shm/deploy_git.sh --host nvidia@172.16.0.10
 
 默认新克隆到 `/home/nvidia/casbot_calib_shm`。脚本在本机 loopback 临时启动**只读 Git 服务**，通过 SSH 反向隧道让 Orin 执行 `git clone`；源码不经过 GitHub，也不 push。没有公网监听，不写 SSH 密码；认证使用正常 SSH 交互、agent 或 ControlMaster。
 
-脚本正常或异常结束时关闭自己创建的转发与 Git 服务。Orin 的 origin 为 `git://127.0.0.1:19418/casbot_calib`，仅隧道开启时可用；后续重跑同一脚本即重新开隧道并 `fetch/merge --ff-only`。它拒绝远端改动、不同 origin/分支和分叉历史，不 reset 或清理远端目录。
+脚本正常或异常结束时关闭自己创建的转发与 Git 服务。Orin 的 origin 为 `git://127.0.0.1:19418/casbot_calib/.git`，仅隧道开启时可用；后续重跑同一脚本即重新开隧道并 `fetch/merge --ff-only`。它拒绝远端改动、不同 origin/分支和分叉历史，不 reset 或清理远端目录。
 
 本地默认要求工作区已提交；如其它任务正修改固件，可显式加 `--committed-only`，只部署 main 已提交内容，不包含也不改动那些工作。`--destination`、`--branch`、`--port` 可显式修改；已有目标不会被覆盖为新仓库。
 

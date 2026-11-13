@@ -56,14 +56,14 @@ cleanup() {
 }
 trap cleanup EXIT
 git daemon --reuseaddr --export-all --strict-paths --listen=127.0.0.1 --port="$port" \
-  --base-path="$(dirname "$repo")" --disable=receive-pack --disable=upload-archive "$repo" &
+  --base-path="$(dirname "$repo")" --disable=receive-pack --disable=upload-archive "$repo/.git" &
 daemon_pid=$!
 # Authenticate/create a reusable connection before requesting a scoped forward.
 ssh "${ssh_options[@]}" "$host" true
 kill -0 "$daemon_pid"
 ssh "${ssh_options[@]}" -O forward -R "$forward" "$host"
 forwarded=1
-printf -v remote_command 'bash -s -- %q %q %q' "$destination" "$branch" "git://127.0.0.1:$port/$(basename "$repo")"
+printf -v remote_command 'bash -s -- %q %q %q' "$destination" "$branch" "git://127.0.0.1:$port/$(basename "$repo")/.git"
 ssh "${ssh_options[@]}" "$host" "$remote_command" <<'REMOTE'
 set -euo pipefail
 destination=$1
