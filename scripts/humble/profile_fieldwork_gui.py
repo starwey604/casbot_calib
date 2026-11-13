@@ -140,10 +140,12 @@ def main():
     with (run/'capture/execution/commands.csv').open() as stream:commands=list(csv.DictReader(stream))
     with (run/'capture/execution/events.csv').open() as stream:events=list(csv.DictReader(stream))
     stops=[int(row['receive_ns']) for row in events if row['state']=='STOPPING']
+    from casbot_calib.raw_archive import capture_raw,iter_records
+    raw,start,end=capture_raw(run/'capture')
     checks=dict(finished=state['phase']=='done',observer_survived=state['observer_survived'],
         explicit_restart_required=state['needs_reinitialize'],published_commands=len(commands)>100,
         no_commands_after_stop=bool(stops and all(int(row['publish_ns'])<stops[0] for row in commands)),
-        raw_cdr_preserved=(run/'capture/raw_state/raw/cdr.bin').stat().st_size>0,
+        raw_cdr_preserved=any(cdr for _,cdr in iter_records(raw,start_ns=start,end_ns=end)),
         no_gravity_feedforward=all(float(row['effort'+str(j)])==0 for row in commands for j in range(14)))
     if args.stall_seconds:
         checks['heartbeat_cause_visible']=state['visible_code']=='frontend_heartbeat_timeout'

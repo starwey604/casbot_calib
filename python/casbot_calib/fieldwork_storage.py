@@ -15,17 +15,35 @@ def cache_home():
         str(Path(os.environ.get('XDG_STATE_HOME', str(Path.home()/'.local/state')))/'casbot-calib/fieldwork'))).expanduser().resolve()
 
 
-def new_cache(limit_mib=512):
+def new_cache(limit_mib=512, workspace=None):
     if not isinstance(limit_mib,(int,float)) or not 32 <= limit_mib <= 65536:
         raise ValueError('缓存容量须为32–65536 MiB')
     identifier=datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')+'_'+uuid.uuid4().hex[:8]
     root=cache_home()/'sessions'/identifier;root.mkdir(parents=True,exist_ok=False)
-    atomic_json(root/'cache.json',dict(id=identifier,created_utc=datetime.now(timezone.utc).isoformat(),limit_bytes=int(limit_mib*1024**2)))
+    atomic_json(root/'cache.json',dict(id=identifier,created_utc=datetime.now(timezone.utc).isoformat(),limit_bytes=int(limit_mib*1024**2),
+        workspace=str(Path(workspace).resolve() if workspace else root/'workspace'),
+        recording_roots=[str(root), *([str(Path(workspace).resolve())] if workspace else [])]))
     return root
 
 
+def attach_budget(workspace, limit_mib=512, cache=None):
+    """Bind every GUI output path to one quota and one shared pause marker."""
+    root=Path(workspace).resolve()
+    if cache is not None:
+        record=dict(budget_root=str(Path(cache).resolve()))
+    else:
+        if not isinstance(limit_mib,(int,float)) or not 32 <= limit_mib <= 65536:
+            raise ValueError('缓存容量须为32–65536 MiB')
+        record=dict(budget_root=str(root),limit_bytes=int(limit_mib*1024**2),recording_roots=[str(root)])
+    atomic_json(root/'recording_budget.json',record)
+
+
 def cache_for(workspace):
-    parent=Path(workspace).resolve().parent
+    root=Path(workspace).resolve()
+    if (root/'saved_session.json').exists():return None
+    binding=root/'recording_budget.json'
+    if binding.is_file():return Path(json.loads(binding.read_text())['budget_root'])
+    parent=root.parent
     return parent if (parent/'cache.json').is_file() else None
 
 
@@ -39,7 +57,7 @@ def cached_sessions():
     result=[]
     for path in sorted((cache_home()/'sessions').glob('*/cache.json'),reverse=True):
         try:
-            row=json.loads(path.read_text());workspace=path.parent/'workspace'
+            row=json.loads(path.read_text());workspace=Path(row.get('workspace',path.parent/'workspace'))
             if (workspace/'protocol/session.json').exists():
                 import fcntl
                 active=False;lock=workspace/'.frontend.lock'
@@ -75,13 +93,23 @@ class CacheMonitor:
     interval of overshoot. Heartbeats/latest targets and final metadata remain usable.
     """
     def __init__(self,cache,interval_s=1.):
-        self.root=Path(cache);self.limit=json.loads((self.root/'cache.json').read_text())['limit_bytes']
+        self.root=Path(cache)
+        config=self.root/('cache.json' if (self.root/'cache.json').exists() else 'recording_budget.json')
+        budget=json.loads(config.read_text());self.limit=budget['limit_bytes']
+        roots=sorted({Path(p).resolve() for p in budget.get('recording_roots',[self.root])},key=lambda p:len(p.parts))
+        self.roots=[p for i,p in enumerate(roots) if not any(parent in p.parents for parent in roots[:i])]
+        self.write_bytes_per_s=0.;self.remaining_s=None;self._last=None
         self.used=0;self.error=None;self.interval=interval_s;self.stop=threading.Event()
         self.thread=threading.Thread(target=self._run,daemon=True);self.thread.start()
     @property
     def paused(self):return (self.root/'recording_paused.json').exists()
     def check(self):
-        self.used=directory_bytes(self.root)
+        used=sum(directory_bytes(root) for root in self.roots);now=time.monotonic()
+        if self._last is not None:
+            previous,at=self._last
+            if now>at:self.write_bytes_per_s=max(0.,(used-previous)/(now-at))
+        self._last=(used,now);self.used=used
+        self.remaining_s=max(0.,self.limit-used)/self.write_bytes_per_s if self.write_bytes_per_s>0 else None
         if self.used>=self.limit and not self.paused:
             try:
                 atomic_json(self.root/'recording_paused.json',dict(reason='cache_capacity',used_bytes=self.used,
@@ -134,12 +162,27 @@ def save_snapshot(workspace,destination):
     cuts={};paired=set();started=time.monotonic_ns()
     def copy(path,**kwargs):
         relative=path.relative_to(source);cuts[str(relative)]=_copy_prefix(path,target/relative,**kwargs)
-    # The recorder flushes CDR before its JSON row. Read the JSON prefix first,
-    # then only the CDR bytes referenced by those rows (no unpaired tail bytes).
     root_events=sorted((source/'events').glob('*.json'))
     controls={json.loads(p.read_text())['control'] for p in root_events if json.loads(p.read_text()).get('event')=='control_created'}
+    from .raw_archive import raw_directories,snapshot_chunks
+    archives=[p for p in raw_directories(source) if (p/'format.json').exists()]
+    unfinished={p for p in archives if not (p/'summary.json').exists()}
+    # Resolve references before publishing a standalone archive. A control-only
+    # subtree cannot silently lose its shared observation dependency.
+    for path in source.rglob('raw_reference.json'):
+        ref=json.loads(path.read_text());raw=(path.parent/ref['raw']).resolve()
+        if source not in raw.parents:raise ValueError('请保存完整工作区：运行引用了目录外的共享观测')
+        if not (raw/'format.json').exists() and not (raw/'packets.jsonl').exists():
+            raise ValueError('共享原始记录缺失：'+str(raw))
+    for raw in archives:
+        relative=raw.relative_to(source)
+        for name,cut in snapshot_chunks(raw,target/relative).items():cuts[str(relative/name)]=cut
+    # The recorder flushes CDR before its JSON row. Read the JSON prefix first,
+    # then only the CDR bytes referenced by those rows (no unpaired tail bytes).
     inventory=[p for p in sorted(source.rglob('*'))
-        if not (p.relative_to(source).parts[0]=='events' and p.is_file() and p not in root_events)
+        if not any((raw/'chunks') in p.parents or p==raw/'chunks' for raw in archives)
+        and not any(p in (raw/'summary.json',raw.parent/'capture.json') for raw in unfinished)
+        and not (p.relative_to(source).parts[0]=='events' and p.is_file() and p not in root_events)
         and not (len(p.relative_to(source).parts)>1 and p.relative_to(source).parts[0]=='controls' and 'controls/'+p.relative_to(source).parts[1] not in controls)]
     for packet_path in [p for p in inventory if p.name=='packets.jsonl']:
         copy(packet_path,text=True);relative=packet_path.relative_to(source)
@@ -158,9 +201,10 @@ def save_snapshot(workspace,destination):
     for path in inventory:
         relative=path.relative_to(source)
         if (not path.is_file() or path.is_symlink() or path in paired or relative.parts[0] in ('view',)
-            or any(part.startswith('.') for part in relative.parts) or '.pending' in path.name or path.name in ('latest.csv','frontend_heartbeat.json','window.ini','saving.json','saved_session.json')):continue
+            or any(part.startswith('.') for part in relative.parts) or '.pending' in path.name or path.name in ('latest.csv','frontend_heartbeat.json','window.ini','saving.json','saved_session.json','recording_budget.json')):continue
         try:copy(path,text=path.suffix in ('.csv','.jsonl','.log'))
         except FileNotFoundError:continue  # A not-yet-finished atomic operation file.
+    pause=recording_pause_file(source)
     derived=[]
     for control in sorted((target/'controls').glob('*')):
         if not (control/'protocol/manifest.json').exists():continue
@@ -170,11 +214,10 @@ def save_snapshot(workspace,destination):
             if (not (directory/'recording/recording.json').exists()
                 and all((execution/name).exists() for name in ('commands.csv','feedback.csv','events.csv'))):
                 from .fieldwork_control import Session,export_recording
-                export_recording(Session(control),directory);derived.append(str(directory.relative_to(target)/'recording'))
-    pause=recording_pause_file(source)
-    raw_directories=[target/p.relative_to(source).parent for p in inventory if p.name=='packets.jsonl']
+                export_recording(Session(control),directory,recording_paused=bool(pause and pause.exists()));derived.append(str(directory.relative_to(target)/'recording'))
+    raw_directories=[target/p.relative_to(source).parent for p in inventory if p.name in ('packets.jsonl','format.json')]
     live_prefix=any(not (p/'summary.json').exists() for p in raw_directories)
-    report=dict(schema_version='casbot_fieldwork_snapshot_v1',copy_complete=True,read_only=True,
+    report=dict(schema_version='casbot_fieldwork_snapshot_v3',copy_complete=True,read_only=True,
         source_workspace=str(source),created_utc=datetime.now(timezone.utc).isoformat(),
         capture_started_ns=started,capture_finished_ns=time.monotonic_ns(),file_cuts=cuts,derived_recordings=derived,
         recording_capacity_reached=bool(pause and pause.exists()),
@@ -189,16 +232,16 @@ def save_snapshot(workspace,destination):
 def last_observation(workspace,names):
     """Read a bounded tail of archived SDK packets, without live-age assumptions."""
     from .vendor_data import normalize_packet
-    for path in sorted(Path(workspace).glob('observations/*/capture/raw/packets.jsonl'),key=lambda p:p.stat().st_mtime_ns,reverse=True):
-        with path.open('rb') as stream:
-            stream.seek(0,2);size=stream.tell();stream.seek(max(0,size-65536));lines=stream.read().splitlines(keepends=True)
-        for line in reversed(lines):
-            if not line.endswith(b'\n'):continue
-            try:packet=json.loads(line)
-            except ValueError:continue
+    from .raw_archive import raw_directories,iter_records
+    roots=raw_directories(Path(workspace)/'observations')
+    for raw in sorted(roots,key=lambda p:p.stat().st_mtime_ns,reverse=True):
+        latest=None
+        for packet,_ in iter_records(raw,latest_only=True):
             if packet.get('channel')!='joint':continue
             normalized=normalize_packet(packet,dict(joint_names=names))
-            if normalized['q'] is not None:return normalized
+            if normalized['q'] is not None:latest=normalized
+        if latest is not None:return latest
+
     return None
 
 

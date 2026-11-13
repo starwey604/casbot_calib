@@ -1,4 +1,5 @@
 #include "file_stamp.hpp"
+#include "trical_stream.hpp"
 #include "async_csv.hpp"
 #include "manual_policy.hpp"
 #include "legacy_position_guard.hpp"
@@ -28,10 +29,15 @@ class PositionExecutor final : public rclcpp::Node {
     names_=declare_parameter<std::vector<std::string>>("joint_names");
     snapshot_=declare_parameter<bool>("snapshot_only",false);
     manual_=declare_parameter<bool>("manual_stream",false);
+    trical_file_=declare_parameter<std::string>("trical_stream_file","");
+    if(!trical_file_.empty()) {
+      if(manual_)throw std::runtime_error("TriCal and manual sources are exclusive");
+      manual_=true;
+    }
+    recording_pause_file_=declare_parameter<std::string>("recording_pause_file","");
     if(manual_) {
       if(snapshot_)throw std::runtime_error("Manual stream is not a snapshot");
-      recording_pause_file_=declare_parameter<std::string>("recording_pause_file","");
-      manual_file_=declare_parameter<std::string>("manual_command_file");
+      manual_file_=trical_file_.empty()?declare_parameter<std::string>("manual_command_file"):trical_file_;
       policy_file_=declare_parameter<std::string>("manual_policy_file","");
       manual_effort_limit_=declare_parameter<double>("manual_effort_limit_nm",10.);
       if(!std::isfinite(manual_effort_limit_)||manual_effort_limit_<=0||(policy_file_.empty()&&manual_effort_limit_>100.))throw std::runtime_error("Invalid manual effort range");
@@ -42,7 +48,9 @@ class PositionExecutor final : public rclcpp::Node {
     const double feedforward_limit=declare_parameter<double>("feedforward_limit_nm",100.);
     hold_kp_=declare_parameter<std::vector<double>>("command_kp",std::vector<double>{});hold_kd_=declare_parameter<std::vector<double>>("command_kd",std::vector<double>{});
     experiment_commands_=manual_||ramp_enabled||gravity_enabled||!feedforward_path.empty()||!hold_kp_.empty()||!hold_kd_.empty();
-    if(manual_&&(ramp_enabled||gravity_enabled||!feedforward_path.empty()))throw std::runtime_error("Manual fields must not include hidden compensation");
+    if(manual_&&trical_file_.empty()&&(ramp_enabled||gravity_enabled||!feedforward_path.empty()))throw std::runtime_error("Manual fields must not include hidden compensation");
+    if(!trical_file_.empty()&&(ramp_enabled||!feedforward_path.empty()||!policy_file_.empty()||hold_kp_.size()!=14||hold_kd_.size()!=14))
+      throw std::runtime_error("TriCal needs 14 explicit PD gains and an exclusive trajectory source");
     const auto joint=declare_parameter<std::string>("joint_topic"),mode=declare_parameter<std::string>("mode_topic");
     const auto command=declare_parameter<std::string>("command_topic"),service=declare_parameter<std::string>("mode_service"),stop=declare_parameter<std::string>("stop_service");
     command_topic_=command;
@@ -50,6 +58,17 @@ class PositionExecutor final : public rclcpp::Node {
     if(scope_=="localhost_contract_mock") vendor::local_topics({joint,mode,command,service,stop});
     else if(scope_!="hardware_position_stream") throw std::runtime_error("Unknown execution scope");
     hardware_=scope_=="hardware_position_stream";
+    if(!trical_file_.empty()&&(!hardware_||!std::getenv("ROS_LOCALHOST_ONLY")||std::string(std::getenv("ROS_LOCALHOST_ONLY"))!="1"||
+       get_node_topics_interface()->resolve_topic_name(command).rfind("/casbot_calib_s2_",0)!=0))
+      throw std::runtime_error("TriCal development stream requires private localhost SDK Mock");
+    if(!trical_file_.empty()) {
+      const auto resolved=get_node_topics_interface()->resolve_topic_name(command);
+      const auto prefix=resolved.substr(0,resolved.find('/',1))+"/";
+      for(const auto& topic:{joint,mode})if(get_node_topics_interface()->resolve_topic_name(topic).rfind(prefix,0)!=0)
+        throw std::runtime_error("TriCal feedback and command must use the same private Mock");
+      if(get_node_services_interface()->resolve_service_name(service).rfind(prefix,0)!=0)
+        throw std::runtime_error("TriCal mode service must use the same private Mock");
+    }
     #ifdef __linux__
     if(hardware_) {
       const auto parent=getppid();
@@ -66,7 +85,7 @@ class PositionExecutor final : public rclcpp::Node {
       throw std::runtime_error("Only explicit arm joints are permitted");
     const std::filesystem::path root(output);
     if (!std::filesystem::create_directory(root)) throw std::runtime_error("Execution output must not exist");
-    root_=root;manual_archive_=manual_&&!policy_file_.empty();
+    root_=root;manual_archive_=manual_&&(!policy_file_.empty()||!trical_file_.empty());
     if(manual_archive_)archive_pool_=std::make_shared<spdlog::details::thread_pool>(archive_capacity_,1);
     const auto open=[this](AsyncCsv& stream,const auto& path,const auto& columns) {
       if(manual_archive_)stream.open(path,columns,archive_pool_,archive_capacity_);
@@ -76,7 +95,8 @@ class PositionExecutor final : public rclcpp::Node {
     open(received_,root/"feedback.csv","receive_ns"+vendor::columns("q")+vendor::columns("v")+
       (hardware_?",publish_stamp_ns"+vendor::columns("effort_raw"):""));
     open(commands_,root/"commands.csv","planned_index,planned_ns,publish_ns,phase"+vendor::columns("q")+vendor::columns("v")+
-      (experiment_commands_?vendor::columns("effort")+vendor::columns("kp")+vendor::columns("kd")+",ramp_increment_nm":""));
+      (experiment_commands_?vendor::columns("effort")+vendor::columns("kp")+vendor::columns("kd")+",ramp_increment_nm":"")+
+      (trical_file_.empty()?"":",source_evaluation_ns,segment_generation"));
     if(hardware_&&!snapshot_)open(limits_log_,root/"observed_limits.csv","receive_ns,phase,joint,field,value,threshold,unit,action");
     max_age_=declare_parameter<std::int64_t>("max_feedback_age_ns",60000000);
     mode_age_=declare_parameter<std::int64_t>("max_mode_age_ns",300000000);
@@ -274,6 +294,10 @@ class PositionExecutor final : public rclcpp::Node {
       const auto index=(now-start_)/period_;
       if(index<=last_index_)return;
       if(!load_manual())return;
+      if(!trical_file_.empty()) {
+        if(trical_.action==2) {mode_future_=request(mode_client_,false);event("EXITING","trical_complete_exit_requested");return;}
+        manual_row_=trical_.row(now);
+      }
       if(index>last_index_+1)skips_+=index-last_index_-1;
       publish(manual_row_,index,"manual");last_index_=index;return;
     }
@@ -418,6 +442,7 @@ class PositionExecutor final : public rclcpp::Node {
     }
   }
   bool load_manual() {
+    if(!trical_file_.empty())return load_trical();
     // GUI replaces the complete file atomically. No partial frames or replay queue.
     try {
       const auto stamp=mailbox_stamp(manual_file_);
@@ -438,10 +463,34 @@ class PositionExecutor final : public rclcpp::Node {
       return true;
     } catch(const std::exception&) {fault("invalid_manual_command");return false;}
   }
+  bool load_trical() {
+    try {
+      const auto stamp=mailbox_stamp(trical_file_);
+      if(manual_cached_&&stamp==manual_stamp_)return true;
+      std::ifstream in(trical_file_);std::string line;std::getline(in,line);
+      auto fields=vendor::csv(line);
+      trical_.accept(fields,vendor::now(),state_.q,lower_,upper_,max_velocity_,tolerance_);
+      manual_stamp_=stamp;manual_cached_=true;manual_row_=trical_.row(vendor::now());
+      std::cout<<"TRICAL_ACK {\"generation\":"<<trical_.generation<<",\"start_receive_clock_ns\":"<<trical_.start
+        <<",\"duration_ns\":"<<trical_.duration<<"}"<<std::endl;
+      return true;
+    } catch(const std::exception& e) {std::cerr<<e.what()<<'\n';fault("invalid_trical_segment");return false;}
+  }
   void receive(const sensor_msgs::msg::JointState& msg) {
     vendor::State value;
     if(!vendor::state(msg,names_,value)) {if(active())fault("invalid_feedback");return;}
     state_=value;
+    // Spatial chord-tube diagnostic on received SDK q only. It uses no invented
+    // acquisition time and does not certify motion between cached feedbacks.
+    if(!trical_file_.empty()&&phase_=="STREAMING"&&trical_.generation&&trical_.chord_distance(value.q)>.001)
+      fault("trical_received_position_outside_reference_tube");
+    if(!trical_file_.empty()&&value.receive-last_trical_feedback_>=20000000) {
+      last_trical_feedback_=value.receive;
+      std::cout<<std::setprecision(17)<<"TRICAL_FEEDBACK {\"receive_ns\":"<<value.receive<<",\"phase\":"<<std::quoted(phase_)<<",\"q\":[";
+      for(int j=0;j<14;++j){if(j)std::cout<<',';std::cout<<value.q[j];}
+      std::cout<<"],\"dq\":[";for(int j=0;j<14;++j){if(j)std::cout<<',';std::cout<<value.v[j];}
+      std::cout<<"]}"<<std::endl;
+    }
     if(recording_enabled()) try {received_<<value.receive;vendor::values(received_,value.q);vendor::values(received_,value.v);
     if(hardware_) {
       const auto stamp=static_cast<std::int64_t>(msg.header.stamp.sec)*1000000000LL+msg.header.stamp.nanosec;
@@ -484,7 +533,7 @@ class PositionExecutor final : public rclcpp::Node {
     if(hardware_)msg.header.frame_id="base_link";
     msg.position.assign(row.begin()+1,row.begin()+15);msg.velocity.assign(row.begin()+15,row.end());msg.effort.assign(14,0.);
     msg.kp=hold_kp_;msg.kd=hold_kd_;
-    if(manual_) {
+    if(manual_&&trical_file_.empty()) {
       msg.effort.assign(manual_fields_.begin()+29,manual_fields_.begin()+43);
       msg.kp.assign(manual_fields_.begin()+43,manual_fields_.begin()+57);
       msg.kd.assign(manual_fields_.begin()+57,manual_fields_.end());
@@ -509,6 +558,7 @@ class PositionExecutor final : public rclcpp::Node {
     if(experiment_commands_){vendor::values(commands_,msg.effort);
       if(msg.kp.empty()){std::array<double,14> unknown;unknown.fill(std::numeric_limits<double>::quiet_NaN());vendor::values(commands_,unknown);vendor::values(commands_,unknown);}
       else {vendor::values(commands_,msg.kp);vendor::values(commands_,msg.kd);}commands_<<','<<increment;}
+    if(!trical_file_.empty())commands_<<','<<trical_.start+std::int64_t(manual_row_[0])<<','<<trical_.generation;
     commands_<<'\n';
     if(manual_)commands_.flush();}
     catch(const std::exception& e){if(!manual_archive_)throw;archive_error(e.what());}
@@ -517,6 +567,7 @@ class PositionExecutor final : public rclcpp::Node {
     auto out=vendor::log(root_/"snapshot.csv","receive_ns"+vendor::columns("q")+vendor::columns("v"));
     out<<state_.receive;vendor::values(out,state_.q);vendor::values(out,state_.v);out<<'\n';
   }
+  TricalStream trical_;std::string trical_file_;std::int64_t last_trical_feedback_=0;
   std::filesystem::path root_;std::vector<std::string> names_;vendor::State state_;
   std::array<double,14> lower_{},upper_{};std::vector<std::vector<double>> plan_;
   // Only the new manual workspace opts in; H1–H4/S2 keep synchronous files.

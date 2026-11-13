@@ -151,3 +151,52 @@ def test_multiple_manual_saves_update_only_the_mutable_last_saved_marker(tmp_pat
     save_snapshot(root,tmp_path/'first');save_snapshot(root,tmp_path/'second')
     assert (tmp_path/'first/saved_session.json').exists() and (tmp_path/'second/saved_session.json').exists()
     assert json.loads((cache/'last_saved.json').read_text())['destination']==str(tmp_path/'second')
+
+
+def test_explicit_gui_output_gets_budget(tmp_path,monkeypatch):
+    from casbot_calib import fieldwork_launch as launch
+    from casbot_calib.fieldwork_storage import recording_pause_file
+    def create(profile,root,*args,**kwargs):
+        (root/'protocol').mkdir(parents=True);(root/'protocol/session.json').write_text('{}')
+    monkeypatch.setattr(launch,'create_session',create)
+    args=parser().parse_args(['gui','--output',str(tmp_path/'explicit'),'--domain-id','181','--scope','hardware_position_stream'])
+    with prepare_gui(args) as (root,monitor,mock):
+        assert monitor is not None and mock is None and monitor.root==root
+        assert recording_pause_file(root)==root/'recording_paused.json'
+        monitor.limit=1;monitor.check();assert monitor.paused
+
+
+def test_external_workspace_and_owned_mock_share_quota(tmp_path,monkeypatch):
+    from casbot_calib.fieldwork_storage import attach_budget,directory_bytes,recording_pause_file
+    monkeypatch.setenv('CASBOT_FIELDWORK_CACHE',str(tmp_path/'cache'))
+    external=tmp_path/'external';external.mkdir()
+    cache=new_cache(workspace=external);attach_budget(external,cache=cache)
+    (external/'large.csv').write_bytes(b'x'*1000);(cache/'mock.csv').write_bytes(b'x'*300)
+    monitor=CacheMonitor(cache)
+    try:
+        monitor.close();monitor.check()
+        assert monitor.used==directory_bytes(cache)+directory_bytes(external)
+        assert cache_for(external)==cache and recording_pause_file(external)==cache/'recording_paused.json'
+        monitor.limit=500;monitor.check();assert monitor.paused
+    finally:monitor.close()
+
+
+def test_quota_rate_remaining_and_nested_roots_not_double_counted(tmp_path,monkeypatch):
+    from casbot_calib.fieldwork_storage import directory_bytes
+    monkeypatch.setenv('CASBOT_FIELDWORK_CACHE',str(tmp_path))
+    cache=new_cache();root=workspace(cache)
+    meta=json.loads((cache/'cache.json').read_text());meta['recording_roots']=[str(cache),str(root)]
+    (cache/'cache.json').write_text(json.dumps(meta))
+    monitor=CacheMonitor(cache);monitor.close()
+    monkeypatch.setattr('casbot_calib.fieldwork_storage.time.monotonic',lambda:100.)
+    monitor._last=(directory_bytes(cache)-1000,98.);monitor.check()
+    assert monitor.used==directory_bytes(cache) and monitor.write_bytes_per_s==500.
+    assert monitor.remaining_s==pytest.approx((monitor.limit-monitor.used)/500.)
+
+
+def test_saved_snapshot_has_no_live_quota_binding(tmp_path):
+    from casbot_calib.fieldwork_storage import attach_budget
+    root=tmp_path/'explicit';root.mkdir();attach_budget(root)
+    save_snapshot(root,tmp_path/'saved')
+    assert not (tmp_path/'saved/recording_budget.json').exists()
+    assert cache_for(tmp_path/'saved') is None

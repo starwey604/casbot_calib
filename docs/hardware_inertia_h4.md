@@ -1,145 +1,93 @@
-# 🦾 H4：惯量激励与 SDK 控制对照
+# 🦾 H4：实机惯量激励与控制对照指南
 
-H4接在[H3摩擦流程](hardware_friction_h3.md)之后，完成 **冻结重力与摩擦 → 多姿态周期加速度激励 → 物理一致惯量候选 → 独立轨迹预测 → 前序复核 → 五档PD选择 → 四组控制对照**。Mock与实机继续使用同一个SDK客户端、批次封存、原始记录和回放。
+H4 接在 [H3 摩擦标定](hardware_friction_h3.md) 之后，是分阶段动力学标定的收官阶段。它在**同时冻结 H2 重力可观测约束与 H3 摩擦参数**的前提下，依次完成：
+1. **多姿态周期加速度激励（6 条）**：14 轴同时跟踪平滑傅里叶周期轨迹，通过频域解析求导与 Clarabel 半正定锥规划（PSD Cone）拟合 140 维刚体惯性参数 $\theta$，并导出候选 `candidate_exploratory.urdf`。
+2. **五档 PD 增益选择（5 条）**：在专用选择轨迹上测试 `0.5x / 0.75x / 1.0x / 1.25x / 1.5x` 五档增益缩放，选出最优 PD 档位。
+3. **2×2 四组前馈与增益控制对照（4 条）**：在独立验证轨迹上对比“H3 先验重力前馈 vs H4 完整动力学前馈” × “原始 PD vs 优化后 PD”，量化动力学标定带来的真实跟踪收益。
 
-CASBOT主机转发position、velocity、kp、kd、effort五项，模组本地计算PD，effort作为Nm前馈叠加；主机不自动补重力/摩擦。这些已按用户确认固定。主机position的1000Hz插值与模组PD环频率分别记录，后者仍未知。
+---
 
-## 🧭 一、先准备 H3 数值输入
+## 🧭 一、默认批次包含哪些任务
 
-配置见[hardware_inertia.yaml](../configs/hardware_inertia.yaml)。--prior指向已生成H3数值候选的批次根目录；H3必须包含起动阶段，目标轴必须已有运动摩擦与起动候选。H4检查模型、关节顺序、effort增益/零位及安装重力一致，复制并封存所需参数和H3接收观测，用于后续前序复核。原始H3目录不回写。
+默认配置文件为 [configs/hardware_inertia.yaml](../configs/hardware_inertia.yaml)，底层硬件参数来自 [configs/hardware_field.yaml](../configs/hardware_field.yaml)：
 
-默认14轴同时激励，两种训练中心×两条训练轨迹、一个独立中心×两条验证轨迹，共6条惯量记录；随后5条PD选择和4条控制验收，共15条记录。也可先选少数具名轴联调，其他轴保持；报告会保留该范围，不把未激励轴的先验代表写成已辨识。
+| 阶段 | 任务安排（共 15 个采集单元） | 轨迹设计与目的 |
+| :--- | :--- | :--- |
+| **1. 周期惯量激励** | **4 条训练轨迹**（2 个姿态中心 × 2 个随机种子）+ **2 条独立验证轨迹**（1 个独立中心 × 2 个验证种子），共 **6 条** | 周期 $T = 8\text{s}$，连续运行 4 个周期（丢弃前 2 个过渡周期，取后 2 个稳态周期做 16 阶傅里叶拟合），最大速度/加速度限制在 `1.5 rad/s` 和 `1.5 rad/s²` 以内。 |
+| **2. 五档 PD 选择** | 同一条选择轨迹（`seed: 601`）依次跑 `0.5, 0.75, 1.0, 1.25, 1.5` 倍 $K_p$（$K_d$ 按平方根缩放），共 **5 条** | 统一使用 H3 物理代表模型前馈，根据稳态窗口的关节跟踪 RMSE 选出最优增益倍数。 |
+| **3. 四组控制对照** | 同一条独立验证轨迹（`seed: 701`）依次跑 `prior_original`、`prior_tuned`、`identified_original`、`identified_tuned`，共 **4 条** | 严格分离“完整惯量/科氏力/摩擦前馈的贡献”与“单纯调整 PD 增益的贡献”。 |
 
-这些中心和幅值属于nominal实验设计，不能当作已测量的实机home或厂家限值。每次尝试重新读取起姿，Coal检查完整保持、进场、激励、制动和回位。连续加速度/jerk由已有Bernstein轨迹导数界检查，速度和位置沿用现场门禁；失败不自动缩小到无运动，也不放宽保护阈值。
+> 💡 **现场联调提示**：默认配置为 14 轴同时激励。如果想在现场先单轴小范围测试，可在 `configs/hardware_inertia.yaml` 中将 `joints: all` 改为已跑通 H3 的单个关节名称（其余未选轴会自动保持静止，并在报告中标记为未激励先验）。
 
-## ▶️ 二、规划与采集
+---
 
-准备Humble/SDK overlay，见[启动指南](dynamics_getting_started.md)。新输出目录必须不存在：
+## 🛠️ 二、第 1 步：离线生成 H4 批次计划（不连机器人）
 
-~~~bash
+H4 需要传入已完成 H3（含运动摩擦与起动摩擦）的批次根目录 `--prior`。在仓库根目录下执行（注意输出目录不能提前存在）：
+
+```bash
 cd ~/codings/casbot_calib
 read -r -p "现场 ROS_DOMAIN_ID: " calib_domain_id
 
+# 生成 H4 惯量与控制批次计划（仅离线规划与连续碰撞检查，不下发任何指令）
 bash scripts/humble/container.sh bash scripts/humble/vendor.sh \
   casbot-calib hardware-plan-inertia \
   --config configs/hardware_inertia.yaml \
   --profile configs/hardware_field.yaml \
   --prior artifacts/site_h3_v1 \
   --domain-id "$calib_domain_id" --output artifacts/site_h4_v1
-~~~
+```
 
-规划不连接机器人，不下发指令。Mock演练用[sdk-mock](sdk_mock_unification.md)生成的client_profile.yaml替换--profile；其它入口相同。
+* 规划阶段会使用精确的 Bernstein 分段多项式系数检查整条进场、周期激励、制动与退出轨迹的位置、速度、加速度（$\le 1.5\text{ rad/s}^2$）、加加速度（Jerk $\le 8.0\text{ rad/s}^3$）及 Coal 双臂 10mm 防碰撞余量。
 
-下列执行命令会真实发送SDK指令。先完成一个单元检查，再显式续采：
+---
 
-~~~bash
+## ▶️ 三、第 2 步：启动采集与断点续采
+
+以下命令会连接实机 SDK，申请 `/motion/upper_body_debug` 模式并依次执行 15 个采集单元：
+
+```bash
+# 1. 先用 --max-jobs 1 试跑第 1 条周期激励轨迹，确认机器人动作平顺
 bash scripts/humble/container.sh bash scripts/humble/vendor.sh \
   casbot-calib hardware-run-batch artifacts/site_h4_v1 --max-jobs 1
 
+# 2. 确认无误后，带 --resume 跑完剩余的惯量激励、PD 选择与四组控制对照
 bash scripts/humble/container.sh bash scripts/humble/vendor.sh \
   casbot-calib hardware-run-batch artifacts/site_h4_v1 --resume
-~~~
+```
 
-惯量阶段只补冻结的重力，保留显式PD；不预先加入待辨识的惯量前馈。起姿、轨迹、控制配置、SDK/内核/实现摘要均封存，运行中不要改代码或替换二进制。受控中断/检查点沿用H2续采；SDK、通信、模式或运动保护故障只log默认清故障占位，结束整批，故障会话不能resume。
+### 算法与运行机制要点
 
-## 📐 三、惯量怎样辨识
+1. **为什么不用差分求角加速度？**：
+   实机反馈存在缓存重复帧与回调抖动。H4 在稳态周期窗口内对实测位置做带梯形时间权重的 **16 阶傅里叶最小二乘拟合**，直接对拟合出的三角函数做**解析求导**得到角速度与角加速度；同时先在原始实测速度上计算非线性摩擦特征，再与 Pinocchio 140 列刚体回归矩阵统一投影到相同频带。
+2. **保证不破坏前序重力与物理合法性**：
+   调用 Clarabel 求解 140 维刚体参数时，强制施加 14 个连杆的 $4 \times 4$ 伪惯性矩阵半正定约束（`PSDTriangleConeT(4)`）以及 H2 静态重力等式约束（`ZeroConeT`），并在拟合后自动复核 H2 静态验证集与 H3 匀速验证集残差。
+3. **四组控制前馈如何下发？**：
+   进入第 3 阶段（四组控制对照）时，Python 端会预先用 Pinocchio 算好整条参考轨迹的完整刚体 + 摩擦力矩时间表（封存为 CSV），由 C++ `position_executor` 按 500Hz 时间槽同步填入 `effort` 字段下发。
 
-现场已删除50ms观测缺口、132条/1.8周期覆盖、速度解析导数一致性、有效相位点数、激励RMS、留出残差、前序重力变化和控制事后速度/effort的质量门禁。训练速度至少两档及保留窗口非空的规划前提也不再阻断现场采集。Fourier矩阵秩、有限数值与PSD求解仍是得到数值模型的必要条件；无法计算只记录`available=false`。原S3/S4/P0资格路径继续使用原采样与质量规则。
+---
 
-周期轨迹复用已有多频解析参考，用C3幅值包络渐入/渐出，并通过静止中心连接实际起姿与回位。包络默认2秒，避免长过渡匹配高阶末端导数时放大位移；连续位置界使用精确Bernstein分段系数，不以离散采样代替。训练、预测验证、PD选择和控制验收使用不同种子，训练/预测中心也分离。默认周期8秒，4周期丢弃前2周期；不是对命令参考求导来冒充实际加速度。
+## 🔍 四、第 3 步：离线重分析与生成 3D 回放视频
 
-SDK适配器保留全部原始发布/回调记录，在声明的连续稳态窗口上复用已有Fourier最小二乘：
-
-1. 以整数纳秒原点形成回调相对时间，记录缺口；只要求所选区间有足够数值构造拟合，不设两个保留周期/1.8周期覆盖门槛。梯形时间权重减少回调成簇对拟合权重的影响，不推断独立采样数。
-2. 拟合实际接收的位置，解析求速度和加速度；另外拟合报告速度，与位置解析导数比较。不一致RMSE只记录；不对位置跨缺口差分。
-3. 同时保留位置/effort未被拟合频带解释的回调信号RMS，避免只报告滤波后的好看残差。力矩使用唯一的SDK估算Nm通道；摩擦非线性特征先按接收速度计算，再按同一频带投影。Pinocchio产生140列刚体回归及单独的转子项。
-4. 固定H3运动/起动摩擦，以冻结重力模型为先验，调用原有Clarabel物理一致性求解器。正定伪惯性与重力等式约束保持，不另写一套刚体模型。
-5. 用整条独立轨迹预测力矩，记录绝对/归一化残差、均值偏差、激励强度、奇异值与零空间。残差及激励RMS只记录，不作为控制阶段门禁。
-
-每连杆质量、质心和惯量不能从这里宣称分别唯一。M(q)、重力和科氏/离心力矩来自同一物理模型；低频弱方向由先验及物理约束选择代表。仅激励少数轴时，候选更不能解释为整臂全部参数恢复。
-
-## 🕒 四、缓存、相位和前序复核
-
-这里使用的是**回调可用时间**，不是电机采样时间。sample_time_known、sampling_qualification_passed、formal_hardware_calibration_accepted保持false。未知缓存年龄、字段同步及effort滤波可能偏置惯量；时间加权和周期平均不能消除这一边界。
-
-effort_relative_offset_s是显式配置值，默认0；另在冻结模型上报告预登记相对偏移网格的预测敏感性，不在验证集上重拟合或挑最好偏移，也不宣称已标定出物理链路延迟。滤波失配保留在残差里，不统一解释为纯延迟。控制端500Hz、主机参考1kHz、反馈发布及真实采样分别处理。
-
-候选附带以下前序诊断，不再设残差/重力变化通过门槛：
-
-- 新的确定性全构型Pinocchio重力查询，检查冻结重力函数是否保持；同时保留原静态留出残差。
-- H3独立匀速记录的重新配对/预测，包含候选速度耦合变化，不能只复制旧passed。
-- H3起动路径上的重力变化；起动阈值本身冻结，不重新移动阈值解释惯量收益。
-
-该SDK低频协议不替代原S3/S4的原始带宽/时钟门禁，也不替代专用高频腕部惯量探测。报告中的dedicated_high_bandwidth_wrist_validation_passed仍为false。后续取得真实采样/滤波证据后，另建协议和新数据，不能把旧结果改成正式验收。
-
-## 🎛️ 五、PD选择与四组对照
-
-H4的初始增益由nominal质量矩阵对角项和配置holding一次生成，默认自然频率15rad/s、阻尼比0.8，并保留Kp/Kd下限；这是合成起步配置，不是实机整定结论。五档Kp比例为0.5、0.75、1、1.25、1.5，Kd按比例平方根缩放，所有模型共用同一个选择结果。
-
-先用冻结H3物理代表模型的前馈，在专用选择轨迹上比较跟踪RMSE，实际速度/effort只作为对照结果；参考前馈上限仍用于发送前检查。选择封存后，独立轨迹执行：
-
-现场发送器默认速度门槛仍为1.5rad/s；独立的`control.maximum_speed_rad_s`事后筛选已删除。跟踪RMSE用于比较，不中断运动。起点一致性保留，最终回位验收已删除。
-
-如果惯量数值解不存在，仅需该模型的identified组记录`not_run_missing_input`；prior组和能计算的PD选择继续执行。选择参数确实不存在时，仅跳过依赖它的tuned组。不会用prior冒充identified，也不因“质量不通过”锁整批。
-
-| 前馈模型 | 原增益 | 已选增益 |
-| --- | --- | --- |
-| H3重力阶段物理代表，惯量尚未更新 | prior_original | prior_tuned |
-| H4惯量候选，H3摩擦冻结 | identified_original | identified_tuned |
-
-这样分别报告惯量前馈和PD调整的贡献。这里的prior已包含前序重力，不称为纯反馈基线。负收益如实保留，不自动回选验证集最优组合，也不预设实机一定改善20%。如果选择结果为1.0倍，原/已选两组增益相同，此时观测误差差值只是复测波动，不能归因为PD调整收益。
-
-控制前馈由现有Pinocchio批量计算完整参考的刚体与摩擦力矩，独立CSV与位置流同网格封存；C++按跳槽后的同一索引发送，不重复加重力。实际发送effort/Kp/Kd与冻结计划逐项核对。仍没有设备采用回执或可信饱和状态，不把发布成功写成已采用/无饱和。
-
-各组都从实测状态进场，稳态按同一个周期参考及回调时间计分，不逐组优化滞后。完整起姿和过渡保留，不宣称物理初态完全相同，不做状态瞬移。
-
-## 📊 六、报告与回放
-
-~~~bash
+```bash
+# 离线重新运行惯量拟合、前序复核与控制对比分析
 bash scripts/humble/container.sh casbot-calib hardware-analyse-batch \
   artifacts/site_h4_v1 --output artifacts/site_h4_analysis_v1
 
+# 将实测关节反馈渲染为中文 3D 视频
 bash scripts/humble/container.sh casbot-calib hardware-render-batch \
   artifacts/site_h4_v1 --output artifacts/site_h4_video_v1 --fps 12
-~~~
+```
 
-inertia_checkpoint封存惯量数值分析结果及可用候选，controller_selection封存五档选择。报告保存inertia/report.json、candidate.json、参数CSV、candidate_exploratory.urdf及Pinocchio重加载检查；摩擦保留在JSON中，不塞进URDF刚体惯性。URDF是候选，不覆盖nominal，不自动部署。
+---
 
-control_comparison.json/CSV/PNG保存四组误差与收益，inertia_validation.png显示独立力矩预测。中文回放只消费实际送达的位置；MuJoCo仍只更新几何、不参与力学或碰撞计算。
+## 📂 五、输出结果文件速查
 
-H4代码路径完成后，H5仍需真实模型/安装/限制、尺度与采样证据、设备保护核验及新的现场留出数据。软件执行通过不等于上述物理验收完成。
+在批次目录的 `reports/report_NNNN/`（或离线分析输出目录）下，核心结果文件如下：
 
-## 🔬 七、本机验证入口
-
-新增[双腕 SDK 回调观测探索](sdk_wrist_h4_exploration.md)：只用本机隔离 Mock，后续采用 5ms 缓存标准，3ms 为较快对照；历史 3/20ms 记录保留。六腕轴非换向探针已有[离线适配入口](sdk_wrist_probe_offline.md)，[右腕 pitch 8 条 SDK Mock 训练与删组检查](sdk_wrist_pitch_campaign.md)已完成，[第三姿态独立开发验证](sdk_wrist_pitch_validation.md)也已通过；[c00 右腕 roll 两条信号筛查](sdk_wrist_roll_screen.md)也已完成，[频响／多频离线比较](sdk_wrist_roll_frequency_design.md)已选出两条双频补采设计，[多频分析与协议冻结](sdk_wrist_roll_dual_protocol.md)也已完成，[两条实际双频记录](sdk_wrist_roll_dual_capture.md)也已完成，预定主模型方向差 8.96%，未扩展为完整 R2。它使用声明的合成前序夹具，不要求或伪造历史 H3 验收；不授予 H3/H4 正式资格。
-
-已有通过H3的单轴合成会话时，可运行真实ROS双端演练；下列脚本只用localhost私有域，不能用于物理机器人：
-
-~~~bash
-bash scripts/humble/container.sh bash scripts/humble/vendor.sh \
-  python scripts/humble/verify_hardware_inertia.py \
-  --prior artifacts/site_mock_h3 --output artifacts/site_mock_h4_new --render
-
-bash scripts/humble/container.sh \
-  python scripts/humble/verify_h4_references.py --output artifacts/site_h4_references_new
-~~~
-
-第一条针对一个合成轴、完整14轴机械模型，执行3条惯量、5条PD选择、4条控制记录；plant显式改变质心惯性而保持质量/质心，辨识不读取该设定。另在禁止访问evaluation的新进程中从原始反馈重建特征、重新拟合并比较冻结候选，回放实际解码检查；记录指令回放进行步长减半检查。第二条只审查默认全14轴的8条不同参考，不连接SDK、不代表真实起姿/跟踪/停止验收。生成文件均为本地artifacts，不随Git提交。
-
-本轮本地交付证据为artifacts/hardware_inertia_ros_v6/verification.json，12个单元全部通过；默认14轴参考审查为hardware_inertia_references_v1/verification.json，8条不同参考全部通过。实际SDK演练只激励左肩pitch，不能算完整14轴采集。中文视频在hardware_inertia_ros_v6/replay；更严格的重复差异解释在hardware_inertia_readonly_v2。
-
-| 指标 | 本次合成结果 |
-| --- | --- |
-| 独立力矩预测RMSE | 0.00121756 Nm |
-| 回归秩 | 17/140；不唯一方向保留先验依赖 |
-| 所测构型M00：plant / 候选 | 0.21785294 / 0.22143827 kg·m² |
-| 该M00相对误差 | 1.6458%；仅独立评估读取plant |
-| PD选择 | 1.0倍，原/已选增益相同 |
-| 固定PD的两条前馈记录RMSE差值 | 2.7772%；小于同增益复测差异，稳定收益未证明 |
-| 实测客户端发布频率 | 约499.27–499.77 Hz；不代表模组采用/采样频率 |
-
-演练使用8秒周期、3周期丢弃1周期，显式1ms内部采样与100µs积分；默认机械积分仍50µs。已记录指令100/50µs独立回放的位置最大差约7.94µrad，峰值相对变化及逐点速度归一化变化均小于1%。新进程禁止evaluation访问后，原始反馈重建特征差与重新拟合的参数差均为0。所有这些结果仍是合成/本机范围，不获得正式硬件采样资格。
-
-早期hardware_inertia_ros_v1–v5的跟踪保护、过松的位置控制点包络、jerk拒绝及高速缓存敏感失败全部保留。修正为显式H4增益、连续位置界细分、C3幅值包络及默认8秒周期后新建批次；没有放宽原跟踪/反馈年龄/碰撞门槛。v6采集后只增加数值位置界的极小舍入余量与报告解释字段，未改变已发送指令；当前参考审查和只读报告按更新后的代码重新运行。
-
-本轮456项完整Python回归、最终18项H4专项、4项核心C++及2项SDK检查通过；旧S2私有域500Hz往返也通过。最终专项包含全量运行后补充的禁用/缺失起动源拒绝和收益解释反例。证据在hardware_inertia_tests_final_v1、hardware_inertia_s2_regression_v1，汇总见hardware_inertia_delivery_v1/delivery.json。未重跑历史114项冻结数值交付，未测试Windows或物理网络。
+| 文件 / 目录 | 内容说明 |
+| :--- | :--- |
+| `inertia/report.json` | 140 维刚体回归秩、奇异值、独立验证轨迹力矩预测 RMSE、通道时移敏感度（`±5ms`）及前序 H2/H3 复核结果 |
+| `inertia/candidate_exploratory.urdf` | 写入辨识后质量、质心与惯性张量的候选 URDF 模型（已通过 Pinocchio 重加载校验） |
+| `inertia/inertia_validation.png` | 独立验证轨迹的实测力矩 vs 模型预测力矩对比曲线图 |
+| `control_comparison.json` / `.csv` / `.png` | 五档 PD 选择结果及 `prior_original` / `prior_tuned` / `identified_original` / `identified_tuned` 四组跟踪误差对比图表 |

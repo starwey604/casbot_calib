@@ -33,6 +33,18 @@ class ProcessResult:
     started:bool=True
 
 
+class SharedRecorder:
+    """Watch the exact local recorder process without owning or stopping it."""
+    def __init__(self, metadata):
+        self.pid=int(metadata['recorder_pid']);self.start=str(metadata['process_start_ticks'])
+        self.startup_interruption='raw_recorder_exited' if self.poll() is not None else None
+    def poll(self):
+        try:
+            stat=Path(f'/proc/{self.pid}/stat').read_text();fields=stat[stat.rfind(')')+2:].split()
+            return None if fields[19]==self.start and fields[0] not in ('Z','X') else 1
+        except (FileNotFoundError,ProcessLookupError):return 1
+
+
 class OutputPump:
     """Drain child status independently of an optional archival log."""
     def __init__(self, source, log, callback, pause_file=None):
@@ -57,7 +69,7 @@ def run_process(command,environment,log,*,timeout_s=60,recorder=None,timeout_sig
     process=None;interruption=None;pump=None
     with Path(log).open('x') as stream:
         try:
-            early=getattr(recorder,'startup_interruption',None) or (cancel_check() if cancel_check else None)
+            early=getattr(recorder,'startup_interruption',None) or ('raw_recorder_exited' if recorder is not None and recorder.poll() is not None else None) or (cancel_check() if cancel_check else None)
             if early:return ProcessResult(-int(signal.SIGINT),early,False)
             process=subprocess.Popen(command,env=environment,stdout=subprocess.PIPE if on_output else stream,
                 stderr=subprocess.STDOUT,**(dict(text=True,bufsize=1) if on_output else {}))

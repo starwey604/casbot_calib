@@ -8,7 +8,7 @@ import uuid
 from .fieldwork import clock_id
 from .fieldwork_control import create_session
 from .fieldwork_ipc import Child
-from .fieldwork_storage import new_cache,cache_for,recover_workspace,CacheMonitor
+from .fieldwork_storage import new_cache,cache_for,recover_workspace,CacheMonitor,attach_budget
 
 
 @contextmanager
@@ -27,7 +27,7 @@ def prepare_gui(args):
     else:
         if not args.preview and (args.domain_id is None or (args.scope is None and not owned)):
             raise ValueError('实机/已有Mock连接须显式给出--domain-id和--scope；本地自建Mock使用--mock --domain-id')
-        cache=new_cache(getattr(args,'cache_limit_mib',512)) if args.output is None or owned else None
+        cache=new_cache(getattr(args,'cache_limit_mib',512),workspace=args.output) if args.output is None or owned else None
         root=Path(args.output).resolve() if args.output is not None else cache/'workspace'
     try:
         if owned:
@@ -65,9 +65,12 @@ def prepare_gui(args):
         elif not (args.session or recover):
             if args.preview:root.mkdir(parents=True,exist_ok=False)
             else:create_session(args.profile,root,args.domain_id,args.scope,workspace=True)
+        if not (args.session or recover or args.preview):
+            attach_budget(root,getattr(args,'cache_limit_mib',512),cache)
+            cache=cache_for(root)
         if cache:monitor=CacheMonitor(cache)
         print('GUI运行工作区：'+str(root),file=sys.stderr)
-        if cache:print('自动缓存已启用；在GUI中点击“保存会话”生成正式记录。',file=sys.stderr)
+        if cache:print('记录容量保护已启用；在GUI中点击“保存会话”生成正式记录。',file=sys.stderr)
         yield root,monitor,mock
     finally:
         if mock:

@@ -127,7 +127,8 @@ def test_video_cancel_closes_encoder_without_publishing_final_file(tmp_path, mon
     imageio_ffmpeg=pytest.importorskip('imageio_ffmpeg')
     from casbot_calib import fieldwork_worker as worker, presentation
     directory=tmp_path/'runs/unit/recording'; directory.mkdir(parents=True)
-    (directory/'feedback.csv').write_text('receive_ns,q0\n100,0\n1000000100,0.01\n')
+    execution=directory.parent/'capture/execution';execution.mkdir(parents=True)
+    (execution/'feedback.csv').write_text('receive_ns,q0\n100,0\n1000000100,0.01\n')
     monkeypatch.setattr(worker,'Session',lambda root:SimpleNamespace(metadata={}))
     monkeypatch.setattr(presentation,'_font',lambda size:None)
     @contextmanager
@@ -142,3 +143,70 @@ def test_video_cancel_closes_encoder_without_publishing_final_file(tmp_path, mon
     with pytest.raises(ValueError,match='frontend_closed'):
         worker.render_recording(tmp_path,'runs/unit',cancel_check=lambda:'frontend_closed')
     assert closed==[True] and not (directory/'motion.mp4').exists()
+
+
+@pytest.mark.parametrize('paused',[False,True])
+def test_recording_manifest_has_only_relative_references(control,paused):
+    import json
+    from casbot_calib.fieldwork_control import export_recording
+    session=Session(control);run=control/'runs/unit';execution=run/'capture/execution'
+    execution.mkdir(parents=True)
+    for name in ('commands.csv','feedback.csv','events.csv'):(execution/name).write_text('a\n1\n')
+    export_recording(session,run,recording_paused=paused)
+    output=run/'recording';meta=json.loads((output/'recording.json').read_text())
+    assert meta['schema_version']=='casbot_fieldwork_recording_v3'
+    assert meta['execution_recording_status']==('paused_prefix' if paused else 'live_prefix')
+    assert [p for p in output.iterdir() if p.is_file()]==[output/'recording.json']
+    for name,relative in meta['files'].items():
+        assert not Path(relative).is_absolute()
+        assert (output/relative).resolve()==execution/name
+
+
+def test_explicit_readback_selects_window_and_axes_without_dedup(control,tmp_path):
+    import json,csv
+    from casbot_calib.fieldwork_control import export_readback
+    run=control/'runs/unit';raw=run/'capture/raw_state/raw';raw.mkdir(parents=True)
+    origin=10**18
+    rows=[dict(channel='joint',receive_sequence=i,receive_ns=origin+i*1000000000,
+        type='sensor_msgs/msg/JointState',message=dict(name=Session(control).names,
+        position=[.2]*14,velocity=[],effort=[],header=dict(sec=123,nanosec=456))) for i in range(4)]
+    (raw/'packets.jsonl').write_text(''.join(json.dumps(row)+'\n' for row in rows))
+    out=tmp_path/'readback.csv';result=export_readback(run,out,start_s=1.,end_s=3.,joints=[2,13])
+    with out.open() as stream:reader=csv.DictReader(stream);values=list(reader)
+    assert result['rows']==2 and [int(v['receive_ns']) for v in values]==[origin+10**9,origin+2*10**9]
+    assert values[0]['q2']=='.2' or float(values[0]['q2'])==.2
+    assert 'q0' not in values[0] and values[0]['kp2']==''
+    assert values[0]['publication_stamp_sec']=='123'
+    with pytest.raises(FileExistsError):export_readback(run,out)
+    with pytest.raises(ValueError):export_readback(run,run/'export.csv')
+
+
+def test_live_paused_snapshot_marks_recording_manifest(control,tmp_path):
+    import json
+    from casbot_calib.fieldwork_storage import attach_budget,recording_pause_file,save_snapshot
+    workspace=tmp_path/'workspace';(workspace/'controls').mkdir(parents=True)
+    moved=workspace/'controls/one';control.rename(moved)
+    event(workspace,'control_created',control='controls/one')
+    execution=moved/'runs/one/capture/execution';execution.mkdir(parents=True)
+    for name in ('commands.csv','feedback.csv','events.csv'):(execution/name).write_text('a\n1\n')
+    attach_budget(workspace);recording_pause_file(workspace).write_text('{}')
+    target=tmp_path/'saved';save_snapshot(workspace,target)
+    manifest=json.loads((target/'controls/one/runs/one/recording/recording.json').read_text())
+    assert manifest['execution_recording_status']=='paused_prefix'
+    assert json.loads((target/'saved_session.json').read_text())['recording_capacity_reached']
+    assert not list(target.glob('**/recording/*.csv'))
+
+
+def test_readback_respects_shared_observer_interval(control,tmp_path):
+    import json,os,csv
+    from casbot_calib.fieldwork_control import export_readback
+    run=control/'runs/shared';capture=run/'capture';capture.mkdir(parents=True)
+    raw=tmp_path/'observations/one/raw';raw.mkdir(parents=True)
+    origin=10**18;names=Session(control).names
+    rows=[dict(channel='joint',receive_sequence=i,receive_ns=origin+i,type='sensor_msgs/msg/JointState',
+        message=dict(name=names,position=[.2]*14,velocity=[],effort=[])) for i in range(5)]
+    (raw/'packets.jsonl').write_text(''.join(json.dumps(r)+'\n' for r in rows))
+    (capture/'raw_reference.json').write_text(json.dumps(dict(raw=os.path.relpath(raw,capture),start_receive_ns=origin+1,end_receive_ns=origin+3)))
+    out=tmp_path/'selected.csv';export_readback(run,out,joints=[0])
+    with out.open() as stream:values=list(csv.DictReader(stream))
+    assert [int(r['receive_ns']) for r in values]==[origin+1,origin+2]

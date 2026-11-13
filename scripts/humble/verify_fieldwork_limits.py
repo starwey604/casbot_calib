@@ -97,7 +97,9 @@ def main():
         events=list(csv.DictReader((run/'capture/execution/events.csv').open()))
         stop=next(int(row['receive_ns']) for row in events if row['state']=='STOPPING')
         checks[f'run{index}_no_commands_after_stop']=all(int(row['publish_ns'])<stop for row in commands)
-        checks[f'run{index}_raw_cdr']=(run/'capture/raw_state/raw/cdr.bin').stat().st_size>0
+        from casbot_calib.raw_archive import capture_raw,iter_records
+        raw,start,end=capture_raw(run/'capture')
+        checks[f'run{index}_shared_raw_cdr']=any(cdr for _,cdr in iter_records(raw,start_ns=start,end_ns=end))
         settings=list(csv.DictReader((run/'capture/execution/settings_applied.csv').open()))
         checks[f'run{index}_accepted_policy_recorded']=bool(settings)
         if index==0:

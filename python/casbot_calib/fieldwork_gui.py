@@ -95,7 +95,7 @@ class Desk:
             for relative in reversed(self.status.get('controls',[])):
                 control=self.root/relative;state=Session(control).status()
                 for run in reversed(state['runs']):
-                    if (control/run/'recording/feedback.csv').exists() or (recording_capture(control/run)/'execution/feedback.csv').exists():self.last_recording=(control,run);break
+                    if (recording_capture(control/run)/'execution/feedback.csv').exists():self.last_recording=(control,run);break
                 if self.last_recording:break
             if self.last_recording:
                 control,relative=self.last_recording;path=recording_capture(control/relative)/'execution/feedback.csv'
@@ -214,7 +214,8 @@ class Desk:
         self.dirty.clear();self.sources={};self.feedback=dict(q=None,dq=None,effort_raw=None,kp=None,kd=None)
         self.needs_reinitialize=False;self.operator=OperatorStatus();self.control_cancel=None
         self.observer_response=None;self.connected_at=time.monotonic();self.connection_channels={}
-        try:self.observer,_=self.launch('observe',dict(relative='observations/'+uuid.uuid4().hex[:12]))
+        self.observation_relative='observations/'+uuid.uuid4().hex[:12]
+        try:self.observer,_=self.launch('observe',dict(relative=self.observation_relative))
         except (OSError,ValueError,RuntimeError) as exc:self.message='无法建立只读连接：'+str(exc);return
         self.message='只读连接已启动，等待SDK反馈；尚未申请控制。';self.mode='等待反馈'
 
@@ -254,6 +255,7 @@ class Desk:
         self.generation=0;self.save_initial()
         self.task,self.pending=self.launch('stream',dict(relative=self.active_run,command_file=str(directory/'latest.csv'),
               initial_values={k:v.tolist() for k,v in self.commands.items()},settings=settings,
+              shared_raw=str(self.root/self.observation_relative/'capture/raw'),
               **(dict(recording_pause_file=str(self.pause_file)) if self.pause_file else {})),self.control_root)
         self.response=None;self.message='启动请求已保留，等待后端条件满足；可取消。'
 
@@ -324,6 +326,7 @@ class Desk:
             output=self.control_root/self.active_run
             self.control_cancel=None;self.operator=OperatorStatus();self.short=None
             values=dict(zero=zero,output=str(output),duration_s=self.zero_duration,
+                shared_raw=str(self.root/self.observation_relative/'capture/raw'),
                 kp=self.commands['kp'].tolist(),kd=self.commands['kd'].tolist())
             self.task,self.pending=self.launch('zero_return',values,self.control_root)
             self.first_q=self.q.copy()
@@ -535,7 +538,9 @@ class Desk:
         imgui.push_font(self.heading_font);imgui.text('双臂手动调参');imgui.pop_font()
         imgui.same_line();imgui.text_disabled('离线预览' if self.preview else f"域 {self.status['domain_id']} / {self.status['scope']} / 原始五字段")
         if self.cache_monitor:
-            imgui.same_line();imgui.text_disabled(f'缓存 {self.cache_monitor.used/1024**2:.1f}/{self.cache_monitor.limit/1024**2:.0f} MiB'+(' / 本窗口Mock' if self.owned_mock else ''))
+            monitor=self.cache_monitor
+            remaining='已停录' if monitor.paused else '估算中' if monitor.remaining_s is None else f'约剩 {monitor.remaining_s:.0f} 秒'
+            imgui.same_line();imgui.text_disabled(f'记录 {monitor.used/1024**2:.1f}/{monitor.limit/1024**2:.0f} MiB · {monitor.write_bytes_per_s/1024**2:.2f} MiB/s · {remaining}'+(' / 含本窗口Mock' if self.owned_mock else ''))
         if button('connect','连接 / 读取',not self.preview and not self.read_only and self.observer is None):self.connect()
         imgui.same_line()
         if button('send','开始发送',self.observing and not self.busy and not self.start_requested and not self.needs_reinitialize):self.begin_sending()

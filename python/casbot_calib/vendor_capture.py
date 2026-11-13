@@ -11,7 +11,7 @@ from .vendor_identity import sha256
 
 def capture(config_path, output, *, duration_s, domain_id, scope,
             record_discovery=False, poll_callback=None, live_callback=None, cancel_check=None,
-            until_stopped=False, tolerate_recording_io_error=False, recording_pause_file=None, recording_flush_period_ms=0):
+            until_stopped=False, tolerate_recording_io_error=False, recording_pause_file=None, recording_flush_period_ms=0, chunked_archive=False):
     config = load_config(config_path)
     if not math.isfinite(duration_s) or duration_s <= 0 or not 0 <= domain_id <= 232:
         raise ValueError('A positive duration and explicit ROS domain 0..232 are required')
@@ -36,6 +36,7 @@ def capture(config_path, output, *, duration_s, domain_id, scope,
                    config_sha256=sha256(config_path), connection_scope=scope,
                    domain_id=domain_id, duration_s=duration_s, read_only=True,
                    environment={key: os.environ.get(key) for key in ('RMW_IMPLEMENTATION', 'ROS_DISTRO', 'CYCLONEDDS_URI', 'FASTRTPS_DEFAULT_PROFILES_FILE')})
+    if chunked_archive:session['raw_storage']='casbot_raw_gzip_frames_v2'
     if recording_flush_period_ms:session['recording_flush_period_ms']=recording_flush_period_ms
     if until_stopped:session['until_stopped']=True
     if live_callback:session['live_display_stream']=True
@@ -49,6 +50,7 @@ def capture(config_path, output, *, duration_s, domain_id, scope,
         args += ['-p', key+':='+value]
     if config.get('imu_topic'):args += ['-p', 'imu_topic:='+config['imu_topic']]
     if recording_flush_period_ms:args+=['-p','recording_flush_period_ms:='+str(recording_flush_period_ms)]
+    if chunked_archive:args+=['-p','chunked_archive:=true']
     if record_discovery:
         args += ['-p', 'record_discovery:=true']
     if live_callback:
@@ -97,6 +99,7 @@ def capture(config_path, output, *, duration_s, domain_id, scope,
     if user_interrupted: result['user_interrupted']=True
     if (output/'raw/summary.json').exists():
         result['completed'] = code == 0 and json.loads((output/'raw/summary.json').read_text())['reason'] == 'duration_complete'
-        result['source_sha256'] = raw_fingerprints(output)
+        if not chunked_archive:result['source_sha256'] = raw_fingerprints(output)
+        else:result['raw_storage']='casbot_raw_gzip_frames_v2'
     (output/'capture.json').write_text(json.dumps(result, indent=2)+'\n')
     return result

@@ -7,6 +7,7 @@ Publication/receive times never become acquisition timestamps or S3 evidence.
 import csv
 import json
 import os
+import time
 from pathlib import Path
 import numpy as np
 import yaml
@@ -119,7 +120,11 @@ def print_field_limit(line):
     print(f"{joint_label(value['joint'])}：{field}超限，反馈 {value['value']:.6f} {value['unit']}，阈值 {value['threshold']:.6f} {value['unit']}；{action}。", flush=True)
 
 
-def run_executor(config, output, domain_id, *, snapshot=False, plan=None, timeout_s=30, local_remaps=None,cancel_check=None, manual_command=None, manual_effort_limit_nm=10., manual_policy=None, on_output=None, recording_pause_file=None):
+def run_executor(config, output, domain_id, *, snapshot=False, plan=None, timeout_s=30, local_remaps=None,cancel_check=None, manual_command=None, manual_effort_limit_nm=10., manual_policy=None, on_output=None, recording_pause_file=None, shared_raw=None, trical_command=None):
+    if trical_command is not None:
+        from .sdk_connection import validate_connection
+        validate_connection(config.get("connection",{}))
+        if snapshot or plan is not None or manual_command is not None or manual_policy is not None:raise ValueError("TriCal requires an exclusive continuous command source")
     if not 0 <= domain_id <= 232:
         raise ValueError('Explicit ROS domain 0..232 required')
     from .sdk_connection import connection_remaps
@@ -136,20 +141,22 @@ def run_executor(config, output, domain_id, *, snapshot=False, plan=None, timeou
     values['output'] = str(root / 'execution')
     if not snapshot:
         values.update(lower=[j.lower for j in engine.model.joints], upper=[j.upper for j in engine.model.joints])
-        if manual_command is None:
+        if trical_command is not None:
+            values["trical_stream_file"] = str(Path(trical_command).resolve())
+        elif manual_command is None:
             values['plan_file'] = str(Path(plan).resolve())
         else:
             values.update(manual_stream=True, manual_command_file=str(Path(manual_command).resolve()),
                           manual_effort_limit_nm=manual_effort_limit_nm)
             if manual_policy:values['manual_policy_file']=str(Path(manual_policy).resolve())
     if recording_pause_file:
-        if manual_command is None:raise ValueError('Recording pause is exclusive to the manual workspace')
         values['recording_pause_file']=str(recording_pause_file)
     from .sdk_process import ros_arguments,recording_process,run_process
     if local_remaps and any(not target.startswith('/casbot_calib_s2_') for target in local_remaps.values()):
         raise ValueError('Integration remaps require isolated private endpoints')
     command=ros_arguments(binary,values,local_remaps)
     write_json(root / 'request.json', dict(config=config, domain_id=domain_id, snapshot_only=snapshot,
+        **(dict(trical_stream_file=str(trical_command), scope="private_sdk_mock_with_simulated_indicators") if trical_command is not None else {}),
         executor_sha256=sha256(binary), sdk=identity, local_contract_remaps=local_remaps,
         source_plan_csv_sha256=sha256(plan) if plan is not None else None,
         **(dict(manual_stream=True, manual_command_file=str(manual_command), hidden_compensation=False) if manual_command is not None else {}),
@@ -172,11 +179,28 @@ def run_executor(config, output, domain_id, *, snapshot=False, plan=None, timeou
     if manual_command is not None:recorder_command+=['--recording-flush-period-ms','20']
     if timeout_s is None:recorder_command+=['--until-stopped']
     if recording_pause_file:recorder_command+=['--recording-pause-file',str(recording_pause_file)]
-    with recording_process(recorder_command,environment,root/'recorder.log',root/'raw_state/raw/recorder.json',**(dict(cancel_check=cancel_check) if cancel_check else {}),
-            **(dict(ready_timeout_s=config.get('manual_recording_start_timeout_s',10.)) if manual_policy else {})) as recorder:
+    from contextlib import nullcontext
+    reference=None;shared_recorder=None
+    if shared_raw is not None:
+        from .fieldwork import clock_id
+        shared_raw=Path(shared_raw).resolve()
+        recorder_meta=json.loads((shared_raw/'recorder.json').read_text())
+        from .sdk_process import SharedRecorder
+        shared_recorder=SharedRecorder(recorder_meta)
+        if recorder_meta['clock_id']!=clock_id():raise ValueError('共享记录器与执行器的本机接收时钟域不一致')
+        reference=dict(schema_version='casbot_shared_raw_reference_v1',raw=os.path.relpath(shared_raw,root),
+            start_receive_ns=time.monotonic_ns(),end_receive_ns=None,clock_id=recorder_meta['clock_id'],
+            semantics='observer callback interval, not executor callback times or device sample times')
+        from .hardware_batch import atomic_json
+        atomic_json(root/'raw_reference.json',reference)
+    context=nullcontext(shared_recorder) if shared_raw is not None else recording_process(recorder_command,environment,root/'recorder.log',root/'raw_state/raw/recorder.json',**(dict(cancel_check=cancel_check) if cancel_check else {}),
+            **(dict(ready_timeout_s=config.get('manual_recording_start_timeout_s',10.)) if manual_policy else {}))
+    with context as recorder:
         process_result=run_process(command,environment,root/'process.log',timeout_s=timeout_s,recorder=recorder,cancel_check=cancel_check,**(dict(on_output=on_output) if on_output else {}),
             **(dict(recording_pause_file=recording_pause_file) if recording_pause_file else {}),
             **(dict(stop_timeout_s=config.get('manual_stop_timeout_s',3.)+5) if manual_policy else {}))
+    if reference is not None:
+        reference['end_receive_ns']=time.monotonic_ns();atomic_json(root/'raw_reference.json',reference,replace=True)
     code=process_result.returncode;interruption=process_result.interruption
     path = root / 'execution/result.json'
     result = json.loads(path.read_text()) if path.exists() else dict(passed=False, reason='executor_did_not_finish' if process_result.started else 'executor_not_started',
@@ -380,7 +404,7 @@ def finish_plan(root, config, motion, trials, bindings):
     return report
 
 
-def execute_field(plan, output, domain_id, *, local_remaps=None,cancel_check=None,replan_start=True):
+def execute_field(plan, output, domain_id, *, local_remaps=None,cancel_check=None,replan_start=True,recording_pause_file=None,shared_raw=None):
     root = Path(plan).resolve(); check_seal(root); metadata = json.loads((root / 'plan.json').read_text())
     output_outside(output, root)
     if metadata.get('source_domain_id') is not None and metadata['source_domain_id'] != domain_id:
@@ -392,13 +416,15 @@ def execute_field(plan, output, domain_id, *, local_remaps=None,cancel_check=Non
     if source['sha256'] != metadata['source_model_sha256'] or metadata['joint_names'] != [j.name for j in engine.model.joints]:
         raise ValueError('Field model changed')
     result = run_executor(metadata['config'], output, domain_id, plan=root / 'position_plan.csv',
-        timeout_s=metadata['duration_s'] + 45, local_remaps=local_remaps,cancel_check=cancel_check)
+        timeout_s=metadata['duration_s'] + 45, local_remaps=local_remaps,cancel_check=cancel_check,
+        **(dict(recording_pause_file=recording_pause_file) if recording_pause_file else {}),
+        **(dict(shared_raw=shared_raw) if shared_raw is not None else {}))
     if replan_start and start_replan_required(result):
         if 'replan_recipe' not in metadata:
             print('起点已变化，尚未申请模式或发送指令；旧计划没有重规划配方，请重新快照/规划。', flush=True)
             return result
         return _execute_start_replans(root, Path(output).resolve(), domain_id, result,
-            local_remaps=local_remaps, cancel_check=cancel_check)
+            local_remaps=local_remaps, cancel_check=cancel_check, recording_pause_file=recording_pause_file,shared_raw=shared_raw)
     return result
 
 
@@ -416,7 +442,7 @@ def announce_start_replan(result):
     print('起点已变化'+detail+'；尚未申请模式或发送指令，正在重新读取并规划当前单元。Ctrl+C可取消。', flush=True)
 
 
-def _execute_start_replans(original, output, domain_id, rejected, *, local_remaps, cancel_check):
+def _execute_start_replans(original, output, domain_id, rejected, *, local_remaps, cancel_check, recording_pause_file=None,shared_raw=None):
     # The ordinary capture layout is unchanged unless its start is rejected.
     # Move the completed rejected bundle intact into a collection, never edit it.
     archive = output / 'start_replans/attempt_000/capture'; archive.mkdir(parents=True)
@@ -430,7 +456,8 @@ def _execute_start_replans(original, output, domain_id, rejected, *, local_remap
             folder = output / 'start_replans' / f'attempt_{len(attempts):03d}'; folder.mkdir()
             metadata = json.loads((current / 'plan.json').read_text())
             result = run_executor(metadata['config'], folder / 'snapshot', domain_id,
-                snapshot=True, local_remaps=local_remaps, cancel_check=cancel_check)
+                snapshot=True, local_remaps=local_remaps, cancel_check=cancel_check,
+                **(dict(shared_raw=shared_raw) if shared_raw is not None else {}))
             attempt = dict(snapshot=str((folder / 'snapshot').relative_to(output)))
             attempts.append(attempt)
             if not result['passed']:
@@ -438,7 +465,7 @@ def _execute_start_replans(original, output, domain_id, rejected, *, local_remap
             replan_field(current, folder / 'snapshot', folder / 'plan')
             current = folder / 'plan'
             result = execute_field(current, folder / 'capture', domain_id, local_remaps=local_remaps,
-                cancel_check=cancel_check, replan_start=False)
+                cancel_check=cancel_check, replan_start=False,recording_pause_file=recording_pause_file,shared_raw=shared_raw)
             effective = dict(effective_plan=str(current.relative_to(output)),
                 effective_capture=str((folder / 'capture').relative_to(output)))
             attempt.update(plan=effective['effective_plan'], capture=effective['effective_capture'], result=result)

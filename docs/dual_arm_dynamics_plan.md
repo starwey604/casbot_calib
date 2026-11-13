@@ -1,98 +1,190 @@
-# 整机装配状态下的双臂动力学标定
+# 🦾 双臂动力学标定方案详解（原理、算法与 H1–H4 实机流程）
 
-需求更新：2026-10-27。本文件取代旧五轮计划中“只做固定基座右臂、双臂延期”的产品边界。**已实现首个[nominal双臂Mock流程](dual_arm_workflow.md)，本页保留完整目标与尚待扩展部分。先做动力学，运动学暂缓。**
+本文档用直观的工程语言梳理 `casbot_calib` 仓库中**双臂动力学标定**的整体架构、核心数学原理、底层代码分工，以及从实机联调（`fieldwork`）到分阶段整批标定（`H1 → H4`）与手腕专项（`路线 A / B`）的完整实现细节。
 
-## 已确认的实机安装与范围
+---
 
-- 腰部通过类似联轴器的抱紧夹具，固定在一个指定位置/姿态；固定边界在腰部夹持处，不以脚底作为固定边界。左右臂均保留在整机装配状态，分别具有7个可运动关节。
-- 首版为腰部锁定的14自由度双臂模型。记录夹具坐标系、所夹持的刚体/固定变换、实际腰部锁定配置和安装相对重力的方向；不默认腰部锁在零位。
-- 腰部不作为待激励/待辨识的运动轴。锁定躯干/下部结构的惯性不能仅凭14个臂关节电流任意恢复，不给不可观测的固定结构输出“已标定”惯量。
-- 同一整机、双臂同步数据、统一模型版本及验收；动作允许逐臂、分组和双臂同时运动。装配状态与所有轴是否同时运动是两个不同要求。
-- 当前冻结名义几何，记录关节零位/轴方向/肩部安装/TCP的来源及未验证状态。只做必要的映射和方向检查，不开展运动学参数优化，也不把拟合动力学参数视为修复了几何误差。
-- 以后运动学沿既有千分计/TriCal方案推进，需从evt6参考迁移到对应CASBOT型号。更新几何/零位版本后，动力学包必须复验，必要时重辨识；不能无条件沿用。
+## 🧭 一、核心设计思想：为什么要“分阶段解耦 + 逐级冻结”？
 
-## 当前已有内容与缺口
+机器人动力学方程包含三个物理来源完全不同的力矩项：
+$$\tau = \underbrace{M(q)\ddot{q} + C(q, \dot{q})\dot{q}}_{\text{惯性与科氏/离心项}} + \underbrace{g(q)}_{\text{重力项}} + \underbrace{\tau_f(\dot{q})}_{\text{摩擦项}}$$
 
-最新可运行实现见上方流程说明：已包含14轴树形/采集、42维受限物理候选和中文回放；下表记录范围对照，不表示完整目标都已交付。
+如果采集一条复杂轨迹，试图在一个大黑盒里同时拟合重力、摩擦和转动惯量，由于关节摩擦力矩和重力力矩往往比小关节（如手腕）的惯性力矩大一到两个数量级，微小的摩擦建模误差或相位滞后就会把转动惯量严重污染（甚至算出负质量、负惯量）。
 
-| 项目 | 已有 | 双臂还需实现 |
-| --- | --- | --- |
-| 刚体后端 | Pinocchio树形模型、14轴命名/父索引、随包nominal和固定手部惯性；原串联接口保留 | 实测夹具变换、左右具名工具帧及工具独立换装 |
-| 积分 | 统一Boost.Odeint推进14轴机械/电流状态；事件截断与逐轴质量标记 | 更一般的通道响应和实际控制器特性 |
-| 采集与时序 | 双臂Mock共同会话，共同采样时钟、固定延迟/噪声/整帧丢失重复、schema 2原始记录 | 实际SDK时钟映射/不同步通道、未知偏移与抖动验证 |
-| 激励与辨识 | 相位候选信息量搜索、实际运动傅里叶求导、分阶段惯性比例/b/fc、SVD及三条独立验证 | 全惯性基空间与更一般物理可行恢复、碰撞/反力约束优化 |
-| 显示 | 双臂只读中文回放、逐帧FK核对，不读evaluation真值 | 实机观测接入及完整CAD几何可选显示 |
-| 实机 | 接口能力按位置/速度/电流与力矩/混合PD规划 | SDK接入、尺度与时钟验证、实际采集/标定；当前没有实机控制入口 |
+因此，本仓库采用 **“分阶段解耦（Staged Decoupling）+ 物理一致性锥规划（PSD Conic Optimization）+ 逐级冻结（Sequential Freezing）”** 路线：
 
-`ArmModel`已扩展显式的 `tree_rigid_v1` 父索引，原 `serial_rigid_v1` 保持兼容；双臂由Pinocchio解析nominal URDF得到，不能把两组七轴拼成一条串联链。实际硬件夹具变换和真实SDK仍未接入。
+```mermaid
+flowchart TD
+    H1["阶段 0 (fieldwork / H1): 通信摸底与单步预检<br/>只读检查、存安全零位、GUI五字段调参、单轴 1° 往返"] --> H2
+    H2["阶段 1 (H2): 静态重力标定 (hardware-plan-batch)<br/>64 个姿态 × 正反双向接近静止保持 (q̇=0, q̈=0)<br/>👉 正反平均抵消静摩擦滞回，拟合重力可观测子空间并冻结"] --> H3
+    H3["阶段 2 (H3): 运动摩擦与起动摩擦 (hardware-plan-friction)<br/>控制器实时下发 H2 冻结重力前馈<br/>① 112 条多速度正反匀速 → 相同位置配对半差拟合黏滞 b 与库仑 fc<br/>② 448 条零 PD 力矩斜坡 → 测算静摩擦起动阈值区间 fs"] --> H4
+    H4["阶段 3 (H4): 周期惯量激励与控制对照 (hardware-plan-inertia)<br/>冻结 H2 重力等式约束 + 冻结 H3 摩擦参数<br/>① 多姿态傅里叶周期激励 → 频域投影 + PSD 锥规划拟合 140 维刚体参数 θ<br/>② 5 档 PD 增益选择 + 2×2 四组前馈/增益控制消融对照"]
+```
 
-## 固定边界与模型选择
+---
 
-采用Pinocchio官方URDF解析和 `buildReducedModel`：在实际锁定配置固定腰部/非标定关节，保留左右分支、固定安装变换和各自负载。以具名帧定义夹具基座、左右肩及左右TCP，不手写双臂递归动力学。源URDF中已知的手部惯量、限制和力矩映射问题继续保留来源/未验证标记，不把旧MJCF统一armature/damping当成实测值。
+## ⚙️ 二、标定对象与底层代码架构
 
-在“共同基座完全刚性固定、自由空间、左右臂无物体接触连接”的理想模型下：
+### 1. 标定对象与参数空间（140 维刚体参数 + 摩擦）
+* **机器人模型**：腰部刚性固定的 **14 轴双臂机器人**（左臂 7 轴 + 右臂 7 轴）。当前默认模型为 `casbot_hl12p1_dvt2_bare_flange_1105_03_gauge_v2`（拆掉普通手部、带裸法兰的 DVT2 整机模型）。
+* **单连杆 10 维标准参数**：每个关节连杆 $j$ 由 10 个对动力学方程呈线性的刚体惯性参数描述：
+  $$\theta_j = [m, \; h_x, h_y, h_z, \; I_{xx}, I_{xy}, I_{yy}, I_{xz}, I_{yz}, I_{zz}]^T \in \mathbb{R}^{10}$$
+  其中 $m$ 为连杆质量，$h = m \cdot c$ 为质心一阶矩，$I$ 为关于关节坐标系原点的 $3 \times 3$ 对称惯性张量。
+* **整机待标定参数**：
+  * **刚体惯性参数**：14 个关节合计 **$14 \times 10 = 140$ 维向量 $\theta \in \mathbb{R}^{140}$**。
+  * **关节摩擦参数**：每轴独立的黏滞摩擦系数 $b_j$（$\text{Nm}\cdot\text{s/rad}$）、库仑摩擦系数 $f_{c,j}$（$\text{Nm}$）以及静摩擦起动阈值 $f_{s,j}$（$\text{Nm}$）。
 
-`M = diag(M_left(q_left), M_right(q_right))`
+### 2. C++ 与 Python 核心模块分工
 
-左右臂各自仍有多轴惯性和科氏/离心耦合，但不会仅因同装在机器人上就产生非零跨臂惯量块。这个结论来自模型结构，而非实机固定刚度的测量。腰部夹具承担两臂共同的重力/动态反力；实际夹持或躯干变形、共用供电、时间偏移会使同时运动时的结果变化，需要通过对照验证，不能预先塞入任意跨臂耦合系数解释残差。
+| 模块 / 文件 | 职责与作用 |
+| :--- | :--- |
+| **[arm_dynamics.hpp](../cpp/include/casbot_calib/arm_dynamics.hpp)** (C++ Pinocchio) | 解析 URDF 树形模型，批量计算刚体回归矩阵 $Y(q, \dot{q}, \ddot{q}) \in \mathbb{R}^{14 \times 140}$（满足 $\tau_{\text{rigid}} = Y\theta + \tau_{\text{rotor}}$）、质量矩阵 $M(q)$、重力向量 $g(q)$ 与正运动学 FK。 |
+| **[collision.hpp](../cpp/include/casbot_calib/collision.hpp)** (C++ Coal) | 基于机器人 16 个凸包外包络与环境夹具，对规划出的连续多项式轨迹（Bernstein 导数界）和实测折线做连续防碰撞证明（默认保持 **10mm** 安全余量）。 |
+| **[position_executor.cpp](../ros/casbot_calib_vendor/src/position_executor.cpp)** (C++ ROS 2) | 实机与 SDK Mock 共用的实时控制发送器。申请 `/motion/upper_body_debug` 模式，以 500Hz 向 `/upper_body_debug/joint_cmd` 发送 14 轴五字段指令，并执行零 PD 力矩斜坡实时监控（`SdkBreakaway`）。 |
+| **[rigid_identification.py](../python/casbot_calib/rigid_identification.py)** (Python Clarabel) | 组装 $4 \times 4$ 伪惯性矩阵半正定锥约束（PSD Cone）、阶段冻结等式约束与 SVD 零空间正则化，调用 Clarabel 求解物理合法的 140 维刚体参数。 |
+| **[staged_identification.py](../python/casbot_calib/staged_identification.py)** / **[staged_inertia.py](../python/casbot_calib/staged_inertia.py)** | 实现重力正反配对平均、匀速摩擦位置网格插值半差、傅里叶周期投影求导与惯量辨识的核心算法。 |
+| **[hardware_batch.py](../python/casbot_calib/hardware_batch.py)** / **[hardware_friction.py](../python/casbot_calib/hardware_friction.py)** / **[hardware_inertia.py](../python/casbot_calib/hardware_inertia.py)** | 实机 H2、H3、H4 批次规划、断点续采（`--resume`）、起点自动重规划与离线报告生成。 |
 
-首版先用固定基座模型；如单臂与双臂数据出现系统性的共同残差，先查时序、增益/饱和、供电和安装状态，再决定是否引入可观测的等效柔顺性。没有证据时不细化夹具或减速器内部模型。
+---
 
-## 标定工作流
+## 🔬 三、各阶段数学原理与算法细节
 
-| 阶段 | 实验 | 输出/边界 |
-| --- | --- | --- |
-| 0 设备与会话检查 | 14轴名称/方向/单位、夹具与腰部配置、左右负载、温度、驱动/控制版本；低幅动作与时序采集 | 固化模型/会话和限制；区分采样时刻与接收时刻。不是运动学标定 |
-| 1 驱动尺度与响应 | 逐轴或分组电流响应/延迟检查；验证输出侧电流—力矩增益来源 | 每轴gain与响应参数独立保存；未知尺度不宣称绝对惯性恢复。单轴已知惯量方法不能未经推导直接推广到14轴 |
-| 2 重力 | 整机保持安装；左右臂不同构型、正反向接近并稳定；覆盖另一臂的不同保持姿态 | 估计可观测重力参数组合，报告静摩擦/保持偏差；不能由静态数据恢复完整惯量 |
-| 3 摩擦 | 左右各轴正反向、多速度、低速区段；必要时改变构型/热状态复验 | 基础b/fc；仅在低速数据支持时增加Stribeck参数，不同时放开所有摩擦参数 |
-| 4 动态激励 | 逐臂多轴 → 双臂分组 → 双臂同时运动；使用受约束周期多频轨迹 | 惯性/速度耦合的可辨识基参数与必要摩擦细化；保存轨迹、频带、缩放、奇异值和秩 |
-| 5 独立验证 | 整条新轨迹/新构型/新噪声批次；左右臂分别与同时运动；双臂相对相位/反力组合对照 | 同一冻结模型比较逐轴力矩预测、跟踪与电流；检测夹具/共同扰动。不得为每种控制周期重新拟合掩盖问题 |
-| 6 控制与交接 | 相同PD和限制下做纯PD、重力、重力+摩擦、名义/标定完整前馈及速度耦合消融 | 同一整机候选包包含左右参数与共同固定条件；逐轴结果保留，不用平均值掩盖某一臂退化 |
+### 1. 物理一致性保障：Clarabel 伪惯性矩阵 PSD 锥规划
+详见 `[rigid_identification.py:14-138]`。在任何阶段求解 140 维刚体参数 $\theta$ 时，都会面临两个核心问题：
+1. **不可观测方向（秩亏）**：例如静止状态完全测不到转动惯量；即使多轴运动，由于机械臂基座固定、关节轴方向受限，140 维参数中也只有一部分线性组合（可观测子空间）能被数据激励出来。
+2. **物理合法性**：普通最小二乘很容易在弱可观测方向上算出“负质量”或“违反三角不等式的惯性张量”，导致导入仿真器或控制器时直接发散。
 
-每个阶段均记录双方状态；另一臂保持不动也要记录。首版动力学在自由空间进行，不将TriCal探球、双手互抵或共同搬物时的未知外力混入基础辨识。外部力传感器不作为基础实验必要条件，电流换算力矩始终标为派生观测。
+**仓库的解法（`fit_rigid`）**：
+* **构造 $4 \times 4$ 伪惯性矩阵（Pseudo-Inertia Matrix）**：对每个连杆的 10 维参数 $\theta_j = (m, h, I)$，构造对称矩阵：
+  $$J(\theta_j) = \begin{bmatrix} \frac{1}{2}\text{tr}(I)\mathbf{I}_3 - I & h \\ h^T & m \end{bmatrix} \succ 0$$
+  根据刚体力学定理（Wensing et al., IEEE RA-L 2018），$\theta_j$ 对应真实物理质量分布的充要条件是 $J(\theta_j)$ 正定。代码将其转化为 Clarabel 的半正定锥约束 `PSDTriangleConeT(4)`。
+* **SVD 子空间分解与零空间先验锚定**：对归一化后的回归矩阵 $A$ 做奇异值分解 $A = U \Sigma V^T$，提取可观测基底 $V_{\text{obs}}$，并构造不可观测零空间投影矩阵 $P_{\text{null}} = I - V_{\text{obs}}V_{\text{obs}}^T$。在可观测方向上由实测力矩数据主导拟合，在不可观测方向上通过正则项将参数锚定在 CAD 名义先验 $\theta_{\text{prior}}$ 附近。
+* **迭代重加权鲁棒损失（IRLS）**：通过 4 轮类似 Huber 的权重迭代 $w_i = 1 / \sqrt{1 + (r_i / s)^2}$，抑制偶发采样毛刺对参数的影响。
 
-## 加速度激励曲线
+---
 
-设计相互一致的q/dq/ddq/jerk参考，采用有限傅里叶级数，而不是单独给任意加速度再数值积分造成漂移：
+### 2. H2 阶段：静态重力标定（正反接近抵消静摩擦）
+* **配置文件**：[configs/hardware_batch.yaml](../configs/hardware_batch.yaml)、[configs/static_field_nominal.yaml](../configs/static_field_nominal.yaml)
+* **实现代码**：[staged_identification.py (`identify_gravity`)](../python/casbot_calib/staged_identification.py)
+* **实验设计**：
+  * 从 570 个无碰撞候选姿态中，按重力回归矩阵信息量选出每臂 **24 个训练姿态 + 8 个验证姿态**（双臂共 64 个静态姿态）。
+  * 当机械臂停在目标姿态 $q^*$ 时（$\dot{q}=0, \ddot{q}=0$），实测力矩为 $\tau = Y(q^*, 0, 0)\theta + \tau_{\text{stiction}}$。
+  * **关键技巧（正反双向接近）**：如果只从单方向走到 $q^*$ 停下，关节静摩擦 $\tau_{\text{stiction}}$ 会死死顶住重力，导致测出来的力矩有很大偏置。因此程序对**每一个姿态 $q^*$ 都规划两条轨迹**——一条从正向接近停稳，一条从反向接近停稳（共 128 条轨迹）。
+  * 在求解时，将同一姿态正反两次接近的回归矩阵与力矩取平均：
+    $$\bar{Y} = \frac{Y(q_+, 0, 0) + Y(q_-, 0, 0)}{2}, \quad \bar{\tau} = \frac{\tau_+ + \tau_-}{2}$$
+    把方向相反的静摩擦滞回力矩直接抵消！同时把 $|\tau_+ - \tau_-|/2$ 记录为该姿态的静摩擦半差包络。
 
-`q_j(t) = q0_j + sum_k [a_jk*sin(w_k*t) + b_jk*cos(w_k*t)]`
+---
 
-`ddq_j(t) = -sum_k w_k^2*[a_jk*sin(w_k*t) + b_jk*cos(w_k*t)]`
+### 3. H3 阶段：运动摩擦与零 PD 起动摩擦
+* **配置文件**：[configs/hardware_friction.yaml](../configs/hardware_friction.yaml)
+* **实现代码**：[staged_identification.py (`friction_pair_projection`)](../python/casbot_calib/staged_identification.py)、[sdk_breakaway.hpp](../ros/casbot_calib_vendor/include/sdk_breakaway.hpp)
+* **前置条件**：冻结 H2 标定出的重力模型。在 H3 运行期间，`position_executor` 会实时根据实测角度计算冻结重力力矩 $\hat{\tau}_g(q)$ 并填入下发指令的 `effort` 前馈通道。
 
-其中 `w_k=2*pi*k/T`，各轴有自己的系数与相位；速度和jerk同样解析计算。增加频率会按频率平方放大加速度，因此幅值、频带和周期必须联合设计。延续Swevers路线的周期/频带设计，不将旧单轴三个频率直接复制给全部14轴。
+#### (1) 运动摩擦（黏滞 $b$ + 库仑 $f_c$，112 条匀速轨迹）
+* **轨迹设计**：14 轴逐轴测试。每轴在 2 个训练姿态、1 个验证姿态下，分别以三档训练速度（`0.04, 0.08, 0.12 rad/s`）和两档验证速度（`0.06, 0.10 rad/s`）做正反向匀速往返，其余 13 轴保持静止。
+* **为什么用“相同位置网格配对半差”？**：
+  * 扣除 H2 重力后，残余力矩为 $\tilde{\tau}(q, \dot{q}) = \tau - \hat{\tau}_g(q) \approx b\dot{q} + f_c \tanh(\dot{q}/0.001) + \Delta \tau_g(q)$，其中 $\Delta \tau_g(q)$ 是未完全消干净的重力残差。
+  * 注意到 $\Delta \tau_g(q)$ **只与位置 $q$ 有关，与运动方向无关**；而摩擦力与运动方向相反。
+  * 因此算法在匀速平台段截取正向轨迹 $(q_+, v_+, \tilde{\tau}_+)$ 和反向轨迹 $(q_-, v_-, \tilde{\tau}_-)$，将它们**按角度位置插值对齐到同一个空间网格 $q_{\text{grid}}$（默认 24～48 个点）上**，然后相减取半差：
+    $$\frac{\tilde{\tau}_+(q_{\text{grid}}) - \tilde{\tau}_-(q_{\text{grid}})}{2} = b \cdot \frac{v_+ - v_-}{2} + f_c \cdot \frac{\tanh(v_+/0.001) - \tanh(v_-/0.001)}{2}$$
+  * 这样残余重力误差 $\Delta \tau_g(q)$ 被完美消去，再通过带非负约束（$b \ge 0, f_c \ge 0$）的鲁棒最小二乘直接解出每轴的 $b$ 和 $f_c$。
 
-优化设计：
+#### (2) 起动摩擦（静摩擦阈值 $f_s$，448 条零 PD 力矩斜坡）
+* **怎么在不飞车的前提下测静摩擦？**：
+  1. 先用正常 PD 把目标轴停在测试姿态，静置 `1.0s` 或 `2.0s`。
+  2. **把目标轴的 $K_p$ 和 $K_d$ 显式设为 `0`**（其余 13 轴继续用保持 PD 锁住），仅靠外部下发的冻结重力前馈 $\hat{\tau}_g(q)$ 托住目标轴，静止观察 `0.6s`。
+  3. 随后在目标轴的 `effort` 通道上叠加一个随时间线性增大的力矩斜坡 $\Delta \tau(t) = \text{slope} \cdot t$（斜率 `0.12` 或 `0.24 Nm/s`，上限 `0.5 Nm`）。
+  4. C++ 执行器中的 `SdkBreakaway` 状态机在每個控制周期检查反馈：一旦检测到目标轴位移超过 `0.0002 rad`（约 $0.011^\circ$）或速度超过 `0.005 rad/s` 且持续 `10ms`，**立即撤掉斜坡力矩、恢复 PD 保持**并平滑退回起点。
+  5. 后处理从录下的时间戳中回溯“最后静止时刻”与“首次运动时刻”对应的净力矩，得到该轴正反向的静摩擦起动阈值 $f_s$。
 
-1. 冻结已审计几何和名义动力学先验，用Pinocchio计算完整树回归矩阵；在可辨识基空间内做噪声加权与列缩放，再优化信息量/最小奇异值并检查条件数。不能用本就秩亏的完整参数矩阵要求“满秩”，也不能靠正则化宣称补足了观测信息。
-2. 同时约束关节位置、速度、加速度、jerk、连续/峰值电流与力矩，以及双臂/躯干/夹具碰撞间隙。检查腰部夹具处预计的合力和合力矩；其允许值须有明确来源。反力较小或较大的对照应按实际动力学评估，不能把左右同号/异号关节角简单等同于反力抵消/叠加。
-3. 碰撞/距离使用Pinocchio几何与Coal等既有库能力，不能让MuJoCo参与物理计算。模型若缺少可信碰撞几何或限制，轨迹仅作为Mock候选，不能直接标为实机可执行。
-4. 先低幅/低速核对，再提升激励；规划进入/退出周期段的平滑过渡，过渡与未稳定周期不进入周期拟合。带宽受驱动跟踪、采样与滤波限制，不由1kHz接口直接推断允许高频激励。
-5. 发布训练轨迹和独立验证轨迹的完整14轴q/dq/ddq/jerk、预测电流/力矩及约束余量。实机辨识仍以观测的实际运动做傅里叶拟合和解析求导，不把参考ddq当成实测加速度。
+---
 
-安装反力/共同扰动对照与基础参数辨识是不同目的。初次双臂同动应有意避免高度重复的左右参考，再另外设置相位/反力对照；不假定双臂完全镜像运动就足够识别所有参数。
+### 4. H4 阶段：周期加速度激励、惯量辨识与 2×2 控制对照
+* **配置文件**：[configs/hardware_inertia.yaml](../configs/hardware_inertia.yaml)
+* **实现代码**：[staged_inertia.py](../python/casbot_calib/staged_inertia.py)、[hardware_inertia.py](../python/casbot_calib/hardware_inertia.py)
+* **前置条件**：同时冻结 H2 的重力可观测约束与 H3 的全部摩擦参数 $(b, f_c, f_s)$。
 
-## 数据与参数包
+#### (1) 傅里叶周期轨迹与解析求导（避免差分噪声爆炸）
+* **轨迹设计**：14 轴同时沿着有限项傅里叶级数轨迹运动（周期 $T=8\text{s}$，连续跑 4 个周期，丢弃前 2 个过渡周期，保留后 2 个稳态周期；两端用 2 秒 C3 包络平滑进出）。
+* **频域投影求导**：
+  * 实机 SDK 反馈存在缓存重复帧和接收抖动，直接对位置 $q$ 或速度 $\dot{q}$ 做相邻帧差分求角加速度 $\ddot{q}$ 会把高频噪声放大成千上万倍。
+  * 代码在稳态周期窗口内，对实测位置 $q(t)$ 做带梯形时间权重的**截断傅里叶最小二乘拟合**（默认 $H=16$ 阶谐波，覆盖 $0 \sim 2\text{Hz}$），然后**对拟合出的正余弦级数直接做解析求导**得到平滑的 $\dot{q}(t)$ 和 $\ddot{q}(t)$。
+* **非线性摩擦投影顺序（关键细节）**：
+  * 干摩擦 $\text{sign}(\dot{q})$ 是非线性的，“先对速度做傅里叶滤波再取符号”和“先对原始速度取符号再投影到傅里叶基”结果不同。
+  * 代码严格**先在原始实测速度上计算非线性摩擦特征**，然后再把摩擦特征、Pinocchio 刚体回归矩阵 $Y(q, \dot{q}, \ddot{q})$ 和实测力矩统一投影到同一个 $H$ 阶傅里叶频带内。
 
-新数据契约显式版本化：具名14轴的q/dq/current、逐轴状态、序号、采样/接收时间、各通道时间是否已知；命令含14轴模式/参考/PD/前馈。左右SDK若来自不同更新或时钟域，必须声明并对齐，不能因经过EtherCAT就假设同时采样。旧单轴NPZ格式保留。
+#### (2) 带重力等式约束的 PSD 求解
+调用 `fit_rigid` 求解 140 维参数 $\theta$ 时，除了施加 14 个连杆的 $4 \times 4$ 伪惯性矩阵半正定约束（`PSDTriangleConeT(4)`）外，还把 H2 静态重力阶段保存的观测方程作为**严格等式约束（`ZeroConeT`）**压入求解器：
+$$Y_{\text{gravity}} \theta = \hat{\tau}_{\text{gravity}}$$
+这保证了：**新算出来的 140 维参数在补充了转动惯量的同时，它在任何静态姿态下算出的重力力矩与 H2 阶段完全一致（偏差 $< 10^{-6}$），绝不破坏已标定好的重力模型**。
 
-参数包包含整机/左右电机/工具ID、夹具及锁定配置、重力方向、几何与驱动版本、gain来源、温度范围、惯性基映射/物理可行模型、摩擦、训练与独立验证批次和有效范围。Mock真值单独保存；估计器只使用观测和明确先验。
+#### (3) 五档 PD 选择与 2×2 四组控制对照
+为了客观验证标定出来的动力学模型到底有没有用，H4 自动在独立轨迹上跑一组 **2×2 消融实验**：
+1. 先在一条专用选择轨迹上测试 5 档 PD 增益比例（$K_p$ 乘 `0.5, 0.75, 1.0, 1.25, 1.5`，$K_d$ 按平方根缩放），选出跟踪误差最小的增益档位。
+2. 随后在独立验证轨迹上依次运行 4 组控制：
+   * **`prior_original`**：仅 H3 重力前馈 + 原始 PD
+   * **`prior_tuned`**：仅 H3 重力前馈 + 优化后 PD
+   * **`identified_original`**：H4 完整动力学前馈（含刚体惯量/科氏力 + 摩擦 + 重力）+ 原始 PD
+   * **`identified_tuned`**：H4 完整动力学前馈 + 优化后 PD
+3. 对比四组的轨迹跟踪 RMSE，清晰拆解出**“动力学前馈带来的精度提升”**与**“单纯调大 PD 带来的精度提升”**。
 
-几何暂未标定时，结果必须标记为“冻结名义几何条件下的动力学候选”，报告可能的模型失配，不能把电流预测改善等同于末端绝对精度改善。
+---
 
-## 实现顺序与验收
+## 🎯 四、手腕小惯量专项：路线 A 与路线 B
 
-1. **双臂树形内核**：复用Pinocchio，接入名义双臂URDF、腰部实际锁定配置、左右负载和TCP；验证模型顺序、固定关节聚合、质量矩阵/重力/回归、单臂与整树切片一致，以及理想固定基座下跨臂块为零。原右臂API及解析测试保留。
-2. **14轴Mock与同步采集**：复用Boost积分、每实例Pinocchio工作区与纳秒调度；验证能量、步长收敛、驱动/反馈通道时序、饱和和缺帧、原始记录/真值隔离及双臂回放。
-3. **激励设计与分阶段辨识**：实现上述轨迹优化和阶段1–5；做激励不足/尺度缺失负例；输出可辨识性与独立残差，而非强求每个原始参数等于真值。
-4. **实机接入、冻结验证与演示**：SDK/限制/时钟/尺度确认后执行逐步实验；形成双臂独立验收及中文回放。没有实机数据时只称Mock通过，不宣称实体标定已完成。
+手腕三个轴（`wrist_yaw / pitch / roll`）连杆轻、惯量极小（仅 $10^{-4} \sim 10^{-3}\text{ kg}\cdot\text{m}^2$ 量级）。在实机 SDK 下，如果反馈通道存在几毫秒的缓存或相位滞后 $\Delta t$，与速度同相的摩擦力矩就会在回归时泄漏到正交的加速度方向上，导致手腕惯量估计出现超过 10% 甚至正负反转的偏差。
 
-沿用原计划的合成数值门槛：积分步长减半主要轨迹/峰值差异<1%；动态独立力矩预测无噪声逐轴归一化RMSE≤1%，公布噪声下10批至少9批逐轴≤5%。归一化分母和力矩下限事先配置，左右臂/逐轴都验收。它们不是厂家性能指标；实机阈值须按设备、测量噪声与任务要求单独确定。夹具刚性是否足够需实验验证，不由结构名称“联轴器/抱紧”推断。
+为此，仓库设计了**单向非换向高频腕部探针（Wrist Probe，保持单向运动不跨零速，避开静摩擦过零跳变）**，并提供两条标定路线与诊断工具：
 
-## 依据与暂缓项
+| 路线 | 原理与做法 | 适用场景与现场判据（以惯量偏差 $\le 10\%$ 为界） |
+| :--- | :--- | :--- |
+| **路线 A（直接时域同带宽拟合）** | 对实测 $q, \dot{q}, \tau$ 统一过 6 阶 30Hz 零相位 Butterworth 滤波，样条求导得 $\ddot{q}$，直接线性回归 $\tau - \tau_g = J\ddot{q} + b\dot{q} + c_0 + c_1 t + c_2 t^2$。 | 在现场跑完 GUI 短轨迹后运行 `bash fieldwork/run.sh a-evidence`：若正反向 $J$ 差、跨轮复测差及 $\pm 2\text{ms}$ 时移扰动下的 $J$ 变化均 **$\le 10\%$**（或降到 250Hz 发送 / 放慢轨迹后 $\le 10\%$），直接用路线 A。 |
+| **路线 B（双频频响分离拟合）** | 采用双频正弦叠加激励（如 `2.5Hz + 10Hz`），利用惯性力矩随 $\omega^2$ 增长而粘性/滞后项随 $\omega$ 变化的频响差异，联合分离出真实惯量 $J$ 与通道等效相位滞后。 | 若 `a-evidence` 或 `sensitivity` 评估显示实机 SDK 存在较大未建模滤波/时移，导致降档后路线 A 误差仍 **$> 10\%$**，则启用路线 B。 |
 
-- 当前代码边界：[单臂内核](arm_r1.md)、[统一积分器](integration_backend.md)、[原五轮计划](whole_arm_calibration_plan.md)。
-- task双臂来源：[README](../../casbot_tasks/scripts/casbot_dual_arm_model/README.md)、[源问题](../../casbot_tasks/scripts/casbot_dual_arm_model/output/source_model_issues.md)。基座固定/腰部锁定的URDF可复用，旧MuJoCo动力学管线不进入本项目。
-- [Swevers 1997](https://doi.org/10.1109/70.631234)：周期有限傅里叶激励、运动约束和辨识质量。全文在相邻task的 `references/dynamics_identification_2026-10-19/02_optimal_excitation_1997.pdf`。
-- [Gautier/Briot 2012](https://pagesperso.ls2n.fr/~briot-s/PubliConf/gm_sb_icra12_100212.pdf)：独立负载提供驱动尺度；[Panda 2019](https://iris.uniroma1.it/handle/11573/1356777)：多轴参数与物理可行模型恢复。引用不代表已复现其完整方法。
-- 运动学千分计/TriCal、腰部运动、浮动基座、复杂夹具柔顺性、双手闭链/共同物体动力学暂不实施。此处冻结的是首版动力学范围，不删除未来接口。
+---
+
+## 🚀 五、常用命令速查表
+
+### 1. 现场实机联调与分阶段标定（H1 → H4）
+详细步骤参见 [fieldwork 现场手册](../fieldwork/README.md) 与 [实机 CLI 路径](hardware_execution_path.md)：
+
+```bash
+read -r -p "请输入现场确认的 ROS_DOMAIN_ID: " calib_domain_id
+
+# Step 0: 现场只读预检与 GUI 调参台
+bash fieldwork/run.sh preflight --domain-id "$calib_domain_id" --scope hardware_read_only --output artifacts/fieldwork/site_preflight
+bash fieldwork/capture_zero.sh --domain-id "$calib_domain_id" --scope hardware_position_stream
+bash fieldwork/run.sh gui --profile configs/hardware_field.yaml --domain-id "$calib_domain_id" --scope hardware_position_stream
+
+# Step 1 (H2): 规划并执行方向、频率与 64 姿态静态重力批次
+bash scripts/humble/container.sh casbot-calib plan-static-field --output artifacts/site_static_preset_v1
+bash scripts/humble/container.sh bash scripts/humble/vendor.sh casbot-calib hardware-plan-batch \
+  --config configs/hardware_batch.yaml --profile configs/hardware_field.yaml \
+  --preset artifacts/site_static_preset_v1 --domain-id "$calib_domain_id" --output artifacts/site_batch_v1
+bash scripts/humble/container.sh bash scripts/humble/vendor.sh casbot-calib hardware-run-batch artifacts/site_batch_v1 --max-jobs 1
+bash scripts/humble/container.sh bash scripts/humble/vendor.sh casbot-calib hardware-run-batch artifacts/site_batch_v1 --resume
+
+# Step 2 (H3): 基于 H2 重力模型，规划并执行匀速摩擦与零 PD 起动批次
+bash scripts/humble/container.sh bash scripts/humble/vendor.sh casbot-calib hardware-plan-friction \
+  --config configs/hardware_friction.yaml --profile configs/hardware_field.yaml \
+  --gravity artifacts/site_batch_v1 --domain-id "$calib_domain_id" --output artifacts/site_h3_v1
+bash scripts/humble/container.sh bash scripts/humble/vendor.sh casbot-calib hardware-run-batch artifacts/site_h3_v1 --max-jobs 1
+bash scripts/humble/container.sh bash scripts/humble/vendor.sh casbot-calib hardware-run-batch artifacts/site_h3_v1 --resume
+
+# Step 3 (H4): 基于 H3 模型，规划并执行周期惯量激励与四组控制对照
+bash scripts/humble/container.sh bash scripts/humble/vendor.sh casbot-calib hardware-plan-inertia \
+  --config configs/hardware_inertia.yaml --profile configs/hardware_field.yaml \
+  --prior artifacts/site_h3_v1 --domain-id "$calib_domain_id" --output artifacts/site_h4_v1
+bash scripts/humble/container.sh bash scripts/humble/vendor.sh casbot-calib hardware-run-batch artifacts/site_h4_v1 --max-jobs 1
+bash scripts/humble/container.sh bash scripts/humble/vendor.sh casbot-calib hardware-run-batch artifacts/site_h4_v1 --resume
+```
+
+### 2. 纯离线 C++ 虚拟时间仿真全流程演练（不连机器人）
+如果想在本地快速验证整套分阶段辨识算法与生成中文回放视频：
+
+```bash
+bash scripts/humble/container.sh casbot-calib staged-suite \
+  --config configs/staged_dual_arm.yaml \
+  --output artifacts/first_dynamics_v1 --fps 12
+```

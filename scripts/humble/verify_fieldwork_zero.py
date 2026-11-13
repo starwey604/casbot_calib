@@ -71,6 +71,13 @@ def main():
         result=zero.return_zero(config,args.domain_id,'localhost_contract_mock',path=root/'zero.yaml',
             output=root/'cancel_return',cancel_check=lambda:'operator_cancel',notify=lambda _:None)
         checks['cancel_does_not_send_motion']=not result['passed'] and not fixture.active
+        # Quota pauses only optional execution recording, not the zero motion or its required start snapshot.
+        fixture.velocity=[0.]*14;pause=root/'recording_paused.json';pause.write_text('{}')
+        before=fixture.commands
+        result=zero.return_zero(config,args.domain_id,'localhost_contract_mock',path=root/'zero.yaml',
+            output=root/'paused_return',recording_pause_file=pause,notify=lambda _:None)
+        checks['zero_quota_keeps_motion_and_mode_exit']=result['passed'] and fixture.commands>before and not fixture.active
+        checks['zero_quota_stops_execution_and_raw_records']=result['result']['recording_paused'] and not rows(root/'paused_return/capture/execution/commands.csv') and not rows(root/'paused_return/capture/execution/feedback.csv') and (root/'paused_return/capture/raw_state/raw/cdr.bin').stat().st_size==0
     finally:
         fixture.velocity=[0.]*14
         if child:

@@ -3,7 +3,7 @@ import json
 from pathlib import Path
 import numpy as np
 import pytest
-from casbot_calib.fieldwork_a_evidence import cadence, table, find_recordings, window_a, imu_summary
+from casbot_calib.fieldwork_a_evidence import cadence, find_recordings, window_a, imu_summary
 from casbot_calib.fieldwork_cli import parser
 from test_hardware_probe import fixture, rotor
 
@@ -16,18 +16,17 @@ def test_cadence_keeps_integer_ns_and_reports_backwards_clock():
     assert cadence([])['hz'] is None
 
 
-def test_saved_exports_are_not_double_counted(tmp_path):
-    for name in ('recording', 'capture/execution'):
-        d = tmp_path/'controls/c1/runs/r1'/name; d.mkdir(parents=True)
-        for f in ('commands.csv', 'feedback.csv'):
-            (d/f).write_text('a\n1\n')
-    assert find_recordings(tmp_path) == [tmp_path/'controls/c1/runs/r1/recording']
+def test_only_authoritative_execution_is_discovered(tmp_path):
+    d=tmp_path/'controls/c1/runs/r1/capture/execution';d.mkdir(parents=True)
+    for f in ('commands.csv','feedback.csv'):(d/f).write_text('a\n1\n')
+    assert find_recordings(tmp_path)==[d]
 
 
 def test_partial_csv_is_not_silently_fitted(tmp_path):
     path = tmp_path/'a.csv'; path.write_text('a,b\n1,2\n3\n')
     with pytest.raises(ValueError, match='不完整'):
-        table(path)
+        from casbot_calib.fieldwork_streaming import csv_rows
+        list(csv_rows(path))
 
 
 def test_original_a_and_torque_budget_on_known_rotor(monkeypatch):
@@ -106,7 +105,7 @@ def test_saved_workspace_cli_uses_sibling_imu_without_touching_inputs(tmp_path):
     import sys
     import yaml
     source = tmp_path/'saved'; run = source/'controls/c1/runs/r1'
-    recording = run/'recording'; recording.mkdir(parents=True)
+    recording = run/'capture/execution'; recording.mkdir(parents=True)
     protocol = source/'protocol'; protocol.mkdir()
     profile = yaml.safe_load(Path('configs/hardware_field.yaml').read_text())
     profile['gravity_world'] = [0., 0., 0.]

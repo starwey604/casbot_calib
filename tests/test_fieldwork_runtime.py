@@ -155,3 +155,21 @@ def test_recording_notice_cancels_short_but_does_not_stop_manual_stream():
     desk._handle(dict(type='recording_error',message='EFBIG fixture'))
     assert '当前录制不完整' in desk.recording_error and '停止通道继续' in desk.recording_error
     assert desk.sending
+
+
+def test_shared_recorder_watches_exact_process_and_blocks_dead_start(tmp_path):
+    from casbot_calib.sdk_process import SharedRecorder
+    child=subprocess.Popen([sys.executable,'-c','import time;time.sleep(30)'])
+    try:
+        stat=Path(f'/proc/{child.pid}/stat').read_text();ticks=stat[stat.rfind(')')+2:].split()[19]
+        watch=SharedRecorder(dict(recorder_pid=child.pid,process_start_ticks=ticks))
+        assert watch.poll() is None
+        wrong=SharedRecorder(dict(recorder_pid=child.pid,process_start_ticks='wrong'))
+        assert wrong.poll() is not None
+        child.terminate();child.wait(timeout=5)
+        assert watch.poll() is not None
+        marker=tmp_path/'unexpected_start'
+        result=run_process([sys.executable,'-c',f'open({str(marker)!r},"w").close()'],None,tmp_path/'log',recorder=watch)
+        assert not result.started and result.interruption=='raw_recorder_exited' and not marker.exists()
+    finally:
+        if child.poll() is None:child.terminate();child.wait(timeout=5)

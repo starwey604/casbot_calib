@@ -115,7 +115,7 @@ class Session:
         fault = any(e['event'] == 'terminal_fault' for e in journal)
         return dict(**self.metadata, runs=starts, blocked_reason='会话故障或未封存，需新建会话' if fault or set(starts)-ends else None)
 
-    def stream(self, relative, command_file, cancel_check=None, initial_values=None, on_event=None, recording_pause_file=None, settings=None):
+    def stream(self, relative, command_file, cancel_check=None, initial_values=None, on_event=None, recording_pause_file=None, settings=None, shared_raw=None):
         if self.status()['blocked_reason']:
             raise ValueError(self.status()['blocked_reason'])
         directory = (self.root/relative).resolve()
@@ -160,7 +160,8 @@ class Session:
                 manual_command=command_file, manual_effort_limit_nm=self.metadata['manual_tuning']['effort_limit_nm'],
                 timeout_s=None if settings is not None else 24*3600,
                 **(dict(manual_policy=policy_path) if policy_path else {}), cancel_check=cancel_check, on_output=output,
-                **(dict(recording_pause_file=recording_pause_file) if recording_pause_file else {}))
+                **(dict(recording_pause_file=recording_pause_file) if recording_pause_file else {}),
+                **(dict(shared_raw=shared_raw) if shared_raw is not None else {}))
             controlled = result.get('fault') == 'interrupted' and result.get('supervisor_interruption') in ('operator_cancel', 'frontend_closed')
             controlled=controlled or (settings is not None and result.get('fault')=='duration_complete')
             event(self.root, 'stream_finished', run=relative, controlled_stop=controlled)
@@ -172,7 +173,7 @@ class Session:
             recording_error='控制CSV录制已暂停；已写前缀保留，数据不完整' if result.get('recording_paused') else None
             try:
                 if recording_pause_file and Path(recording_pause_file).exists():raise ValueError('缓存已满；原始前缀保留，记录导出不完整')
-                if recording_pause_file is None:export_recording(self, directory) # Automatic spools derive comparison files only on explicit save.
+                if recording_pause_file is None:export_recording(self, directory) # Spools write the small recording manifest only on explicit save.
             except (OSError,ValueError) as exc:
                 recording_error=str(exc)
                 if on_event:on_event(dict(code='recording_io_error',title='控制已结束，但记录导出不完整',
@@ -210,38 +211,58 @@ def recording_capture(directory):
     return capture
 
 
-def export_recording(session, directory):
-    """Comparison CSVs keep native publish/receive clocks, all frames and missing values."""
-    import shutil
+def export_recording(session, directory, *, recording_paused=False):
+    """Write a small relocatable manifest; native CSVs remain the only authoritative copy."""
+    import os
     capture = recording_capture(directory); output = directory/'recording'; output.mkdir(exist_ok=True)
-    for filename in ('commands.csv', 'feedback.csv', 'events.csv'):
-        shutil.copyfile(capture/'execution'/filename, output/filename)
-    from .vendor_data import normalize_packet
-    packets = capture/'raw_state/raw/packets.jsonl'
-    with (output/'readback.csv').open('w') as stream:
-        writer = csv.writer(stream)
-        keys = ('q','dq','effort_raw','kp','kd')
-        writer.writerow(['channel','receive_ns','publication_stamp_sec','publication_stamp_nanosec',
-                         *[f'{key}{j}' for key in keys for j in range(14)]])
-        if packets.exists():
-            with packets.open() as raw:
-                for line in raw:
-                    packet = json.loads(line)
-                    if packet['channel'] not in ('joint','debug'): continue
-                    value = normalize_packet(packet, dict(joint_names=session.names))
-                    if value['q'] is None: continue
-                    stamp = packet['message'].get('header',{}).get('stamp',{})
-                    writer.writerow([packet['channel'],packet['receive_ns'],stamp.get('sec',''),stamp.get('nanosec',''),
-                        *[x for key in keys for x in (value[key] if value[key] is not None else ['']*14)]])
+    files = {name: os.path.relpath(capture/'execution'/name, output)
+             for name in ('commands.csv', 'feedback.csv', 'events.csv')}
     init = read(directory/'initial.json') if (directory/'initial.json').exists() else None
+    from .raw_archive import capture_raw
+    raw,start,end=capture_raw(capture)
     execution_result=read(capture/'execution/result.json') if (capture/'execution/result.json').exists() else {}
-    atomic_json(output/'recording.json', dict(execution_recording_status='paused_prefix' if execution_result.get('recording_paused') else 'finalized_prefix' if execution_result else 'live_prefix',**run_marker(), joint_names=session.names,
+    atomic_json(output/'recording.json', dict(schema_version='casbot_fieldwork_recording_v3', files=files, execution_recording_status='paused_prefix' if recording_paused or execution_result.get('recording_paused') else 'finalized_prefix' if execution_result else 'live_prefix',**run_marker(), joint_names=session.names,
         model_context=session.metadata['model_context'], scope=session.metadata['scope'], initial=init,
         timestamp_semantics=dict(publish_ns='sender steady clock', receive_ns='callback steady clock',
             publish_stamp_ns='SDK publication stamp, NOT acquisition'), sample_time_known=False,
         feedback_effort='module estimate; not a command default or independent torque sensor',
-        raw_state='../capture/raw_state', hidden_compensation=False))
+        raw_state=os.path.relpath(raw,output),raw_interval_receive_ns=[start,end],hidden_compensation=False))
     return str(output)
+
+
+def export_readback(directory, output, *, start_s=0., end_s=None, joints=None):
+    """Explicit derived CSV; time window is relative to the first joint/debug receipt."""
+    from .vendor_data import normalize_packet
+    directory=Path(directory).resolve();output=Path(output).expanduser().resolve()
+    if directory == output or directory in output.parents:
+        raise ValueError('导出文件须位于源运行目录之外')
+    if not np.isfinite(start_s) or start_s < 0 or (end_s is not None and (not np.isfinite(end_s) or end_s <= start_s)):
+        raise ValueError('时间窗须为非负起点和更大的有限终点')
+    indices=list(range(14)) if joints is None else list(joints)
+    if not indices or len(set(indices))!=len(indices) or any(type(j) is not int or not 0<=j<14 for j in indices):
+        raise ValueError('轴索引须为不重复的0..13')
+    # Control and workspace use the same sealed joint order.
+    session=Session(directory.parent.parent)
+    from .raw_archive import capture_raw,iter_records
+    raw,start,end=capture_raw(recording_capture(directory))
+    keys=('q','dq','effort_raw','kp','kd');origin=None;count=0
+    with output.open('x') as stream:
+        writer=csv.writer(stream)
+        writer.writerow(['channel','receive_ns','publication_stamp_sec','publication_stamp_nanosec',
+                         *[f'{key}{j}' for key in keys for j in indices]])
+        for packet,_ in iter_records(raw,start_ns=start,end_ns=end):
+            if packet['channel'] not in ('joint','debug'):continue
+            received=int(packet['receive_ns'])
+            if origin is None:origin=received
+            elapsed=received-origin
+            if elapsed < round(start_s*1e9) or (end_s is not None and elapsed >= round(end_s*1e9)):continue
+            value=normalize_packet(packet,dict(joint_names=session.names))
+            if value['q'] is None:continue
+            header=packet['message'].get('header',{});stamp=header.get('stamp',header)
+            writer.writerow([packet['channel'],received,stamp.get('sec',''),stamp.get('nanosec',''),
+                *[value[key][j] if value[key] is not None else '' for key in keys for j in indices]])
+            count+=1
+    return dict(output=str(output),rows=count,time_origin='first joint/debug receive_ns',joints=indices)
 
 
 def heartbeat_check(path, *, timeout_s=2., expected_owner=None):

@@ -3,7 +3,6 @@
 No collector, motion, candidate update or automatic route promotion. Optional
 window diagnostics reuse the existing A estimator on the original time axis.
 """
-import csv
 from pathlib import Path
 import numpy as np
 import yaml
@@ -22,36 +21,11 @@ def cadence(ns):
                              [('p50', .5), ('p95', .95), ('p99', .99), ('maximum', 1.)]} if len(positive) else {})
 
 
-def table(path):
-    with Path(path).open() as stream:
-        reader = csv.DictReader(stream); names = reader.fieldnames; rows = []
-        for row in reader:
-            if None in row or any(value is None for value in row.values()):
-                raise ValueError('CSV末尾不完整，请先保存会话：'+str(path))
-            rows.append(row)
-    if not rows:
-        raise ValueError('CSV没有数据：'+str(path))
-    return names, rows
-
-
-def vector(rows, prefix, count=14):
-    return np.array([[float(r.get(prefix+str(j)) or 'nan') for j in range(count)] for r in rows])
-
-
 def find_recordings(root):
-    """Prefer saved comparison copies over the same run's execution originals."""
-    paths = sorted(root.rglob('commands.csv'))
-    if (root/'commands.csv').is_file():
-        paths = [root/'commands.csv']
-    result = []
-    for p in paths:
-        if 'evaluation' in p.relative_to(root).parts or not (p.parent/'feedback.csv').is_file():
-            continue
-        if p.parent.name == 'execution':
-            if any((ancestor/'recording/commands.csv').is_file() for ancestor in p.parents if ancestor != p.parent):
-                continue
-        result.append(p.parent)
-    return result
+    """Read the single authoritative execution tables, never derived exports."""
+    paths = [root/'commands.csv'] if (root/'commands.csv').is_file() else sorted(root.rglob('execution/commands.csv'))
+    return [p.parent for p in paths if 'evaluation' not in p.relative_to(root).parts
+            and (p.parent/'feedback.csv').is_file()]
 
 
 def profile_for(directory):
@@ -170,54 +144,38 @@ def window_a(obs, elapsed, interval, joint, profile, band, *, imu=None):
         interpretation='固定名义重力下原A的局部诊断；额外错位敏感性与10%力矩预算，不是实测缓存年龄或真实误差上界')
 
 
-def imu_summary(root, *, samples_out=None):
-    results = []
-    for path in sorted(root.rglob('packets.jsonl')):
-        if 'evaluation' in path.relative_to(root).parts:
-            continue
-        samples = []
-        with path.open() as stream:
-            for line in stream:
-                if not line.endswith('\n'):
-                    break
-                import json
-                p = json.loads(line)
-                if p.get('channel') == 'imu':
-                    samples.append(p)
-        if not samples:
-            continue
-        metadata = read(path.with_name('recorder.json')) if path.with_name('recorder.json').exists() else {}
-        if samples_out is not None:
-            valid = []
-            for row in samples:
-                m = row['message']; value = []
-                for key in ('angular_velocity', 'linear_acceleration'):
-                    cov = m.get(key+'_covariance', [])
-                    channel = m.get(key, [])
-                    if (cov and cov[0] == -1) or len(channel) != 3 or not all(isinstance(x, (int, float)) for x in channel):
-                        break
-                    value.extend(channel)
-                if len(value) == 6 and np.isfinite(value).all():
-                    valid.append((int(row['receive_ns']), value))
-            samples_out.append(dict(path=str(path), clock_id=metadata.get('clock_id'), rows=valid))
-        stats = {}
-        for key in ('angular_velocity', 'linear_acceleration'):
-            valid = []
-            for row in samples:
-                m = row['message']; value = m.get(key); covariance = m.get(key+'_covariance')
-                if covariance and covariance[0] == -1:
-                    continue
-                if isinstance(value, list) and len(value) == 3 and all(isinstance(x, (int, float)) for x in value) and np.isfinite(value).all():
-                    valid.append(value)
-            if valid:
-                values = np.array(valid)
-                stats[key] = dict(valid_rows=len(valid), mean=values.mean(axis=0).tolist(),
-                    rms_about_mean=np.sqrt(np.mean((values-values.mean(axis=0))**2, axis=0)).tolist(),
-                    peak_norm=float(np.max(np.linalg.norm(values, axis=1))))
-        results.append(dict(path=str(path), receive=cadence([p['receive_ns'] for p in samples]),
-            frame_ids=sorted({p['message'].get('header', {}).get('frame_id', '') for p in samples}),
-            clock_ids=sorted({p.get('clock_id', metadata.get('clock_id', '')) for p in samples}), channels=stats))
+def imu_summary(root, *, scratch=None, spool_windows=False):
+    from .fieldwork_streaming import AnalysisScratch,StreamingCadence,RunningVector
+    from .raw_archive import raw_directories,iter_records
+    if scratch is None:
+        with AnalysisScratch() as temporary:return imu_summary(root,scratch=temporary)
+    results=[]
+    for raw in raw_directories(root):
+        path=raw/('format.json' if (raw/'format.json').exists() else 'packets.jsonl')
+        metadata=read(raw/'recorder.json') if (raw/'recorder.json').exists() else {}
+        timing=StreamingCadence(scratch);frames=set();clocks=set()
+        stats={key:RunningVector() for key in ('angular_velocity','linear_acceleration')}
+        source=dict(id=scratch.series(),path=str(path),clock_id=metadata.get('clock_id'),count=0,first=None,last=None)
+        for row,_ in iter_records(raw):
+            if row.get('channel')!='imu':continue
+            ns=int(row['receive_ns']);timing.add(ns);m=row['message']
+            frames.add(m.get('header',{}).get('frame_id',''));clocks.add(row.get('clock_id',metadata.get('clock_id','')))
+            valid={}
+            for key,stat in stats.items():
+                value=m.get(key);cov=m.get(key+'_covariance')
+                if cov and cov[0]==-1:continue
+                if isinstance(value,list) and len(value)==3 and all(isinstance(x,(int,float)) for x in value) and np.isfinite(value).all():
+                    stat.add(value);valid[key]=value
+            if len(valid)==2:
+                if spool_windows:scratch.add_imu(source['id'],source['count'],ns,valid['angular_velocity']+valid['linear_acceleration'])
+                if source['first'] is None:source['first']=ns
+                source['last']=ns;source['count']+=1
+        if timing.count:
+            results.append(dict(path=str(path),receive=timing.result(),frame_ids=sorted(frames),clock_ids=sorted(clocks),
+                channels={k:v.result() for k,v in stats.items() if v.count}))
+            if spool_windows:scratch.imu_sources.append(source)
     return results
+
 
 
 def run(source, output, *, joint=13, window=None, band=30.):
@@ -235,49 +193,44 @@ def run(source, output, *, joint=13, window=None, band=30.):
     if out == imu_root or imu_root in out.parents or out in imu_root.parents:
         raise ValueError('输出须位于保存工作区之外')
     install_readonly_guard([root, imu_root])
-    imu_samples = []; imu = imu_summary(imu_root, samples_out=imu_samples)
-    records = []; unavailable = []
-    for path in find_recordings(root):
-        try:
-            _, commands = table(path/'commands.csv'); _, feedback = table(path/'feedback.csv')
-        except ValueError as exc:
-            unavailable.append(dict(directory=str(path), reason=str(exc)))
-            continue
-        sent = np.array([int(r['publish_ns']) for r in commands], dtype=np.int64)
-        received = np.array([int(r['receive_ns']) for r in feedback], dtype=np.int64)
-        row = dict(directory=str(path), sender=cadence(sent), receiver=cadence(received),
-            first_publish_ns=int(sent[0]), feedback_interval_s=[float((received[0]-sent[0])*1e-9), float((received[-1]-sent[0])*1e-9)])
-        planned = np.array([int(r['planned_ns']) for r in commands], dtype=np.int64) if 'planned_ns' in commands[0] else None
-        if planned is not None:
-            row['planned'] = cadence(planned)
-            lateness = (sent-planned)*1e-6
-            row['send_lateness_ms'] = {key: float(np.quantile(lateness, q)) for key, q in [('p50', .5), ('p99', .99), ('maximum', 1.)]}
-        obs = dict(receive_ns=received, q=vector(feedback, 'q'), dq=vector(feedback, 'v'), effort_raw=vector(feedback, 'effort_raw'))
-        row['missing_values'] = {key: int(np.sum(~np.isfinite(obs[key]))) for key in ('q', 'dq', 'effort_raw')}
-        row['axis'] = joint
-        if window is not None:
+    from .fieldwork_streaming import AnalysisScratch,scan_commands,scan_feedback
+    out.mkdir(parents=True,exist_ok=False)
+    records=[];unavailable=[]
+    with AnalysisScratch(out) as scratch:
+        imu=imu_summary(imu_root,scratch=scratch,spool_windows=window is not None)
+        for path in find_recordings(root):
             try:
-                profile, binding = profile_for(path); row['profile'] = binding
-                clock_id = None
-                for ancestor in (path, *path.parents):
-                    recorder = ancestor/'capture/raw_state/raw/recorder.json'
-                    if recorder.exists():
-                        clock_id = read(recorder).get('clock_id'); break
-                    recorder = ancestor/'raw_state/raw/recorder.json'
-                    if recorder.exists():
-                        clock_id = read(recorder).get('clock_id'); break
-                matching = [s for s in imu_samples if clock_id and s['clock_id']==clock_id and len(s['rows'])>=2
-                    and s['rows'][0][0] <= sent[0]+window[0]*1e9 and s['rows'][-1][0] >= sent[0]+window[1]*1e9]
-                signal = None
-                if matching:
-                    # Choose one covering recorder; do not merge duplicate subscriptions.
-                    selected = max(matching, key=lambda s: len(s['rows'])); row['imu_path'] = selected['path']
-                    signal = ((np.array([r[0] for r in selected['rows']], dtype=np.int64)-sent[0])*1e-9,
-                              np.array([r[1] for r in selected['rows']]))
-                row['A'] = window_a(obs, (received-sent[0])*1e-9, window, joint, profile, band, imu=signal)
-            except (ValueError, KeyError, np.linalg.LinAlgError) as exc:
-                row['A'] = dict(available=False, next_action=str(exc))
-        records.append(row)
+                command=scan_commands(path/'commands.csv',scratch)
+                feedback,obs,contiguous=scan_feedback(path/'feedback.csv',scratch,command['first_publish_ns'],window)
+            except ValueError as exc:
+                unavailable.append(dict(directory=str(path),reason=str(exc)));continue
+            origin=command['first_publish_ns']
+            row=dict(directory=str(path),**command,**feedback,axis=joint)
+            if window is not None:
+                try:
+                    profile,binding=profile_for(path);row['profile']=binding
+                    clock_id=None
+                    from .raw_archive import capture_raw
+                    for ancestor in (path,*path.parents):
+                        raw,_,_=capture_raw(ancestor/'capture');recorder=raw/'recorder.json'
+                        if recorder.exists():clock_id=read(recorder).get('clock_id');break
+                        recorder=ancestor/'raw_state/raw/recorder.json'
+                        if recorder.exists():clock_id=read(recorder).get('clock_id');break
+                    if not np.isfinite([*window,band]).all() or window[0]>=window[1] or band<=0:
+                        raise ValueError('窗口须START<END，带宽须为正数')
+                    lo_ns=origin+round(window[0]*1e9);hi_ns=origin+round(window[1]*1e9)
+                    matching=[s for s in scratch.imu_sources if clock_id and s['clock_id']==clock_id and s['count']>=2
+                        and s['first']<=lo_ns and s['last']>=hi_ns]
+                    signal=None
+                    if matching:
+                        selected=max(matching,key=lambda s:s['count']);row['imu_path']=selected['path']
+                        ns,values=scratch.imu_window(selected,lo_ns,hi_ns)
+                        signal=((ns-origin)*1e-9,values)
+                    if not contiguous:raise ValueError('Contiguous public probe window required')
+                    row['A']=window_a(obs,(obs['receive_ns']-origin)*1e-9,window,joint,profile,band,imu=signal)
+                except (ValueError,KeyError,np.linalg.LinAlgError) as exc:
+                    row['A']=dict(available=False,next_action=str(exc))
+            records.append(row)
     report = dict(schema_version='casbot_fieldwork_a_evidence_v1', source=str(root), imu_source=str(imu_root), records=records, imu=imu,
         unavailable_records=unavailable,
         summary=f'已整理{len(records)}段指令／反馈、{len(imu)}份IMU记录', joint=joint,
@@ -287,7 +240,7 @@ def run(source, output, *, joint=13, window=None, band=30.):
         source_modified=False, sample_time_known=False, automatic_calibration_acceptance=False)
     if not records:
         report['next_action'] = '当前目录没有配对commands.csv／feedback.csv；请传GUI保存目录或具体recording目录，只读observe仅提供接收观测'
-    out.mkdir(parents=True, exist_ok=False); write_json(out/'report.json', report)
+    write_json(out/'report.json', report)
     (out/'report.md').write_text(markdown(report), encoding='utf-8')
     return report
 

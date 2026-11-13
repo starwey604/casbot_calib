@@ -17,7 +17,7 @@ if [[ "${1:-}" == "gui" ]]; then
     fi
   done
 fi
-if [[ "${1:-}" == "report" || "${1:-}" == "a-evidence" || "${1:-}" == "sensitivity" || "${1:-}" == "--help" || "${1:-}" == "-h" || $# == 0 ]]; then
+if [[ "${1:-}" == "export-readback" || "${1:-}" == "report" || "${1:-}" == "a-evidence" || "${1:-}" == "sensitivity" || "${1:-}" == "--help" || "${1:-}" == "-h" || $# == 0 ]]; then
   exec "${runner[@]}" python -m casbot_calib.fieldwork_cli "$@"
 fi
 exec "${runner[@]}" bash scripts/humble/vendor.sh \

@@ -142,7 +142,7 @@ def test_gui_idle_return_freezes_pose_and_launches_shared_worker(tmp_path,config
     desk=gui.Desk.__new__(gui.Desk);desk.config=config;desk.status=dict(domain_id=181,scope='hardware_position_stream')
     desk.preview=desk.read_only=False;desk.observer=SimpleNamespace(done=lambda:False);desk.q=np.zeros(14)
     desk.commands=dict(kp=np.arange(14,dtype=float),kd=np.full(14,2.));desk.task=None;desk.start_requested=False
-    desk.root=tmp_path;desk.control_roots=[];desk.zero_duration=4.;desk.short=None
+    desk.root=tmp_path;desk.observation_relative="observations/test";desk.control_roots=[];desk.zero_duration=4.;desk.short=None
     desk.names=[j.name for j in field.model_for(config)[0].model.joints]
     saved=dict(position_rad=dict(zip(desk.names,[.1]*14)))
     monkeypatch.setattr(zero,'load_zero',lambda *a,**kw:saved)

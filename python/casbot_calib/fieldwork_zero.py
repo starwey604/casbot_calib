@@ -143,7 +143,7 @@ def prepare_zero(config, snapshot, output, target, duration_s, *, bindings=None)
 
 
 def return_zero(config, domain_id, scope, *, duration_s=5., kp=20., kd=2., path=ZERO_FILE,
-                zero=None, output=None, cancel_check=None, notify=print_status):
+                zero=None, output=None, cancel_check=None, notify=print_status, recording_pause_file=None,shared_raw=None):
     """Freeze target once; reference/collision checks and native executor are shared."""
     if not np.isfinite(duration_s) or duration_s <= 0: raise ValueError('回零时长必须为正数')
     data = load_zero(config, domain_id, scope, path=path) if zero is None else zero
@@ -165,13 +165,16 @@ def return_zero(config, domain_id, scope, *, duration_s=5., kp=20., kd=2., path=
     root.mkdir(parents=True, exist_ok=False)
     write_json(root/'zero.json', data)
     notify('正在读取本次回零起点；尚未发送运动指令。')
-    result = field.run_executor(config, root/'snapshot', domain_id, snapshot=True, cancel_check=cancel_check)
+    result = field.run_executor(config, root/'snapshot', domain_id, snapshot=True, cancel_check=cancel_check,
+        **(dict(shared_raw=shared_raw) if shared_raw is not None else {}))
     if not result['passed']: return dict(passed=False, result=result, recording=str(root))
     notify('正在规划当前位置到已保存零位的单程轨迹，并检查参考碰撞。')
     report = prepare_zero(config, root/'snapshot', root/'plan', target, duration_s)
     if cancel_check and cancel_check(): return dict(passed=False, result=dict(reason='operator_cancel'), recording=str(root))
     notify(f"正在回到保存零位，参考总时长 {report['duration_s']:.2f}s；无重力/摩擦前馈。")
-    result = field.execute_field(root/'plan', root/'capture', domain_id, cancel_check=cancel_check)
+    result = field.execute_field(root/'plan', root/'capture', domain_id, cancel_check=cancel_check,
+        **(dict(recording_pause_file=recording_pause_file) if recording_pause_file else {}),
+        **(dict(shared_raw=shared_raw) if shared_raw is not None else {}))
     effective_capture = root/'capture'
     if result['passed']:
         _, effective_capture = field.resolve_field_capture(root/'plan', effective_capture)

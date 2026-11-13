@@ -77,6 +77,12 @@ def parser():
     evidence.add_argument('--joint', type=int, default=13, choices=range(14))
     evidence.add_argument('--window', nargs=2, type=float, metavar=('START', 'END'), help='相对首条实际发送指令的秒数；指定后计算局部A及错位敏感性')
     evidence.add_argument('--band', type=float, default=30., help='共同处理带宽Hz，默认30')
+    export = commands.add_parser('export-readback', help='按需导出指定运行的回读CSV，不复制命令和反馈')
+    export.add_argument('--run', type=Path, required=True, help='controls/*/runs/*运行目录')
+    export.add_argument('--output', type=Path, required=True, help='源运行之外的新CSV文件')
+    export.add_argument('--start', type=float, default=0., help='相对首条joint/debug接收时刻的秒数')
+    export.add_argument('--end', type=float, help='结束秒数，不包含终点；默认导出到末尾')
+    export.add_argument('--joint', type=int, action='append', choices=range(14), help='轴索引，可重复指定；默认全部14轴')
     sensitivity = commands.add_parser('sensitivity', help='只读比较已有SDK探针的A/B标定敏感性，不连接机器人')
     sensitivity.add_argument('--source', type=Path, action='append', required=True, help='封存探针会话，可重复指定')
     sensitivity.add_argument('--output', type=Path, required=True, help='全部源会话之外的新目录')
@@ -98,7 +104,7 @@ def parser():
     gui.add_argument('--mock-diagnostics',action='store_true',help='自建Mock额外记录模型内部高频诊断；原始SDK记录始终开启')
     gui.add_argument('--mock',action='store_true',help='显式启动GUI独占的本地SDK Mock，自动配对profile')
     gui.add_argument('--recover',nargs='?',const='latest',help='打开自动缓存记录，默认最近一次；不会自动连接或发送')
-    gui.add_argument('--cache-limit-mib',type=float,default=512.,help='单次自动缓存容量/MiB，默认512；满后停止追加记录')
+    gui.add_argument('--cache-limit-mib',type=float,default=512.,help='GUI记录容量/MiB，默认512；含显式output与自有Mock，满后停录不停发')
     gui.add_argument('--software-rendering',action='store_true',help='显式使用Mesa软件渲染，适用于容器显卡驱动不兼容')
     gui.add_argument('--domain-id', type=int)
     gui.add_argument('--scope', choices=('hardware_position_stream', 'localhost_contract_mock'))
@@ -110,6 +116,14 @@ def parser():
 
 def main(argv=None):
     args = parser().parse_args(argv)
+    if args.command == 'export-readback':
+        from .fieldwork_control import export_readback
+        try:
+            result=export_readback(args.run,args.output,start_s=args.start,end_s=args.end,joints=args.joint)
+            print(f"已导出{result['rows']}条回读：{result['output']}")
+            return 0
+        except (OSError,ValueError) as exc:
+            print('回读导出：'+str(exc),file=sys.stderr);return 1
     if args.command == 'a-evidence':
         from .fieldwork_a_evidence import run
         try:

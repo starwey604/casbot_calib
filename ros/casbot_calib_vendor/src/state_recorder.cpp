@@ -1,5 +1,6 @@
 // S1 has subscriptions and file I/O only. No publisher, mode client or controller.
 #include "numeric_text.hpp"
+#include "gzip_chunks.hpp"
 #include <rclcpp/rclcpp.hpp>
 #include <rclcpp/serialization.hpp>
 #include <sensor_msgs/msg/joint_state.hpp>
@@ -82,8 +83,11 @@ class Recorder final : public rclcpp::Node {
       throw std::invalid_argument("output, positive duration and depth are required");
     output_ = output;
     if (!std::filesystem::create_directory(output_)) throw std::runtime_error("Raw output must not exist");
-    cdr_.open(output_ / "cdr.bin", std::ios::binary);
-    rows_.open(output_ / "packets.jsonl"); rows_ << std::setprecision(17);
+    if(declare_parameter<bool>("chunked_archive",false))archive_=std::make_unique<GzipChunks>(output_);
+    else {
+      cdr_.open(output_ / "cdr.bin", std::ios::binary);
+      rows_.open(output_ / "packets.jsonl"); rows_ << std::setprecision(17);
+    }
     graph_.open(output_ / "publishers.jsonl");
     cdr_.exceptions(std::ios::badbit | std::ios::failbit);
     rows_.exceptions(std::ios::badbit | std::ios::failbit);
@@ -114,9 +118,13 @@ class Recorder final : public rclcpp::Node {
       if (!until_stopped_ && now_ns() >= end_) done_ = true;
       if (now_ns() >= next_graph_) { record([this]{graph_snapshot();});if(live_)live_graph(); next_graph_ = now_ns() + 500000000; }
     });
+    std::ifstream stat_file("/proc/self/stat");std::string stat_line;std::getline(stat_file,stat_line);
+    std::istringstream stat_fields(stat_line.substr(stat_line.rfind(')')+2));std::string start_ticks,field;
+    for(int index=3;index<=22;++index){stat_fields>>field;if(index==22)start_ticks=field;}
     std::ofstream meta(output_ / "recorder.pending");
     meta.exceptions(std::ios::badbit | std::ios::failbit);
     meta << "{\"schema_version\":\"casbot_vendor_raw_v1\",\"clock_id\":" << quote(clock_)
+         << ",\"recorder_pid\":"<<getpid()<<",\"process_start_ticks\":"<<quote(start_ticks)
          << ",\"rmw\":" << quote(rmw_get_implementation_identifier())
          << ",\"node\":" << quote(get_fully_qualified_name())
          << ",\"depth\":" << depth << ",\"reliable\":" << (reliable ? "true" : "false")
@@ -130,6 +138,7 @@ class Recorder final : public rclcpp::Node {
   bool done() const { return done_; }
   void finish(const std::string& reason) {
     record([this]{commit(true);graph_snapshot();});
+    if(archive_){archive_->close();try{archive_->check();}catch(const std::ios_base::failure& e){io_failure(e);}}
     try {
       std::ofstream summary(output_ / "summary.json");summary.exceptions(std::ios::badbit | std::ios::failbit);
       summary<<"{\"receive_packets\":"<<sequence_<<",\"start_ns\":"<<start_
@@ -142,7 +151,8 @@ class Recorder final : public rclcpp::Node {
   void commit(bool force) {
     const auto now=now_ns();
     if(!force&&flush_period_ns_&&now-last_flush_<flush_period_ns_)return;
-    if(!pending_cdr_.empty()) {
+    if(archive_) {archive_->check();archive_->enqueue(pending_archive_);}
+    else if(!pending_cdr_.empty()) {
       cdr_.write(pending_cdr_.data(),pending_cdr_.size());cdr_.flush();
       // Publish complete JSON rows only after their entire CDR prefix is visible.
       rows_.write(pending_rows_.data(),pending_rows_.size());rows_.flush();
@@ -225,7 +235,7 @@ class Recorder final : public rclcpp::Node {
       [this, channel, topic, type,prefix,cached_names=std::vector<std::string>{},names_json=std::string{}](std::shared_ptr<rclcpp::SerializedMessage> raw) mutable {
         const auto received = now_ns(); const auto& bytes = raw->get_rcl_serialized_message();
         std::streamoff offset=-1;
-        record([&]{offset=cdr_bytes_;pending_cdr_.append(reinterpret_cast<const char*>(bytes.buffer),bytes.buffer_length);cdr_bytes_+=bytes.buffer_length;});
+        record([&]{offset=cdr_bytes_;if(!archive_)pending_cdr_.append(reinterpret_cast<const char*>(bytes.buffer),bytes.buffer_length);cdr_bytes_+=bytes.buffer_length;});
         const auto names=[&](const auto& value)->const std::string& {
           if(names_json.empty()||cached_names!=value) {
             cached_names=value;std::ostringstream text;
@@ -272,7 +282,8 @@ class Recorder final : public rclcpp::Node {
         if(offset>=0&&!recording_failed_)row<<offset;else row<<"null";
         row << ",\"cdr_size\":" << bytes.buffer_length << ",\"message\":" << decoded.str() << "}";
         const auto text=row.str();
-        record([&]{pending_rows_+=text;pending_rows_+='\n';commit(false);});
+        record([&]{if(archive_)pending_archive_+=GzipChunks::frame(text,reinterpret_cast<const char*>(bytes.buffer),bytes.buffer_length);
+          else {pending_rows_+=text;pending_rows_+='\n';}commit(false);});
         // Full CDR/JSON recording retains every callback. Only the live display
         // is decimated by callback time, never by equality of numeric values.
         if(live_&&(last_live_.count(channel)==0||received-last_live_[channel]>=50000000)) {
@@ -282,6 +293,7 @@ class Recorder final : public rclcpp::Node {
   }
   std::filesystem::path output_;
   std::ofstream cdr_, rows_, graph_, discovery_;
+  std::unique_ptr<GzipChunks> archive_;std::string pending_archive_;
   std::string pending_cdr_,pending_rows_;std::uint64_t cdr_bytes_=0;
   std::int64_t flush_period_ns_=0,last_flush_=0;
   std::string clock_,pause_file_;std::map<std::string,std::string> channels_;

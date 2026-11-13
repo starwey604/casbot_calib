@@ -83,37 +83,30 @@ def render_recording(root, relative, cancel_check=None):
     session = Session(root)
     directory = (root/relative).resolve()
     if directory.parent != root/'runs': raise ValueError('运行目录不属于会话')
-    feedback=directory/'recording/feedback.csv'
-    if not feedback.exists():
-        from .fieldwork_control import recording_capture
-        feedback=recording_capture(directory)/'execution/feedback.csv'
-    data = np.genfromtxt(feedback, delimiter=',', names=True, dtype=None, encoding='utf-8')
-    data = np.atleast_1d(data)
-    if len(data) < 2: raise ValueError('记录不足两帧')
+    from .fieldwork_control import recording_capture
+    feedback=recording_capture(directory)/'execution/feedback.csv'
+    from .fieldwork_streaming import VideoFeedback
+    feedback_source=VideoFeedback(feedback,cancel_check)
     output = directory/'recording/motion.mp4'
     if output.exists(): raise ValueError('视频已存在')
     output.parent.mkdir(exist_ok=True)
-    timestamps = data['receive_ns'].astype(np.int64)
-    times = (timestamps-timestamps[0])*1e-9
     with open_view(session.metadata, root/'view') as view:
         temporary = output.with_name('motion.pending.mp4')
         writer = imageio_ffmpeg.write_frames(str(temporary), (640,480), fps=20, codec='libx264',
                     pix_fmt_in='rgb24', pix_fmt_out='yuv420p', output_params=['-crf','22','-preset','fast'])
-        writer.send(None)
+        samples=feedback_source.frames()
         try:
-            for t in np.arange(0, times[-1]+.025, .05):
-                reason = cancel_check() if cancel_check else None
-                if reason: raise ValueError('视频导出已中断：'+reason)
-                i = max(0, np.searchsorted(times,t,side='right')-1)
-                q = [data['q'+str(j)][i] for j in range(14)]
-                pixels = Image.fromarray(view.render(frame(session.metadata, view, q, int(timestamps[i]))))
+            writer.send(None)
+            for t,received,q in samples:
+                pixels = Image.fromarray(view.render(frame(session.metadata, view, q, received)))
                 draw = ImageDraw.Draw(pixels); draw.rectangle((0,0,640,32),fill=(235,242,248))
                 label = 'SDK Mock' if session.metadata['scope']=='localhost_contract_mock' else '现场SDK反馈'
                 draw.text((12,5),f'{label}  {t:.2f} s   已接收位置 / 几何回放',font=font,fill=(24,44,65))
                 writer.send(np.asarray(pixels))
-        finally: writer.close()
+        finally:
+            samples.close();writer.close()
     temporary.replace(output)
-    return dict(video=str(output), duration_s=float(times[-1]), source='recorded SDK feedback, receive-time ZOH')
+    return dict(video=str(output), duration_s=feedback_source.duration_s, source='recorded SDK feedback, receive-time ZOH')
 
 
 def main(argv=None):
@@ -151,8 +144,10 @@ def main(argv=None):
                 relative=Path(request['values']['output']).resolve().relative_to(session.root)
                 if relative.parent != Path('runs'):raise ValueError('回零运行必须属于本控制会话')
                 event(session.root,'zero_started',run=str(relative))
+                from .fieldwork_storage import recording_pause_file
+                pause=recording_pause_file(session.root.parent.parent)
                 result = return_zero(session.config, session.metadata['domain_id'], session.metadata['scope'],
-                    **request['values'], cancel_check=check, notify=lambda message:emit('zero_status',message=message))
+                    **request['values'], **(dict(recording_pause_file=pause) if pause else {}), cancel_check=check, notify=lambda message:emit('zero_status',message=message))
                 event(session.root,'zero_finished',run=str(relative),passed=result['passed'])
                 controlled = result['result'].get('supervisor_interruption') in ('operator_cancel','frontend_closed','user_interrupt')
                 if not result['passed'] and result['result'].get('fault') and not controlled:

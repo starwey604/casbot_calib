@@ -120,7 +120,9 @@ def main():
             with (capture/'execution/events.csv').open() as stream: events=list(csv.DictReader(stream))
             stops=[int(row['receive_ns']) for row in events if row['state']=='STOPPING']
             checks['no_commands_after_stop']=bool(stops and all(int(row['publish_ns'])<stops[0] for row in commands))
-            checks['recorded_raw_and_readback']=bool((runs[-1]/'recording/readback.csv').exists() and (capture/'raw_state/raw/cdr.bin').stat().st_size>0)
+            from casbot_calib.raw_archive import capture_raw,iter_records
+            raw,start,end=capture_raw(capture)
+            checks['shared_raw_without_derived_csv']=bool((capture/'raw_reference.json').exists() and not (runs[-1]/'recording/readback.csv').exists() and any(cdr for _,cdr in iter_records(raw,start_ns=start,end_ns=end)))
             if args.scenario=='sliders':
                 for key,column in [('position','q4'),('velocity','v4'),('effort','effort4'),('kp','kp4'),('kd','kd4')]:
                     values=np.array([float(row[column]) for row in commands])

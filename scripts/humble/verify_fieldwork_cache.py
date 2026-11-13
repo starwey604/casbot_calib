@@ -130,13 +130,13 @@ def main():
                 elif step=='saved' and (root/'saved_live/saved_session.json').exists() and desk.save_job is None:
                     checks['save_while_sending']=desk.sending and counter.count>trace['before_save_commands'] and desk.receive_ns>trace['before_save_feedback']
                     checks['saved_protocol_valid']=Workspace(root/'saved_live').status()['schema_version']=='casbot_fieldwork_workspace_v1'
-                    checks['comparison_files_generated_on_save']=bool(list((root/'saved_live').glob('controls/*/runs/*/recording/readback.csv')))
+                    checks['manifest_only_on_save']=bool(list((root/'saved_live').glob('controls/*/runs/*/recording/recording.json'))) and not list((root/'saved_live').glob('controls/*/runs/*/recording/*.csv'))
                     shot('live_saved')
                     # Explicit test injection: lower ONLY this cache's monitor quota.
                     desk.cache_monitor.limit=desk.cache_monitor.used+512*1024;stage('quota')
                 elif step=='quota' and desk.cache_monitor.paused:
                     trace['paused_commands']=counter.count;trace['paused_feedback']=desk.receive_ns
-                    trace['paused_sizes']={str(p.relative_to(desk.root)):p.stat().st_size for p in desk.root.glob('**/packets.jsonl')}
+                    trace['paused_sizes']={str(p.relative_to(desk.root)):p.stat().st_size for p in desk.root.glob('**/chunks/*.gz')}
                     stage('after_quota')
                 elif step=='after_quota' and elapsed>2.:
                     checks['quota_keeps_control_and_feedback']=desk.sending and counter.count>trace['paused_commands']+100 and desk.receive_ns>trace['paused_feedback']
@@ -168,13 +168,12 @@ def main():
     from sensor_msgs.msg import JointState
     from crb_ros_msg.msg import JointStateData
     count=0
-    for packets in (root/'saved_live').glob('**/packets.jsonl'):
-        data=packets.with_name('cdr.bin').read_bytes()
-        for line in packets.read_text().splitlines():
-            packet=json.loads(line)
-            if packet['channel'] not in ('joint','debug') or packet['cdr_offset'] is None:continue
-            offset=packet['cdr_offset'];size=packet['cdr_size'];assert offset+size<=len(data)
-            message=deserialize_message(data[offset:offset+size],JointState if packet['channel']=='joint' else JointStateData)
+    from casbot_calib.raw_archive import raw_directories,iter_records
+    for raw in raw_directories(root/'saved_live'):
+        for packet,cdr in iter_records(raw):
+            if packet['channel'] not in ('joint','debug'):continue
+            assert len(cdr)==packet['cdr_size']
+            message=deserialize_message(cdr,JointState if packet['channel']=='joint' else JointStateData)
             assert list(message.name)==packet['message']['name']
             assert list(message.position)==packet['message']['position'];count+=1
     checks['saved_cdr_independently_decodes']=count>100;trace['decoded_packets']=count
