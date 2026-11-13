@@ -64,3 +64,20 @@ bash scripts/shm/deploy_git.sh --host nvidia@172.16.0.10
 - 独立安装后 `find_package(... COMPONENTS Shm)` 的 C++ 消费者可链接运行。
 - SHM 单独构建不需要算法库；核心开启时原测试继续使用原数值模型。
 - 本轮尚不包含队列同步、定点转换、时钟映射和双进程物理联跑；后续顺序见[移植计划](shm_migration_plan.md)。
+
+### 2026-11-13 实际部署结果
+
+编译验证的代码提交为 `5f6eefb`（后续文档更新不改变该代码）。Orin 通过上述 SSH 隧道从本机直接 Git 克隆，目录为 `/home/nvidia/casbot_calib_shm`，未安装系统依赖或修改厂家目录。
+
+| 环境 | 实际结果 |
+| --- | --- |
+| Humble / x86_64 / GCC 11.4 / CMake 3.22.1 | SHM 独立构建、2项协议测试、安装消费通过；原核心及Python目标编译通过，合计7项CTest通过，原核心安装消费通过 |
+| Orin / aarch64 / GCC 11.4 / CMake 3.22.1 | SHM独立构建、2项协议测试、安装消费通过；核心＋SHM构建与安装通过，7项CTest全部通过，含刚体动力学和持续模拟设备测试；核心安装消费及组合安装中的Shm独立消费均通过 |
+
+Orin 使用 `/opt/ros/humble` 的 Pinocchio 4.0.0、Coal 3.0.3 和系统 Boost 1.74；该 Pinocchio 版本文件接受现有 `3.9` 最低版本要求，本轮无需修改版本门槛或算法源码。构建时 `LD_LIBRARY_PATH` 为空。Orin未编译本工程Python绑定；其NumPy/Python环境另留后续上层移植，不由本轮C++验收覆盖。
+
+程序安装在 `install/shm-native` 和 `install/shm-core`。`shm_abi_check` 实际为 ARM aarch64 ELF，输出命令/状态 744/696 字节、小端、64位。动态链接检查使用系统算法库，未链接ROS通信库。
+
+Orin墙钟仍为1970，本轮日期是本地执行记录标记。系统库文件时间晚于墙钟，Make出现`Clock skew`告警，可能重复重链；本轮使用新构建目录完成编译并实际运行测试。未校时或改厂家文件；后续若安排校时，应另用新构建目录，避免沿用跨时钟跳变的增量缓存。
+
+完整远端日志保存在本机 `artifacts/shm_cmake_orin_20261113/native_build.log`，安装消费/动态链接检查在同目录 `installed_consumers.log`。这些是离线代码与安装验证，未运行真实 SHM 或机器人动作；大LFS资产尚未物化。

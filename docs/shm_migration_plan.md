@@ -21,13 +21,13 @@
 
 当前根 `CMakeLists.txt` 在配置时无条件查找 Eigen、Boost、Pinocchio、Coal，即使关掉 Python 也一样；现有 vendor 目标则由 `ament/colcon` 构建，链接 ROS 和 SDK 消息。新执行器不沿用这条构建链。
 
-计划在根 CMake 提供以下组合，默认保持现有算法构建可用：
+根 CMake 已提供核心、Python与SHM协议的独立组合，默认保持现有算法构建可用；完整执行器及`CALIB_BUILD_SHM_MOCK`仍待后续。最终边界如下：
 
 | 构建项（拟新增者标明） | 作用 | 依赖边界 |
 | --- | --- | --- |
-| `CALIB_BUILD_CORE`（新增，默认 ON） | 现有算法核心及其测试 | Eigen/Boost、Pinocchio、Coal；关闭时不查找这些依赖 |
+| `CALIB_BUILD_CORE`（已实现，默认 ON） | 现有算法核心及其测试 | Eigen/Boost、Pinocchio、Coal；关闭时不查找这些依赖 |
 | `CALIB_BUILD_PYTHON`（已有） | 现有 `_core` 绑定 | 核心、Python、pybind11；核心关闭时须显式关闭，矛盾组合明确报错 |
-| `CALIB_BUILD_SHM`（新增，默认 OFF） | 协议库、执行器及协议测试 | Linux POSIX、Threads；执行器配置用 `nlohmann_json`，复用异步日志用 spdlog，压缩记录用 Zlib；不需要 ROS/Python/动力学库 |
+| `CALIB_BUILD_SHM`（已实现协议库，默认 OFF） | 当前协议库/诊断/测试，后续接执行器 | 当前仅C++标准库；IPC加入Linux POSIX、Threads，执行器配置/记录再引入`nlohmann_json`、spdlog、Zlib；不需要ROS/Python/动力学库 |
 | `CALIB_BUILD_SHM_MOCK`（新增，默认 OFF） | 完整物理 `shm_mock_server` | SHM 库与现有 `calib_core`，要求核心和 SHM 开启；不需要 ROS/SDK/Python 绑定 |
 
 `find_package`、测试、安装和导出随对应目标条件化；不只是构建时跳过目标、配置阶段仍强制找全套依赖。复用现有核心，不为第一轮拆一套重复的动力学库；因此完整 Mock 首轮仍需要 Coal，即使其物理积分本身主要使用 Pinocchio。
@@ -38,7 +38,7 @@ Orin 按此前记录优先使用系统 Pinocchio 4.0.0、Coal 3.0.3，不继承�
 
 ### 计划交付的构建入口
 
-新增 `scripts/shm/build.sh`，调用普通 CMake，接受构建目录、安装前缀和依赖前缀；不负责启动机器人业务或安装系统软件。新增本机与 Orin 的 preset，架构由原生编译器识别，不写死 x86 参数，不使用 `-march=native` 生成部署包。
+已有 `scripts/shm/build.sh` 调用普通 CMake，接受构建目录、安装前缀和依赖前缀，不启动机器人业务或安装系统软件。`shm-native`/`shm-core` preset 在本机与Orin分别原生使用，架构由编译器识别，不写死x86参数，不使用`-march=native`生成部署包。
 
 最终将支持以下组合。**当前仅核心/SHM协议组合已实现；`CALIB_BUILD_SHM_MOCK`及完整物理Mock留M2，不要把下面的未来Mock选项当现有目标。** 当前提前编译物理核心请使用原生构建手册的`--with-core`。
 
@@ -128,4 +128,4 @@ M1 的 ABI/协议测试与 M2 物理联跑都必要：仅两端共用同一份�
 
 ## 6. 本计划之后的第一步
 
-按 M1 开始：先让协议/执行器能够独立配置编译，再接现有物理核心做 M2。每个增量记录实际通过的环境和范围；Orin 原生编译及私有 Mock 验收是本次两程序交付的一部分，1kHz 实机表现留到显式现场运行测量。
+M1的独立CMake、35槽线格式与双架构构建已完成；核心及持续模拟设备测试也已在Orin通过。接下来完成IPC、方向/零偏转换、时钟映射，再接M2的执行器和完整物理Mock。两进程私有联跑仍待实现，1kHz实机表现留到显式现场运行测量。当前证据见[构建结果](shm_build.md#2026-11-13-实际部署结果)。
