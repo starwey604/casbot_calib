@@ -1,0 +1,14 @@
+manifest:
+  version: "1.2"
+  self:
+    path: trical_bridge
+  projects:
+    - name: zephyr
+      url: https://github.com/zephyrproject-rtos/zephyr
+      revision: v4.5.0
+      import:
+        name-allowlist:
+          - cmsis
+          - cmsis_6
+          - hal_nordic
+          - segger

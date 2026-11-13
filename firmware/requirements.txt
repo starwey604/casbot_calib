@@ -1,0 +1,2 @@
+# The SDK's base build requirements are installed after `west update`.
+west==1.5.0

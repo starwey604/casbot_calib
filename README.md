@@ -9,6 +9,7 @@
 * **📘 核心标定方案原理总览（通俗详解版）**：
   * **[双臂动力学标定方案详解 (`docs/dual_arm_dynamics_plan.md`)](docs/dual_arm_dynamics_plan.md)**：140 维刚体参数、Clarabel 伪惯性 PSD 锥规划、H1–H4 分阶段解耦原理（重力正反消去 / 摩擦位置配对 / 零 PD 起动斜坡 / 傅里叶周期惯量投影）及手腕路线 A/B 详解。
   * **[双臂千分计运动学标定方案详解 (`docs/kinematics_trical_plan.md`)](docs/kinematics_trical_plan.md)**：TriCal 三表接触投影原理、DVT2 四球台架分阶段碰撞门禁、雅可比自动对中状态机、60 维 MDH/Hayati 两层鲁棒辨识、K1–K4 流程及 **[K5 原生 ROS 2 SDK 实时流闭环适配](docs/kinematics_k5_sdk_realtime.md)** 详解。
+  * **[TriCal BLE–USB 开发板固件 (`firmware/README.md`)](firmware/README.md)**：独立 Zephyr 工作区，面向 Pro Micro nRF52840；当前为 BLE Central＋USB CDC ACM 构建基础，尚未接入真实仪表。
 * **🛠️ 出差现场第一站（CLI 预检 + GUI 手动调参台）**：请直接阅读 **[实机接入与现场联调手册 (`fieldwork/README.md`)](fieldwork/README.md)**。
   * 支持只读通信预检（`preflight` / `observe` / `reconnect`）、采集安全零位与一键平滑回零（`fieldwork/zero.yaml`）。
   * 提供 14 轴 **MIT 五字段（`position / velocity / kp / kd / effort`）** 实时滑条调参 GUI、单轴短轨迹往返测试、3D 实时姿态跟随、可调限制面板及会话自动缓存/视频导出。
@@ -72,6 +73,7 @@ casbot_calib/
 ├── scripts/                # 辅助脚本与 ROS 2 Humble 自动化环境部署/验证脚本集
 │   └── humble/             # 容器化、系统依赖安装、ROS 编译与里程碑验证脚本
 ├── docs/                   # 架构设计、标定计划、数据表与验证文档
+├── firmware/               # TriCal BLE–USB 桥；独立 Zephyr 工作区与开发板应用
 ├── tests/                  # Python 端完整单元测试集 (pytest)
 ├── CMakeLists.txt          # 顶层 CMake 构建配置
 ├── pyproject.toml          # Python 包构建与依赖声明

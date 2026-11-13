@@ -1,0 +1,33 @@
+/* Reuse the upstream board's CDC ACM instance; do not add a second port. */
+&board_cdc_acm_uart {
+	label = "CASBOT Gauge Data";
+};
+
+/* This USB/BLE bridge does not use the board's external peripheral pins. */
+&uart0 {
+	status = "disabled";
+};
+
+&i2c0 {
+	status = "disabled";
+};
+
+&i2c1 {
+	status = "disabled";
+};
+
+&spi2 {
+	status = "disabled";
+};
+
+&pwm0 {
+	status = "disabled";
+};
+
+&adc {
+	status = "disabled";
+};
+
+&ieee802154 {
+	status = "disabled";
+};
