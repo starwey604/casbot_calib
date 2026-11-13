@@ -19,7 +19,9 @@ endif()
 # A real offline ABI diagnostic, not a placeholder motion executor.
 add_executable(shm_abi_check ${PROJECT_SOURCE_DIR}/cpp/tools/shm_abi_check.cpp)
 target_link_libraries(shm_abi_check PRIVATE calib_shm)
-install(TARGETS calib_shm shm_abi_check EXPORT casbot_calibShmTargets
+add_executable(shm_channel_start ${PROJECT_SOURCE_DIR}/cpp/tools/shm_channel_start.cpp)
+target_link_libraries(shm_channel_start PRIVATE calib_shm)
+install(TARGETS calib_shm shm_abi_check shm_channel_start EXPORT casbot_calibShmTargets
   ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR} COMPONENT Shm
   RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR} COMPONENT Shm)
 install(DIRECTORY ${PROJECT_SOURCE_DIR}/cpp/include/casbot_calib/shm

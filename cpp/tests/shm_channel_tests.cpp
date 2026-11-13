@@ -10,6 +10,10 @@ int main() {
   {
     Channel master(name, ChannelRole::fixture_master);
     Channel client(name);
+    client.activate_fresh_master();
+    bool repeated=false;
+    try{client.activate_fresh_master();}catch(const std::runtime_error&){repeated=true;}
+    check(repeated);
     CommandFrame command{}; command.frame_counter = 17; command.joint_count = 29;
     check(client.send(command)); check(!client.send(command));
     // Attaching another object must NOT reset shared indices.

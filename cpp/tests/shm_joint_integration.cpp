@@ -22,6 +22,7 @@ int main(int argc,char** argv) {
     const bool fault=test==1,limit=test==2;
     const auto name="/casbot_calib_test_"+std::to_string(getpid())+"_"+std::to_string(test);
     Channel master(name,ChannelRole::fixture_master);
+    {Channel startup(name);startup.activate_fresh_master();}
     std::atomic<bool> finished{false},disabled{false},bad_background{false};std::atomic<int> commands_seen{0};
     std::thread server([&] {
       StatusFrame state{};state.hand_count=2;

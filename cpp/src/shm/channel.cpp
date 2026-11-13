@@ -74,16 +74,19 @@ struct Channel::Impl {
   void* memory = MAP_FAILED;
   sem_t* front = SEM_FAILED;
   sem_t* back = SEM_FAILED;
-  bool owns_shm = false, owns_front = false, owns_back = false;
+  sem_t* start = SEM_FAILED;
+  bool owns_shm = false, owns_front = false, owns_back = false, owns_start = false;
   ChannelRole role;
   Impl(std::string n, ChannelRole r):name(normalized(std::move(n))),role(r) {}
   ~Impl() {
     if (front != SEM_FAILED) sem_close(front);
     if (back != SEM_FAILED) sem_close(back);
+    if (start != SEM_FAILED) sem_close(start);
     if (memory != MAP_FAILED) munmap(memory, channel_bytes);
     if (fd >= 0) close(fd);
     if (owns_front) sem_unlink((name + "_front").c_str());
     if (owns_back) sem_unlink((name + "_back").c_str());
+    if (owns_start) sem_unlink((name + "_start").c_str());
     if (owns_shm) shm_unlink(name.c_str());
   }
 };
@@ -107,16 +110,33 @@ Channel::Channel(const std::string& name, ChannelRole role):impl_(std::make_uniq
     auto* status = reinterpret_cast<QueueHeader*>(static_cast<char*>(i.memory) + status_offset);
     *cmd = {magic, 2, 0, 0, 0, 0}; *status = *cmd;
   }
-  i.front = create ? sem_open((i.name + "_front").c_str(), O_CREAT | O_EXCL, 0600, 1) : sem_open((i.name + "_front").c_str(), 0);
+  i.front = create ? sem_open((i.name + "_front").c_str(), O_CREAT | O_EXCL, 0600, 0) : sem_open((i.name + "_front").c_str(), 0);
   if (i.front == SEM_FAILED) throw error("sem_open front");
   i.owns_front = create;
-  i.back = create ? sem_open((i.name + "_back").c_str(), O_CREAT | O_EXCL, 0600, 1) : sem_open((i.name + "_back").c_str(), 0);
+  i.back = create ? sem_open((i.name + "_back").c_str(), O_CREAT | O_EXCL, 0600, 0) : sem_open((i.name + "_back").c_str(), 0);
   if (i.back == SEM_FAILED) throw error("sem_open back");
   i.owns_back = create;
+  i.start = create ? sem_open((i.name + "_start").c_str(), O_CREAT | O_EXCL, 0600, 0) : sem_open((i.name + "_start").c_str(), 0);
+  if (i.start == SEM_FAILED) throw error("sem_open start");
+  i.owns_start = create;
   validate(*static_cast<QueueHeader*>(i.memory));
   validate(*reinterpret_cast<QueueHeader*>(static_cast<char*>(i.memory) + status_offset));
 }
 Channel::~Channel() = default;
+void Channel::activate_fresh_master() {
+  if(impl_->role != ChannelRole::client)throw std::logic_error("Only client can initialize fresh master");
+  const auto* a=static_cast<QueueHeader*>(impl_->memory);
+  const auto* b=reinterpret_cast<QueueHeader*>(static_cast<char*>(impl_->memory)+status_offset);
+  auto empty=[](const QueueHeader& h) {validate(h);return h.count==0&&h.write_index==0&&h.read_index==0&&h.published_index==0;};
+  if(!empty(*a)||!empty(*b))throw std::runtime_error("Refusing handshake on non-fresh queues");
+  for(auto* sem:{impl_->back,impl_->front,impl_->start}) {
+    int value=-1;if(sem_getvalue(sem,&value))throw error("sem_getvalue");
+    if(value!=0)throw std::runtime_error("Refusing handshake: semaphore is already active");
+  }
+  // MotionEtherCAT::init 0x9b3c..0x9b68 posts in this exact order. Master
+  // wait_semaphore 0x9de98 waits on start before starting shared I/O.
+  for(auto* sem:{impl_->back,impl_->front,impl_->start})if(sem_post(sem))throw error("startup sem_post");
+}
 bool Channel::send(const CommandFrame& f) {
   if (impl_->role != ChannelRole::client) throw std::logic_error("Wrong channel role");
   return push(impl_->memory, impl_->front, f);

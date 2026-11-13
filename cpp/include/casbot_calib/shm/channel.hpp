@@ -23,6 +23,9 @@ class Channel {
   Channel& operator=(const Channel&) = delete;
   bool send(const CommandFrame& frame);
   bool receive(StatusFrame& frame);
+  // Explicit first-client handshake, only for entirely fresh zero queues and
+  // zero back/front/start semaphores. Never used to recover a live mutex.
+  void activate_fresh_master();
   bool fixture_receive(CommandFrame& frame);
   bool fixture_send(const StatusFrame& frame);
  private:

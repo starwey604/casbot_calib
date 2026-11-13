@@ -50,6 +50,7 @@ urdf=python/casbot_calib/assets/models/casbot_hl12p1_dvt2/derived/bare_flange_11
 
 ```bash
 # 独占窗口内只出队读取：打印全轴并生成双臂±0.5rad资格表。
+install/shm-core/bin/shm_channel_start --fresh-master /shm_mc
 "$tool" --snapshot --urdf "$urdf" --output artifacts/my_shm_test/snapshot
 
 # 会切换状态、使能双臂并发运动命令；一次一个ID。
@@ -61,7 +62,9 @@ urdf=python/casbot_calib/assets/models/casbot_hl12p1_dvt2/derived/bare_flange_11
 
 每轴重新读取起点并检查双向限位；碰撞规划后又读新帧核对起点连接（0.005rad）。检查不通过就不使能、不发轨迹；不会用上轴旧起点继续。代理运行一例，用户观察反馈后再继续下一例。`--amplitude`只允许显式减小到(0,0.5]，不自动调整；`--kp/--kd/--segment-s`可显式修改，速度仍不超过URDF及1.5rad/s上限。
 
-周期为1ms，队列满跳过本次、不补发历史轨迹。每方向容量2但厂家环形队列留空一槽，实际最多1帧待取；此结论来自当前安装二进制的Enqueue/Dequeue，客户端不复刻其重置索引的构造副作用。与主站使用同名front/back互斥信号量，不改`_start`。消费者仅有本程序一个。
+新主站先等待客户端启动握手，三个信号量均为0时不会产生反馈。`shm_channel_start --fresh-master`仅在两方向计数/索引全0且back/front/start均为0时，按原运控init顺序依次post一次；它启动共享I/O，但不下发电机命令、不清队列。普通连接不post、不重置索引，不能用此入口修复被占用的互斥量或自动恢复故障会话。
+
+周期为1ms，队列满跳过本次、不补发历史轨迹。每方向容量2但厂家环形队列留空一槽，实际最多1帧待取；此结论来自当前安装二进制的Enqueue/Dequeue，客户端不复刻其重置索引的构造副作用。运行时与主站使用同名front/back互斥信号量；消费者仅有本程序一个。
 
 正常结束发送`0x06`并等待双臂失能状态应答。Ctrl-C、监督端结束或故障会尝试有界失能后退出，不清故障、不重新使能；进程硬杀/通信失效不能保证指令到达，现场使用外置继电器处理。模式应答与物理停止分别记录。
 
