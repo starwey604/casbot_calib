@@ -1,0 +1,5 @@
+cmake_minimum_required(VERSION 3.22)
+project(calib_shm_consumer LANGUAGES CXX)
+find_package(casbot_calib REQUIRED CONFIG COMPONENTS Shm)
+add_executable(shm_consumer main.cpp)
+target_link_libraries(shm_consumer PRIVATE casbot_calib::shm)

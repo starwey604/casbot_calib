@@ -23,7 +23,7 @@ casbot-fieldwork = "casbot_calib.fieldwork_cli:main"
 cmake.build-type = "Release"
 wheel.packages = ["python/casbot_calib"]
 install.components = ["Python"]
-sdist.include = ["configs/**", "docs/**", "fieldwork/**", "tests/**", "cpp/**", "cmake/**", "ros/**", "scripts/humble/**", "scripts/cad/**", "scripts/import_collision_geometry.py", "CMakePresets.json", "python/casbot_calib/assets/models/**", "python/casbot_calib/assets/fieldwork_display/**"]
+sdist.include = ["configs/**", "docs/**", "fieldwork/**", "tests/**", "cpp/**", "cmake/**", "ros/**", "scripts/humble/**", "scripts/shm/**", "scripts/cad/**", "scripts/import_collision_geometry.py", "CMakePresets.json", "python/casbot_calib/assets/models/**", "python/casbot_calib/assets/fieldwork_display/**"]
 sdist.exclude = ["references/cad/**/*.stp"]
 
 [tool.pytest.ini_options]

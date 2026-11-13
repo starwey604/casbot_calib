@@ -5,74 +5,99 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
-find_package(Eigen3 3.4 REQUIRED NO_MODULE)
-find_package(Boost 1.74 REQUIRED CONFIG)
-find_package(pinocchio 3.9 REQUIRED)
-find_package(coal 3.0 REQUIRED CONFIG)
-add_library(calib_integration INTERFACE)
-add_library(casbot_calib::integration ALIAS calib_integration)
-set_target_properties(calib_integration PROPERTIES EXPORT_NAME integration)
-target_compile_features(calib_integration INTERFACE cxx_std_17)
-target_include_directories(calib_integration INTERFACE
-  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/cpp/include>
-  $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
-target_link_libraries(calib_integration INTERFACE Eigen3::Eigen Boost::headers)
-add_library(calib_core STATIC cpp/src/simulator.cpp cpp/src/arm_dynamics.cpp cpp/src/arm_session.cpp cpp/src/collision.cpp cpp/src/arm_guard.cpp cpp/src/trical.cpp cpp/src/trical_mock.cpp)
-add_library(casbot_calib::core ALIAS calib_core)
-set_target_properties(calib_core PROPERTIES POSITION_INDEPENDENT_CODE ON EXPORT_NAME core)
-target_link_libraries(calib_core PUBLIC calib_integration pinocchio::pinocchio coal::coal)
-if(MSVC)
-  target_compile_options(calib_core PRIVATE /W4)
-else()
-  target_compile_options(calib_core PRIVATE -Wall -Wextra -Wpedantic)
-endif()
-option(CALIB_BUILD_PYTHON "Build NumPy bindings" ON)
-if(CALIB_BUILD_PYTHON)
-  find_package(Python COMPONENTS Interpreter Development.Module REQUIRED)
-  find_package(pybind11 2.13 CONFIG REQUIRED)
-  pybind11_add_module(_core cpp/src/bindings.cpp cpp/src/arm_bindings.cpp cpp/src/arm_simulator_bindings.cpp cpp/src/collision_bindings.cpp)
-  target_link_libraries(_core PRIVATE calib_core)
-  install(TARGETS _core
-    LIBRARY DESTINATION casbot_calib COMPONENT Python
-    RUNTIME DESTINATION casbot_calib COMPONENT Python)
-endif()
-install(TARGETS calib_core calib_integration EXPORT casbot_calibTargets
-  ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR} COMPONENT Core)
-install(DIRECTORY cpp/include/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR} COMPONENT Core)
-install(DIRECTORY python/casbot_calib/assets/models/
-  DESTINATION ${CMAKE_INSTALL_DATADIR}/casbot_calib/models COMPONENT Models)
-install(EXPORT casbot_calibTargets FILE casbot_calibTargets.cmake NAMESPACE casbot_calib::
-  DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/casbot_calib COMPONENT Core)
-configure_package_config_file(cmake/casbot_calibConfig.cmake.in
-  ${CMAKE_CURRENT_BINARY_DIR}/casbot_calibConfig.cmake
-  INSTALL_DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/casbot_calib
-  PATH_VARS CMAKE_INSTALL_DATADIR)
-write_basic_package_version_file(${CMAKE_CURRENT_BINARY_DIR}/casbot_calibConfigVersion.cmake
-  VERSION ${PROJECT_VERSION} COMPATIBILITY SameMajorVersion)
-install(FILES ${CMAKE_CURRENT_BINARY_DIR}/casbot_calibConfig.cmake
-  ${CMAKE_CURRENT_BINARY_DIR}/casbot_calibConfigVersion.cmake
-  DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/casbot_calib COMPONENT Core)
 include(CTest)
-if(BUILD_TESTING)
-  add_executable(integration_tests cpp/tests/integration_tests.cpp)
-  target_link_libraries(integration_tests PRIVATE calib_integration)
-  add_test(NAME boost_integration COMMAND integration_tests)
-  add_executable(core_tests cpp/tests/core_tests.cpp)
-  target_link_libraries(core_tests PRIVATE calib_core)
-  add_test(NAME virtual_device COMMAND core_tests)
-  add_executable(arm_core_tests cpp/tests/arm_core_tests.cpp)
-  target_link_libraries(arm_core_tests PRIVATE calib_core)
-  add_test(NAME arm_rigid_dynamics COMMAND arm_core_tests)
-  add_executable(kinematics_tests cpp/tests/kinematics_tests.cpp)
-  target_link_libraries(kinematics_tests PRIVATE calib_core)
-  add_test(NAME kinematics_foundation COMMAND kinematics_tests)
-  add_executable(simulated_device_tests cpp/tests/simulated_device_tests.cpp)
-  target_link_libraries(simulated_device_tests PRIVATE calib_core)
-  add_test(NAME simulated_device COMMAND simulated_device_tests ${CMAKE_CURRENT_SOURCE_DIR}/python/casbot_calib/assets/models/casbot_hl12p1_dvt2/derived/bare_flange_1105_03_gauge_v2/model.urdf)
+option(CALIB_BUILD_CORE "Build dynamics, geometry and simulation core" ON)
+option(CALIB_BUILD_PYTHON "Build NumPy bindings" ON)
+option(CALIB_BUILD_SHM "Build standalone Linux SHM protocol foundation" OFF)
+option(CALIB_BUILD_TOOLS "Build native device profiling tools" OFF)
+if(NOT CALIB_BUILD_CORE AND (CALIB_BUILD_PYTHON OR CALIB_BUILD_TOOLS))
+  message(FATAL_ERROR "Python bindings and profiling tools require CALIB_BUILD_CORE=ON")
 endif()
 
-option(CALIB_BUILD_TOOLS "Build native device profiling tools" OFF)
-if(CALIB_BUILD_TOOLS)
-  add_executable(profile_device cpp/tools/profile_device.cpp)
-  target_link_libraries(profile_device PRIVATE calib_core)
+if(CALIB_BUILD_CORE)
+  find_package(Eigen3 3.4 REQUIRED NO_MODULE)
+  find_package(Boost 1.74 REQUIRED CONFIG)
+  find_package(pinocchio 3.9 REQUIRED)
+  find_package(coal 3.0 REQUIRED CONFIG)
+  add_library(calib_integration INTERFACE)
+  add_library(casbot_calib::integration ALIAS calib_integration)
+  set_target_properties(calib_integration PROPERTIES EXPORT_NAME integration)
+  target_compile_features(calib_integration INTERFACE cxx_std_17)
+  target_include_directories(calib_integration INTERFACE
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/cpp/include>
+    $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
+  target_link_libraries(calib_integration INTERFACE Eigen3::Eigen Boost::headers)
+  add_library(calib_core STATIC cpp/src/simulator.cpp cpp/src/arm_dynamics.cpp cpp/src/arm_session.cpp cpp/src/collision.cpp cpp/src/arm_guard.cpp cpp/src/trical.cpp cpp/src/trical_mock.cpp)
+  add_library(casbot_calib::core ALIAS calib_core)
+  set_target_properties(calib_core PROPERTIES POSITION_INDEPENDENT_CODE ON EXPORT_NAME core)
+  target_link_libraries(calib_core PUBLIC calib_integration pinocchio::pinocchio coal::coal)
+  if(MSVC)
+    target_compile_options(calib_core PRIVATE /W4)
+  else()
+    target_compile_options(calib_core PRIVATE -Wall -Wextra -Wpedantic)
+  endif()
+  if(CALIB_BUILD_PYTHON)
+    find_package(Python COMPONENTS Interpreter Development.Module REQUIRED)
+    find_package(pybind11 2.13 CONFIG REQUIRED)
+    pybind11_add_module(_core cpp/src/bindings.cpp cpp/src/arm_bindings.cpp cpp/src/arm_simulator_bindings.cpp cpp/src/collision_bindings.cpp)
+    target_link_libraries(_core PRIVATE calib_core)
+    install(TARGETS _core
+      LIBRARY DESTINATION casbot_calib COMPONENT Python
+      RUNTIME DESTINATION casbot_calib COMPONENT Python)
+  endif()
+  install(TARGETS calib_core calib_integration EXPORT casbot_calibTargets
+    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR} COMPONENT Core)
+  install(DIRECTORY cpp/include/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR} COMPONENT Core
+    PATTERN "shm" EXCLUDE)
+  install(DIRECTORY python/casbot_calib/assets/models/
+    DESTINATION ${CMAKE_INSTALL_DATADIR}/casbot_calib/models COMPONENT Models)
+  install(EXPORT casbot_calibTargets FILE casbot_calibTargets.cmake NAMESPACE casbot_calib::
+    DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/casbot_calib COMPONENT Core)
+  if(BUILD_TESTING)
+    add_executable(integration_tests cpp/tests/integration_tests.cpp)
+    target_link_libraries(integration_tests PRIVATE calib_integration)
+    add_test(NAME boost_integration COMMAND integration_tests)
+    add_executable(core_tests cpp/tests/core_tests.cpp)
+    target_link_libraries(core_tests PRIVATE calib_core)
+    add_test(NAME virtual_device COMMAND core_tests)
+    add_executable(arm_core_tests cpp/tests/arm_core_tests.cpp)
+    target_link_libraries(arm_core_tests PRIVATE calib_core)
+    add_test(NAME arm_rigid_dynamics COMMAND arm_core_tests)
+    add_executable(kinematics_tests cpp/tests/kinematics_tests.cpp)
+    target_link_libraries(kinematics_tests PRIVATE calib_core)
+    add_test(NAME kinematics_foundation COMMAND kinematics_tests)
+    add_executable(simulated_device_tests cpp/tests/simulated_device_tests.cpp)
+    target_link_libraries(simulated_device_tests PRIVATE calib_core)
+    add_test(NAME simulated_device COMMAND simulated_device_tests ${CMAKE_CURRENT_SOURCE_DIR}/python/casbot_calib/assets/models/casbot_hl12p1_dvt2/derived/bare_flange_1105_03_gauge_v2/model.urdf)
+  endif()
+
+  if(CALIB_BUILD_TOOLS)
+    add_executable(profile_device cpp/tools/profile_device.cpp)
+    target_link_libraries(profile_device PRIVATE calib_core)
+  endif()
+endif()
+
+if(CALIB_BUILD_SHM)
+  if(NOT CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    message(FATAL_ERROR "The SHM transport targets require Linux; the algorithm core remains portable")
+  endif()
+  add_subdirectory(cpp/src/shm)
+endif()
+
+# A component-only SHM install must remain usable without the dynamics packages.
+if(CALIB_BUILD_CORE OR CALIB_BUILD_SHM)
+  configure_package_config_file(cmake/casbot_calibConfig.cmake.in
+    ${CMAKE_CURRENT_BINARY_DIR}/casbot_calibConfig.cmake
+    INSTALL_DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/casbot_calib
+    PATH_VARS CMAKE_INSTALL_DATADIR)
+  write_basic_package_version_file(${CMAKE_CURRENT_BINARY_DIR}/casbot_calibConfigVersion.cmake
+    VERSION ${PROJECT_VERSION} COMPATIBILITY SameMajorVersion)
+  foreach(_calib_config_component IN ITEMS Core Shm)
+    if((_calib_config_component STREQUAL "Core" AND CALIB_BUILD_CORE) OR
+       (_calib_config_component STREQUAL "Shm" AND CALIB_BUILD_SHM))
+      install(FILES ${CMAKE_CURRENT_BINARY_DIR}/casbot_calibConfig.cmake
+        ${CMAKE_CURRENT_BINARY_DIR}/casbot_calibConfigVersion.cmake
+        DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/casbot_calib COMPONENT ${_calib_config_component})
+    endif()
+  endforeach()
 endif()
