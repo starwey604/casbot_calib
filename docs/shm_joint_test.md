@@ -46,6 +46,8 @@ urdf=python/casbot_calib/assets/models/casbot_hl12p1_dvt2/derived/bare_flange_11
 
 显式入口为`bash scripts/shm/prepare_field.sh artifacts/my_shm_test/takeover`（会中断现有控制，日志目录须新建）；它只包装已核对的厂家停止/启动顺序，不由构建或部署入口隐式调用。主站启动后先检查该目录的`station.log`及进程，再取新快照。
 
+厂家stop可能在打印完成后因其清理/服务退出返回非零；入口保存返回码，并以本次三个服务已inactive/failed且原运控/主站进程已退出作为停业务完成条件。若停完后入口已中断，`--start-only 同一个takeover目录`只复核停止状态再启动主站，不重复停业务、不清故障，也不自动恢复业务。
+
 ```bash
 # 独占窗口内只出队读取：打印全轴并生成双臂±0.5rad资格表。
 "$tool" --snapshot --urdf "$urdf" --output artifacts/my_shm_test/snapshot
