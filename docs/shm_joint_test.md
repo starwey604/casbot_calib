@@ -86,7 +86,7 @@ install/shm-core/bin/shm_channel_start --fresh-master /shm_mc
 
 材料：Orin仓库 `artifacts/shm_joint_test_20261113/{snapshot_repositioned,id12_v2}/`；本机对应副本位于同根目录的 `orin/`，对比诊断为 `snapshot_repositioned_diagnosis.json` 和 `id12_v2_diagnosis.json`。原始状态与历史别名记录不回写。
 
-随后用户明确要求关闭本逐轴试验的碰撞检测，只检查URDF limit。当前入口已移除碰撞场景加载与参考证明，保留双向位置/速度限位、起点新读、通信/驱动故障终止及失能流程；不再要求现场为通过模型碰撞检查重新摆位。上述旧检查结果保留原意。真实使能/轨迹/失能流程及其状态字应答待本轮运行回填。
+随后用户明确要求关闭本逐轴试验的碰撞检测，只检查URDF limit。当前入口已移除碰撞场景加载与参考证明，保留双向位置/速度限位、起点新读、通信/驱动故障终止及失能流程；不再要求现场为通过模型碰撞检查重新摆位。上述旧检查结果保留原意。修正状态字后的实际流程结果见下节。
 
 ### 关闭碰撞后的首轮控制及状态字修正
 
@@ -95,3 +95,14 @@ install/shm-core/bin/shm_channel_start --fresh-master /shm_mc
 判定改为 `(Statusword & 0x006f)`：Ready to switch on为0x21，Operation enabled为0x27；0x0231中的bit4是电压存在位，不应参与状态比较。依据为[CiA402状态表及bit4说明](https://doc.synapticon.com/circulo_safe_motion/system_integration/status_and_controlword.html)，结合本机0x0231以及此前原运控启用时0x0237的实际观测采用这一解释；模式回读和error检查保留。单测覆盖两种电压位、故障/快停/禁用状态拒绝，私有正常夹具改用实测0x0231/0x0237，故障夹具仍用旧0x21/0x37。
 
 用户已明确批准修正后新开ID12试验，不resume上述超时会话，不清故障。
+
+### ID12新会话已完成控制流程
+
+`8729c7a` 在Humble与Orin完成修正后的单测及三例私有协议测试后，按用户授权新开 `id12_v4_status_mask`，不重启主站、不恢复旧会话。实机按阶段0/1/2/3/4完成失能→MIT→使能→轨迹→失能应答，结果为 `execution_completed=1`、`completed_with_disable_ack`。
+
+- 实际起点0.059457rad，指令范围−0.440543～+0.559457rad，每段5秒，Kp20/Kd2/前馈0；本入口无碰撞检查。
+- 反馈范围−0.284632～+0.389053rad，末段附近及最后反馈均为0.043054rad。实际没有完整跟上目标幅度；本轮未调整增益或加前馈。
+- 成功入队15583帧、记录反馈15582帧；最大成功入队间隔1.054095ms，记录未停录。29个电机关节反馈错误码均为0；ID12观测到0x0231/0x0237及mode 0/−1。
+- 原始命令/状态、CSV及起点/设置在Orin `artifacts/shm_joint_test_20261113/id12_v4_status_mask/`，本机副本位于同根目录 `orin/id12_v4_status_mask/`，数值汇总为本机 `analysis.json`。
+
+停在ID12检查点，尚未跑其它13轴。实物方向、抽动、其它部位变化及物理停止由用户观察回填；不以使能/失能应答替代该观察。主站继续留在本次独占窗口，不自动恢复ROS业务。
