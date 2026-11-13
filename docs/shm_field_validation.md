@@ -4,6 +4,8 @@
 
 **当前状态（2026-11-13）：确认计划已建立，以下实机用例均未运行，配套执行脚本尚未实现。** 本文不是现有 `fieldwork/run.sh` 的新参数说明。已有软件证据见 [Jetson 接口勘察](jetson_shm_interface_recon_20261113.md)，原 ROS SDK 工具继续使用 [fieldwork 手册](../fieldwork/README.md)。
 
+执行器、物理 Mock、Humble/Orin 构建与上层接入的实施顺序见 [SHM 代码移植计划](shm_migration_plan.md)。
+
 ## 1. 已经确定的前提，直接沿用
 
 ### 停业务后，在本次开机窗口内独占测试
