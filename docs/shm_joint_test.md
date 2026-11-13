@@ -87,3 +87,11 @@ install/shm-core/bin/shm_channel_start --fresh-master /shm_mc
 材料：Orin仓库 `artifacts/shm_joint_test_20261113/{snapshot_repositioned,id12_v2}/`；本机对应副本位于同根目录的 `orin/`，对比诊断为 `snapshot_repositioned_diagnosis.json` 和 `id12_v2_diagnosis.json`。原始状态与历史别名记录不回写。
 
 随后用户明确要求关闭本逐轴试验的碰撞检测，只检查URDF limit。当前入口已移除碰撞场景加载与参考证明，保留双向位置/速度限位、起点新读、通信/驱动故障终止及失能流程；不再要求现场为通过模型碰撞检查重新摆位。上述旧检查结果保留原意。真实使能/轨迹/失能流程及其状态字应答待本轮运行回填。
+
+### 关闭碰撞后的首轮控制及状态字修正
+
+`fc1bd40` 的 `id12_v3_no_collision` 已通过URDF检查并发出3189条控制帧，但控制字全部为0x06；收到3187条状态，双臂始终为0x0231、mode=0、error=0。旧程序等待低字节严格等于0x21，3秒后以 `transition_timeout_phase_0` 终止并有界发送失能，未切MIT、未使能、未发轨迹。原始数据及本机 `analysis.json` 位于本轮 `orin/id12_v3_no_collision/`。
+
+判定改为 `(Statusword & 0x006f)`：Ready to switch on为0x21，Operation enabled为0x27；0x0231中的bit4是电压存在位，不应参与状态比较。依据为[CiA402状态表及bit4说明](https://doc.synapticon.com/circulo_safe_motion/system_integration/status_and_controlword.html)，结合本机0x0231以及此前原运控启用时0x0237的实际观测采用这一解释；模式回读和error检查保留。单测覆盖两种电压位、故障/快停/禁用状态拒绝，私有正常夹具改用实测0x0231/0x0237，故障夹具仍用旧0x21/0x37。
+
+用户已明确批准修正后新开ID12试验，不resume上述超时会话，不清故障。

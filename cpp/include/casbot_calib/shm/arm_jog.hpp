@@ -15,6 +15,10 @@ inline constexpr std::array<const char*,14> arm_names{
   "left_elbow_pitch_joint","left_wrist_yaw_joint","left_wrist_pitch_joint","left_wrist_roll_joint",
   "right_shoulder_pitch_joint","right_shoulder_roll_joint","right_shoulder_yaw_joint",
   "right_elbow_pitch_joint","right_wrist_yaw_joint","right_wrist_pitch_joint","right_wrist_roll_joint"};
+// CiA402 PDS state excludes voltage-present bit 4 and non-state flags.
+inline bool drive_state_is(std::uint16_t status, std::uint16_t expected) {
+  return (status & 0x006f)==expected;
+}
 inline void check_arm(std::size_t j) { if (j>=14) throw std::out_of_range("Internal arm index must be 0..13"); }
 inline std::size_t arm_index(int id) {
   if (id<12 || id>25) throw std::out_of_range("Joint ID must be 12..25 (arms only)");

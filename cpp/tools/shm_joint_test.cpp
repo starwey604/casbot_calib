@@ -125,7 +125,7 @@ CommandFrame baseline(const StatusFrame& s,const CommandFrame& hand,const Eigen:
   return c;
 }
 bool arm_ack(const StatusFrame& s,unsigned word,bool mit=false) {
-  for(int j=12;j<26;++j)if((s.joints[j].status_word&255)!=word || (mit&&s.joints[j].mode!=-1))return false;
+  for(int j=12;j<26;++j)if(!drive_state_is(s.joints[j].status_word,word) || (mit&&s.joints[j].mode!=-1))return false;
   return true;
 }
 void run(Channel& channel,StatusFrame state,const CommandFrame& hand,const Eigen::VectorXd& q0,
@@ -153,14 +153,14 @@ void run(Channel& channel,StatusFrame state,const CommandFrame& hand,const Eigen
           for(int j=0;j<29;++j)if((j<12||j>25)&&(state.joints[j].status_word&4))advance=false;
         }
         if(phase==1)advance=arm_ack(state,0x21,true);
-        if(phase==2)advance=arm_ack(state,0x37,true);
+        if(phase==2)advance=arm_ack(state,0x27,true);
         if(phase==4 && arm_ack(state,0x21))done=true;
       }
       if(advance){++phase;phase_begin=now;phase_sent=false;}
       if(phase>=1)for(int j=12;j<26;++j)command.joints[j].mode=-1;
       for(int j=12;j<26;++j)command.joints[j].control_word=(phase==2||phase==3)?15:6;
       if(phase==3) {
-        if(!arm_ack(state,0x37,true))throw std::runtime_error("enabled_mode_lost");
+        if(!arm_ack(state,0x27,true))throw std::runtime_error("enabled_mode_lost");
         const double elapsed=first_stream?(now-first_stream)*1e-9:0;
         const auto value=jog_at(elapsed,segment_s,amplitude);
         arm_target(command,joint,q0[joint]+value.position,value.velocity,kp,kd);

@@ -4,6 +4,17 @@
 void check(bool v) { if(!v) throw std::runtime_error("Arm jog test failed"); }
 int main() {
   using namespace casbot::shm;
+  for(unsigned word: {0x21,0x31,0x231}) {
+    check(drive_state_is(word,0x21));
+    check(!drive_state_is(word,0x27));
+  }
+  for(unsigned word: {0x27,0x37,0x237}) {
+    check(drive_state_is(word,0x27));
+    check(!drive_state_is(word,0x21));
+  }
+  for(unsigned word: {0x0,0x8,0xf,0x40,0x239,0x23f,0x207}) {
+    check(!drive_state_is(word,0x21) && !drive_state_is(word,0x27));
+  }
   check(arm_index(12)==0 && arm_index(25)==13);
   for(int id: {1,11,26}) {
     bool rejected=false;

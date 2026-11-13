@@ -40,7 +40,7 @@ int main(int argc,char** argv) {
             if(j<12||j>25)if(c.control_word!=6||c.torque!=0)bad_background=true;
             if(c.control_word==15)disabled=false;
             if(c.control_word==0x80)bad_background=true;
-            state.joints[j].status_word=c.control_word==15?0x37:0x21;
+            state.joints[j].status_word=c.control_word==15?(fault?0x37:0x237):(fault?0x21:0x231);
             state.joints[j].mode=c.mode;
             state.joints[j].position=c.position;
           }
