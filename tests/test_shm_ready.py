@@ -128,6 +128,20 @@ def test_static_windows_shift_but_preparation_is_not_a_measurement(hanging,tmp_p
     assert json.loads((plan/'collision_reference.json').read_text())['passed']
 
 
+def test_ten_degree_jog_retains_collision_and_slow_reference(hanging,tmp_path,native):
+    from casbot_calib.staged_motion import derivative_bounds
+    from scipy.interpolate import BPoly
+    plan=tmp_path/'ten_deg';m=prepare(DEFAULT_PROFILE,hanging,plan,executor=native,with_ready=True,amplitude_deg=10.)
+    motion=json.loads((plan/'calibration_motion.json').read_text())
+    assert m['recipe']['amplitude_deg']==10 and m['duration_ns']>40_000_000_000
+    assert json.loads((plan/'collision_reference.json').read_text())['passed']
+    assert derivative_bounds(BPoly.from_derivatives(motion['knots_s'],np.asarray(motion['states']))).max()<=.05*(1+1e-9)
+    q=np.asarray(motion['states'])[:,0,0]
+    assert q.min()==pytest.approx(-np.deg2rad(10)) and q.max()==pytest.approx(np.deg2rad(10))
+    with pytest.raises(ValueError,match='10'):
+        prepare(DEFAULT_PROFILE,hanging,tmp_path/'too_big',executor=native,with_ready=True,amplitude_deg=10.1)
+
+
 def test_preparation_fault_disables_without_entering_formal_reference(hanging,tmp_path,native):
     fixture=json.loads((hanging/'mock/config.json').read_text());fixture['fault_after_commands']=180
     (hanging/'mock/config.json').write_text(json.dumps(fixture));seal(hanging)

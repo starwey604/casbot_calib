@@ -119,7 +119,7 @@ def prepare(profile,snapshot_root,output,*,joint_id=12,amplitude_deg=1.,preset=N
     if recipe is None:
         if preset:recipe=static_recipe(preset,c,max_poses_per_split=max_poses_per_split,candidate_ids=candidate_ids)
         else:
-            if joint_id not in range(12,26) or not np.isfinite(amplitude_deg) or not 0<amplitude_deg<=5:raise ValueError('H1小幅测试使用ID12–25、幅度(0,5]度')
+            if joint_id not in range(12,26) or not np.isfinite(amplitude_deg) or not 0<amplitude_deg<=10:raise ValueError('H1往返测试使用ID12–25、幅度(0,10]度')
             recipe=dict(kind='jog',joint=NAMES[joint_id-12],amplitude_deg=amplitude_deg,anchor_rad=None)
         if with_ready:recipe['preparation']='arm_ready_v1'
     ready=None;prefix=None;formal_start=start

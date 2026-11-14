@@ -12,7 +12,7 @@ H1正式标定段检查原模型的连续参考碰撞及实际接收位置折线
 R=artifacts/shm_h1/ready_$(date +%s%N)
 bash fieldwork/shm/run.sh h1 snapshot --output "$R/start"
 bash fieldwork/shm/run.sh h1 plan-jog "$R/start" --with-ready \
-  --joint-id 12 --amplitude-deg 1 --output "$R/plan"
+  --joint-id 12 --amplitude-deg 10 --output "$R/plan"
 HAND=artifacts/本次接管/before/native/command.bin
 bash fieldwork/shm/run.sh h1 execute "$R/plan" \
   --hand-background "$HAND" --output "$R/capture" --execute
@@ -25,9 +25,11 @@ bash fieldwork/shm/run.sh h1 analyse "$R/plan" "$R/capture" --output "$R/analysi
 2. 在准备目标保持位置参考，用2秒平滑接入本次H1的PD与显式重力前馈，再保持1秒。默认仍20/2；不复制反馈总effort为前馈。
 3. 直接接入通过完整碰撞检查的H1参考，中间不失能、不换owner。小幅正向→反向→准备位；最终请求失能并等待应答。
 
+上例按用户最新选择使用ID12 **±10°**；不传幅度时仍默认1°，允许显式(0,10]°，不夹取超范围输入。正式jog参考速度上限保持0.05rad/s，幅度增加自动延长各段；10°完整参考约43秒（含准备），不是把1°的时长直接套给10°。
+
 所有正式参考在发送前完成证明；准备段单独检查URDF/速度。`preparation.json`记录跳过范围、目标、PD及交接时刻；`calibration_motion.json`是正式参考，`motion.json`/`reference.json`是实际完整时间轴。`collision_reference.json`明确仅覆盖正式段，并给出相对完整执行的偏移。原生事件`ready_begin`、`ready_field_handover_begin`、`h1_calibration_begin`可用于现场对照。
 
-分析保留全部原始反馈，但碰撞折线检查只覆盖准备完成后的正式phase3区间；准备、进入/退出失能区间明确排除。静态窗口和jog比较窗已平移到完整执行时间轴，不把展开数据混进标定。A的0秒仍是首条执行命令，选窗应读取`plan.json`的`preparation.calibration_begin_ns`，不会偷偷把准备段从时钟中扣掉。
+分析保留全部原始反馈，但碰撞折线检查只覆盖准备完成后的正式phase3区间；准备、进入/退出失能区间明确排除。新版反馈CSV末尾增加`phase`，表示记录器执行阶段，不是驱动状态字；旧无准备前缀的记录仍可分析。静态窗口和jog比较窗已平移到完整执行时间轴，不把展开数据混进标定。A的0秒仍是首条执行命令，选窗应读取`plan.json`的`preparation.calibration_begin_ns`，不会偷偷把准备段从时钟中扣掉。
 
 `plan-static`也支持`--with-ready`：先准备，再走准备位到预设工作姿态、全部静态任务及返回准备位的完整碰撞检查路径。起点自动重规划会保留准备配方；驱动/通信/模式故障仍结束整个会话，不自动恢复。
 
@@ -127,6 +129,15 @@ bash fieldwork/shm/run.sh a-evidence artifacts/site_h1/jog_run \
 A输出惯量局部诊断、速度/慢漂移可分离性、额外通道错位敏感性和信号量级。数学秩不足就给出不可计算原因，不修改既有算子或门槛来凑正结果。
 
 ## 在私有物理Mock先演练
+
+新增准备位闭环使用同一个安装版执行器，从显式的近腿下垂夹具开始，验证一次使能内展开→H1→失能、前缀零前馈、正式路径及分析窗口：
+
+```bash
+.venv-shm/bin/python scripts/shm/verify_ready.py --bin-dir install/shm-core/bin \
+  --output artifacts/h1_ready_private_check
+```
+
+夹具只模拟动力学/驱动整数接口，不模拟手臂与腿的接触力。
 
 ```bash
 .venv-shm/bin/python scripts/shm/verify_h1.py --bin-dir install/shm-core/bin \
