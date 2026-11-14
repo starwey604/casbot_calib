@@ -24,7 +24,7 @@ Reference Reference::load(const std::string& file) {
   if(origin!="absolute"&&origin!="measured_start")throw std::invalid_argument("Unknown reference origin");
   r.relative_=origin=="measured_start";
   if(r.relative_&&r.direct_)throw std::invalid_argument("Direct fields use explicit absolute positions");
-  if(json.get<std::string>("purpose","")=="shm_h1_collision_checked") {
+  if(json.get<std::string>("purpose","")=="shm_h1_collision_checked"||json.get<std::string>("purpose","")=="shm_gui_zero_collision_checked") {
     if(r.direct_||r.relative_)throw std::invalid_argument("H1 uses frozen absolute trajectories");
     r.observed_velocity_=json.get<double>("observed_velocity_limit_rad_s");
     if(!std::isfinite(r.observed_velocity_)||r.observed_velocity_<=0||r.observed_velocity_>1.5)throw std::invalid_argument("Invalid H1 observed velocity limit");

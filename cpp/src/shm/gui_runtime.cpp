@@ -1,5 +1,7 @@
 #include "gui_runtime.hpp"
 #include "gui_wire.hpp"
+#include "reference.hpp"
+#include "gui_policy.hpp"
 #include "field_recorder.hpp"
 #include "json_input.hpp"
 #include <casbot_calib/arm_dynamics.hpp>
@@ -20,28 +22,26 @@ void signal_exit(int){stop_signal=1;}
 std::string json_quote(const std::string& s){std::ostringstream o;o<<'"';for(char c:s){if(c=='"'||c=='\\')o<<'\\';if(c=='\n')o<<"\\n";else if(static_cast<unsigned char>(c)>=32)o<<c;}o<<'"';return o.str();}
 struct Message {
   std::string type,error;std::uint64_t id=0,control=0,revision=0,challenge=0,seq=0;
-  std::array<Joints,5> fields{};
-  double velocity=1.5,effort=10,kp=100,kd=10,lease_ms=1000;bool end_velocity=false;
+  std::array<Joints,5> fields{};std::shared_ptr<Reference> reference;std::string path;
+  GuiPolicy policy;
 };
-Message parse(const std::string& line) {
+Message parse(const std::string& line,const Joints& lower,const Joints& upper,const Joints& velocity) {
   Message m;
   try {
     Json p;std::istringstream stream(line);boost::property_tree::read_json(stream,p);
     std::set<std::string> keys;for(const auto& item:p)if(!keys.insert(item.first).second)throw std::runtime_error("duplicate_key");
     m.id=p.get<std::uint64_t>("id");m.type=p.get<std::string>("type");m.control=p.get<std::uint64_t>("control",0);
-    if(m.type=="start") {
+    if(m.type=="start"||m.type=="trajectory") {
       m.fields[3].fill(20);m.fields[4].fill(2);
       if(p.get_child_optional("kp"))m.fields[3]=joint_values(p.get_child("kp"));
       if(p.get_child_optional("kd"))m.fields[4]=joint_values(p.get_child("kd"));
+      if(m.type=="trajectory")m.path=p.get<std::string>("reference");
     }else if(m.type=="fields") {
       m.revision=p.get<std::uint64_t>("revision");
       int j=0;for(const auto* name:{"position","velocity","effort","kp","kd"})m.fields[j++]=joint_values(p.get_child(name));
     }else if(m.type=="renew") {m.challenge=p.get<std::uint64_t>("challenge");m.seq=p.get<std::uint64_t>("seq");}
     else if(m.type=="settings") {
-      m.velocity=finite_number(p.get_child("velocity_limit"));m.effort=finite_number(p.get_child("effort_limit"));
-      m.kp=finite_number(p.get_child("kp_max"));m.kd=finite_number(p.get_child("kd_max"));
-      m.lease_ms=finite_number(p.get_child("lease_ms"));m.end_velocity=json_bool(p.get_child("end_velocity"));
-      if(m.velocity<=0||m.velocity>1.5||m.effort<=0||m.effort>327||m.kp<20||m.kp>3276||m.kd<2||m.kd>3276||m.lease_ms<200||m.lease_ms>10000)throw std::runtime_error("settings_range");
+      m.policy=gui_policy(p,lower,upper,velocity);
     }else if(m.type!="start"&&m.type!="stop"&&m.type!="quit")throw std::runtime_error("unknown_type");
     if(!m.id)throw std::runtime_error("positive_request_id_required");
   }catch(const std::exception& e){m.error=e.what();}
@@ -50,11 +50,11 @@ Message parse(const std::string& line) {
 class IO {
   std::mutex in_mutex,out_mutex;std::deque<Message> requests;std::optional<Message> target,stop;
   std::deque<std::string> events;std::optional<GuiSnapshot> snapshot;
-  std::thread reader,writer;
+  std::thread reader,writer;Recorder& recorder_;
  public:
   std::atomic<bool> disconnected{false},finished{false};
-  explicit IO(const std::filesystem::path& root,Recorder& recorder) {
-    reader=std::thread([this]{
+  explicit IO(const std::filesystem::path&,Recorder& recorder,const Joints& lower,const Joints& upper,const Joints& velocity):recorder_(recorder) {
+    reader=std::thread([this,lower,upper,velocity]{
       std::string pending;char data[4096];
       while(!finished&&!disconnected) {
         pollfd p{STDIN_FILENO,POLLIN,0};int n=poll(&p,1,20);if(n<=0)continue;
@@ -62,7 +62,14 @@ class IO {
         pending.append(data,count);if(pending.size()>32768){disconnected=true;break;}
         std::size_t end;
         while((end=pending.find('\n'))!=std::string::npos) {
-          auto m=parse(pending.substr(0,end));pending.erase(0,end+1);
+          auto line=pending.substr(0,end);auto m=parse(line,lower,upper,velocity);pending.erase(0,end+1);if(m.type!="renew"&&m.error.empty())recorder_.metadata(line);
+          if(m.type=="trajectory"&&m.error.empty())try {
+            if(read_json(m.path).get<std::string>("purpose")!="shm_gui_zero_collision_checked")throw std::runtime_error("zero_reference_purpose_required");
+            m.reference=std::make_shared<Reference>(Reference::load(m.path));
+            if(m.reference->direct_fields()||m.reference->measured_origin())throw std::runtime_error("absolute_trajectory_required");
+            m.reference->validate_limits(lower,upper,velocity);
+            const auto value=m.reference->at(0);m.fields[3]=value.kp;m.fields[4]=value.kd;
+          }catch(const std::exception& e){m.error=e.what();}
           if(!m.error.empty()){event("{\"type\":\"reply\",\"id\":"+std::to_string(m.id)+",\"ok\":false,\"reason\":"+json_quote(m.error)+"}");continue;}
           std::lock_guard<std::mutex> lock(in_mutex);
           if(m.type=="stop"||m.type=="quit")stop=m;
@@ -73,15 +80,14 @@ class IO {
         }
       }
     });
-    writer=std::thread([this,root,&recorder]{
-      std::ofstream archive(root/"controls.jsonl");
+    writer=std::thread([this]{
       fcntl(STDOUT_FILENO,F_SETFL,fcntl(STDOUT_FILENO,F_GETFL)|O_NONBLOCK);
       while(true) {
         std::string event_value;std::optional<GuiSnapshot> snap;
         {std::lock_guard<std::mutex> lock(out_mutex);if(!events.empty()){event_value=std::move(events.front());events.pop_front();}else if(snapshot){snap=std::move(snapshot);snapshot.reset();}}
         if(event_value.empty()&&!snap){if(finished)break;std::this_thread::sleep_for(std::chrono::milliseconds(1));continue;}
         std::vector<unsigned char> body;
-        if(snap)body=snap->encode();else {body.assign(event_value.begin(),event_value.end());if(!recorder.stopped){archive<<event_value<<'\n';archive.flush();if(archive)recorder.external_bytes=static_cast<std::uint64_t>(archive.tellp());else recorder.stopped=true;}}
+        if(snap)body=snap->encode();else body.assign(event_value.begin(),event_value.end());
         std::vector<unsigned char> packet;wire_int<std::uint32_t>(packet,body.size()+1);packet.push_back(snap?2:1);packet.insert(packet.end(),body.begin(),body.end());
         std::size_t pos=0;auto deadline=mono()+2000000000LL;
         while(pos<packet.size()) {
@@ -99,7 +105,7 @@ class IO {
     while(!requests.empty()){messages.push_back(std::move(requests.front()));requests.pop_front();}
     if(target){messages.push_back(std::move(*target));target.reset();}return messages;
   }
-  void event(std::string value){std::lock_guard<std::mutex> lock(out_mutex);if(events.size()<128)events.push_back(std::move(value));else disconnected=true;}
+  void event(std::string value){recorder_.metadata(value);std::lock_guard<std::mutex> lock(out_mutex);if(events.size()<128)events.push_back(std::move(value));else disconnected=true;}
   void publish(const GuiSnapshot& value){std::unique_lock<std::mutex> lock(out_mutex,std::try_to_lock);if(lock.owns_lock())snapshot=value;}
   ~IO(){finished=true;if(reader.joinable())reader.join();if(writer.joinable())writer.join();}
 };
@@ -120,16 +126,17 @@ int gui_main(int argc,char** argv) {
     if(!std::filesystem::create_directory(root))throw std::runtime_error("new_output_required");
     CommandFrame hand{};bool have_background=!background.empty();
     if(have_background){std::ifstream file(background,std::ios::binary);std::vector<char> bytes{std::istreambuf_iterator<char>(file),{}};hand=decode_command(bytes.data(),bytes.size());if(hand.hand_count>2)throw std::runtime_error("invalid_hands");std::filesystem::copy_file(background,root/"hand_background_source.bin");}
-    Recorder recorder(root,static_cast<std::uint64_t>(budget*1024*1024));IO io(root,recorder);ClockMap clock;
-    GuiSnapshot snap;Message settings;std::int64_t next=mono(),last_pair=0,last_publish=0,last_new=0,phase_begin=0,last_send=0,lease_end=0,last_limit=0;
+    Joints lower{},upper{},velocity{};for(int j=0;j<14;++j){lower[j]=joints[j].lower;upper[j]=joints[j].upper;velocity[j]=std::min(1.5,joints[j].velocity_limit);}
+    Recorder recorder(root,static_cast<std::uint64_t>(budget*1024*1024));IO io(root,recorder,lower,upper,velocity);ClockMap clock;
+    GuiSnapshot snap;Message settings;settings.policy=gui_policy(Json{},lower,upper,velocity);Message active_settings=settings;std::int64_t next=mono(),last_pair=0,last_publish=0,last_new=0,phase_begin=0,last_send=0,lease_end=0,last_limit=0;
     std::int64_t stop_timeout=3000000000LL;std::uint64_t last_start=0,pending_revision=0,new_frames=0,previous_frame=0;
-    std::array<std::int64_t,512> sent_times{};bool sent_phase=false,quit=false;std::string reason="read_only";
+    std::array<std::int64_t,512> sent_times{};std::shared_ptr<Reference> reference;std::int64_t reference_begin=0;bool sent_phase=false,quit=false;std::string reason="read_only";
     ArmMask all{};all.fill(true);
     auto event=[&](std::string text){recorder.event(snap.phase,text);io.event("{\"type\":\"status\",\"control\":"+std::to_string(snap.control)+",\"phase\":"+std::to_string(snap.phase)+",\"reason\":"+json_quote(text)+",\"disable_ack\":"+(snap.ack?"true":"false")+"}");};
     auto change=[&](int phase,std::string text){snap.phase=phase;phase_begin=mono();sent_phase=false;event(text);};
     auto stopping=[&](const std::string& why,bool fault){if(snap.phase>=0&&snap.phase!=4){reason=why;stop_timeout=fault?200000000LL:3000000000LL;change(4,"stopping_"+why);}};
-    auto finish=[&](bool ack){snap.ack=ack;change(-1,ack?"disabled_"+reason:"disable_unconfirmed_"+reason);pending_revision=0;snap.challenge=0;snap.expires=0;};
-    {std::ostringstream hello;hello<<std::setprecision(17)<<"{\"type\":\"hello\",\"version\":1,\"lower\":[";for(int j=0;j<14;++j)hello<<(j?",":"")<<joints[j].lower;hello<<"],\"upper\":[";for(int j=0;j<14;++j)hello<<(j?",":"")<<joints[j].upper;hello<<"],\"velocity\":[";for(int j=0;j<14;++j)hello<<(j?",":"")<<std::min(1.5,joints[j].velocity_limit);hello<<"],\"hand_background\":"<<(have_background?"true":"false")<<"}";io.event(hello.str());}
+    auto finish=[&](bool ack){snap.ack=ack;change(-1,ack?"disabled_"+reason:"disable_unconfirmed_"+reason);pending_revision=0;snap.challenge=0;snap.expires=0;reference.reset();};
+    {std::ostringstream hello;hello<<std::setprecision(17)<<"{\"type\":\"hello\",\"version\":2,\"lower\":[";for(int j=0;j<14;++j)hello<<(j?",":"")<<joints[j].lower;hello<<"],\"upper\":[";for(int j=0;j<14;++j)hello<<(j?",":"")<<joints[j].upper;hello<<"],\"velocity\":[";for(int j=0;j<14;++j)hello<<(j?",":"")<<std::min(1.5,joints[j].velocity_limit);hello<<"],\"hand_background\":"<<(have_background?"true":"false")<<"}";io.event(hello.str());}
     try {while(true) {
       const auto now=mono();Record r;r.at=now;r.received=channel.receive(snap.status);r.receive_at=r.received?mono():0;
       if(now-last_pair>=1000000000LL){r.clock=clock.pair();r.has_pair=true;last_pair=now;}
@@ -138,12 +145,11 @@ int gui_main(int argc,char** argv) {
       if(stop_signal||io.disconnected){quit=true;stopping(stop_signal?"operator_interrupt":"bridge_eof",true);}
       for(auto& m:io.take()) {
         if(m.type=="quit"){quit=true;stopping("close",false);reply(io,m,true,"closing");}
-        else if(m.type=="stop"){if(m.control&&m.control!=snap.control)reply(io,m,false,"old_control");else{stopping("operator_stop",false);reply(io,m,true,"stop_requested");}}
+        else if(m.type=="stop"){last_start=std::max(last_start,m.id);if(m.control&&m.control!=snap.control)reply(io,m,false,"old_control");else{stopping("operator_stop",false);reply(io,m,true,"stop_requested");}}
         else if(m.type=="settings") {
-          if(snap.phase>=0){reply(io,m,false,"settings_require_read_only");continue;}
-          settings=m;reply(io,m,true,"settings_applied");
-          io.event("{\"type\":\"settings\",\"id\":"+std::to_string(m.id)+",\"velocity_limit\":"+std::to_string(settings.velocity)+",\"end_velocity\":"+(settings.end_velocity?"true":"false")+",\"lease_ms\":"+std::to_string(settings.lease_ms)+",\"effort_limit\":"+std::to_string(settings.effort)+",\"kp_max\":"+std::to_string(settings.kp)+",\"kd_max\":"+std::to_string(settings.kd)+"}");
-        }else if(m.type=="start") {
+          settings=m;reply(io,m,true,"observations_applied_inputs_next_control");
+          io.event("{\"type\":\"settings\",\"id\":"+std::to_string(m.id)+",\"active_input_version\":"+std::to_string(active_settings.id)+"}");
+        }else if(m.type=="start"||m.type=="trajectory") {
           if(m.id<=last_start){reply(io,m,m.id==snap.control&&snap.phase>=0,"start_already_processed");continue;}
           last_start=m.id;
           std::string error;
@@ -151,51 +157,62 @@ int gui_main(int argc,char** argv) {
           else if(new_frames<2||now-last_new>200000000LL)error="fresh_feedback_required";
           else for(int j=0;j<29;++j)if(snap.status.joints[j].error_code)error="drive_fault";
           std::array<double,14> q{};
-          for(int j=0;j<14;++j){q[j]=arm_position(snap.status,j);if(q[j]<joints[j].lower||q[j]>joints[j].upper)error="start_outside_urdf";}
-          for(int j=0;j<14;++j)if(m.fields[3][j]<0||m.fields[3][j]>settings.kp||m.fields[4][j]<0||m.fields[4][j]>settings.kd)error="initial_gains_range";
+          for(int j=0;j<14;++j){q[j]=arm_position(snap.status,j);if(q[j]<settings.policy.axes[j].input_lower||q[j]>settings.policy.axes[j].input_upper)error="start_outside_urdf";}
+          for(int j=0;j<14;++j)if(std::abs(arm_feedback(snap.status,j).velocity)>=.02)error="start_not_stationary_zero_writes";
+          if(m.reference)for(int j=0;j<14;++j)if(std::abs(q[j]-m.reference->at(0).state[0][j])>.005||std::abs(arm_feedback(snap.status,j).velocity)>=.02)error="reference_start_mismatch_zero_writes";
+          for(int j=0;j<14;++j)if(m.fields[3][j]<0||m.fields[3][j]>settings.policy.axes[j].kp||m.fields[4][j]<0||m.fields[4][j]>settings.policy.axes[j].kd)error="initial_gains_range";
           if(!error.empty()){reply(io,m,false,error);continue;}
+          active_settings=settings;
           snap.command=initial_command(snap.status,hand,q,20,2);for(int j=0;j<14;++j)arm_target(snap.command,j,q[j],0,m.fields[3][j],m.fields[4][j]);snap.control=m.id;snap.ack=false;snap.revision=0;snap.applied_at=0;pending_revision=0;
-          snap.challenge++;snap.expires=now+static_cast<std::int64_t>(settings.lease_ms*1e6);lease_end=snap.expires;last_send=now;
-          reason="";change(0,"disabling");reply(io,m,true,"starting_at_measured_position");
+          snap.challenge++;snap.expires=now+static_cast<std::int64_t>(active_settings.policy.lease_ms*1e6);lease_end=snap.expires;last_send=now;
+          reference=m.reference;reference_begin=0;reason="";change(0,"disabling");reply(io,m,true,"starting_at_measured_position");
         }else if(m.type=="renew") {
-          bool valid=snap.phase>=0&&snap.phase<4&&m.control==snap.control&&m.challenge==snap.challenge&&now<snap.expires&&m.seq&&m.seq<=snap.seq&&snap.seq-m.seq<sent_times.size()&&now-sent_times[m.seq%sent_times.size()]<static_cast<std::int64_t>(settings.lease_ms*1e6);
-          if(valid){lease_end=snap.expires;++snap.challenge;snap.expires=now+static_cast<std::int64_t>(settings.lease_ms*1e6);}
+          bool valid=snap.phase>=0&&snap.phase<4&&m.control==snap.control&&m.challenge==snap.challenge&&now<snap.expires&&m.seq&&m.seq<=snap.seq&&snap.seq-m.seq<sent_times.size()&&now-sent_times[m.seq%sent_times.size()]<static_cast<std::int64_t>(active_settings.policy.lease_ms*1e6);
+          if(valid){lease_end=snap.expires;++snap.challenge;snap.expires=now+static_cast<std::int64_t>(active_settings.policy.lease_ms*1e6);}
           // Lease renewals have no reply traffic; the next challenge is the acknowledgement.
         }else if(m.type=="fields") {
           std::string error;auto c=snap.command;
-          if(snap.phase!=3||m.control!=snap.control)error="not_current_control";else if(!m.revision||m.revision<=pending_revision)error="old_revision";
-          if(error.empty())try{for(int j=0;j<14;++j){const auto q=m.fields[0][j],v=m.fields[1][j],e=m.fields[2][j],kp=m.fields[3][j],kd=m.fields[4][j];if(q<joints[j].lower||q>joints[j].upper||std::abs(v)>std::min(settings.velocity,joints[j].velocity_limit)||std::abs(e)>settings.effort||kp>settings.kp||kd>settings.kd)throw std::runtime_error("target_range_id_"+std::to_string(j+12));arm_target(c,j,q,v,kp,kd,e);}}
+          if(snap.phase!=3||reference||m.control!=snap.control)error="not_current_control";else if(!m.revision||m.revision<=pending_revision)error="old_revision";
+          if(error.empty())try{for(int j=0;j<14;++j){const auto q=m.fields[0][j],v=m.fields[1][j],e=m.fields[2][j],kp=m.fields[3][j],kd=m.fields[4][j];if(q<active_settings.policy.axes[j].input_lower||q>active_settings.policy.axes[j].input_upper||std::abs(v)>active_settings.policy.axes[j].input_velocity||std::abs(e)>active_settings.policy.axes[j].effort||kp>active_settings.policy.axes[j].kp||kd>active_settings.policy.axes[j].kd)throw std::runtime_error("target_range_id_"+std::to_string(j+12));arm_target(c,j,q,v,kp,kd,e);}}
           catch(const std::exception& e){error=e.what();}
           if(error.empty()){snap.command=c;pending_revision=m.revision;reply(io,m,true,"accepted_not_yet_enqueued");}else reply(io,m,false,error);
         }
       }
       if(snap.phase>=0&&snap.phase<4) {
         if(now>lease_end)stopping("lease_expired",true);
-        if(now-last_new>2000000000LL)stopping("feedback_timeout",true);
-        if(now-last_send>2000000000LL)stopping("command_queue_timeout",true);
+        if(now-last_new>active_settings.policy.feedback_ms*1e6)stopping("feedback_timeout",true);
+        if(now-last_send>active_settings.policy.send_ms*1e6)stopping("command_queue_timeout",true);
         for(int j=0;j<29;++j)if(snap.status.joints[j].error_code){stopping("drive_error_slot_"+std::to_string(j),true);break;}
-        if(snap.phase!=3&&now-phase_begin>3000000000LL)stopping("transition_timeout",true);
+        if(snap.phase!=3&&now-phase_begin>active_settings.policy.transition_ms*1e6)stopping("transition_timeout",true);
         if(snap.phase==3&&!drive_ack(snap.status,0x27,all,true))stopping("enabled_mode_lost",true);
       }
       bool limit_recorded=false;
-      if(r.received)for(int j=0;j<14;++j){const auto a=arm_feedback(snap.status,j);const bool pos=a.position<joints[j].lower||a.position>joints[j].upper,vel=std::abs(a.velocity)>settings.velocity;
-        if((pos||vel)&&now-last_limit>=1000000000LL){limit_recorded=true;recorder.limit(r.receive_at,snap.phase,j+12,pos?"position":"velocity",pos?a.position:a.velocity,pos?(a.position<joints[j].lower?joints[j].lower:joints[j].upper):settings.velocity,pos?"rad":"rad/s",vel&&settings.end_velocity?"end_control":"warn");}
-        if(vel&&settings.end_velocity&&snap.phase>=0&&snap.phase<4)stopping("observed_velocity_slot_"+std::to_string(j+12),true);
+      if(r.received)for(int j=0;j<14;++j){const auto a=arm_feedback(snap.status,j);const auto& policy=settings.policy.axes[j];
+        const auto lo=std::max(joints[j].lower,policy.observed_lower),hi=std::min(joints[j].upper,policy.observed_upper);
+        const auto velocity_limit=reference?reference->observed_velocity_limit():policy.observed_velocity;
+        const bool pos=a.position<lo||a.position>hi,vel=std::abs(a.velocity)>velocity_limit;
+        if((pos||vel)&&now-last_limit>=1000000000LL){limit_recorded=true;recorder.limit(r.receive_at,snap.phase,j+12,pos?"position":"velocity",pos?a.position:a.velocity,pos?(a.position<lo?lo:hi):velocity_limit,pos?"rad":"rad/s",vel&&(policy.end_velocity||reference)?"end_control":"warn");}
+        if(vel&&(policy.end_velocity||reference)&&snap.phase>=0&&snap.phase<4)stopping("observed_velocity_slot_"+std::to_string(j+12),true);
       }
       if(limit_recorded)last_limit=now;
       if(snap.phase>=0&&sent_phase&&now-phase_begin>20000000LL) {
         int p=drive_phase_next(snap.phase,snap.status,all);
-        if(p==-1)finish(true);else if(p!=snap.phase)change(p,p==1?"switching_mit":p==2?"enabling_at_start":"manual_ready");
+        if(p==-1)finish(true);else if(p!=snap.phase)change(p,p==1?"switching_mit":p==2?"enabling_at_start":reference?"reference_begin":"manual_ready");
       }
       if(snap.phase==4&&now-phase_begin>stop_timeout)finish(false);
+      if(snap.phase==3&&reference) {
+        const auto value=reference->at(reference_begin?now-reference_begin:0);
+        for(int j=0;j<14;++j)arm_target(snap.command,j,value.state[0][j],value.state[1][j],value.kp[j],value.kd[j],value.effort[j]);
+        if(reference_begin&&now-reference_begin>=reference->duration_ns())stopping("reference_completed",false);
+      }
       if(snap.phase>=0) {
         for(int j=12;j<26;++j){auto& a=snap.command.joints[j];a.control_word=(snap.phase==2||snap.phase==3)?15:6;if(snap.phase>=1)a.mode=-1;if(snap.phase==4){a.velocity=0;a.torque=0;}}
         snap.command.frame_counter++;snap.command.timestamp=now/1000000;r.sent=channel.send(snap.command);r.send_at=r.sent?mono():0;
-        if(r.sent){snap.max_gap=std::max(snap.max_gap,r.send_at-last_send);last_send=r.send_at;++snap.writes;sent_phase=true;if(snap.phase==3&&(snap.applied_at==0||snap.revision!=pending_revision)){snap.revision=pending_revision;snap.applied_at=r.send_at;}}
+        if(r.sent){snap.max_gap=std::max(snap.max_gap,r.send_at-last_send);last_send=r.send_at;++snap.writes;sent_phase=true;if(snap.phase==3&&reference&&!reference_begin)reference_begin=r.send_at;if(snap.phase==3&&(snap.applied_at==0||snap.revision!=pending_revision)){snap.revision=pending_revision;snap.applied_at=r.send_at;}}
         else ++snap.skips;
       }
       r.phase=snap.phase;r.cmd=snap.command;r.state=snap.status;r.observation=snap.observation;r.segment=snap.segment;recorder.push(std::move(r));
-      if(now-last_publish>=5000000LL){snap.at=now;snap.recording_stopped=recorder.stopped;++snap.seq;sent_times[snap.seq%sent_times.size()]=now;io.publish(snap);last_publish=now;}
+      if(now-last_publish>=5000000LL){snap.at=now;snap.recording_stopped=recorder.stopped;snap.recording_bytes=recorder.bytes_written;snap.budget_bytes=static_cast<std::uint64_t>(budget*1024*1024);++snap.seq;sent_times[snap.seq%sent_times.size()]=now;io.publish(snap);last_publish=now;}
       if(quit&&snap.phase<0)break;
       next+=1000000;if(next<mono())next=mono()+1000000;timespec t{next/1000000000LL,next%1000000000LL};clock_nanosleep(CLOCK_MONOTONIC,TIMER_ABSTIME,&t,nullptr);
     }

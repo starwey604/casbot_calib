@@ -10,7 +10,8 @@ HEADER_NAMES = ('magic', 'version', 'seq', 'mono_ns', 'receive_ns', 'observation
 VALUES = struct.Struct('<112d')
 JOINT = struct.Struct('<HiihhH')
 HAND = struct.Struct('<HH'+'hhhH'*6)
-SIZE = HEADER.size+VALUES.size+35*JOINT.size+2*HAND.size
+SIZE_V1 = HEADER.size+VALUES.size+35*JOINT.size+2*HAND.size
+SIZE = SIZE_V1+16
 FIELDS = ('position', 'velocity', 'effort', 'kp', 'kd')
 
 
@@ -45,10 +46,11 @@ def read_frame(stream):
 
 
 def telemetry(body):
-    if len(body) != SIZE:
+    if len(body) not in (SIZE,SIZE_V1):
         raise ValueError(f'telemetry_length: {len(body)} != {SIZE}')
     result = dict(zip(HEADER_NAMES, HEADER.unpack_from(body)))
-    if result.pop('magic') != b'SGT1' or result['version'] != 1:
+    magic=result.pop('magic')
+    if (magic,result['version'],len(body)) not in ((b'SGT1',1,SIZE_V1),(b'SGT2',2,SIZE)):
         raise ValueError('telemetry_version')
     offset = HEADER.size
     numbers = VALUES.unpack_from(body, offset);offset += VALUES.size
@@ -57,4 +59,5 @@ def telemetry(body):
     result['joints'] = [JOINT.unpack_from(body, offset+j*JOINT.size) for j in range(35)]
     offset += 35*JOINT.size
     result['hands'] = [HAND.unpack_from(body, offset+j*HAND.size) for j in range(2)]
+    result['recording_bytes'],result['budget_bytes']=struct.unpack_from('<QQ',body,SIZE_V1) if result['version']==2 else (None,None)
     return result

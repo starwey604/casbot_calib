@@ -18,7 +18,7 @@ bash scripts/shm/build.sh --with-mock --build-dir build/shm-core \
   --install-prefix "$PWD/install/shm-core" --dependency-prefix /opt/ros/humble
 ```
 
-需要CMake3.22/C++17，以及已在Orin验证的Pinocchio/Coal算法库。Python入口只用系统Python3标准库，不source ROS、不需要venv、域号或distrobox。当前`shm_executor`链接核心用于读取URDF；普通SHM协议构建仍可关闭核心。
+需要CMake3.22/C++17，以及已在Orin验证的Pinocchio/Coal算法库。基础CLI入口只用系统Python3标准库，不source ROS、不需要venv、域号或distrobox；H1/A需要数值环境，GUI在本机使用独立图形环境。当前`shm_executor`链接核心用于读取URDF；普通SHM协议构建仍可关闭核心。
 
 可用不含pytest的私有软件联跑，**不会连接`shm_mc`或停业务**：
 
@@ -58,7 +58,7 @@ bash fieldwork/shm/run.sh execute artifacts/my_shm_plan/reference.json
 bash fieldwork/shm/run.sh execute artifacts/my_shm_plan/reference.json --mock --execute
 ```
 
-`casbot_shm_reference_v1`冻结14轴名称、整数纳秒结点和q/dq/ddq/jerk，C++求同一条七次Hermite曲线，不将500Hz位置表隐式线性插值。PD逐轴固定；前馈表显式ZOH。`shm_reference.export_motion()`可导出既有`Motion`；CSV导入、在线手动信箱尚未实现。`--relative`生成零偏移参考，原生保存实际起点`native/reference_origin.csv`，平移后检查URDF位置与参考速度。绝对参考可用`plan --snapshot SNAPSHOT`生成，执行前另核对起点误差≤0.005rad。
+`casbot_shm_reference_v1`冻结14轴名称、整数纳秒结点和q/dq/ddq/jerk，C++求同一条七次Hermite曲线，不将500Hz位置表隐式线性插值。PD逐轴固定；前馈表显式ZOH。`shm_reference.export_motion()`可导出既有`Motion`；CSV导入尚未实现；在线五字段现由GUI长期owner接入，不使用文件信箱。`--relative`生成零偏移参考，原生保存实际起点`native/reference_origin.csv`，平移后检查URDF位置与参考速度。绝对参考可用`plan --snapshot SNAPSHOT`生成，执行前另核对起点误差≤0.005rad。
 
 直接五字段模式让速度与位置目标独立，适合后续单项响应探索：
 
@@ -205,3 +205,16 @@ bash fieldwork/shm/run.sh status artifacts/shm_fieldwork
 ## 本轮可完成哪些确认
 
 C00–C06已有CLI机制；到场后逐例填[确认台账](../../docs/shm_field_validation.md)，不能由软件测试替代实物观察。C03当前只覆盖双臂，C04只提供既定全身背景与对侧臂保持/失能对照；未实现头部主动jog、腿腰保持配方和手部主动映射。C07手模式/单位未定，只读留证；C08按已定安排后续源码/尺度核验。本轮不把这些未测部分记为全部确认完成。
+
+## 笔记本 GUI
+
+```bash
+# 在笔记本，不是在Orin启动图形界面。
+bash scripts/shm/setup_gui.sh
+bash fieldwork/shm/run.sh gui --mock
+# SSH只读连接实机；点击开始控制才发送。背景路径是Orin上的本窗口文件。
+bash fieldwork/shm/run.sh gui --host nvidia@172.16.0.10 \
+  --hand-background artifacts/本次窗口/before/native/command.bin
+```
+
+默认本机绘图＋独立SSH控制/显示连接，Orin唯一owner负责1kHz、失能和完整记录；不能同时另起CLI observe/execute争用出队。保存下载、恢复、视频、零位和版本化限制设置见[GUI指南](../../docs/shm_gui.md)。

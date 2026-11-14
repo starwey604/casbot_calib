@@ -97,7 +97,7 @@ def parser():
             item.add_argument('--duration', type=float, default=5., help='回零过渡至少用时/秒，按参考速度包络可自动延长')
             item.add_argument('--kp', type=float, default=20.)
             item.add_argument('--kd', type=float, default=2.)
-    gui = commands.add_parser('gui', help='GUI五字段滑条调参；开始发送后拖动会实际发送SDK指令')
+    gui = commands.add_parser('gui', help='本机SHM远程GUI；用gui --help查看SSH/Mock参数')
     gui.add_argument('--profile', type=Path, default=Path('configs/hardware_field.yaml'))
     gui.add_argument('--output', type=Path, help='可选：显式运行工作区；省略时自动缓存，GUI内手动保存')
     gui.add_argument('--session', type=Path, help='已有运行工作区或只读快照；不会自动连接或发送')
@@ -115,7 +115,11 @@ def parser():
 
 
 def main(argv=None):
-    args = parser().parse_args(argv)
+    values=list(sys.argv[1:] if argv is None else argv)
+    if values and values[0]=='gui':
+        from .shm_gui import main as gui_main
+        return gui_main(values[1:])
+    args = parser().parse_args(values)
     if args.command == 'export-readback':
         from .fieldwork_control import export_readback
         try:
@@ -156,13 +160,6 @@ def main(argv=None):
             print(f'现场零位：{exc}', file=sys.stderr); return 1
         except KeyboardInterrupt:
             print('零位操作已中断。', file=sys.stderr); return 130
-    if args.command == 'gui':
-        try:
-            from .fieldwork_gui import run_gui
-            return run_gui(args)
-        except (OSError, ValueError, RuntimeError, ImportError) as exc:
-            print(f'现场GUI：{exc}', file=sys.stderr)
-            return 1
     if args.command != 'report' and args.json and args.interactive:
         parser().error('--json不能与--interactive并用')
     try:

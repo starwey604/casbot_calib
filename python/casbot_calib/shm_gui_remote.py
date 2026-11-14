@@ -2,6 +2,7 @@
 import argparse
 import base64
 from contextlib import ExitStack
+from concurrent.futures import ThreadPoolExecutor
 import json
 import os
 from pathlib import Path
@@ -16,7 +17,7 @@ import threading
 import time
 
 from .shm_data import URDF, NAMES
-from .shm_gui_protocol import frame, json_frame, read_frame, read_exact
+from .shm_gui_protocol import frame, json_frame, read_frame, read_exact, telemetry
 
 
 def encode_config(config):
@@ -43,6 +44,7 @@ def serve(config):
     for sig in (signal.SIGTERM,signal.SIGINT,signal.SIGHUP):signal.signal(sig,signal_stop)
     with ExitStack() as resources:
         log=resources.enter_context((root/'bridge.log').open('wb'))
+        file_jobs=resources.enter_context(ThreadPoolExecutor(max_workers=1,thread_name_prefix='shm-gui-zero-file'))
         input_stream=resources.enter_context(os.fdopen(os.dup(sys.stdin.fileno()),'rb',buffering=0))
         try:
             if config.get('mock'):
@@ -94,7 +96,7 @@ def serve(config):
                     finally:subscribers.remove(connection)
             threads=[threading.Thread(target=f,daemon=True) for f in (write_control,read_native,subscribe)]
             for thread in threads:thread.start()
-            emit(dict(type='remote_ready',version=1,workspace=str(root),socket=path,
+            emit(dict(type='remote_ready',version=2,workspace=str(root),socket=path,
                       model_context=identity,joint_names=NAMES,
                       boot_id=Path('/proc/sys/kernel/random/boot_id').read_text().strip(),
                       endpoint=endpoint,mock=bool(mock),non_arm='disabled_during_control',hands='explicit_frozen_background'))
@@ -107,6 +109,32 @@ def serve(config):
                 except EOFError:break
                 if kind!=1:raise ValueError('control_requires_json')
                 item=json.loads(body)
+                if item.get('type') in ('zero_capture','zero_get','zero_return'):
+                    try:
+                        zero_path=root/'zero.yaml' if mock else Path('fieldwork/zero.yaml')
+                        with condition:packet=latest[0]
+                        state=telemetry(packet[5:]) if packet else None
+                        if not state or not state['receive_ns'] or time.monotonic_ns()-state['receive_ns']>2_000_000_000:raise ValueError('新鲜实际反馈不可用')
+                        if item['type'] in ('zero_capture','zero_get'):
+                            request=dict(item);frozen_state=dict(state)
+                            def zero_file(request=request,state=frozen_state,path=zero_path):
+                                try:
+                                    if request['type']=='zero_capture':
+                                        value=dict(schema_version='casbot_shm_zero_v1',units='rad',model_context=identity,joint_names=NAMES,q_rad=state['q'],source_receive_mono_ns=state['receive_ns'],source_boot_id=Path('/proc/sys/kernel/random/boot_id').read_text().strip(),scope='private_mock' if mock else 'hardware_shm')
+                                        path.parent.mkdir(exist_ok=True);temporary=path.with_suffix('.pending');temporary.write_text(json.dumps(value,indent=2)+'\n');temporary.replace(path)
+                                        if path!=root/'zero.yaml':(root/'zero.yaml').write_text(json.dumps(value,indent=2)+'\n')
+                                    else:value=json.loads(path.read_text())
+                                    emit(dict(type='zero',id=request['id'],value=value,path=str(path.resolve())))
+                                except (OSError,ValueError) as error:emit(dict(type='reply',id=request['id'],ok=False,reason=str(error)))
+                            file_jobs.submit(zero_file);continue
+                        if state['phase']!=-1:raise ValueError('回零与手动控制串行，请先停止并失能')
+                        if item['model_context']!=identity or not item['certificate']['passed'] or item['bundle']['purpose']!='shm_gui_zero_collision_checked':raise ValueError('回零模型/碰撞证明不匹配')
+                        references=root/'references';references.mkdir(exist_ok=True)
+                        ref=references/(str(item['id'])+'.json');ref.write_text(json.dumps(item['bundle'],allow_nan=False)+'\n')
+                        (references/(str(item['id'])+'_collision.json')).write_text(json.dumps(item['certificate'],allow_nan=False)+'\n')
+                        item=dict(type='trajectory',id=item['id'],reference=str(ref.resolve()))
+                    except (ValueError,KeyError,OSError) as error:
+                        emit(dict(type='reply',id=item['id'],ok=False,reason=str(error)));continue
                 native.stdin.write((json.dumps(item,allow_nan=False,separators=(',',':'))+'\n').encode());native.stdin.flush()
         except Exception as error:
             emit(dict(type='error',reason=str(error)))
@@ -138,7 +166,11 @@ def main(argv=None):
     sub=parser.add_subparsers(dest='action',required=True)
     sub.add_parser('serve').add_argument('--config',required=True)
     sub.add_parser('subscribe').add_argument('--socket',required=True)
+    sub.add_parser('snapshot').add_argument('--config',required=True)
     args=parser.parse_args(argv)
+    if args.action=='snapshot':
+        from .shm_gui_storage import snapshot
+        config=json.loads(base64.urlsafe_b64decode(args.config));print(json.dumps(snapshot(config['source'],config['output'])));return 0
     if args.action=='serve':return serve(json.loads(base64.urlsafe_b64decode(args.config)))
     path=Path(args.socket)
     if path.name!='telemetry.sock' or not path.parent.name.startswith('casbot_gui_') or path.parent.parent!=Path(tempfile.gettempdir()):

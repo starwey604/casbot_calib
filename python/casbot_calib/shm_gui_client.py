@@ -25,12 +25,14 @@ class RemoteClient:
         self.failure=None;self.control=0;self.revision=0;self.id=0;self.closed=False;self.stopping=False
         self.last_renew=0;self.last_challenge=None;self.last_fields=0;self.bytes_received=0;self.rtt_ms=None;self.requests={}
         self.threads=[];self.logs=[]
+    def ssh_options(self,channel=0):
+        socket=self.ssh_sockets[channel] if channel<len(self.ssh_sockets) else None
+        return ['ssh','-T','-x','-o','Compression=no','-o','ControlMaster=no','-o','ControlPath='+str(socket or 'none'),'-o','ConnectTimeout=7']
     def command(self, action, *extra, channel=0):
         args=['python3' if self.host else sys.executable,'-u','-m','casbot_calib.shm_gui_remote',action,*extra]
         if not self.host:return args
         command='cd '+shlex.quote(str(self.repo))+' && PYTHONPATH='+shlex.quote(str(Path(self.repo)/'python'))+' exec '+shlex.join(args)
-        socket=self.ssh_sockets[channel]
-        return ['ssh','-T','-x','-o','Compression=no','-o','ControlMaster=no','-o','ControlPath='+str(socket or 'none'),'-o','ConnectTimeout=7',self.host,command]
+        return [*self.ssh_options(channel),self.host,command]
     def _thread(self, target):
         thread=threading.Thread(target=target,daemon=True);self.threads.append(thread);thread.start()
     def connect(self):
@@ -81,7 +83,7 @@ class RemoteClient:
         self._thread(read_display)
     def send(self, type, **values):
         self.id+=1;item=dict(type=type,id=self.id,**values)
-        if type=='start':self.control=self.id;self.revision=0;self.stopping=False
+        if type in ('start','zero_return'):self.control=self.id;self.revision=0;self.stopping=False
         if type=='fields':
             self.revision+=1;item.update(control=self.control,revision=self.revision)
         if type in ('stop','quit'):self.stopping=True

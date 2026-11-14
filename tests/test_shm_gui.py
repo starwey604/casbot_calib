@@ -61,3 +61,14 @@ def test_desk_control_remote_mock_and_settings(tmp_path):
         desk.stop();spin(lambda:desk.phase==-1);assert desk.feedback['disable_ack']
         assert 'rclpy' not in __import__('sys').modules
     finally:desk.close();imgui.destroy_context(context)
+
+
+def test_per_axis_limits_are_independent_and_inputs_remain_unclipped():
+    from casbot_calib.shm_gui import axis_policy
+    settings=copy.deepcopy(SETTINGS);settings['axes']['12']=dict(kp_max=0,observed_lower=-.1,input_lower=-.5)
+    hello=dict(lower=[-1.]*14,upper=[1.]*14,velocity=[1.5]*14)
+    assert axis_policy(settings,hello,0)['kp_max']==0
+    assert axis_policy(settings,hello,1)['kp_max']==100
+    fields=dict(position=[0.]*14,velocity=[0.]*14,effort=[0.]*14,kp=[20.]*14,kd=[2.]*14)
+    with pytest.raises(ValueError,match='ID12 kp'):validate_fields(fields,hello,settings)
+    assert fields['kp'][0]==20

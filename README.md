@@ -5,6 +5,7 @@ C++动力学/碰撞/模拟核心，Python规划与辨识，以及Orin本机Ether
 ## 先选入口
 
 - **[SHM现场工具](fieldwork/shm/README.md)**：C00–C06逐例观测、接管、双臂动作和停止专项，原始帧、时钟与人工观察一起留证。
+- **[本机SHM调参GUI](docs/shm_gui.md)**：本机渲染、SSH双连接、Orin 1kHz执行；五字段、保存/回放、零位。
 - **[SHM H1/A](docs/shm_h1_a.md)**：测得起点、连续碰撞参考、显式重力前馈、静态辨识及观测时间A分析。
 - **[SHM构建与Git部署](docs/shm_build.md)**：本机Humble与Orin使用同一份源码分别原生编译。
 - **[SHM迁移与ROS退役](docs/shm_migration_plan.md)**：当前实现范围及下一步。
@@ -15,7 +16,7 @@ bash fieldwork/shm/run.sh list
 bash fieldwork/shm/run.sh run C03 --joint-id 12  # 仅预览，不连接/发送
 ```
 
-真实动作需要显式`--execute`，先按现场手册完成支撑、停业务、仅主站和首次握手。当前双臂逐轴用例按用户授权只查URDF位置/参考速度，不查碰撞；H1–H4/K5的原规划规则独立。
+CLI真实动作需要显式`--execute`；GUI通过显式“开始控制 / 回到保存零位”操作发起。两者均须先按现场手册完成支撑、停业务、仅主站和首次握手。当前双臂逐轴用例按用户授权只查URDF位置/参考速度，不查碰撞；H1–H4/K5的原规划规则独立。
 
 ## 构建与软件测试
 
@@ -54,13 +55,13 @@ bash scripts/humble/container.sh casbot-calib render-staged \
   artifacts/my_staged --output artifacts/my_staged_video
 ```
 
-当前模型为`casbot_hl12p1_dvt2_bare_flange_1105_03_gauge_v2`。模型资产、辨识内核、连续参考/碰撞检查及正式S3/S4/P0数据合同保留。H1/A已新增SHM入口；H2–H4、GUI与K5仍待迁移，不能把旧ROS发布stamp或新主站stamp当作驱动采样时刻。
+当前模型为`casbot_hl12p1_dvt2_bare_flange_1105_03_gauge_v2`。模型资产、辨识内核、连续参考/碰撞检查及正式S3/S4/P0数据合同保留。H1/A已新增SHM入口；GUI已接入SHM；H2–H4与K5仍待迁移，不能把旧ROS发布stamp或新主站stamp当作驱动采样时刻。
 
 ## ROS退役范围
 
 旧ROS stream benchmark、`ros-view`和legacy S2执行链已从main移除；原用法及历史验收在`ros`分支。
 
-剩余SDK/ROS的H1–H4、GUI及TriCal消费者暂留[过渡入口](fieldwork/ros/README.md)，迁到SHM后删除。`fieldwork/run.sh`目前仍转发旧ROS工具，不是SHM入口。不要求每个旧ROS实验都重做SHM版本。
+剩余SDK/ROS的H1–H4及TriCal消费者暂留[过渡入口](fieldwork/ros/README.md)，迁到SHM后删除。`fieldwork/run.sh gui`及`casbot-fieldwork gui`现在启动SHM GUI；其余根转发命令仍属旧ROS过渡入口。不要求每个旧ROS实验都重做SHM版本。
 
 ## 目录
 

@@ -1,5 +1,7 @@
 # casbot_calib 协作约定
 
+**2026-11-14 SHM远程GUI G1–G4软件实施**：用户批准本机GUI/渲染＋Orin原生执行，按阶段Git提交，不跨网络跑1kHz。新增长期`shm_gui_owner`和独立SSH控制/显示bridge，唯一SHM出队、原生challenge控制租约，默认100ms由GUI主循环续期/1s期限，网络后台不能替冻结UI续租；EOF/失联/停止显式失能，重连只读。GUI复用MuJoCo轻量场景、memfd和增量绘图，双臂ID12–25独立五字段，无隐藏补偿，Kp/Kd无回读；首次/再次开始按实际位置初始化，手动等待|dq|<0.02可取消，原生再次复核。反馈位置只告警，速度默认告警/可选结束；全轴默认＋逐轴覆盖，观察在线确认、输入/通信下次控制。完整记录在Orin异步落盘，默认512MiB软额度停录不停止控制，协议v2含记录大小；快照CSV/bin前缀一致、独立下载重试、只读恢复、流式视频、零位和C3/Coal单程回零已接入。实机零位为Orin`fieldwork/zero.yaml`，Mock只写私有工作区；SDK旧零位不自动迁移。GUI Mock明确初始PD/固定前馈并保留物理重力，进入手动前馈0，无运行时补偿，不改原SDK/默认SHM Mock。根GUI入口和casbot-fieldwork gui转SHM，7个旧GUI独立启动/验收脚本退役，剩余SDK消费者/历史回归仍需的组件不整包误删。本机私有/非视觉检查通过；Orin最终部署/私有证据接续见[GUI指南](docs/shm_gui.md)与[阶段记录](docs/shm_remote_gui_plan.md)。本轮不运行GUI渲染外观验收或真实SHM开发试验，用户核对实际画面；30fps及图形整套CPU/GPU预算待实测。
+
 适用于本仓库全部目录。面向用户的说明、报告和演示默认使用中文，代码标识符沿用英文。开始修改前查看工作区状态，保留用户已有改动。
 
 **2026-11-13用户确定的SHM接管窗口**：现场先停止独立的`zero_calibration.service`／`arm_debug_tool.service`，再执行厂家`sudo bash /workspace/embed_fusion/bin/launcher.bash stop`，之后只启动EtherCAT中间件及本仓库测试，直到下次Orin重启结束该窗口。窗口内按用户指定假设认定不会有其它控制程序重新启动或插队，不再以证明所有自启动路径不存在作为开发或后续流程的前置条件；重启后重新走停机入口，不自动接回旧会话。这是用户采用的运行安排，不是停机已实测或物理安全停止证明；非目标轴、驱动停止和其它观测合同独立。厂家脚本也会停止旧EtherCAT主站，并且在`/tmp/launcher/flag_manual_run.flag`存在时可能逐项询问，不能把局部停止当全部停止。最初勘察只读；随后在用户显式授权的逐轴试验中已执行停业务、只启动主站并完成新主站握手，2026-11-14重新连接时Orin uptime仅数分钟，旧窗口已随本次重启结束；本次只部署/编译/私有Mock，没有新开实机控制窗口。证据及操作顺序见[SHM接管流程](docs/jetson_shm_interface_recon_20261113.md#用户确定的停业务后独占测试流程)。

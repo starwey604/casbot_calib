@@ -16,17 +16,19 @@ namespace casbot::shm {
 struct Record {
   std::int64_t at=0,send_at=0,receive_at=0,observation=0;
   int phase=0,segment=0;bool sent=false,received=false,passive=false;
-  CommandFrame cmd{};StatusFrame state{};QueueDiagnostics queues{};bool has_queues=false;std::string event,limit;ClockPair clock{};bool has_pair=false;
+  CommandFrame cmd{};StatusFrame state{};QueueDiagnostics queues{};bool has_queues=false;std::string event,limit,metadata;ClockPair clock{};bool has_pair=false;
 };
 class Recorder {
   std::mutex mutex_;std::condition_variable ready_;std::deque<Record> queue_;
   std::uint64_t budget_;
   bool done_=false;std::thread worker_;std::filesystem::path root_;
+  std::ofstream metadata_;
   std::ofstream commands_,feedback_,events_,raw_cmd_,raw_status_,pairs_,passive_cmd_,queues_,limits_;
  public:
   std::atomic<bool> stopped{false};
-  std::atomic<std::uint64_t> external_bytes{0};
+  std::atomic<std::uint64_t> bytes_written{0};
   explicit Recorder(const std::filesystem::path& root,std::uint64_t budget=0):root_(root),budget_(budget) {
+    if(budget_)metadata_.open(root/"controls.jsonl");
     limits_.open(root/"observed_limits.csv");
     commands_.open(root/"commands.csv");feedback_.open(root/"feedback.csv");events_.open(root/"events.csv");
     raw_cmd_.open(root/"commands.bin",std::ios::binary);raw_status_.open(root/"feedback.bin",std::ios::binary);pairs_.open(root/"clock_pairs.csv");passive_cmd_.open(root/"passive_commands.bin",std::ios::binary);queues_.open(root/"queues.csv");
@@ -48,6 +50,7 @@ class Recorder {
           {std::unique_lock<std::mutex> lock(mutex_);ready_.wait(lock,[&]{return done_||!queue_.empty();});
             if(queue_.empty())break;r=std::move(queue_.front());queue_.pop_front();}
           if(stopped)continue;
+          if(!r.metadata.empty()&&metadata_.is_open())metadata_<<r.metadata<<'\n';
           if(!r.limit.empty())limits_<<r.at<<','<<r.phase<<','<<r.limit<<'\n';
           if(!r.event.empty()) {
             events_<<r.at<<','<<r.phase<<','<<r.event<<'\n';events_.flush();
@@ -82,19 +85,22 @@ class Recorder {
           }
           if(r.at-last_flush>=20000000){
             flush();last_flush=r.at;
-            if(budget_){std::uint64_t bytes=external_bytes;for(auto* stream:{&commands_,&feedback_,&events_,&raw_cmd_,&raw_status_,&pairs_,&passive_cmd_,&queues_,&limits_})bytes+=static_cast<std::uint64_t>(stream->tellp());if(bytes>=budget_)stopped=true;}
+            if(budget_){std::uint64_t bytes=0;if(metadata_.is_open())bytes+=static_cast<std::uint64_t>(metadata_.tellp());for(auto* stream:{&commands_,&feedback_,&events_,&raw_cmd_,&raw_status_,&pairs_,&passive_cmd_,&queues_,&limits_})bytes+=static_cast<std::uint64_t>(stream->tellp());bytes_written=bytes;if(bytes>=budget_){
+              stopped=true;std::ofstream marker(root_/"recording_stopped.json");marker<<"{\"reason\":\"capacity\",\"mono_ns\":"<<r.at<<",\"bytes\":"<<bytes<<",\"budget_bytes\":"<<budget_<<"}\n";
+            }}
           }
         }
         flush();
       }catch(const std::exception&){stopped=true;}
     });
   }
-  void flush(){for(auto* s:{&commands_,&feedback_,&events_,&raw_cmd_,&raw_status_,&pairs_,&passive_cmd_,&queues_,&limits_})s->flush();}
+  void flush(){if(metadata_.is_open()){metadata_.flush();if(!metadata_)stopped=true;}for(auto* s:{&commands_,&feedback_,&events_,&raw_cmd_,&raw_status_,&pairs_,&passive_cmd_,&queues_,&limits_})s->flush();}
   void push(Record r) {
     if(stopped)return;
-    {std::lock_guard<std::mutex> lock(mutex_);if(queue_.size()>=4096){stopped=true;return;}queue_.push_back(std::move(r));}
+    {std::lock_guard<std::mutex> lock(mutex_);if(done_)return;if(queue_.size()>=4096){stopped=true;return;}queue_.push_back(std::move(r));}
     ready_.notify_one();
   }
+  void metadata(std::string text) {Record r;r.at=mono();r.metadata="{\"recorded_mono_ns\":"+std::to_string(r.at)+",\"message\":"+text+"}";push(std::move(r));}
   void limit(std::int64_t receive,int phase,int joint,const char* field,double value,double threshold,const char* unit,const char* action) {
     Record r;r.at=receive;r.phase=phase;std::ostringstream text;
     text<<std::setprecision(17)<<joint<<','<<field<<','<<value<<','<<threshold<<','<<unit<<','<<action;

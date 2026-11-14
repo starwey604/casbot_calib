@@ -36,7 +36,7 @@ class Owner:
         self.reader=threading.Thread(target=read,daemon=True);self.reader.start()
     def send(self, type, **values):
         self.id+=1
-        if type=='start':self.control=self.id
+        if type in ('start','trajectory'):self.control=self.id
         data=dict(type=type,id=self.id,**values)
         self.p.stdin.write((json.dumps(data,allow_nan=False)+'\n').encode());self.p.stdin.flush()
         return self.id
@@ -72,7 +72,7 @@ def owner(master,tmp_path):
 
 def test_protocol_and_readonly_zero_commands(owner):
     o,source,_=owner();o.wait(lambda:o.latest and o.latest['seq']>10)
-    assert SIZE == 1696
+    assert SIZE == 1712
     assert o.latest['phase']==-1 and o.latest['writes']==0
     assert source.joinpath('commands.bin').stat().st_size==0
     assert len(o.latest['joints'])==35 and len(o.latest['hands'])==2
@@ -152,3 +152,26 @@ def test_drive_error_ends_control_without_reenable(master,tmp_path):
         writes=o.latest['writes'];o.send('start');time.sleep(.05)
         assert o.latest['writes']==writes
     finally:o.close()
+
+
+def test_online_axis_observation_and_next_control_input_policy(owner):
+    o,_,_=owner();o.start()
+    settings=dict(velocity_limit=1.5,input_velocity_limit=1.5,effort_limit=10,kp_max=100,kd_max=10,lease_ms=1000,end_velocity=False,
+                  axes={'12':{'observed_lower':.1,'kp_max':40}})
+    settings_id=o.send('settings',**settings)
+    o.wait(lambda:any(x.get('id')==settings_id and x.get('ok') for x in o.events.queue),renew=True)
+    fields={k:list(v) for k,v in o.latest['command'].items()};fields['kp'][0]=60
+    o.send('fields',control=o.control,revision=1,**fields)
+    o.wait(lambda:o.latest['revision']==1,renew=True)
+    assert o.latest['command']['kp'][0]==60 # input policy frozen at start
+    o.send('stop');o.wait(lambda:o.latest['phase']==-1);o.start()
+    o.send('fields',control=o.control,revision=1,**fields);time.sleep(.04)
+    assert o.latest['revision']==0 # next control uses the new ID12 cap
+
+
+def test_stop_tombstones_late_start(owner):
+    o,_,_=owner();o.wait(lambda:o.latest is not None)
+    stopped=o.send('stop')
+    # Replay an older start using the protocol, not a fresh explicit start.
+    o.p.stdin.write((json.dumps(dict(type='start',id=stopped))+'\n').encode());o.p.stdin.flush();time.sleep(.05)
+    assert o.latest['writes']==0
