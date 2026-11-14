@@ -127,6 +127,8 @@ def analyse(plan,capture,output,*,windows_only=False):
         scope='formal_phase3_only_preparation_and_entry_exit_excluded' if ready else 'full_capture'))
     write_json(root/'static_windows.json',means)
     if m['stage']!='position':
+        from .field_gravity import write_static_diagnostics
+        report['static_diagnostics']=write_static_diagnostics(means,engine,root,m['joint_names'])
         if windows_only:report.update(analysis_available=any(r['available'] for r in means),stage='gravity_windows')
         else:
             try:

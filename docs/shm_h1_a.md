@@ -93,7 +93,33 @@ bash fieldwork/shm/run.sh h1 analyse artifacts/site_h1/jog artifacts/site_h1/jog
 
 `jog_run/result.json`指向实际生效的计划/采集尝试，analyse自动解析，不能只看第一个attempt。运行后的H1采集封存；分析另建目录，不修改原记录。
 
-## 第三步：接已有静态预设并拟合重力
+## 第三步：先采四个静态目标、八个正反接近窗口
+
+准备位附近的小组由`configs/shm/static_small.yaml`定义：左右肩pitch分别取+18°（train）和−18°（validation），每个目标从两侧2°接近，接近点最远±20°；一次只运动一臂的肩pitch，另一臂保持准备位。每次到目标后按固定配方等待2秒、采3秒，再回准备位；全组8个采样窗，参考速度仍0.05rad/s。正式连续自碰撞/URDF检查通过后才会发送，不根据反馈质量自动延长或重试。
+
+```bash
+S=artifacts/shm_h1/static_$(date +%s%N)
+# 纯离线：生成并封存四目标预设及逐条连续路径证明。
+bash fieldwork/shm/run.sh h1 preset-small --output "$S/preset"
+bash fieldwork/shm/run.sh h1 snapshot --output "$S/start"
+bash fieldwork/shm/run.sh h1 plan-static "$S/start" --preset "$S/preset" \
+  --with-ready --output "$S/plan"
+bash fieldwork/shm/run.sh h1 execute "$S/plan" --hand-background "$HAND" \
+  --output "$S/capture" --execute
+bash fieldwork/shm/run.sh h1 analyse "$S/plan" "$S/capture" --output "$S/analysis"
+```
+
+`HAND`仍为本次开机窗口明确保存的手部背景。准备与全部静态任务只有一次使能，最终失能；采样时不要手托/推手臂。开始/结束采样事件`static_01_measure_begin/end`至`static_08_measure_begin/end`对应`plan.json`中的8个trial。幅度扩大不提速，实际时长以计划`duration_ns`为准。
+
+分析输出：
+
+- `static_windows.json`：每窗实际q、估算总effort、时间曝光权重及速度/位置跨度统计。
+- `static_comparison.csv` / `static_diagnostics.json`：按**实际平均q**计算名义重力，与模组估算总effort比较；不减掉已发送的前馈。正反接近同时保留实际位置差、力矩半差及名义重力残差半差，不能只把两次力矩差称作摩擦。
+- `report.json`、`calibration.json`及`candidate_exploratory.urdf`：沿用PSD拟合与独立URDF重加载；报告包含`fit.rank/columns`及独立validation误差。当前四目标只约束少数重力组合，其余方向由物理约束和名义先验选择，候选不自动部署。
+
+数值拟合不可用时，记录原因并保留采集/对照结果；不会把不可计算的参数填成已辨识值。`analyse --windows-only`可只做窗口和重力对照，不运行拟合。
+
+### 扩展时再接已有静态预设
 
 复用原有离线静态预设生成器；这一步不连接机器人：
 
@@ -105,7 +131,7 @@ bash fieldwork/shm/run.sh h1 plan-static artifacts/site_h1/static_start \
   --preset artifacts/site_h1/preset --max-poses-per-split 1 --output artifacts/site_h1/static_plan
 ```
 
-`--max-poses-per-split 1`先取每臂train/validation各一个已选姿态，保留各姿态正反接近对；这不是完整覆盖。也可用重复的`--candidate-id ID`精确选取已选姿态；不写上限则取全部选定姿态。模型、场景和预设封存必须一致，整个实测起点到静态目标及返回路径重新检查。
+这份预设使用更大范围的工作姿态，与上面的准备位小组不同。`--max-poses-per-split 1`只减少姿态数量，不会缩小幅度；它取每臂train/validation各一个已选姿态，保留各姿态正反接近对。也可用重复的`--candidate-id ID`精确选取；不写上限则取全部。模型、场景和预设封存必须一致，整个起点到静态目标及返回路径重新检查。
 
 然后用上节相同的`h1 execute`/`h1 analyse`，替换计划和输出目录。`analyse --windows-only`只输出静态窗口。完整分析复用原PSD求解器、独立train/validation及候选URDF重加载，输出`calibration.json`、`candidate_exploratory.urdf`和报告。
 

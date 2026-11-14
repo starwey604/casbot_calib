@@ -159,6 +159,12 @@ def prepare(profile,snapshot_root,output,*,joint_id=12,amplitude_deg=1.,preset=N
         bundle.update(pd_schedule=pd_schedule(ready,c['kp'],c['kd']),markers=[
             dict(t_ns=0,event='ready_begin'),dict(t_ns=ready['move_end_ns'],event='ready_field_handover_begin'),
             dict(t_ns=ready['calibration_begin_ns'],event='h1_calibration_begin')])
+    if trials:
+        markers=bundle.setdefault('markers',[])
+        for i,trial in enumerate(trials,1):
+            markers.extend([dict(t_ns=round(trial['measure_begin_s']*1e9),event=f'static_{i:02d}_measure_begin'),
+                            dict(t_ns=round(trial['measure_end_s']*1e9),event=f'static_{i:02d}_measure_end')])
+        markers.sort(key=lambda row:row['t_ns'])
     write_json(root/'reference.json',bundle);write_json(root/'motion.json',motion.metadata())
     binary=Path(executor).resolve()
     if not binary.is_file():raise ValueError('找不到H1执行器：'+str(binary))
@@ -261,9 +267,12 @@ def analyse(plan,capture,output,*,windows_only=False):
 def main(argv=None):
     p=argparse.ArgumentParser(description='SHM H1：快照、规划、显式执行、静态重力分析；不依赖ROS')
     sub=p.add_subparsers(dest='action',required=True)
-    for action in ('snapshot','plan-jog','plan-static','execute','replan','analyse'):
+    for action in ('snapshot','preset-small','plan-jog','plan-static','execute','replan','analyse'):
         a=sub.add_parser(action);a.add_argument('--output',type=Path,required=True)
-        if action in ('snapshot','plan-jog','plan-static'):a.add_argument('--profile',type=Path,default=DEFAULT_PROFILE)
+        if action in ('snapshot','preset-small','plan-jog','plan-static'):a.add_argument('--profile',type=Path,default=DEFAULT_PROFILE)
+        if action=='preset-small':
+            from .shm_static_small import DEFAULT_SETTINGS
+            a.add_argument('--config',type=Path,default=DEFAULT_SETTINGS)
         if action in ('snapshot','plan-jog','plan-static','execute','replan'):a.add_argument('--executor',type=Path,default=DEFAULT_EXECUTOR)
         if action in ('plan-jog','plan-static','replan'):a.add_argument('snapshot',type=Path)
         if action in ('execute','replan','analyse'):a.add_argument('plan',type=Path)
@@ -282,6 +291,9 @@ def main(argv=None):
     a=p.parse_args(argv)
     try:
         if a.action=='snapshot':snapshot(a.profile,a.output,executor=a.executor,endpoint=a.endpoint,mock=a.mock,mock_config=a.mock_config)
+        elif a.action=='preset-small':
+            from .shm_static_small import make_preset
+            make_preset(a.profile,a.output,settings=a.config)
         elif a.action in ('plan-jog','plan-static'):
             prepare(a.profile,a.snapshot,a.output,executor=a.executor,with_ready=a.with_ready,**(dict(joint_id=a.joint_id,amplitude_deg=a.amplitude_deg) if a.action=='plan-jog' else dict(preset=a.preset,max_poses_per_split=a.max_poses_per_split,candidate_ids=a.candidate_id)))
         elif a.action=='execute':return execute(a.plan,a.output,executor=a.executor,endpoint=a.endpoint,mock=a.mock,hand_background=a.hand_background,do_execute=a.execute)
