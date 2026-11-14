@@ -1,9 +1,13 @@
 """Unified calibration pipeline runner: precheck -> takeover -> snapshot -> plan -> execute -> analyse."""
 import argparse
+import json
 from pathlib import Path
 import sys
+import time
 from ..shm_ready import ready_position
 from ..shm_takeover import HandoffError
+from ..stages.dynamics.common import resolve_effective_plan_and_capture
+from .delivery import build_session_delivery
 from .native import execute_with_start_replan, maybe_mock_context, native_snapshot
 from .preflight import check_hardware_environment, check_model_bundle, check_native_binaries, check_python_runtime
 from .robot import DEFAULT_ROBOT_CONFIG, load_robot_config
@@ -12,11 +16,95 @@ from .stage import resolve_stages
 from .takeover import ensure_ready_channel
 
 
+def _stage_checkpoint(session, stage_name, eff_plan_dir, eff_capture_dir, analysis_dir, report_path, report):
+    fit_ok = bool(report.get('fit_succeeded', False))
+    checkpoint = dict(
+        dir=stage_name,
+        plan_dir=str(eff_plan_dir.relative_to(session.root)),
+        capture_dir=str(eff_capture_dir.relative_to(session.root)),
+        analysis_dir=str(analysis_dir.relative_to(session.root)),
+        report_md=str(report_path.relative_to(session.root)),
+        fit_succeeded=fit_ok,
+        accepted=bool(report.get('accepted', fit_ok)),
+    )
+    if report.get('candidate_urdf'):
+        checkpoint['candidate_urdf'] = str((analysis_dir / report['candidate_urdf']).relative_to(session.root))
+        checkpoint['calibration_json'] = str((analysis_dir / 'calibration.json').relative_to(session.root))
+    return checkpoint
+
+
+def reanalyse_session(
+    *,
+    stages='h1,h2,h3',
+    target=None,
+    robot_id=None,
+    robot_config=DEFAULT_ROBOT_CONFIG,
+    output_root=DEFAULT_OUTPUT_ROOT,
+):
+    """Re-run offline identification and delivery packaging on existing SHM captures without touching hardware."""
+    stage_objs = resolve_stages(stages)
+    check_python_runtime(require_solver=True, reanalyse_only=True)
+    check_model_bundle()
+    robot_cfg = load_robot_config(robot_config)
+
+    session = Session.resume(output_root=output_root, target=target, model_context=robot_cfg['model_context'])
+    if robot_id is not None and robot_id != session.metadata.get('robot_id'):
+        raise ValueError(f'--robot={robot_id} 与目标会话机器编号 {session.metadata.get("robot_id")} 不一致')
+
+    explicit_single = len(stage_objs) == 1
+    targets = []
+    for stage in stage_objs:
+        rec = session.stage_record(stage.name) or {}
+        stage_dir = session.root / stage.name
+        has_capture = bool(rec.get('capture_dir')) or (stage_dir / 'capture').exists()
+        if has_capture:
+            targets.append(stage)
+        elif explicit_single:
+            raise ValueError(f'会话 {session.root} 中缺少阶段 {stage.name.upper()} 的采集记录，无法重分析')
+
+    if not targets:
+        raise ValueError(f'会话 {session.root} 中没有可重分析的已采集阶段')
+
+    for stage in targets:
+        stage_dir = session.root / stage.name
+        rec = session.stage_record(stage.name) or {}
+        raw_plan = session.root / rec['plan_dir'] if rec.get('plan_dir') else (stage_dir / 'plan')
+        raw_capture = session.root / rec['capture_dir'] if rec.get('capture_dir') else (stage_dir / 'capture')
+        eff_plan_dir, eff_capture_dir = resolve_effective_plan_and_capture(raw_plan, raw_capture)
+        eff_plan_meta = json.loads((eff_plan_dir / 'plan.json').read_text(encoding='utf-8'))
+
+        wrapper_path = (stage_dir / 'capture' / 'result.json')
+        capture_summary = (
+            json.loads(wrapper_path.read_text(encoding='utf-8'))
+            if wrapper_path.is_file()
+            else {'execution_completed': True}
+        )
+
+        analysis_dir = stage_dir / 'analysis'
+        if analysis_dir.exists():
+            archived = stage_dir / f'analysis.previous_{time.monotonic_ns()}'
+            analysis_dir.rename(archived)
+
+        report = stage.analyse(eff_plan_dir, eff_capture_dir, analysis_dir, session=session)
+        report_path = stage.write_summary(stage_dir, eff_plan_meta, capture_summary, report)
+        checkpoint = _stage_checkpoint(session, stage.name, eff_plan_dir, eff_capture_dir, analysis_dir, report_path, report)
+        session.mark_stage(stage.name, 'completed', **checkpoint)
+        print(f'[{stage.name.upper()}] 免动重分析完成，报告：{report_path}', flush=True)
+
+    delivery = build_session_delivery(session, robot_cfg)
+    session.metadata['delivery'] = delivery
+    session.save()
+    print(f'[DELIVERY] 交付包已更新：{session.root / delivery["summary_md"]}', flush=True)
+    return dict(session=session, completed=True, plan_only=False, reanalysed=True, delivery=delivery)
+
+
 def run_pipeline(
     *,
     stages='h1,h2,h3',
     resume=False,
     resume_target=None,
+    reanalyse=False,
+    reanalyse_target=None,
     plan_only=False,
     robot_id=None,
     stage_config=None,
@@ -29,6 +117,17 @@ def run_pipeline(
     mock=False,
     mock_config=None,
 ):
+    if reanalyse:
+        if plan_only or resume or mock:
+            raise ValueError('--reanalyse 仅对已有实测/采集会话离线重算，不与 --plan-only / --resume / --mock 同时使用')
+        return reanalyse_session(
+            stages=stages,
+            target=reanalyse_target,
+            robot_id=robot_id,
+            robot_config=robot_config,
+            output_root=output_root,
+        )
+
     stage_objs = resolve_stages(stages)
     is_stage_map = isinstance(stage_config, dict) and bool(stage_config) and set(stage_config) <= {'h1', 'h2', 'h3'}
     if stage_config is not None and not is_stage_map and len(stage_objs) != 1:
@@ -78,8 +177,11 @@ def run_pipeline(
 
     pending = [s for s in stage_objs if not (resume and session.stage_completed(s.name))]
     if not pending:
+        delivery = build_session_delivery(session, robot_cfg)
+        session.metadata['delivery'] = delivery
+        session.save()
         print(f'所选阶段均已完成：{session.root}', flush=True)
-        return dict(session=session, completed=True, skipped_all=True)
+        return dict(session=session, completed=True, skipped_all=True, delivery=delivery)
 
     if plan_only:
         nominal_start = ready_position()
@@ -152,22 +254,15 @@ def run_pipeline(
         analysis_dir = stage_dir / 'analysis'
         report = stage.analyse(eff_plan_dir, eff_capture_dir, analysis_dir, session=session)
         report_path = stage.write_summary(stage_dir, eff_plan_meta, capture_summary, report)
-
-        checkpoint = dict(
-            dir=stage.name,
-            plan_dir=str(eff_plan_dir.relative_to(session.root)),
-            capture_dir=str(eff_capture_dir.relative_to(session.root)),
-            analysis_dir=str(analysis_dir.relative_to(session.root)),
-            report_md=str(report_path.relative_to(session.root)),
-            fit_succeeded=bool(report.get('fit_succeeded', False)),
-        )
-        if report.get('candidate_urdf'):
-            checkpoint['candidate_urdf'] = str((analysis_dir / report['candidate_urdf']).relative_to(session.root))
-            checkpoint['calibration_json'] = str((analysis_dir / 'calibration.json').relative_to(session.root))
+        checkpoint = _stage_checkpoint(session, stage.name, eff_plan_dir, eff_capture_dir, analysis_dir, report_path, report)
         session.mark_stage(stage.name, 'completed', **checkpoint)
         print(f'[{stage.name.upper()}] 完成，报告：{report_path}', flush=True)
 
-    return dict(session=session, completed=True, plan_only=False)
+    delivery = build_session_delivery(session, robot_cfg)
+    session.metadata['delivery'] = delivery
+    session.save()
+    print(f'[DELIVERY] 交付包已生成：{session.root / delivery["summary_md"]}', flush=True)
+    return dict(session=session, completed=True, plan_only=False, delivery=delivery)
 
 
 def build_parser():
@@ -175,6 +270,8 @@ def build_parser():
     p.add_argument('--stages', default='h1,h2,h3', help='运行阶段列表，逗号分隔（如 h1 或 h1,h2,h3）')
     p.add_argument('--resume', nargs='?', const='latest', default=None, metavar='SESSION_DIR',
                    help='从最近一次（或指定目录）未完成的会话继续执行')
+    p.add_argument('--reanalyse', nargs='?', const='latest', default=None, metavar='SESSION_DIR',
+                   help='免接管、免动机器人，对最近一次（或指定目录）采集会话重新执行辨识与交付打包')
     p.add_argument('--plan-only', action='store_true', help='只生成轨迹并完成连续碰撞/限位/速度检查，不连接设备')
     p.add_argument('--robot', default=None, metavar='ID', help='机器序列号/标识（首次指定后自动记住）')
     p.add_argument('--config', type=Path, default=None, help='单阶段自定义配方 YAML')
@@ -204,6 +301,8 @@ def main(argv=None):
             stages=args.stages,
             resume=args.resume is not None,
             resume_target=args.resume,
+            reanalyse=args.reanalyse is not None,
+            reanalyse_target=args.reanalyse,
             plan_only=args.plan_only,
             robot_id=args.robot,
             stage_config=args.config,

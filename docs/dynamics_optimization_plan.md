@@ -184,9 +184,9 @@ flowchart TD
 
 ## 5. 执行进度追踪表
 
-- [ ] **Wave 0**：依赖安装（`cvxpy-base==1.7.5`, `orjson==3.13.0`, `cma==4.5.0`）、Orin `aarch64` 离线轮子准备与 A/B 性能基准验证
-- [ ] **Wave 1A**：C++ `_core` OpenMP 并行批处理 + NumPy 结构化二进制帧直读 + `orjson` 紧凑序列化
-- [ ] **Wave 1B**：`cvxpy-base` (`cp.CLARABEL` + `cp.huber` + DPP `ridge` 扫描) 重构 `rigid_identification.py` + 静止段碰撞短路 + CMA-ES 激励相位寻优器
-- [ ] **Wave 2A**：H1 `full` 5° 接近修复 + 精确位置配对滞回分离 + 双臂同步配对与 2-opt 姿态直连
-- [ ] **Wave 2B**：H2 对数速度连续扫掠 + C++ 同构 Stribeck 拟合 + H3 腕部分层高频 / 平滑重力摩擦前馈 / 14 轴转子惯量联合辨识
-- [ ] **Wave 3**：`--reanalyse` 免动秒级重算 + 自动防退化验收门禁 + 会话级 `delivery/` 统一交付包 + 全量 CTest/Pytest 闭环验收与文档更新
+- [x] **Wave 0**：依赖安装（`cvxpy-base==1.7.5`, `orjson==3.13.0`, `cma==4.5.0`）、Orin `aarch64` 离线轮子准备与 A/B 性能基准验证
+- [x] **Wave 1A**：C++ `_core` OpenMP 并行批处理 + NumPy 结构化二进制帧直读 + `orjson` 紧凑序列化
+- [x] **Wave 1B**：`cvxpy-base` (`cp.CLARABEL` + `cp.huber` + DPP `ridge` 扫描) 重构 `rigid_identification.py` + 静止段碰撞短路 + CMA-ES 激励相位寻优器
+- [x] **Wave 2A**：H1 `full` 5° 接近修复 + 精确位置配对滞回分离 + 双臂同步配对与 2-opt 姿态直连
+- [x] **Wave 2B**：H2 对数速度连续扫掠 + C++ 同构 Stribeck 拟合 + H3 腕部分层高频 / 平滑重力摩擦前馈 / 14 轴转子惯量联合辨识
+- [x] **Wave 3**：`--reanalyse` 免动秒级重算 + 自动防退化验收门禁 + 会话级 `delivery/` 统一交付包 + 全量 CTest/Pytest 闭环验收与文档更新

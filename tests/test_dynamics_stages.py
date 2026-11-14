@@ -262,7 +262,7 @@ def test_three_stage_closed_loop_with_physical_shm_mock(tmp_path):
     assert h3_rep['max_gravity_change_nm'] < 1e-5
     assert h3_rep['validation_rmse_nm'] < 0.5 * h3_rep['prior_validation_rmse_nm']
 
-    # 4. Final candidate.urdf + runtime_dynamics.json exist and pass reload consistency.
+    # 4. Final candidate.urdf + runtime_dynamics.json + session delivery/ exist and pass reload consistency.
     final_urdf = sess_root / 'h3/analysis/candidate.urdf'
     final_runtime = json.loads((sess_root / 'h3/analysis/runtime_dynamics.json').read_text())
     assert final_urdf.is_file()
@@ -271,3 +271,135 @@ def test_three_stage_closed_loop_with_physical_shm_mock(tmp_path):
     assert reload_meta['passed']
     for st in ('h1', 'h2', 'h3'):
         assert (sess_root / st / 'report.md').is_file()
+
+    delivery_dir = sess_root / 'delivery'
+    assert (delivery_dir / 'calibrated.urdf').is_file()
+    assert (delivery_dir / 'runtime_dynamics.json').is_file()
+    assert (delivery_dir / 'summary.md').is_file()
+    bundle = json.loads((delivery_dir / 'calibration_bundle.json').read_text())
+    assert bundle['selected_calibration_source'] == 'session_h3'
+    assert bundle['provenance'] == {
+        'gravity': 'session_h1',
+        'friction': 'session_h2',
+        'inertia': 'session_h3',
+        'rotor_inertia': 'session_h3',
+    }
+    assert bundle['urdf_reload_passed']
+
+    # 5. CLI --reanalyse runs offline in < 2.0s without touching SHM/robot, archives old analysis/, and rebuilds delivery/.
+    import time as _time
+    t0 = _time.perf_counter()
+    re_res = subprocess.run(
+        [
+            sys.executable, '-m', 'casbot_calib.pipeline.runner',
+            '--reanalyse',
+            '--output-root', str(out_root),
+            '--robot-config', str(fast_robot),
+        ],
+        capture_output=True, text=True,
+    )
+    re_wall_s = _time.perf_counter() - t0
+    assert re_res.returncode == 0, re_res.stderr + re_res.stdout
+    assert re_wall_s < 2.5, f'--reanalyse took {re_wall_s:.3f}s'
+    for st in ('h1', 'h2', 'h3'):
+        archived = list((sess_root / st).glob('analysis.previous_*'))
+        assert len(archived) == 1
+        assert (sess_root / st / 'analysis/report.json').is_file()
+    bundle_after = json.loads((delivery_dir / 'calibration_bundle.json').read_text())
+    assert bundle_after['selected_calibration_source'] == 'session_h3'
+    np.testing.assert_allclose(bundle_after['parameters'], bundle['parameters'], rtol=1e-12, atol=1e-12)
+
+
+def test_non_regression_gate_rejects_degraded_stage_and_falls_back(tmp_path):
+    from casbot_calib.pipeline.delivery import build_session_delivery
+    from casbot_calib.stages.dynamics.common import evaluate_stage_acceptance
+
+    # Case 1: Active axis degrades significantly even though overall RMSE slightly improved (real site_v1 failure mode).
+    acc_axis = evaluate_stage_acceptance(
+        0.2821,
+        0.1669,
+        axis_rows=[('left_shoulder_pitch_joint', 0.4584, 0.5198), ('right_shoulder_pitch_joint', 0.2454, 0.1494)],
+    )
+    assert not acc_axis['accepted']
+    assert 'left_shoulder_pitch_joint' in acc_axis['reason']
+
+    # Case 2: Overall RMSE degrades.
+    acc_overall = evaluate_stage_acceptance(0.15, 0.19, axis_rows=[('left_shoulder_pitch_joint', 0.15, 0.19)])
+    assert not acc_overall['accepted']
+    assert acc_overall['reason'] == 'overall_validation_degraded'
+
+    # Case 3: Downstream prior resolution & session delivery skip accepted=False stages automatically.
+    robot_cfg = load_robot_config()
+    nom_eng, _ = model_for(robot_cfg)
+    nom_params = np.asarray(nom_eng.rigid_parameters(), dtype=float)
+    h1_params = nom_params.copy()
+    h1_params[0] += 0.25  # Perturbed mass on link 0
+
+    out_root = tmp_path / 'nonreg'
+    sess = run_pipeline(stages='h1', plan_only=True, robot_id='BOT_GATE', output_root=out_root)['session']
+    sess.metadata['plan_only'] = False
+
+    # H1 accepted, H2 accepted, H3 rejected (accepted=False).
+    for st, accepted, b_val, params in (
+        ('h1', True, 0.0, h1_params),
+        ('h2', True, 0.55, h1_params),
+        ('h3', False, 0.55, nom_params * 1.1),
+    ):
+        adir = sess.root / st / 'analysis'
+        adir.mkdir(parents=True, exist_ok=True)
+        cal = dict(
+            stage=st,
+            accepted=accepted,
+            acceptance=dict(accepted=accepted, reason='passed' if accepted else 'overall_validation_degraded'),
+            model_context=robot_cfg['model_context'],
+            parameters=params.tolist(),
+            viscous=[b_val] * 14,
+            coulomb=[0.12 if st != 'h1' else 0.0] * 14,
+            static_friction=[0.18 if st != 'h1' else 0.0] * 14,
+            gravity_world=list(robot_cfg['gravity_world']),
+            effort_gain=list(robot_cfg['effort_gain']),
+            effort_zero_nm=list(robot_cfg['effort_zero_nm']),
+            prior_source='session_h1' if st == 'h2' else ('session_h2' if st == 'h3' else 'nominal'),
+        )
+        (adir / 'calibration.json').write_text(json.dumps(cal))
+        rep = dict(
+            stage=st,
+            mode='small',
+            fit_succeeded=True,
+            accepted=accepted,
+            acceptance=cal['acceptance'],
+            overall_nominal_validation_rmse_nm=0.30,
+            overall_validation_rmse_nm=0.10,
+            zero_friction_validation_rmse_nm=0.25,
+            prior_validation_rmse_nm=0.20,
+            validation_rmse_nm=0.08 if accepted else 0.26,
+        )
+        (adir / 'report.json').write_text(json.dumps(rep))
+        sess.mark_stage(
+            st,
+            'completed',
+            analysis_dir=f'{st}/analysis',
+            calibration_json=f'{st}/analysis/calibration.json',
+            fit_succeeded=True,
+            accepted=accepted,
+        )
+
+    # resolve_stage_prior for H3 in a follow-up check skips rejected H3 / picks accepted H2:
+    prior_h3 = resolve_stage_prior(sess, 'h3', robot_cfg)
+    assert prior_h3['source'] == 'session_h2'
+
+    # Session delivery skips rejected H3 and delivers accepted H2 (with H1 gravity + H2 friction + nominal rotor)!
+    delivery = build_session_delivery(sess, robot_cfg)
+    assert delivery['selected_calibration_source'] == 'session_h2'
+    bundle = json.loads((sess.root / 'delivery/calibration_bundle.json').read_text())
+    assert bundle['selected_calibration_source'] == 'session_h2'
+    assert bundle['provenance'] == {
+        'gravity': 'session_h1',
+        'friction': 'session_h2',
+        'inertia': 'session_h1',
+        'rotor_inertia': 'nominal',
+    }
+    np.testing.assert_allclose(bundle['parameters'], h1_params)
+    np.testing.assert_allclose(bundle['friction']['viscous'], 0.55)
+    assert (sess.root / 'delivery/calibrated.urdf').is_file()
+    assert '回退先验' in (sess.root / 'delivery/summary.md').read_text(encoding='utf-8')
