@@ -111,6 +111,8 @@ bash fieldwork/shm/run.sh h1 analyse "$S/plan" "$S/capture" --output "$S/analysi
 
 `HAND`仍为本次开机窗口明确保存的手部背景。准备与全部静态任务只有一次使能，最终失能；采样时不要手托/推手臂。开始/结束采样事件`static_01_measure_begin/end`至`static_08_measure_begin/end`对应`plan.json`中的8个trial。幅度扩大不提速，实际时长以计划`duration_ns`为准。
 
+记录中的`approach=-1`表示从“目标−2°”向上接近，`approach=+1`表示从“目标+2°”向下接近；它是接近点所在侧，不是速度正负号。
+
 分析输出：
 
 - `static_windows.json`：每窗实际q、估算总effort、时间曝光权重及速度/位置跨度统计。
@@ -118,6 +120,8 @@ bash fieldwork/shm/run.sh h1 analyse "$S/plan" "$S/capture" --output "$S/analysi
 - `report.json`、`calibration.json`及`candidate_exploratory.urdf`：沿用PSD拟合与独立URDF重加载；报告包含`fit.rank/columns`及独立validation误差。当前四目标只约束少数重力组合，其余方向由物理约束和名义先验选择，候选不自动部署。
 
 数值拟合不可用时，记录原因并保留采集/对照结果；不会把不可计算的参数填成已辨识值。`analyse --windows-only`可只做窗口和重力对照，不运行拟合。
+
+2026-11-14首轮已完成，用户确认动作正常且没有手托/推。结果显示部分2°接近只有约0.02–0.16°的实际位移；当前配方保留作首轮基线，下一次建议±15°目标/5°接近，先验证左肩四窗。用户选择下次再测。完整结果与文件见[首轮静态重力报告](shm_static_gravity_20261114.md)。新版分析器增加`paired_approach`首末50ms时间曝光平均q位移，便于直接比较参考和真实接近动作，不作为新增推进门禁。
 
 ### 扩展时再接已有静态预设
 
@@ -183,4 +187,4 @@ H1默认使用单独的`configs/shm/h1_mock.json`：**启动前已明确设置�
 
 GUI映射现场确认已完成。首次H1从自然下垂起点规划时，起点保持段左髋roll/左腕pitch间距约3.26mm，小于10mm要求，未发送运动；用户随后批准上述脚本准备前缀。新版已完成准备位→ID12 ±1°及±10°实机执行，最终`artifacts/shm_h1_ready_20261114/site_v6_10deg`获用户确认“整个流程没有任何问题了”，正式参考/接收路径检查通过，最后失能应答。详情、目标与实际位置偏差见[现场记录](shm_field_observations_20261114.md#h1脚本准备位与id12往返)。
 
-下一步可接少量正反接近静态姿态，实机重力拟合尚未执行。采样窗口不要手托/推手臂，避免外力混入重力拟合。
+随后已实机完成四目标/八窗静态重力和PSD探索拟合，候选重加载通过，方向相关误差与左肩留出误差未改善的结果一并保留，详见上述首轮静态报告。当前仍用名义重力，新的接近试验由用户决定下次进行。

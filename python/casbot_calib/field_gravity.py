@@ -10,7 +10,8 @@ def write_static_diagnostics(means,engine,output,names):
     """Compare total estimated effort to nominal gravity at measured q."""
     output=Path(output);windows=[];grouped={}
     for row in means:
-        item=dict(name=row['name'],conditions=row['conditions'],available=row.get('q') is not None and row.get('torque') is not None)
+        item=dict(name=row['name'],conditions=row['conditions'],available=row.get('q') is not None and row.get('torque') is not None,
+                  paired_approach=row.get('paired_approach'))
         if item['available']:
             q=np.asarray(row['q']);torque=np.asarray(row['torque']);nominal=engine.gravity(q)
             item.update(q_rad=q.tolist(),estimated_effort_nm=torque.tolist(),nominal_gravity_nm=nominal.tolist(),

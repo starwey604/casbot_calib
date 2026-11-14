@@ -52,6 +52,19 @@ def test_small_static_rejects_expanded_scope_without_clipping(tmp_path):
     assert not (tmp_path/'bad').exists()
 
 
+def test_observed_approach_is_not_replaced_by_reference_or_velocity():
+    from casbot_calib.shm_h1_analysis import ApproachDisplacement
+    metadata=dict(labels=['paired_approach'],knots_s=[0,2],states=[[np.zeros(14)],[np.full(14,.1)]])
+    span=ApproachDisplacement(dict(begin_s=1),metadata)
+    for ns in range(1_000_000_000,3_000_000_000,1_000_000):
+        q=np.full(14,0. if ns<2_950_000_000 else .001)
+        span.add(dict(observation_time_ns=ns,clock_segment=0,time_ambiguous=False,q=q),ns)
+    result=span.result();assert result['available']
+    np.testing.assert_allclose(result['reference_displacement_rad'],.1)
+    np.testing.assert_allclose(result['observed_displacement_rad'],.001)
+    assert result['first_rows']==result['last_rows']==50
+
+
 @pytest.mark.skipif(not (BIN/'shm_executor').exists(),reason='build native physics')
 def test_eight_windows_physics_fit_and_solver_unavailable_report(tmp_path,monkeypatch):
     native=BIN/'shm_executor';c=load_profile(DEFAULT_PROFILE)
@@ -68,6 +81,8 @@ def test_eight_windows_physics_fit_and_solver_unavailable_report(tmp_path,monkey
     out=tmp_path/'analysis';report=analyse(plan,capture,out)
     assert report['execution_completed'] and report['analysis_available'] and report['fit_succeeded']
     assert report['static_diagnostics']['available_windows']==8 and report['static_diagnostics']['paired_targets']==4
+    windows=json.loads((out/'static_windows.json').read_text())
+    assert all(w['paired_approach']['available'] for w in windows)
     assert report['fit']['rank']<report['fit']['columns'] and not report['hardware_calibration_accepted']
     with (out/'static_comparison.csv').open() as f:assert len(list(csv.DictReader(f)))==112
     # Numerical failure is an explicit unavailable analysis, not a motion fault.

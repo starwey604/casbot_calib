@@ -47,6 +47,30 @@ class TimeMean:
         return None if self.error or not self.weight else self.total/self.weight
 
 
+class ApproachDisplacement:
+    """Observed q displacement over the final approach, with endpoint exposure means."""
+    def __init__(self,trial,metadata):
+        k=metadata['labels'].index('paired_approach')
+        origin=round(trial['begin_s']*1e9)
+        self.begin=origin+round(metadata['knots_s'][k]*1e9);self.end=origin+round(metadata['knots_s'][k+1]*1e9)
+        self.width=min(50_000_000,(self.end-self.begin)//2)
+        self.expected=np.asarray(metadata['states'][k+1][0])-metadata['states'][k][0]
+        self.first=TimeMean();self.last=TimeMean();self.segments=set();self.ambiguous=False
+    def add(self,row,relative_ns):
+        if not self.begin<=relative_ns<self.end:return
+        self.segments.add(row['clock_segment']);self.ambiguous|=row['time_ambiguous']
+        if relative_ns<self.begin+self.width:self.first.add(row,row['q'])
+        if relative_ns>=self.end-self.width:self.last.add(row,row['q'])
+    def result(self):
+        first=self.first.result();last=self.last.result()
+        available=first is not None and last is not None and not self.ambiguous and len(self.segments)==1
+        return dict(available=available,reference_displacement_rad=self.expected,
+            observed_displacement_rad=last-first if available else None,
+            endpoint_window_ns=self.width,first_rows=self.first.rows,last_rows=self.last.rows,
+            unavailable_reason=None if available else self.first.error or self.last.error or 'clock ambiguity or missing endpoint exposure',
+            method='difference of first/last endpoint time-exposure mean q over paired_approach; mapped master conversion time')
+
+
 def analyse(plan,capture,output,*,windows_only=False):
     plan=Path(plan).resolve();capture=Path(capture).resolve();check_seal(plan);check_seal(capture)
     collection=read(capture/'result.json')
@@ -72,6 +96,13 @@ def analyse(plan,capture,output,*,windows_only=False):
     interval=motion['conditions'].get('comparison_window_s',[calibration_begin,m['duration_ns']*1e-9])
     tracking=TimeMean();windows=[TimeMean() for _ in m['trials']];maximum_speed=[0.]*len(windows)
     begins=[t['measure_begin_s'] for t in m['trials']];ends=[t['measure_end_s'] for t in m['trials']]
+    trial_metadata={row['trial_name']:row for row in m.get('recipe',{}).get('motions',[])}
+    approaches=[];approach_map={}
+    for trial in m['trials']:
+        metadata=trial_metadata.get(trial['name'])
+        if metadata and 'paired_approach' in metadata['labels']:
+            span=ApproachDisplacement(trial,metadata);approaches.append(span);approach_map[trial['name']]=span
+    approach_begins=[span.begin for span in approaches]
     block=[];proofs=[];count=0;checked=0;excluded=0;first_receive=None;last_receive=None
     def prove(rows):
         q=np.array([r['q'] for r in rows]);ns=np.array([r['receive_ns'] for r in rows],dtype=np.int64)
@@ -83,6 +114,9 @@ def analyse(plan,capture,output,*,windows_only=False):
         if first_receive is None:first_receive=row['receive_ns']
         last_receive=row['receive_ns']
         elapsed=row['elapsed_s']
+        relative_ns=row['observation_time_ns']-reader.origin
+        approach_index=bisect.bisect_right(approach_begins,relative_ns)-1
+        if 0<=approach_index<len(approaches):approaches[approach_index].add(row,relative_ns)
         if ready is None or (row['phase']==3 and elapsed>=calibration_begin):
             checked+=1;block.append(row)
             if len(block)==1024:prove(block);block=[block[-1]]
@@ -109,7 +143,8 @@ def analyse(plan,capture,output,*,windows_only=False):
             maximum_received_speed_rad_s=speed,maximum_observation_gap_s=values.maximum_gap_ns*1e-9,
             position_span_rad=values.high[:14]-values.low[:14] if values.low is not None else None,
             independent_acquisition_count=None,sample_time_known=False,time_basis='mapped master conversion time relative to first execution command',
-            weighting='trapezoid exposure per millisecond group; equal shares within group'))
+            weighting='trapezoid exposure per millisecond group; equal shares within group',
+            paired_approach=approach_map[trial['name']].result() if trial['name'] in approach_map else None))
     position=tracking.result()
     report=dict(schema_version='casbot_shm_h1_report_v1',passed=True,execution_completed=True,collection_complete=True,
         stage=m['stage'],feedback_rows=count,feedback_receive_hz=(count-1)*1e9/(last_receive-first_receive),
