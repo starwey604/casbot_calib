@@ -55,6 +55,14 @@ target_link_libraries(my_target PRIVATE casbot_calib::shm)
 
 ## 通过 SSH 从本地 Git 克隆到 Orin
 
+直连网络使用现有脚本。2026-11-14接线后的网卡名为`enp0s20f0u1c2`（更换USB口后与原默认名不同）：
+
+```bash
+bash scripts/jetson_network.sh up enp0s20f0u1c2
+```
+
+配置为本机`172.16.0.20/24`、Orin`172.16.0.10`，不设置网关或DNS。若该网卡正被其它连接占用，脚本明确拒绝；本次确认它是等待DHCP的“有线连接 2”后，仅断开该连接，再启用专用profile。Wi-Fi默认路由不变。
+
 在本机仓库根目录运行：
 
 ```bash
@@ -101,4 +109,26 @@ Humble/x86_64已编译完整核心、绑定及SHM/Mock，12项CTest通过。59�
 
 安装后的系统Python标准库联跑通过，证据为`artifacts/shm_round2_20261114/installed_physics/verification.json`：同一执行器运行小幅七次参考，物理反馈不等于目标；C05静默区间零写入、驱动保持使能，结束失能并回收私有IPC。最后安装版的一行C03物理运行也已完成，记录为`final_installed_cli/`，执行完成且Mock正常退出/无回收错误。默认10秒无命令观测另存`default_observe/`，没有隐藏保持。协议单独构建/测试/安装仍通过，日志为同目录`protocol_build.log`。
 
-**新版Orin原生验收待补。** 本次原直连网卡已不存在，172.16.0.10的ping/SSH未连通；没有部署新版或接触真实SHM。恢复网络后，先提交并用上面的Git部署入口同步，再在Orin运行`build.sh --with-mock`及安装后的`verify_physics.py`。2026-11-13的ARM结果只覆盖当时版本，不覆盖本次Mock/参考实现。
+本机交付时网络未连通，Orin验收随后按下节完成。2026-11-13的ARM结果仍只覆盖当时版本，不回写旧证据。
+
+### 2026-11-14 Orin R2原生编译与安装验收已完成
+
+代码提交`cddeab4`已通过SSH Git隧道从`e368e55`快进至Orin的`/home/nvidia/casbot_calib_shm`。使用前述`build.sh --with-mock`命令原生构建，核心与SHM组件安装到`install/shm-core`；没有修改算法源码、安装系统依赖或编译本工程Python绑定。
+
+- 环境：ARM aarch64、GCC11.4、CMake3.22.1、`5.15.148-rt-tegra`，使用`/opt/ros/humble`的Pinocchio4.0.0、Coal3.0.3及系统Boost1.74。12项CTest全部通过，包含fieldwork协议用例和双进程物理闭环。
+- 安装后系统Python标准库验收通过：七次参考使用物理反馈，C05静默窗口150条反馈保持使能且零命令写入，最后失能并正常回收自有IPC。参考运行3558条反馈；目标周期1ms，实际STREAM最大发送间隔约4.00ms。
+- 独立五字段入口另用显式零重力夹具验证：Kp=Kd=0、velocity=0.05rad/s、effort=0.129Nm编码为0.12Nm，81条STREAM命令字段正确，物理反馈出现输出，结束收到失能应答。该夹具只用于软件语义验证。
+- 安装后的`shm_executor`、`shm_mock_server`确认为ARM aarch64 ELF；清空`LD_LIBRARY_PATH`/`PYTHONPATH`即可启动，动态库解析正常，没有链接ROS通信库。
+
+在Orin重现安装后验收：
+
+```bash
+cd /home/nvidia/casbot_calib_shm
+python3 scripts/shm/verify_physics.py --bin-dir install/shm-core/bin
+# 或运行单个现场配方的私有Mock：
+bash fieldwork/shm/run.sh run C03 --joint-id 12 --amplitude .01 --segment-s 1 --mock --execute
+```
+
+本机完整证据为`artifacts/shm_orin_round2_20261114/`：`network.txt`、`environment.txt`、`deploy.log`、`build.log`、`installed.log`，以及从Orin取回的`installed_physics/`和`direct_fields/`原始记录/报告/verification。后两目录同时保留在Orin仓库同名artifacts目录下。
+
+Orin墙钟仍为1970，Make出现已知的未来文件/Clock skew告警；本轮编译、安装及实际测试成功，未校时。当前已观察到重新开机（连接时uptime仅数分钟），**旧接管窗口结束，本轮没有新开实机控制窗口**。真正运动测试前重新走停业务→只启主站→fresh-master握手；本轮只跑私有端点，不改变C00–C08实物台账。

@@ -35,7 +35,7 @@ bash scripts/humble/container.sh ctest --test-dir build/humble -L shm --output-o
 bash fieldwork/shm/run.sh run C03 --joint-id 12 --amplitude .01 --segment-s 1 --mock --execute
 ```
 
-通用参考用`plan --relative`生成、`execute FILE --mock --execute`运行；独立五字段用`fields`生成。详见现场工具手册。新版Mock/通用参考已在本机Humble验证，Orin原生编译/闭环待恢复网络后完成。
+通用参考用`plan --relative`生成、`execute FILE --mock --execute`运行；独立五字段用`fields`生成。详见现场工具手册。当前Mock/通用参考已通过本机Humble与Orin原生编译、安装及私有闭环验证。
 
 Pinocchio/Coal装在`/opt/ros/humble`不意味着SHM程序依赖ROS通信。C++17/CMake3.22为共同基线，x86_64二进制不能直接复制到Orin。
 
