@@ -1,8 +1,8 @@
 # prepare停机阻塞：由仓库维护接管流程
 
-当前现场旧主站的`ecat_ros_pub`线程卡在`ec_master/ecrt_master_sdo_upload`，systemd已发SIGKILL仍未退出。**先在固定支撑、现场物理停止安排下重启Orin，清除旧线程；不要在这次失败记录上直接activate或start-only。** 正常重启若也受阻，按现场断电流程处理。
+前一开机窗口的旧主站`ecat_ros_pub`线程卡在`ec_master/ecrt_master_sdo_upload`，systemd已发SIGKILL仍未退出。随后现场重启，新窗口已完成prepare、主站启动及fresh-master握手，见[本轮现场记录](shm_field_observations_20261114.md)。
 
-新脚本已收口为明确的失败退出；正常SIGTERM路径的实机效果仍待下一次开机验证。
+新脚本在本次接管完成了退出检查和启动流程；能否持续避免SDO阻塞仍待后续。以后若再遇到同类未解除的内核等待，先在固定支撑和现场物理停止安排下恢复Orin，不在失败队列上直接activate/start-only。
 
 ## 新开窗口仍用同一条命令
 
@@ -22,7 +22,7 @@ bash fieldwork/shm/run.sh prepare --execute --output artifacts/本次新目录/s
 
 独立服务停止上限100秒；命令超时/中断只结束本次自有调用进程，不重启服务、清驱动故障、reset SHM或卸载内核模块。systemd已接受的停止job可能继续执行，失败后需处理当前状态再新开窗口。
 
-SIGTERM注册已从当前主站二进制确认；它能否避免这次SDO等待，须下一轮现场观察。已证实的脚本缺陷是直接SIGKILL和提前打印成功；内核等待的触发因果仍待厂家源码/数据复核。
+SIGTERM注册已从当前主站二进制确认；本次重启后prepare/activate完成，是否能稳定避免SDO等待继续留作后续观察。已证实的脚本缺陷是直接SIGKILL和提前打印成功；内核等待的触发因果仍待厂家源码/数据复核。
 
 ## 只读诊断，不停止任何业务
 
@@ -51,4 +51,4 @@ bash scripts/shm/prepare_field.sh --diagnose artifacts/新的诊断目录
 
 软件验证使用假服务/假进程状态和自有子进程，覆盖正常顺序、D线程阻塞、后台继承stdout、停止超时、只读诊断及Ctrl-C封存。部署后只执行只读诊断；本次未运行新停机路径、重启、主站启动或运动。
 
-Orin部署后的只读诊断保存在`artifacts/shm_takeover_diagnose_66978184978312/`：服务已转failed，但PID4507仍含D线程4523；`station_start_requested=false`。这次服务状态变化没有消除内核等待，现场恢复安排不变。软件验证日志为本机`artifacts/shm_prepare_hang_20261114/software_tests.log`、`proc_scan_test.log`；进程枚举测试修正了目录顺序假设后单独通过，实际检测仍逐线程判断。
+Orin部署后的只读诊断保存在`artifacts/shm_takeover_diagnose_66978184978312/`：服务已转failed，但PID4507仍含D线程4523；`station_start_requested=false`。该次服务状态变化没有消除内核等待；随后用户已重启进入新窗口，该旧诊断不表示当前仍卡住。软件验证日志为本机`artifacts/shm_prepare_hang_20261114/software_tests.log`、`proc_scan_test.log`；进程枚举测试修正了目录顺序假设后单独通过，实际检测仍逐线程判断。
