@@ -71,7 +71,7 @@ bash fieldwork/shm/run.sh execute artifacts/my_shm_fields/reference.json --mock 
 
 `casbot_shm_fields_v1`保存绝对位置及独立velocity/effort/kp/kd，不自动平滑、不把velocity当位置导数；上例0.129Nm编码为0.12Nm。CLI的Kp/Kd施加于全部双臂14轴，位置/速度/前馈覆盖所选轴；需要逐轴不同PD时显式编辑bundle数组。直接字段从streaming阶段生效，结束清除速度/前馈并请求失能；轨迹模式末端静止保持0.5秒后退出。两者都不加隐藏补偿。
 
-这里的通用入口用于当前**URDF位置/参考速度检查的双臂fieldwork探索**，不做碰撞放行，不是H1–H4/K5执行入口。它们的规划/碰撞和数据合同保持原状，尚未迁移。实机执行仍需有效接管窗口和显式`--hand-background FILE`；只改变输入模式，不自动停业务/握手，也不把Mock验证记为C08物理尺度确认。
+这里的通用入口用于当前**URDF位置/参考速度检查的双臂fieldwork探索**，不做碰撞放行，不是H1–H4/K5执行入口。H2–H4/K5尚未迁移，规划/碰撞和数据合同保持原状；H1使用下节独立入口。实机执行仍需有效接管窗口和显式`--hand-background FILE`；只改变输入模式，不自动停业务/握手，也不把Mock验证记为C08物理尺度确认。
 
 ## H1/A：现场确认后进入标定流程
 

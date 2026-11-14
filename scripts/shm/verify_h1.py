@@ -55,7 +55,8 @@ def main():
         static_capture=root/'static_capture';assert execute(plan,static_capture,executor=binary,mock=True,do_execute=True)==0
         result=analyse(plan,static_capture,root/'gravity')
         assert result['execution_completed'] and result['analysis_available'],result
-        assert result['fit_succeeded'] and not result['hardware_calibration_accepted']
+        assert result['fit_succeeded'] and result['passed'] and not result['hardware_calibration_accepted']
+        assert json.loads((root/'gravity/urdf_reload.json').read_text())['passed']
         summary=dict(passed=True,scope='H1_private_two_pose_physics_and_PSD_export',hardware_tested=False,
             jog_feedback_rows=tracking['feedback_rows'],static_feedback_rows=result['feedback_rows'],A_available=diagnostic['available'],
             static_windows=4,gravity_fit_succeeded=result['fit_succeeded'])

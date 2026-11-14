@@ -17,7 +17,7 @@ usage() {
   --port N             本机与远端的loopback临时隧道端口；默认19418
   --committed-only     本地另有未提交工作时，仍只部署指定分支的已提交内容
 仅克隆或快进更新本脚本的源码仓库；默认要求本地干净，拒绝目标改动和分叉历史。
-LFS大资产保持指针，本轮ABI/核心URDF测试无需网格资产；不会连接真实SHM。
+LFS大资产保持指针；H1需另行物化默认模型包（见docs/shm_h1_a.md）。不会连接真实SHM。
 SSH认证走正常SSH交互/agent/ControlMaster，不保存密码。
 EOF
 }

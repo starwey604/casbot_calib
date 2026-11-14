@@ -132,3 +132,28 @@ bash fieldwork/shm/run.sh run C03 --joint-id 12 --amplitude .01 --segment-s 1 --
 本机完整证据为`artifacts/shm_orin_round2_20261114/`：`network.txt`、`environment.txt`、`deploy.log`、`build.log`、`installed.log`，以及从Orin取回的`installed_physics/`和`direct_fields/`原始记录/报告/verification。后两目录同时保留在Orin仓库同名artifacts目录下。
 
 Orin墙钟仍为1970，Make出现已知的未来文件/Clock skew告警；本轮编译、安装及实际测试成功，未校时。当前已观察到重新开机（连接时uptime仅数分钟），**旧接管窗口结束，本轮没有新开实机控制窗口**。真正运动测试前重新走停业务→只启主站→fresh-master握手；本轮只跑私有端点，不改变C00–C08实物台账。
+
+
+### 2026-11-14 Orin R3 H1/A数值环境与安装闭环已完成
+
+源码`ef3e5e0`已部署到`/home/nvidia/casbot_calib_shm`，包括`db53ef9`的H1在线限制及`7f4bbde`的跨架构固定frame恢复。Orin已原生构建Python绑定与全部SHM目标，安装目录仍为`install/shm-core`；项目数值解释器为`.venv-shm/bin/python`。本轮直连接口为`enp0s20f0u1u4c2`，已配置172.16.0.20/24。
+
+- ARM64/Python3.10离线wheelhouse保存在Orin的`artifacts/shm_h1_wheels_20261114/`。venv使用NumPy1.26.4、SciPy1.15.3、Clarabel0.11.1、pybind11 2.13.6，不更改系统Python/厂家环境。CMake显式定位venv的pybind11，避免误选系统2.9.1。
+- `setup_h1.sh`同时构建数值绑定与SHM程序；独立URDF导出/重加载复用`/opt/ros/humble`中Pinocchio4.0.0/eigenpy/Coal的Python绑定，项目venv仅链接这三个模块。清空`LD_LIBRARY_PATH`和`PYTHONPATH`的数值导入及实际导出已通过，不source ROS。
+- Git源码部署已恢复；Git LFS3.8.1仅安装到Orin用户的`~/.local/bin`，仓库配置跳过自动smudge。默认模型的碰撞缓存已复制，37MiB已物化网格通过rsync定点同步；模型绑定照常检查全部包资源，其它模型/原CAD不因此全量下载。
+- ARM解析的固定观测frame与冻结值最大差`1.1102230246251565e-16`。加载器只在固定frame矩阵的绝对差不超过`8×float64 epsilon`时恢复冻结数值，并再次要求精确几何摘要；运动轴几何、frame拓扑、URDF/资源绑定保持精确。证据为`orin_geometry_difference.json`和12项相关模型回归。
+- 首次完整数值构建12项CTest通过。H1在线限制增量后重编共享执行层及三个工具，新增限制测试和受影响的fieldwork/物理CLI三项CTest通过；其它未变核心结果复用，不把历史12项写成新13项全量重跑。
+- **安装版H1/A私有闭环通过**：小幅参考4983条反馈；两姿态/四窗口静态采集5478条反馈；A可计算，PSD拟合及候选URDF独立重加载通过。连续参考与接收位置折线均检查；这不是全64姿态或任何实机运动验收。
+
+Orin复现入口：
+
+```bash
+cd /home/nvidia/casbot_calib_shm
+bash fieldwork/shm/run.sh h1 --help
+.venv-shm/bin/python scripts/shm/verify_h1.py --bin-dir install/shm-core/bin \
+  --output artifacts/新的私有验收目录
+```
+
+操作手册见[SHM H1/A](shm_h1_a.md)。本机证据为`artifacts/shm_h1_r3_20261114/`：`orin_setup_final.log`、`orin_final_validation.log`、`orin_h1_final.log`、`orin_final_entrypoints.log`、`orin_assets_rsync.log`、`reload_readback.log`及取回的完整`orin_h1_final/`。对应原始闭环在Orin的`artifacts/shm_h1_r3_orin_20261114_final/`保留。
+
+本轮只跑私有SHM端点，没有停业务/启动真实主站或发送机器人命令。Orin墙钟仍为1970，构建日志有未来文件告警，测试时间依本机执行记录标识，不冒充设备时间已校准。用户下一步完成fieldwork与H1实机验证；GUI随后推进。
