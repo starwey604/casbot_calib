@@ -72,3 +72,14 @@ def test_per_axis_limits_are_independent_and_inputs_remain_unclipped():
     fields=dict(position=[0.]*14,velocity=[0.]*14,effort=[0.]*14,kp=[20.]*14,kd=[2.]*14)
     with pytest.raises(ValueError,match='ID12 kp'):validate_fields(fields,hello,settings)
     assert fields['kp'][0]==20
+
+
+def test_old_native_protocol_remains_readonly(tmp_path):
+    from types import SimpleNamespace
+    root=tmp_path/'old_protocol';root.mkdir();desk=Desk(root,parser().parse_args([]),render=False)
+    try:
+        desk.client=SimpleNamespace(hello=dict(version=1,hand_background=True),failure=None)
+        desk.model_ok=True;desk.feedback=dict(receive_ns=1,phase=-1)
+        assert desk.connected and not desk.control_available
+        desk.start();assert '只读' in desk.message
+    finally:desk.client=None;desk.close()

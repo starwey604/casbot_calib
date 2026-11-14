@@ -326,4 +326,4 @@ CLI 基础 fieldwork、主动 SSH/PTTY 关闭后的失能/只读复连已有现�
 
 选定首版为独立 SSH 控制/显示双连接，Orin 单 owner 运行 1kHz 与完整记录，本机仅发送五字段意图并渲染最新反馈；不做 X11 转发或跨网 1kHz 控制。先 G1 长期原生 owner/在线输入/控制租约，再 G2 SSH 私有双机联跑、G3 可用调参窗口、G4 保存/零位/旧 GUI 收尾。UDP 待实际显示链路尾延迟定位后再决定，不同时开发两套传输。
 
-完整范围、复用边界、断线合同及完成证据见 [远程 GUI 实施计划](shm_remote_gui_plan.md)。该节为计划，新增 GUI/owner/bridge 尚未实现；既有 fieldwork CLI 保持可用。
+完整范围、复用边界、断线合同及完成证据见 [远程 GUI 实施计划](shm_remote_gui_plan.md)。G1–G4软件及Orin私有双机闭环已完成，新增GUI/owner/bridge已可用；既有fieldwork CLI保持可用，实际画面/现场方向及图形性能继续由用户核对。

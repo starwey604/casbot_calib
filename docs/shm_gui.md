@@ -18,6 +18,17 @@ bash fieldwork/shm/run.sh gui --mock
 
 ## 连接 Orin
 
+更新源码后在Orin构建/安装新原生程序（不连接真实SHM）：
+
+```bash
+cd /home/nvidia/casbot_calib_shm
+cmake -S . -B build/shm-python
+cmake --build build/shm-python --target shm_gui_bundle --parallel 2
+cmake --install build/shm-python --component Shm
+```
+
+窗口只在原生协议v2且已给手部背景时开放控制；旧原生版本仍可只读观察。
+
 先保留当前开机窗口手部背景，按 CLI 流程完成 prepare/activate。已经准备好的同一窗口不重复握手。然后在**笔记本**运行：
 
 ```bash
@@ -29,7 +40,7 @@ bash fieldwork/shm/run.sh gui \
 
 `--hand-background` 是 Orin 上的路径，只取双手命令字段。未提供时仍能只读连接，但原生拒绝开始控制。腿/腰/头在主动会话中失能，现场支撑继续承担载荷。
 
-SSH 采用正常主机密钥/密码或 key/agent 认证；密码认证可能在启动终端分别询问两条连接。不要关闭 known_hosts 校验。GUI 不安装 SSH 密钥、不保存密码，不启停业务/主站，也不自动清故障或恢复运动。
+启动器先在宿主机终端完成控制/显示/文件三条独立SSH认证（密码方式会分别询问；key/agent沿用现有配置），再将自有Unix socket传给图形容器，避免容器没有控制终端时无法询问密码。此时只执行true，仍未连接SHM；窗口退出清理本次自有连接。主机密钥仍按known_hosts校验。GUI 不安装 SSH 密钥、不保存密码，不启停业务/主站，也不自动清故障或恢复运动。
 
 远端私有演练可加 `--mock`：
 
@@ -76,3 +87,18 @@ bash fieldwork/shm/run.sh gui --recover /本机/已保存会话
 G1 原生长期 owner、G2 SSH bridge、G3 本机窗口及G4保存/恢复/零位已实现。Humble 私有原生/bridge/GUI 数值与 ImGui draw-data 检查通过；G2 已在 Orin 原生编译安装，并通过两条独立 SSH 的私有物理 Mock 五字段/正常失能/GUI 不续期失能验证（`artifacts/shm_gui_g2_20261114/orin_remote_v2/verification.json`）。
 
 本轮不运行 GUI 渲染外观验收，实际显示、相机和现场调参由用户核对。30fps、尾延迟和整套 GPU/CPU 指标仍待实际图形环境测量，不将非视觉检查写成性能达标。实际视频编码与窗口外观同样由用户核对；软件已验证流式读取、取消/异常不发布最终文件。
+
+### 最终软件与部署记录（2026-11-14）
+
+本机 `setup_gui.sh` 已实际完成依赖导入、聚合目标构建和安装；Orin `03219a3` 原生聚合构建/安装及8项SHM CTest通过。完整代码按G1 `ab0d515`、G2 `70c91f2`、G3 `acb2369`、G4 `38d9002`提交，后续收尾提交补齐部署与前端反馈。
+
+`artifacts/shm_gui_g4_20261114/final_remote_verification.json`及`container_transport/verification.json`记录：
+
+- 本机→Orin私有物理Mock的v2零写入只读、独立五字段及正常失能；
+- 活动控制期间封存/独立下载，CSV行与原始bin帧一一对应，未中断控制；
+- GUI主循环继续运行、仅暂停本轮自有两条SSH TCP master时，原生租约失能获应答；恢复传输后命令数没有增加；
+- 宿主终端正常认证→共享socket→实际Humble容器的控制/显示/文件三条传输，私有控制/退出及rsync保存通过，退出清理本次连接。
+
+最初暂停SSH mux客户端没有阻断数据，因为fd由TCP master持有；该次注入无效，记录保留，不作为断线证据。后续改为暂停本轮自有专用master完成上述验证，未动用户SSH、网络接口或真实主站。所有开发控制均为私有端点；结束时无GUI owner/Mock残留，真实主站PID11737及开机窗口未改变。
+
+回零已验证原生协议夹具及完整bridge流程；bridge回零专项使用显式零重力测试场景，只验证协议和参考执行，默认GUI Mock仍保留物理重力。视频使用编码器/渲染替身验证失败与取消边界，未生成实屏渲染验收结论。

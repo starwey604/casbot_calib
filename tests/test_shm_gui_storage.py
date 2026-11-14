@@ -133,6 +133,9 @@ def test_video_failure_does_not_publish_final_file(client,tmp_path,monkeypatch):
     output=tmp_path/'failed.mp4'
     with pytest.raises(RuntimeError,match='injected'):archive.export_video(saved,output)
     assert not output.exists() and not output.with_name('failed.pending.mp4').exists()
+    cancelled=tmp_path/'cancelled.mp4'
+    with pytest.raises(ValueError,match='中断|取消'):archive.export_video(saved,cancelled,cancel_check=lambda:'operator_cancel')
+    assert not cancelled.exists() and not cancelled.with_name('cancelled.pending.mp4').exists()
 
 
 def test_bridge_zero_reference_full_protocol_with_explicit_zero_gravity_fixture(tmp_path):

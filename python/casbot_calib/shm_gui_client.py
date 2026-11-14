@@ -17,9 +17,10 @@ from .shm_gui_remote import encode_config
 class RemoteClient:
     def __init__(self, config, local_root, *, host=None, repo=None, ssh_sockets=None):
         self.config=dict(config);self.root=Path(local_root);self.root.mkdir(parents=True,exist_ok=True)
-        self.host=host;self.repo=repo;self.ssh_sockets=ssh_sockets or (None,None)
+        self.host=host;self.repo=repo;self.ssh_sockets=ssh_sockets or tuple(os.environ.get('CASBOT_GUI_SSH_'+k+'_SOCKET') for k in ('CONTROL','DISPLAY','FILES'))
         if host and (not repo or host.startswith('-')):raise ValueError('explicit_host_and_repo_required')
-        if self.ssh_sockets[0] and self.ssh_sockets[0]==self.ssh_sockets[1]:raise ValueError('independent_ssh_transports_required')
+        selected=[socket for socket in self.ssh_sockets if socket]
+        if len(selected)!=len(set(selected)):raise ValueError('independent_ssh_transports_required')
         self.messages=queue.Queue(256);self.outgoing=deque();self.lock=threading.Lock();self.wake=threading.Event()
         self.process=None;self.display=None;self.latest=None;self.received_at=0;self.ready=None;self.hello=None
         self.failure=None;self.control=0;self.revision=0;self.id=0;self.closed=False;self.stopping=False

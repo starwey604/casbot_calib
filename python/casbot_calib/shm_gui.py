@@ -69,9 +69,9 @@ class Desk:
         self.message='连接只读观测，点击开始控制后才发送五字段。';self.recording_error=None;self.render_error=None;self.save_message=''
         self.save_job=None;self.short=None;self.reopen_root=None;self.control_bounds={};self.frame=0;self.texture=None;self.texture_stamp=0
         self.view_visible=True;self.camera=[160.,-8.,2.3];self.last_pose=0;self.last_fields=0;self.dirty=False;self.await_start=False;self.start_waiting=False;self.previous_phase=-1
-        self.settings=copy.deepcopy(SETTINGS);self.settings_draft=copy.deepcopy(SETTINGS);self.input_settings=copy.deepcopy(SETTINGS);self.settings_version=0;self.input_version=0;self.override_axis=False;self.pending_settings=None;self.settings_open=False;self.settings_pending=None
+        self.settings=copy.deepcopy(SETTINGS);self.settings_draft=copy.deepcopy(SETTINGS);self.input_settings=copy.deepcopy(SETTINGS);self.settings_version=0;self.input_version=0;self.override_axis=False;self.pending_settings=None;self.settings_open=False;self.settings_pending=None;self.observation_warnings=[]
         self.job_cancel=threading.Event();self.jobs=ThreadPoolExecutor(max_workers=2,thread_name_prefix='shm-gui-job');self.zero_job=None;self.zero_request=None;self.zero_control=None;self.zero_seen=False;self.operation_generation=0
-        self.save_open=False;self.save_path='';self.last_saved=None;self.video_job=None;self.archive=bool(args.recover)
+        self.save_open=False;self.save_path='';self.last_saved=None;self.video_job=None;self.video_cancelled=False;self.archive=bool(args.recover)
         self.byte_sample=(time.monotonic(),0);self.byte_rate=0.
         self.history=deque(maxlen=1800);self.history_seq=0;self.received_delay_ms=0;self.model_ok=False;self.last_ready=None
         if args.recover:
@@ -85,6 +85,8 @@ class Desk:
     def phase(self):return self.feedback['phase'] if self.feedback else -1
     @property
     def connected(self):return bool(self.client and self.client.hello and not self.client.failure and self.model_ok and self.feedback and self.feedback['receive_ns'])
+    @property
+    def control_available(self):return bool(self.connected and self.client.hello.get('version')==2 and self.client.hello.get('hand_background'))
     def connect(self):
         if self.args.preview or self.archive:return
         if self.client:self.disconnect()
@@ -103,7 +105,9 @@ class Desk:
             self.message='已断开；'+('已收到失能应答。' if ack else '退出结果见远端记录。')+'末次位置为历史反馈。'
         self.client=None;self.feedback=None;self.commands=None;self.model_ok=False
     def start(self):
-        if not self.connected or self.phase!=-1 or self.settings_pending is not None or self.zero_job or self.zero_control:return
+        if not self.control_available:
+            self.message='当前仅可只读：需要原生协议v2及本开机窗口手部背景。';return
+        if self.phase!=-1 or self.settings_pending is not None or self.zero_job or self.zero_control:return
         if max(abs(v) for v in self.feedback['dq'])>=.02:
             self.start_waiting=True;self.await_start=True;self.message='等待实际速度低于 0.02rad/s；尚未请求使能，可停止取消。';return
         self.start_waiting=False
@@ -121,7 +125,7 @@ class Desk:
         from .shm_gui_archive import save_workspace
         self.save_job=self.jobs.submit(save_workspace,self.client,self.save_path,cancel=self.job_cancel.is_set);self.save_message='正在封存远端前缀并下载；控制通道不传文件。'
     def return_zero(self):
-        if self.connected and self.phase==-1 and not self.zero_job:
+        if self.control_available and self.phase==-1 and not self.zero_job:
             self.zero_request=self.client.send('zero_get');self.message='正在读取已保存零位。'
     def pulse(self):
         if self.client and self.model_ok:self.client.tick()
@@ -161,11 +165,19 @@ class Desk:
                 elif kind=='error':self.message='远端错误：'+item['reason']
             s=self.client.latest
             if self.model_ok and s and s['receive_ns']:
-                self.feedback=s;self.q=np.array(s['q'])
+                self.feedback=s;self.q=np.array(s['q']);self.observation_warnings=[]
+                if self.client.hello:
+                    for j in range(14):
+                        policy=axis_policy(self.settings,self.client.hello,j);lo=max(self.client.hello['lower'][j],policy['observed_lower']);hi=min(self.client.hello['upper'][j],policy['observed_upper'])
+                        if not lo<=s['q'][j]<=hi:self.observation_warnings.append(dict(id=j+12,field='位置',value=s['q'][j],threshold=lo if s['q'][j]<lo else hi,unit='rad',action='告警'))
+                        limit=1.5 if self.zero_control else policy['velocity_limit']
+                        if abs(s['dq'][j])>limit:self.observation_warnings.append(dict(id=j+12,field='速度',value=s['dq'][j],threshold=limit,unit='rad/s',action='请求结束' if self.zero_control or policy['end_velocity'] else '告警'))
                 if self.start_waiting and max(abs(v) for v in s['dq'])<.02:self.start()
                 if self.zero_control==s['control'] and s['phase']>=0:self.zero_seen=True
                 if self.zero_control==s['control'] and self.zero_seen and s['phase']==-1:self.zero_control=None;self.zero_seen=False
-                if self.commands is None:self.commands=dict(position=self.q.copy(),velocity=np.zeros(14),effort=np.zeros(14),kp=np.full(14,20.),kd=np.full(14,2.))
+                if self.commands is None:
+                    self.commands=dict(position=self.q.copy(),velocity=np.zeros(14),effort=np.zeros(14),kp=np.full(14,20.),kd=np.full(14,2.))
+                    self.message='已连接只读反馈；点击开始控制才发送。' if self.control_available else '只读反馈已连接；需要原生v2和手部背景才能控制。'
                 if self.previous_phase!=3 and s['phase']==3:
                     # Initialize to native's second fresh position, never replay a stale draft.
                     self.commands={k:np.array(v) for k,v in s['command'].items()};self.await_start=False
@@ -173,7 +185,7 @@ class Desk:
                 if s['seq']!=self.history_seq:self.history.append((s['observation_ns'],s['clock_segment'],s['q'],s['dq'],s['effort']));self.history_seq=s['seq']
                 if s['recording_stopped']:self.recording_error='Orin记录已停止；已写前缀保留，控制仍运行。'
                 now=time.monotonic()
-                if self.dirty and not self.zero_control and s['phase']==3 and now-self.last_fields>=.02:
+                if self.dirty and not self.client.stopping and not self.zero_control and s['phase']==3 and now-self.last_fields>=.02:
                     try:self.client.send('fields',**validate_fields(self.commands,self.client.hello,self.input_settings));self.dirty=False;self.last_fields=now
                     except ValueError as e:self.message=str(e);self.dirty=False
             if self.client.failure:self.message=self.client.failure+'；失能状态未知，请查看远端记录。';self.await_start=False;self.start_waiting=False;self.dirty=False
@@ -190,7 +202,7 @@ class Desk:
             try:self.last_saved=Path(job.result()['output']);self.save_message='已保存：'+str(self.last_saved);self.save_open=False
             except Exception as error:self.save_message='保存失败：'+str(error)
         if self.video_job and self.video_job.poll() is not None:
-            self.save_message=('视频已导出' if self.video_job.returncode==0 else '视频导出失败，见 video_export.log');self.video_job=None
+            self.save_message=('视频已取消' if self.video_cancelled else '视频已导出' if self.video_job.returncode==0 else '视频导出失败，见 video_export.log');self.video_job=None
         if self.renderer and self.renderer.poll() is not None:self.render_error='渲染器退出：'+str(self.root/'renderer.log')
         if self.render_channel and self.q is not None and time.monotonic()-self.last_pose>=1/30:
             payload=json.dumps(dict(q=self.q.tolist(),selected=self.selected,receive_ns=(self.feedback or {}).get('receive_ns',0),visible=self.view_visible,camera=self.camera)).encode()+b'\n'
@@ -221,7 +233,7 @@ class Desk:
             imgui.push_id(label.encode().hex());imgui.begin_disabled(not enabled);clicked=imgui.button(label);imgui.end_disabled();imgui.pop_id();return clicked
         if button('连接 / 重连只读',not self.args.preview and not self.archive and self.phase==-1):self.connect()
         imgui.same_line()
-        if button('开始控制',self.connected and self.phase==-1 and not self.await_start and self.settings_pending is None and not self.zero_job and not self.zero_control):self.start()
+        if button('开始控制',self.control_available and self.phase==-1 and not self.await_start and self.settings_pending is None and not self.zero_job and not self.zero_control):self.start()
         imgui.same_line()
         if button('停止并失能',self.phase>=0 or self.await_start or self.zero_job is not None):self.stop()
         imgui.same_line()
@@ -234,18 +246,19 @@ class Desk:
         imgui.same_line()
         if button('采集零位',self.connected):self.client.send('zero_capture')
         imgui.same_line()
-        if button('回到保存零位',self.connected and self.phase==-1 and not self.zero_job and not self.zero_control):self.return_zero()
+        if button('回到保存零位',self.control_available and self.phase==-1 and not self.zero_job and not self.zero_control):self.return_zero()
         imgui.same_line();imgui.text('只读快照' if self.archive else '离线预览'  if self.args.preview else PHASES.get(self.phase,'等待连接'))
         if self.save_open:
             imgui.set_next_item_width(600);_,self.save_path=imgui.input_text('保存到本机新目录',self.save_path)
             imgui.same_line()
             if button('封存并下载',bool(self.save_path) and self.save_job is None):self.begin_save()
         if self.last_saved and button('导出视频',self.video_job is None):
+            self.video_cancelled=False
             log=(self.root/'video_export.log').open('wb')
             self.video_job=subprocess.Popen([sys.executable,'-m','casbot_calib.shm_gui_archive','video','--source',str(self.last_saved),'--output',str(self.last_saved.parent/(self.last_saved.name+'_'+str(time.monotonic_ns())+'.mp4'))],stdout=log,stderr=log,env=dict(os.environ,MUJOCO_GL='egl'));log.close()
         if self.video_job:
             imgui.same_line()
-            if button('取消视频导出'):self.video_job.terminate()
+            if button('取消视频导出'):self.video_cancelled=True;self.video_job.terminate()
         if self.save_message:imgui.text_wrapped(self.save_message)
         imgui.text_wrapped(self.message)
         if self.last_ready:imgui.text_disabled('Orin记录：'+self.last_ready['workspace'])
@@ -261,13 +274,19 @@ class Desk:
             imgui.text_disabled(f'主站出队距遥测发送 {age:.1f}ms，本机距收包 {gap:.1f}ms'+latency)
         if self.recording_error:imgui.text_colored(imgui.ImVec4(.75,.15,.12,1),self.recording_error)
         if self.render_error:imgui.text_wrapped(self.render_error)
+        if self.observation_warnings:
+            w=self.observation_warnings[0];imgui.text_colored(imgui.ImVec4(.75,.15,.12,1),f'ID{w["id"]} {w["field"]} {w["value"]:.4g} {w["unit"]}，阈值 {w["threshold"]:.4g}：{w["action"]}；共 {len(self.observation_warnings)} 项')
         imgui.separator();width=imgui.get_content_region_avail().x;height=imgui.get_content_region_avail().y
         imgui.begin_child('axes',imgui.ImVec2(240,height),imgui.ChildFlags_.border)
         for i,name in enumerate(NAMES):
             if i in (0,7):imgui.separator_text('左臂' if i==0 else '右臂')
             label=f'ID{i+12} {PARTS[i%7]}'
             if self.q is not None:label+=f'  {self.q[i]:.4f}'
-            imgui.push_id(i);clicked,_=imgui.selectable(label,self.selected==i);imgui.pop_id()
+            imgui.push_id(i);warn=any(w['id']==i+12 for w in self.observation_warnings)
+            if warn:imgui.push_style_color(imgui.Col_.text,imgui.ImVec4(.75,.15,.12,1))
+            clicked,_=imgui.selectable(label,self.selected==i)
+            if warn:imgui.pop_style_color()
+            imgui.pop_id()
             if clicked:self.selected=i
         if self.feedback and imgui.collapsing_header('其它部位状态'):
             for j,s in enumerate(self.feedback['joints']):
@@ -301,7 +320,7 @@ class Desk:
             hello=self.client.hello;limits=axis_policy(self.input_settings if self.phase>=0 else self.settings,hello,i)
             specs=[('position','位置目标 / rad',limits['input_lower'],limits['input_upper']),('velocity','速度目标 / rad/s',-limits['input_velocity_limit'],limits['input_velocity_limit']),('effort','前馈 / Nm',-limits['effort_limit'],limits['effort_limit']),('kp','Kp',0,limits['kp_max']),('kd','Kd',0,limits['kd_max'])]
             for key,label,lo,hi in specs:
-                imgui.text(label);imgui.set_next_item_width(-1);imgui.begin_disabled(self.phase not in (-1,3) or not self.connected or bool(self.zero_control))
+                imgui.text(label);imgui.set_next_item_width(-1);imgui.begin_disabled(self.phase not in (-1,3) or not self.connected or bool(self.zero_control) or (self.phase>=0 and self.client.stopping))
                 changed,value=imgui.slider_float('##slider'+key,float(self.commands[key][i]),float(lo),float(hi),'%.4f')
                 imgui.set_next_item_width(-1);typed,value=imgui.input_double('##exact'+key,value,0,0,'%.6f')
                 imgui.end_disabled()

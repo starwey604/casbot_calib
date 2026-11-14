@@ -72,3 +72,18 @@ def test_two_ssh_connections_never_share_controlmaster(tmp_path):
     assert '-T' in args and 'ControlPath=none' in args and 'ControlMaster=no' in args
     assert "'/a repo'" in args[-1] and '-X' not in args
     with pytest.raises(ValueError):RemoteClient({},tmp_path,host='test',repo='/repo',ssh_sockets=('same','same'))
+
+
+def test_host_launcher_authenticates_three_owned_transports_without_storing_password(tmp_path):
+    import os,subprocess
+    fake=tmp_path/'bin';fake.mkdir();log=tmp_path/'calls'
+    ssh=fake/'ssh';ssh.write_text('#!/bin/sh\nprintf "%s\\n" "$*" >> "$AUTH_LOG"\n');ssh.chmod(0o755)
+    python=fake/'python';python.write_text('#!/bin/sh\nprintf "SOCKETS=%s|%s|%s\\n" "$CASBOT_GUI_SSH_CONTROL_SOCKET" "$CASBOT_GUI_SSH_DISPLAY_SOCKET" "$CASBOT_GUI_SSH_FILES_SOCKET" >> "$AUTH_LOG"\n');python.chmod(0o755)
+    env=dict(os.environ,PATH=str(fake)+':'+os.environ['PATH'],HOME=str(tmp_path),AUTH_LOG=str(log),CASBOT_GUI_PYTHON=str(python))
+    for key in ('CASBOT_GUI_SSH_CONTROL_SOCKET','CASBOT_GUI_SSH_DISPLAY_SOCKET','CASBOT_GUI_SSH_FILES_SOCKET'):env.pop(key,None)
+    result=subprocess.run(['bash',str(ROOT/'scripts/shm/gui.sh'),'--host','test-alias','--mock'],env=env,capture_output=True,text=True)
+    assert result.returncode==0,result.stderr
+    lines=log.read_text().splitlines();assert len([x for x in lines if '-M ' in x])==3
+    assert len([x for x in lines if '-O exit' in x])==3
+    sockets=next(x for x in lines if x.startswith('SOCKETS=')).split('=',1)[1].split('|')
+    assert len(set(sockets))==3 and all(x.startswith(str(tmp_path)) for x in sockets)
