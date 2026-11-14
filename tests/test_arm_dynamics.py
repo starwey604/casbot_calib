@@ -8,45 +8,14 @@ import numpy as np
 import pytest
 from casbot_calib import _core
 from casbot_calib.arm_model import load_arm_model,default_arm_config,planar_two_link_config
-from casbot_calib.arm_reference import planar_terms
 
 
 @pytest.fixture
 def planar():return _core.ArmDynamics(load_arm_model(planar_two_link_config()))
 
 
-def test_pinocchio_backend_matches_independent_planar_oracle(planar):
-    # Exact dependency versions belong in the environment manifest, not the oracle.
-    assert planar.backend_version().startswith('pinocchio-')
-    rng=np.random.default_rng(20261020)
-    for _ in range(40):
-        q,v,a=rng.uniform(-1.,1.,size=(3,2));expected=planar_terms(q,v,a)
-        actual=planar.components(q,v,a)
-        for name in ('mass_matrix','inertia','velocity','gravity','total'):
-            np.testing.assert_allclose(getattr(actual,name),expected[name],rtol=1e-10,atol=1e-12)
-        energy=planar.energy(q,v)
-        np.testing.assert_allclose([energy.kinetic,energy.potential],
-                                   [expected['kinetic'],expected['potential']],rtol=1e-10,atol=1e-12)
-        # Torque is computed by the independent analytic oracle, not by inverse().
-        np.testing.assert_allclose(planar.forward(q,v,expected['total']),a,atol=1e-11)
-    q,v,a=np.array([.4,-.7]),np.array([.8,-.5]),np.array([-.2,.6])
-    assert np.linalg.norm(planar.velocity_bias(q,v))>.01
-    m=planar.mass_matrix(q)
-    assert np.linalg.norm((m-np.diag(np.diag(m)))@a)>.01
-    assert np.linalg.norm(planar.inverse(q,v,a)-(np.diag(m)*a+planar.gravity(q)))>.01
 
 
-def test_rotor_and_tool_inertia_are_applied_once():
-    config=planar_two_link_config()
-    for joint,rotor in zip(config['joints'],(.07,.03),strict=True):joint['rotor_inertia']=rotor
-    config['payload']=dict(enabled=True,body=dict(mass=.35,com=[.08,0.,0.],inertia_com=np.diag([.004,.005,.006]).tolist()))
-    engine=_core.ArmDynamics(load_arm_model(config));q=np.array([.4,-.7]);v=np.array([.8,-.5]);a=np.array([-.2,.6])
-    oracle=planar_terms(q,v,a,rotor=(.07,.03),payload_mass=.35,payload_com_x=.08,payload_izz=.006)
-    np.testing.assert_allclose(engine.mass_matrix(q),oracle['mass_matrix'],atol=1e-12)
-    np.testing.assert_allclose(engine.inverse(q,v,a),oracle['total'],atol=1e-12)
-    np.testing.assert_allclose(engine.forward(q,v,oracle['total']),a,atol=1e-11)
-    e=engine.energy(q,v)
-    np.testing.assert_allclose([e.kinetic,e.potential],[oracle['kinetic'],oracle['potential']],atol=1e-12)
 
 
 def test_seven_joint_model_is_physical_and_has_velocity_coupling():
@@ -152,27 +121,8 @@ def test_reject_invalid_states_and_batch_shapes(planar,monkeypatch):
     assert planar.gravity(np.zeros(2)).shape==(2,)
 
 
-def test_report_runs_without_mujoco_and_without_runtime_python_pinocchio(tmp_path,monkeypatch):
-    from casbot_calib.arm_report import run_arm_checks
-    monkeypatch.setitem(sys.modules,'mujoco',None)
-    monkeypatch.setitem(sys.modules,'pinocchio',None)
-    folder=tmp_path/'r1'
-    report=run_arm_checks(folder)
-    assert report['passed'] and report['backend'].startswith('pinocchio-')
-    assert report['scope'].endswith('no calibration') and report['synthetic_only']
-    assert report['metrics']['maximum_velocity_bias_nm']>.001
-    assert (folder/'mass_matrix.png').exists() and (folder/'torque_components.png').exists()
-    assert len(list(folder.glob('*.npz')))==1
 
 
-def test_geometry_scene_and_mapping_require_no_mesh(tmp_path):
-    import xml.etree.ElementTree as ET
-    from casbot_calib.arm_viewer import write_arm_scene
-    config=default_arm_config();scene=tmp_path/'arm.xml';adapter=write_arm_scene(config,scene)
-    root=ET.parse(scene).getroot()
-    assert len(root.findall('.//joint'))==7 and not root.findall('.//mesh')
-    assert tuple(m.name for m in adapter.mappings)==tuple(config['joint_names'])
-    assert not root.findall('.//actuator')
 
 
 def test_arm_binding_source_delegates_rigid_dynamics_to_pinocchio():
@@ -186,11 +136,3 @@ def test_arm_binding_source_delegates_rigid_dynamics_to_pinocchio():
     assert 'struct Motion' not in text and 'ArmDynamics::rnea' not in text
 
 
-def test_failed_optional_render_keeps_core_report_and_model_probes(tmp_path,monkeypatch):
-    from casbot_calib.arm_report import run_arm_checks
-    monkeypatch.setitem(sys.modules,'mujoco',None)
-    report=run_arm_checks(tmp_path/'no_viewer',render=True)
-    assert not report['passed'] and report['checks']['analytic_two_link']
-    assert not report['checks']['geometry_only_viewer_fk'] and 'error' in report['geometry']
-    assert (tmp_path/'no_viewer/report.json').exists()
-    assert (tmp_path/'no_viewer/model_probes.npz').exists()

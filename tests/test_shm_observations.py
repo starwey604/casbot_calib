@@ -4,8 +4,20 @@ import json
 import numpy as np
 import pytest
 from casbot_calib.shm_observations import ObservationReader
-from casbot_calib.hardware_probe import probe_problem,field_probe_config,settings,inertia_balance
-from test_hardware_probe import rotor
+from casbot_calib import _core
+from casbot_calib.probe_projection import probe_problem,inertia_balance
+
+CONFIG=dict(schema_version='casbot_shm_probe_v1',cache_period_ns=None,probe=dict(duration_s=2.),
+    processing=dict(fit_band_hz=30.,polynomial_degree=2,quadrature_period_s=.002,edge_trim_s=.2))
+
+
+def rotor():
+    m=_core.ArmModel();m.model_id='probe_rotors';m.model_version='tree_rigid_v1';m.gravity_world=np.zeros(3)
+    joints=[]
+    for k in range(14):
+        j=_core.ArmJoint();j.name=f'axis_{k}';j.link_name=f'body_{k}';body=j.body;body.inertia_com=np.eye(3)*5e-5;j.body=body;joints.append(j)
+    m.joints=joints;m.parents=[-1]*14
+    return _core.ArmDynamics(m)
 
 
 def recording(root,*,receive_period=1_000_000,jump=False):
@@ -29,7 +41,7 @@ def recording(root,*,receive_period=1_000_000,jump=False):
 
 def problem(obs,elapsed):
     meta=dict(conditions=dict(joint=4,direction=1),labels=['probe_measure'],knots_s=[1.,3.])
-    return probe_problem(obs,elapsed,meta,rotor(),field_probe_config(settings()),dict(effort_gain=1.,effort_zero_nm=0.),observation_time_ns=obs['observation_time_ns'])
+    return probe_problem(obs,elapsed,meta,rotor(),CONFIG,dict(effort_gain=1.,effort_zero_nm=0.),observation_time_ns=obs['observation_time_ns'])
 
 
 def test_a_uses_observation_ns_not_first_shm_write_or_receive_clock(tmp_path):

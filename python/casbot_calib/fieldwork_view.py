@@ -32,7 +32,7 @@ def open_view(metadata, directory, *, lightweight=False):
     return view
 
 
-def frame(metadata, view, q, receive_ns=0, *, label='SDK接收位置几何回放', clock_domain='sample_unknown'):
+def frame(metadata, view, q, receive_ns=0, *, label='接收位置几何回放', clock_domain='sample_unknown'):
     from .telemetry import StateFrame
     return StateFrame(view.adapter.robot_model_id, label, 0, -1, receive_ns,
                       tuple(metadata['joint_names']), np.asarray(q), None, None, None, clock_domain=clock_domain)

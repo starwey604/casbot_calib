@@ -4,7 +4,7 @@ import numpy as np
 
 def imu_projection(problem, imu, *, interval=None):
     """Sensitivity to measured base-motion regressors, not a force correction."""
-    from .hardware_probe import basis, exposure, least_squares
+    from .probe_projection import basis, exposure, least_squares
     t = problem['time_s']; j = problem['joint']
     lo, hi = interval if interval is not None else (float(t[0]), float(t[-1]+np.median(np.diff(t))))
     ti, values = imu
@@ -66,10 +66,8 @@ def window_a(obs, elapsed, interval, joint, profile, band, *, imu=None, observat
     engine, _ = model_for(profile)
     model = engine.model; model.gravity_world = np.asarray(profile['gravity_world']); engine = type(engine)(model)
     if observation_time_ns is None:
-        from .hardware_probe import settings,field_probe_config
-        config=field_probe_config(settings())
-    else:
-        config=dict(schema_version='casbot_shm_probe_v1',probe={},processing=dict(polynomial_degree=2),cache_period_ns=None)
+        raise ValueError('需要主站观测时间observation_time_ns')
+    config=dict(schema_version='casbot_shm_probe_v1',probe={},processing=dict(polynomial_degree=2),cache_period_ns=None)
     config['probe']['duration_s'] = hi-lo
     trim = min(.2, (hi-lo)/10)
     config['processing'].update(fit_band_hz=band, edge_trim_s=trim,

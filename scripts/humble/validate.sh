@@ -1,9 +1,7 @@
 #!/usr/bin/env bash
 # Run via scripts/humble/run.sh (inside container) or container.sh (host).
 set -euo pipefail
-output_dir=${1:?Usage: validate.sh OUTPUT_DIRECTORY [FROZEN_BASELINE_DIRECTORY]}
-baseline_dir=${2:-}
-[[ ! -e "$output_dir" ]] || { echo "Output already exists: $output_dir" >&2; exit 1; }
+output_dir=${1:-artifacts/validation_$(date +%Y%m%d_%H%M%S)}
 mkdir -p "$output_dir"
 output_dir=$(cd -- "$output_dir" && pwd)
 cmake --preset humble -DCALIB_BUILD_PYTHON=ON -DCALIB_BUILD_SHM=ON -DCALIB_BUILD_SHM_MOCK=ON
@@ -23,10 +21,3 @@ python -m pip wheel . --no-deps --no-build-isolation --wheel-dir "$output_dir/pa
   --config-settings=build-dir=build/humble --config-settings=cmake.define.CALIB_BUILD_PYTHON=ON
 python scripts/humble/verify_wheel.py --wheel "$output_dir"/packages/*.whl --output "$output_dir/wheel"
 cmake --preset humble -DCALIB_BUILD_PYTHON=ON -DCALIB_BUILD_SHM=ON -DCALIB_BUILD_SHM_MOCK=ON
-casbot-calib suite --configs configs --output "$output_dir/experiments"
-casbot-calib arm-check --output "$output_dir/experiments/R1" --render
-casbot-calib dual-calibrate --output "$output_dir/experiments/D14" --render
-if [[ -n "$baseline_dir" ]]; then
-  python scripts/compare_reports.py "$baseline_dir" "$output_dir/experiments" | tee "$output_dir/baseline-comparison.txt"
-fi
-python scripts/humble/verify_results.py --output "$output_dir"

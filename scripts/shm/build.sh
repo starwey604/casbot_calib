@@ -37,7 +37,7 @@ while (($#)); do
 done
 [[ $jobs =~ ^[1-9][0-9]*$ ]] || { echo 'jobs必须是正整数' >&2; exit 2; }
 args=(-S "$repo" -B "$build_dir" -DCMAKE_BUILD_TYPE=Release
-  -DCALIB_BUILD_CORE="$core" -DCALIB_BUILD_PYTHON=OFF -DCALIB_BUILD_TOOLS=OFF
+  -DCALIB_BUILD_CORE="$core" -DCALIB_BUILD_PYTHON=OFF
   -DCALIB_BUILD_SHM=ON -DCALIB_BUILD_SHM_MOCK="$mock" -DBUILD_TESTING=ON -DCMAKE_INSTALL_PREFIX="$prefix")
 [[ -z $dependency_prefix ]] || args+=(-DCMAKE_PREFIX_PATH="$dependency_prefix")
 cmake "${args[@]}"

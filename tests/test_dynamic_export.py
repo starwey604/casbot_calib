@@ -8,7 +8,7 @@ import pytest
 from casbot_calib import _core
 from casbot_calib.dual_model import nominal_dual_arm
 from casbot_calib.rigid_identification import model_from_parameters
-from casbot_calib.dynamic_export import export_dynamics_urdf,load_exported_dynamics,verify_dynamics_export,check_reload,write_inertial_urdf
+from casbot_calib.dynamic_export import check_reload, write_inertial_urdf
 from casbot_calib.artifact_io import sha256
 
 SOURCE=__import__('casbot_calib.model_context',fromlist=['load_context']).load_context().urdf
@@ -47,81 +47,18 @@ def accepted(tmp_path):
     seal(root);return root,engine
 
 
-def test_export_is_lossless_and_inputs_immutable(accepted,tmp_path):
-    analysis,expected=accepted;before={p:sha256(p) for p in analysis.rglob('*') if p.is_file()}
-    source_hash=sha256(SOURCE);result=export_dynamics_urdf(analysis,tmp_path/'export')
-    assert result['passed'] and not result['hardware_executable'] and not result['individual_body_parameters_unique']
-    loaded,meta=load_exported_dynamics(tmp_path/'export')
-    assert not meta['hardware_executable'] and meta['inertia_estimation_stage_included']
-    np.testing.assert_allclose(loaded.rigid_parameters(),expected.rigid_parameters(),atol=1e-13)
-    assert sha256(SOURCE)==source_hash and all(sha256(p)==digest for p,digest in before.items())
-    assert verify_dynamics_export(tmp_path/'export',tmp_path/'recheck')['passed']
-    with pytest.raises(FileExistsError):export_dynamics_urdf(analysis,tmp_path/'export')
 
 
-def test_fixed_hand_aggregate_not_counted_twice_and_xml_has_com_inertia(accepted,tmp_path):
-    analysis,expected=accepted;export_dynamics_urdf(analysis,tmp_path/'export')
-    root=ET.parse(tmp_path/'export/candidate.urdf').getroot()
-    assert root.find("link[@name='left_flange_frame']/inertial") is None
-    assert root.find("link[@name='left_palm_base_link']") is None
-    inertial=root.find("link[@name='left_wrist_roll_link']/inertial")
-    assert float(inertial.find('mass').get('value'))==pytest.approx(.4)
-    np.testing.assert_allclose(np.fromstring(inertial.find('origin').get('xyz'),sep=' '),[.01,-.015,.02],atol=1e-15)
-    assert inertial.find('origin').get('rpy')=='0 0 0'
-    assert float(inertial.find('inertia').get('ixy'))==pytest.approx(.0001)
-    original=ET.parse(SOURCE).getroot()
-    assert ET.tostring(root.find("link[@name='left_hip_pitch_link']/inertial"))==ET.tostring(original.find("link[@name='left_hip_pitch_link']/inertial"))
-    root.find("link[@name='left_flange_frame']").append(copy.deepcopy(inertial))
-    wrong=tmp_path/'double_hand.urdf';ET.ElementTree(root).write(wrong)
-    report=check_reload(wrong,expected,SOURCE,samples=2)
-    assert not report['passed'] and not report['checks']['rigid_parameters']
 
 
-def test_gravity_export_does_not_claim_inertia_or_friction_identification(accepted,tmp_path):
-    analysis,_=accepted;result=export_dynamics_urdf(analysis,tmp_path/'export','gravity')
-    assert result['passed']
-    loaded,metadata=load_exported_dynamics(tmp_path/'export')
-    assert not metadata['inertia_estimation_stage_included'] and 'not identified' in metadata['friction_status']
-    np.testing.assert_array_equal(loaded.friction(np.ones(14)*.2),0.)
 
 
-@pytest.mark.parametrize('failure',['rejected_analysis','rejected_stage','changed_candidate','unsealed_candidate','wrong_geometry'])
-def test_no_export_from_rejected_or_unbound_input(accepted,tmp_path,failure):
-    analysis,_=accepted
-    if failure=='rejected_analysis':
-        data=json.loads((analysis/'analysis.json').read_text());data['passed']=False;write(analysis/'analysis.json',data)
-    if failure=='rejected_stage':
-        data=json.loads((analysis/'inertia/report.json').read_text());data['passed']=False;write(analysis/'inertia/report.json',data)
-    if failure=='changed_candidate':
-        data=json.loads((analysis/'inertia/candidate.json').read_text());data['parameters'][0]*=1.01;write(analysis/'inertia/candidate.json',data)
-    if failure=='wrong_geometry':
-        data=json.loads((analysis/'analysis.json').read_text());data['source_model_sha256']='0'*64;write(analysis/'analysis.json',data)
-    seal(analysis)
-    if failure=='unsealed_candidate':
-        data=json.loads((analysis/'manifest.json').read_text());del data['inertia/candidate.json'];write(analysis/'manifest.json',data)
-    with pytest.raises(ValueError):export_dynamics_urdf(analysis,tmp_path/'export')
-    assert not (tmp_path/'export').exists()
 
 
-def test_legacy_gravity_only_analysis_needs_source_geometry_binding(accepted,tmp_path):
-    analysis,_=accepted;data=json.loads((analysis/'analysis.json').read_text());del data['source_model_sha256']
-    data['stages'].pop('inertia');write(analysis/'analysis.json',data);seal(analysis)
-    with pytest.raises(ValueError,match='source geometry'):export_dynamics_urdf(analysis,tmp_path/'export','gravity')
 
 
-@pytest.mark.parametrize('file',['candidate.urdf','calibration.json','report.json'])
-def test_export_tampering_is_rejected(accepted,tmp_path,file):
-    analysis,_=accepted;export_dynamics_urdf(analysis,tmp_path/'export')
-    with (tmp_path/'export'/file).open('a') as stream:stream.write(' ')
-    with pytest.raises(ValueError,match='changed'):load_exported_dynamics(tmp_path/'export')
 
 
-def test_resealed_geometry_change_is_still_rejected(accepted,tmp_path):
-    analysis,_=accepted;export_dynamics_urdf(analysis,tmp_path/'export');path=tmp_path/'export/candidate.urdf'
-    tree=ET.parse(path);tree.getroot().find("joint[@name='left_elbow_pitch_joint']/axis").set('xyz','0 0 1');tree.write(path)
-    meta=json.loads((tmp_path/'export/calibration.json').read_text());meta['urdf_sha256']=sha256(path)
-    write(tmp_path/'export/calibration.json',meta);seal(tmp_path/'export')
-    with pytest.raises(ValueError,match='geometry differs'):load_exported_dynamics(tmp_path/'export')
 
 
 def test_runtime_sidecar_restores_armature_once(accepted,tmp_path):

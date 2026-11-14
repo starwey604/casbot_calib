@@ -44,7 +44,7 @@ useful for checking container.sh call chains without a running container.
 Examples:
   exec.sh --user root --no-venv -- bash scripts/humble/install_system.sh
   exec.sh --no-venv -- bash scripts/humble/setup_python.sh
-  exec.sh --venv -- casbot-calib --help
+  exec.sh --venv -- python -m casbot_calib.shm_fieldwork list
 EOF
 }
 

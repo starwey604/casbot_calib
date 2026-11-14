@@ -81,14 +81,9 @@ def test_deferred_cases_never_launch(case, tmp_path):
     assert result.returncode == 2 and not out.exists()
 
 
-def test_shell_entry_from_elsewhere_and_ros_aliases(tmp_path):
+def test_shell_entry_from_elsewhere(tmp_path):
     result = subprocess.run(['bash', ROOT/'fieldwork/shm/run.sh', 'list'], cwd=tmp_path, capture_output=True, text=True)
     assert result.returncode == 0 and 'C06' in result.stdout
-    script = (ROOT/'fieldwork/ros/run.sh').read_text()
-    assert '/../..' in script and 'scripts/humble/container.sh' in script
-    assert '/ros/run.sh' in (ROOT/'fieldwork/run.sh').read_text()
-    for name in ('capture_zero.sh', 'return_zero.sh'):
-        assert '/ros/'+name in (ROOT/'fieldwork'/name).read_text()
 
 
 def test_observe_zero_commands_clock_fields_and_note(master, tmp_path):

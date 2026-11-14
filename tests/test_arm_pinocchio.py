@@ -7,7 +7,6 @@ import pytest
 from scipy.spatial.transform import Rotation
 from casbot_calib import _core
 from casbot_calib.arm_model import load_arm_model, default_arm_config, planar_two_link_config
-from casbot_calib.arm_reference import planar_terms
 
 
 def configured_engine(seven=False):
@@ -36,22 +35,6 @@ def test_parameter_order_origin_inertia_and_defensive_copy():
     np.testing.assert_allclose(engine.rigid_parameters()[:10],expected,atol=1e-14)
 
 
-@pytest.mark.parametrize('seven',[False,True])
-def test_regressor_body_parameters_plus_rotor_and_friction(seven):
-    engine=configured_engine(seven);n=len(engine.model.joints)
-    rng=np.random.default_rng(27);q,v,a=rng.uniform(-.4,.4,(3,16,n))
-    result=engine.regressor_batch(q,v,a)
-    assert result['regressor'].shape==(16,n,10*n)
-    assert result['parameter_names']==engine.rigid_parameter_names()
-    assert 'parameters' not in result  # no model-value side channel into an estimator
-    predicted=result['regressor']@engine.rigid_parameters()+result['rotor_torque']+result['friction']
-    np.testing.assert_allclose(predicted,engine.evaluate_batch(q,v,a)['total'],atol=1e-12)
-    for i in range(16):
-        np.testing.assert_allclose(result['regressor'][i],engine.torque_regressor(q[i],v[i],a[i]),atol=1e-14)
-    if not seven:
-        for i in range(16):
-            expected=planar_terms(q[i],v[i],a[i],rotor=(.01,.02),payload_mass=.35,payload_com_x=.08,payload_izz=.006)
-            np.testing.assert_allclose(predicted[i]-result['friction'][i],expected['total'],atol=1e-12)
 
 
 def test_regressor_depends_on_geometry_not_nominal_body_values():

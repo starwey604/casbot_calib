@@ -48,24 +48,6 @@ def calibration(config):
     return result
 
 
-def workflow_config(path=None):
-    from .dvt2_trical import configuration
-    config=configuration(path)
-    validate_config(config)
-    if 'workflow' not in config or 'sensor' not in config or 'drive' not in config:
-        raise ValueError('K2 requires a workflow profile')
-    settings=config['workflow'];period=config['control_period_ns']
-    if 20_000_000%period:raise ValueError('Control period must divide the 20ms batch interval')
-    for key in ('transition_s','insertion_s','correction_s','settle_s','stable_window_s','measurement_timeout_s',
-                'centering_tolerance_m','geometry_allowance_rad','clearance_m','allowed_tip_stroke_m'):
-        if not np.isfinite(settings[key]) or settings[key]<=0:raise ValueError('Invalid K2 setting: '+key)
-    if not settings['visits'] or len({v['id'] for v in settings['visits']})!=len(settings['visits']):raise ValueError('Invalid K2 visit IDs')
-    for visit in settings['visits']:
-        vector(visit['nominal_q_rad'],14);ball_world(config,visit['ball_id'])
-        if visit['frame'] not in {t['name'] for t in config['tools']}:raise ValueError('Unknown visit tool')
-    return config
-
-
 def validate_config(config):
     if config['schema_version'] != 1 or config['synthetic_only'] is not True or config['hardware_executable'] is not False:
         raise ValueError('K1 supports synthetic, non-executable profiles only')

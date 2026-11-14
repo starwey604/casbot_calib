@@ -3,7 +3,6 @@ import time
 import numpy as np
 import pytest
 from casbot_calib.telemetry import JointMapping,TelemetryAdapter,ReplaySource,LatestStateSource
-from casbot_calib.live import JsonlTelemetrySource
 
 
 def packet(sequence=1):
@@ -57,33 +56,8 @@ def test_replay_holds_acquired_samples_and_does_not_fill_gaps():
     assert frame.raw_position is None
 
 
-def test_bad_viewer_sign_is_not_cancelled_by_mock_encoder():
-    from casbot_calib.demo import mock_encoder_channels
-    o={"q":np.array([.15]),"dq":np.array([.4]),"current":np.array([.1])}
-    raw=mock_encoder_channels(o)
-    correct=JointMapping("a","a",2*np.pi/16384,-1,8192)
-    wrong=JointMapping("a","a",2*np.pi/16384,1,8192)
-    assert correct.position(raw["raw_position"])[0]==pytest.approx(.15)
-    assert wrong.position(raw["raw_position"])[0]==pytest.approx(-.15)
 
 
-def test_jsonl_follow_retains_partial_line_and_reports_bad_input(tmp_path):
-    p=tmp_path/"stream.jsonl";p.write_text("")
-    source=JsonlTelemetrySource(p,adapter(),follow=True)
-    try:
-        encoded=json.dumps(packet())
-        with p.open("a") as f:f.write(encoded[:20]);f.flush()
-        time.sleep(.04)
-        assert source.read(0) is None and source.error is None
-        with p.open("a") as f:f.write(encoded[20:]+"\n");f.flush()
-        deadline=time.monotonic()+2
-        while source.read(0) is None and time.monotonic()<deadline:time.sleep(.01)
-        assert source.read(0).sequence==1
-        with p.open("a") as f:f.write("invalid\n");f.flush()
-        deadline=time.monotonic()+2
-        while source.error is None and time.monotonic()<deadline:time.sleep(.01)
-        assert source.error is not None
-    finally:source.close()
 
 
 def test_invalid_mapping_does_not_hide_direction_in_negative_scale():

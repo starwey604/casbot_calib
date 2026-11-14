@@ -231,9 +231,9 @@ stage_build() {
 
 stage_verify() {
   printf '[setup] === stage verify ===\n' >&2
-  run_cmd "$scripts_dir/container.sh" casbot-calib --help
+  run_cmd "$scripts_dir/container.sh" python -m casbot_calib.shm_fieldwork list
   run_cmd "$scripts_dir/container.sh" python -c \
-    'import casbot_calib, rclpy, pinocchio, coal, numpy, scipy; print("Humble imports ok")'
+    'import casbot_calib, pinocchio, coal, numpy, scipy; print("Humble imports ok")'
 }
 
 run_stage() {
@@ -357,7 +357,7 @@ main() {
     printf '[setup] dry-run complete: nothing was executed or written.\n' >&2
   else
     printf '[setup] state: %s\n' "$state_file" >&2
-    printf '[setup] next: bash scripts/humble/container.sh casbot-calib --help\n' >&2
+    printf '[setup] next: bash scripts/humble/container.sh python -m casbot_calib.shm_fieldwork list\n' >&2
   fi
 }
 

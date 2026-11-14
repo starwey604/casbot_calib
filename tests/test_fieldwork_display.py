@@ -36,42 +36,8 @@ def test_geometry_ignores_timestamp_but_not_position_or_selection():
     assert display.geometry_changed(dict(pose,selected=1),pose)
 
 
-def test_pipe_pulses_every_frame_and_cancel_precedes_archival_io(tmp_path,monkeypatch):
-    from casbot_calib import fieldwork_gui as gui
-    desk=gui.Desk.__new__(gui.Desk)
-    desk.local_clock='unit_clock';desk.owner_id='unit_owner';desk.closing=False
-    desk.heartbeat=tmp_path/'heartbeat.json';desk.heartbeat_archived_at=None
-    desk.control_cancel=None;desk.observer_cancel=None
-    rows=[];writes=[];now=[0.]
-    desk.task=SimpleNamespace(pulse=lambda row:rows.append(('control',row)))
-    desk.observer=SimpleNamespace(pulse=lambda row:rows.append(('observer',row)))
-    desk.renderer=SimpleNamespace(pulse=lambda row:rows.append(('renderer',row)))
-    monkeypatch.setattr(gui.time,'monotonic',lambda:now[0])
-    def archive(path,row):
-        assert len(rows)%3==0 and len(rows)>len(writes)*3
-        writes.append(row)
-    monkeypatch.setattr(gui,'latest_json',archive)
-    desk.pulse();now[0]=.02;desk.pulse()
-    assert len(rows)==6 and len(writes)==1
-    now[0]=1.;desk.pulse();assert len(writes)==2
-    desk.pulse('operator_cancel')
-    assert rows[-3][1]['cancel']=='operator_cancel'
-    assert rows[-2][1]['cancel'] is None and rows[-1][1]['cancel'] is None
-    desk.closing=True;desk.pulse()
-    assert all(row['cancel']=='frontend_closed' for _,row in rows[-3:])
 
 
-def test_disk_failure_does_not_hide_cancel(tmp_path,monkeypatch):
-    from casbot_calib import fieldwork_gui as gui
-    desk=gui.Desk.__new__(gui.Desk)
-    desk.local_clock='unit_clock';desk.owner_id='unit_owner';desk.closing=False
-    desk.heartbeat=tmp_path/'heartbeat.json';desk.heartbeat_archived_at=None
-    desk.control_cancel=None;desk.observer_cancel=None;desk.observer=desk.renderer=None
-    rows=[];desk.task=SimpleNamespace(pulse=rows.append)
-    def full(*_):raise OSError('full disk')
-    monkeypatch.setattr(gui,'latest_json',full)
-    desk.pulse('operator_cancel')
-    assert rows[-1]['cancel']=='operator_cancel' and 'full disk' in desk.recording_error
 
 
 def test_display_assets_keep_source_coordinate_extrema_and_face_inventory():

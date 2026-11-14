@@ -8,39 +8,10 @@ from casbot_calib import _core
 from casbot_calib.dual_model import nominal_dual_arm
 from casbot_calib.kinematics import (default_config, nominal_kinematics, apply_joint_corrections,
     geometry_manifest, calibration, ball_world, validate_config)
-from casbot_calib.kinematics_checks import run_checks, urdf_reference
-from casbot_calib.trical_data import (IndicatorStatus, observation_metadata, validate_observations,
-    save_observations, load_observations)
 
 
-def test_k1_report_independent_oracles_and_no_fake_centered_data(tmp_path, monkeypatch):
-    import sys
-    for name in ('pinocchio', 'coal', 'mujoco'):
-        monkeypatch.setitem(sys.modules, name, None)
-    report = run_checks(tmp_path / 'k1')
-    assert report['passed'] and not report['calibration_performed'] and not report['collision_certified']
-    arrays, metadata = load_observations(tmp_path / 'k1/protocol_example')
-    assert report['protocol_example']['fully_valid_records'] == 0
-    assert np.all(arrays['indicator_status'] == IndicatorStatus.NO_CONTACT)
-    assert np.all(arrays['indicator_sample_ns'] == -1)
-    assert np.isnan(arrays['indicator_readings_m']).all()
-    assert 'truth' not in metadata
-    with pytest.raises(FileExistsError):
-        run_checks(tmp_path / 'k1')
 
 
-def test_imported_fixed_frames_match_original_urdf_and_adding_tools_preserves_dynamics():
-    nominal, _ = nominal_dual_arm(); engine, manifest = nominal_kinematics(); rng = np.random.default_rng(41)
-    for _ in range(5):
-        q, v, a = rng.uniform(-.5, .5, (3, 14)); reference = urdf_reference(q, manifest['joint_names'])
-        for name, expected in reference.items():
-            np.testing.assert_allclose(nominal.frame_pose(q, name), expected, atol=1e-13)
-        np.testing.assert_allclose(engine.mass_matrix(q), nominal.mass_matrix(q), atol=0., rtol=0.)
-        np.testing.assert_allclose(engine.inverse(q, v, a), nominal.inverse(q, v, a), atol=0., rtol=0.)
-        np.testing.assert_allclose(engine.rigid_parameters(), nominal.rigid_parameters(), atol=0., rtol=0.)
-    assert len(nominal.fk(np.zeros(14))) == 14
-    with pytest.raises(ValueError, match='named frame'):
-        engine.tool_jacobian(np.zeros(14))
 
 
 def test_named_frames_snapshot_batch_workspace_and_fail_closed():
@@ -137,44 +108,7 @@ def test_profile_provenance_fixed_ball_frame_and_invalid_overrides(tmp_path):
     with pytest.raises(ValueError): ball_world(config, 'missing')
 
 
-def example():
-    config = default_config(); _, manifest = nominal_kinematics(); count = 3
-    t = np.arange(count, dtype=np.int64) * 20_000_000 + 2**54
-    arrays = dict(q_rad=np.zeros((count, 14)), dq_rad_s=np.zeros((count, 14)), joint_sequence=np.arange(count, dtype=np.int64),
-        joint_sample_ns=t, joint_receive_ns=t + 100_000, joint_sample_known=np.ones(count, dtype=bool),
-        indicator_readings_m=np.zeros((count, 3)), indicator_sequence=np.tile(np.arange(count, dtype=np.int64)[:, None], (1, 3)),
-        indicator_sample_ns=np.full((count, 3), -1, dtype=np.int64), indicator_receive_ns=np.tile((t + 200_000)[:, None], (1, 3)),
-        indicator_sample_known=np.zeros((count, 3), dtype=bool), indicator_status=np.zeros((count, 3), dtype=np.uint8),
-        ball_id=np.array(['A'] * count), tool_frame=np.array(['left_trical_tcp'] * count))
-    metadata = observation_metadata(manifest, config, run_id='protocol_test', source='test_fixture_not_acquisition',
-        clocks=dict(joint_sample='host', indicator_sample=['unknown'] * 3, receive='host'))
-    return arrays, metadata
 
 
-def test_raw_schema_roundtrip_integer_precision_faults_and_digest(tmp_path):
-    arrays, metadata = example(); arrays['indicator_status'][1, 2] = IndicatorStatus.DISCONNECTED
-    arrays['indicator_readings_m'][1, 2] = np.nan
-    summary = save_observations(tmp_path / 'raw', arrays, metadata)
-    assert summary['fully_valid_records'] == 2 and not summary['synchronized']
-    loaded, _ = load_observations(tmp_path / 'raw')
-    np.testing.assert_array_equal(loaded['joint_sample_ns'], arrays['joint_sample_ns'])
-    with pytest.raises(FileExistsError): save_observations(tmp_path / 'raw', arrays, metadata)
-    path = tmp_path / 'raw/observations.npz'; path.write_bytes(path.read_bytes() + b'tampered')
-    with pytest.raises(ValueError, match='digest'): load_observations(tmp_path / 'raw')
 
 
-@pytest.mark.parametrize('fault', ['units', 'order', 'float_time', 'unknown_time', 'clock', 'range', 'nan', 'status', 'ball', 'channel', 'causality'])
-def test_invalid_observation_contracts_rejected(fault):
-    arrays, metadata = example()
-    if fault == 'units': metadata['units']['position'] = 'mm'
-    elif fault == 'order': metadata['joint_names'] = list(reversed(metadata['joint_names']))
-    elif fault == 'float_time': arrays['joint_sample_ns'] = arrays['joint_sample_ns'].astype(float)
-    elif fault == 'unknown_time': arrays['indicator_sample_ns'][0, 0] = 100
-    elif fault == 'clock': arrays['indicator_sample_known'][0, 0] = True; arrays['indicator_sample_ns'][0, 0] = 100
-    elif fault == 'range': arrays['indicator_readings_m'][0, 0] = .006
-    elif fault == 'nan': arrays['indicator_readings_m'][0, 0] = np.nan
-    elif fault == 'status': arrays['indicator_status'][0, 0] = 255
-    elif fault == 'ball': arrays['ball_id'][0] = 'missing'
-    elif fault == 'channel': metadata['indicator_channels'] = ['z', 'y', 'x']
-    elif fault == 'causality': arrays['joint_sample_ns'][0] = arrays['joint_receive_ns'][0] + 1
-    with pytest.raises(ValueError): validate_observations(arrays, metadata)

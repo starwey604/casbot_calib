@@ -1,4 +1,4 @@
-"""Accepted S4 model -> aggregated inertial URDF -> independent reload checks.
+"""Identified rigid model -> aggregated inertial URDF -> independent reload checks.
 
 Pinocchio owns spatial inertia conversion and fixed-body aggregation. URDF holds
 rigid properties only; nonlinear friction and reflected armature stay explicit
@@ -22,65 +22,6 @@ from .urdf_resources import rebase_resources,canonical_resources
 SCHEMA='casbot_dynamic_urdf_export_v1'
 ATOL=1e-10
 RTOL=1e-10
-
-
-def _read(path):return json.loads(Path(path).read_text())
-
-
-def _manifest(root,required=()):
-    root=Path(root)
-    manifest=_read(root/'manifest.json')
-    if not set(required)<=manifest.keys():raise ValueError('Required files missing from manifest')
-    for name,digest in manifest.items():
-        path=(root/name).resolve()
-        if not path.is_relative_to(root.resolve()) or sha256(path)!=digest:
-            raise ValueError('Sealed export/analysis input changed: '+name)
-
-
-def _snapshot(analysis,stage,context=None):
-    root=Path(analysis).resolve();_manifest(root,('analysis.json',stage+'/report.json'));summary=_read(root/'analysis.json')
-    if summary.get('schema_version')!='casbot_vendor_s4_analysis_v1' or not summary['passed'] or not summary['stages'].get(stage,{}).get('passed'):
-        raise ValueError('Accepted S4 analysis and requested stage required')
-    required={'analysis.json',stage+'/report.json'}
-    manifest=_read(root/'manifest.json')
-    if not required<=manifest.keys():raise ValueError('S4 manifest does not seal requested stage')
-    report=_read(root/stage/'report.json')
-    if not report['passed']:raise ValueError('Requested stage was rejected')
-    nominal,source=nominal_dual_arm(context);inputs={str(root/'manifest.json'):sha256(root/'manifest.json')}
-    source_digest=summary.get('source_model_sha256')
-    if source_digest is None and 'inertia/candidate.json' in manifest and summary['stages'].get('inertia',{}).get('passed'):
-        source_digest=_read(root/'inertia/candidate.json')['source_sha256']
-    if source_digest!=source['sha256']:raise ValueError('Accepted analysis does not bind the current nominal source geometry')
-    if stage=='inertia':
-        if 'inertia/candidate.json' not in manifest:raise ValueError('Candidate is not sealed by S4 analysis')
-        from .staged_control import load_candidate
-        bundle=_read(root/'inertia/candidate.json');engine=load_candidate(root/'inertia/candidate.json',context=context)
-        fit=report['joint_refinement']
-        if not np.array_equal(bundle['parameters'],fit['parameters']) or not np.array_equal(bundle['viscous']+bundle['coulomb'],fit['auxiliary_parameters']):
-            raise ValueError('Candidate differs from accepted fit')
-        if not np.array_equal(bundle['static_friction'],report['prior_stage_acceptance']['static_friction_frozen']):
-            raise ValueError('Candidate static-friction freeze differs')
-        inputs[str(root/'inertia/candidate.json')]=sha256(root/'inertia/candidate.json')
-        friction_status='accepted staged model; runtime sidecar only'
-    elif stage=='gravity':
-        fit=report['fit'];engine=model_from_parameters(nominal,fit['parameters'])
-        friction_status='not identified by gravity; disabled in this software model, does not replace SDK compensation'
-    else:raise ValueError('Export stage must be gravity or inertia')
-    model=engine.model
-    runtime=dict(gravity_world=np.asarray(model.gravity_world).tolist(),rotor_inertia=[j.rotor_inertia for j in model.joints],
-        friction={key:[getattr(j.friction,key) for j in model.joints] for key in
-                  ('viscous','coulomb','static_friction','smoothing_velocity','stribeck_velocity')})
-    metadata=dict(schema_version=SCHEMA,stage=stage,scope=summary['scope'],source_urdf_sha256=source['sha256'],
-        model_version='tree_full_physical_inertia_v1',joint_names=[j.name for j in model.joints],
-        parameters=engine.rigid_parameters().tolist(),runtime=runtime,friction_status=friction_status,
-        identifiability=fit['identifiability'],fit_rank=fit['rank'],fit_columns=fit['columns'],
-        individual_body_parameters_unique=bool(fit['unique_body_parameters']),source_inputs=inputs,
-        inertia_estimation_stage_included=stage=='inertia',
-        source_stage_report_sha256=sha256(root/stage/'report.json'),hardware_executable=False,
-        semantics='Moving-joint aggregate body representative, not separately measured hand/link component masses',
-        units=dict(mass='kg',com='m',inertia='kg m^2',torque='Nm'))
-    if context is not None:metadata['model_context']=context.identity
-    return engine,metadata
 
 
 def _number(values):return ' '.join(format(float(x),'.17g') for x in np.asarray(values).ravel())
@@ -154,17 +95,6 @@ def _restore_runtime(engine,runtime):
     return _core.ArmDynamics(model)
 
 
-def _expected(metadata,context=None):
-    if 'model_context' in metadata:
-        from .model_context import resolve_context
-        context=resolve_context(metadata['model_context'],context)
-    nominal,source=nominal_dual_arm(context)
-    if metadata['schema_version']!=SCHEMA or metadata['source_urdf_sha256']!=source['sha256'] or metadata['joint_names']!=[j.name for j in nominal.model.joints]:
-        raise ValueError('Export source/version/joint identity differs')
-    rigid=model_from_parameters(nominal,metadata['parameters'])
-    return _restore_runtime(rigid,metadata['runtime'])
-
-
 def _without_inertials(root,source=None):
     result=copy.deepcopy(root)
     if source is not None:canonical_resources(result,source)
@@ -216,55 +146,3 @@ def check_reload(path,expected,source,*,samples=32,seed=20261029):
         scope='serialization/coordinate/runtime consistency only; not new parameter identification or physical validation')
 
 
-def export_dynamics_urdf(analysis,output,stage='inertia',context=None):
-    from .model_context import load_context
-    context=load_context() if context is None else context
-    engine,metadata=_snapshot(analysis,stage,context);output=Path(output);output.mkdir(parents=True,exist_ok=False)
-    source=context.urdf
-    metadata['aggregation']=write_inertial_urdf(source,engine,output/'candidate.urdf')
-    metadata['urdf_sha256']=sha256(output/'candidate.urdf')
-    write_json(output/'calibration.json',metadata)
-    report=check_reload(output/'candidate.urdf',engine,source)
-    report.update(stage=stage,source_urdf_sha256=metadata['source_urdf_sha256'],urdf_sha256=metadata['urdf_sha256'],
-        mesh_assets_bundled=False,geometry_content_preserved=True,collision_revalidation_required=True,
-        friction_and_armature_in_urdf=False,individual_body_parameters_unique=metadata['individual_body_parameters_unique'])
-    with (output/'bodies.csv').open('w',encoding='utf-8-sig',newline='') as f:
-        writer=csv.writer(f);writer.writerow(['joint','aggregate_inertial_link','mass_kg','com_x_m','com_y_m','com_z_m','status'])
-        for row in metadata['aggregation']['bodies']:
-            writer.writerow([row['joint'],row['inertial_link'],row['mass_kg'],*row['com_link_m'],'aggregate physical representative; individual components not uniquely identified'])
-    write_json(output/'report.json',report)
-    (output/'manifest.json').write_text(json.dumps({p.name:sha256(p) for p in sorted(output.iterdir()) if p.is_file()},indent=2)+'\n')
-    return report
-
-
-def load_exported_dynamics(folder,context=None):
-    from .model_context import load_context
-    context=load_context() if context is None else context
-    root=Path(folder);_manifest(root,('candidate.urdf','calibration.json','report.json','bodies.csv'));metadata=_read(root/'calibration.json')
-    if not _read(root/'report.json')['passed']:raise ValueError('URDF reload verification rejected')
-    if 'model_context' in metadata:
-        from .model_context import resolve_context
-        context=resolve_context(metadata['model_context'],context)
-    expected=_expected(metadata,context)
-    if sha256(root/'candidate.urdf')!=metadata['urdf_sha256']:raise ValueError('URDF differs from calibration sidecar')
-    source=context.urdf
-    if _without_inertials(ET.parse(root/'candidate.urdf').getroot(),root/'candidate.urdf')!=_without_inertials(ET.parse(source).getroot(),source):
-        raise ValueError('Exported geometry differs from bound source')
-    loaded=_restore_runtime(_core.ArmDynamics.from_urdf(str(root/'candidate.urdf')),metadata['runtime'])
-    if not np.allclose(loaded.rigid_parameters(),expected.rigid_parameters(),rtol=RTOL,atol=ATOL):
-        raise ValueError('Reloaded rigid properties differ from frozen candidate')
-    return loaded,metadata
-
-
-def verify_dynamics_export(folder,output,context=None):
-    from .model_context import load_context
-    context=load_context() if context is None else context
-    loaded,metadata=load_exported_dynamics(folder,context)
-    if 'model_context' in metadata:
-        from .model_context import resolve_context
-        context=resolve_context(metadata['model_context'],context)
-    source=context.urdf
-    result=check_reload(Path(folder)/'candidate.urdf',_expected(metadata,context),source)
-    result['export_manifest_sha256']=sha256(Path(folder)/'manifest.json')
-    output=Path(output);output.mkdir(parents=True,exist_ok=False);write_json(output/'report.json',result)
-    return result

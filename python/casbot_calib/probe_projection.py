@@ -3,10 +3,6 @@ from math import factorial
 import numpy as np
 
 
-def legacy_quality(config):
-    return config['schema_version']=='casbot_sdk_wrist_probe_v1'
-
-
 def basis(time_s, begin, duration, harmonics, degree=2, derivative=0):
     t=np.asarray(time_s)-begin; u=2*t/duration-1
     columns=[]
@@ -56,13 +52,7 @@ def probe_problem(obs,elapsed,motion,engine,config,profile,*,effort_relative_off
         if np.any(np.diff(ns)<0):raise ValueError('Observation time reverses inside a clock segment')
         starts=np.flatnonzero(np.r_[True,np.diff(ns)>0]);counts=np.diff(np.r_[starts,len(ns)])
         w=np.repeat(exposure(times[starts])/counts,counts)
-    if legacy_quality(config) and (times[0]-begin>c['maximum_callback_gap_s'] or end-times[-1]>c['maximum_callback_gap_s'] or np.max(np.diff(times))>c['maximum_callback_gap_s']):
-        raise ValueError('Incomplete SDK callback coverage in non-reversing window')
     rawv=obs['dq'][ids];held=[j for j in range(14) if j!=joint]
-    if legacy_quality(config) and np.min(sign*rawv[:,joint])<=c['minimum_signed_velocity_rad_s']:
-        raise ValueError('Public reported velocity reversed or stopped in probe window')
-    if legacy_quality(config) and np.max(abs(rawv[:,held]))>c['maximum_held_velocity_rad_s']:
-        raise ValueError('Other axes moved during single-axis SDK probe')
     h=int(np.floor(c['fit_band_hz']*duration+1e-9)); degree=c['polynomial_degree']
     b=basis(times,begin,duration,h,degree)
     torque=(obs['effort_raw'][ids]-np.asarray(profile['effort_zero_nm']))*np.asarray(profile['effort_gain'])
@@ -75,10 +65,6 @@ def probe_problem(obs,elapsed,motion,engine,config,profile,*,effort_relative_off
     qvelocity=bd@coefficients[:,:14]
     retain=(grid>=begin+c['edge_trim_s'])&(grid<end-c['edge_trim_s'])
     mismatch=np.sqrt(np.mean((qvelocity[retain]-v[retain])**2,axis=0))
-    if legacy_quality(config) and np.max(mismatch)>c['maximum_velocity_consistency_rad_s']:
-        raise ValueError('Actual position derivative and reported velocity disagree')
-    if legacy_quality(config) and np.min(sign*v[retain,joint])<=c['minimum_signed_velocity_rad_s']:
-        raise ValueError('Reconstructed probe did not sustain signed motion')
     # Evaluate the model on the SAME callback rows as force, then use the
     # identical weighted temporal operator. Grid rows are only output quadrature.
     source=b@coefficients
@@ -107,7 +93,7 @@ def probe_problem(obs,elapsed,motion,engine,config,profile,*,effort_relative_off
             matched_balance_operator='identical callback rows, exposure weights and trend/Fourier design for force and all model columns',
             acceleration='analytic derivative of fitted public reported velocity; no cached finite differences',
             maximum_callback_gap_s=float(np.max(np.diff(times))),callback_publications=len(ids),
-            empirical_quality_gate_applied=legacy_quality(config),evaluation_grid_is_acquisition=False,edge_trim_s=c['edge_trim_s'],
+            evaluation_grid_is_acquisition=False,edge_trim_s=c['edge_trim_s'],
             target_definition='estimated output Nm minus projected rotor; subtract frozen fs * static_feature before rigid/b-fc fit',
             minimum_signed_velocity_rad_s=float(np.min(sign*rawv[:,joint])),
             maximum_held_velocity_rad_s=float(np.max(abs(rawv[:,held]))),

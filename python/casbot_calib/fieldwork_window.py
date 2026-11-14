@@ -56,14 +56,11 @@ def bind_window_opengl(glfw,window):
     return platform
 
 
-def run_window(args,root,monitor,mock,*,desk_factory=None):
+def run_window(args,root,monitor,mock,*,desk_factory):
     from pathlib import Path
     import glfw
     from imgui_bundle import imgui
     from .fieldwork_style import setup_gui as _setup_gui
-    if desk_factory is None:
-        from .fieldwork_gui import Desk
-        desk_factory=lambda root:Desk(root,preview=args.preview,profile=args.profile)
     from .fieldwork_display import latest_json
     if not glfw.init():raise RuntimeError('无法初始化桌面GLFW显示')
     window=None;backend=None;desk=None;context=None;canvas=None
