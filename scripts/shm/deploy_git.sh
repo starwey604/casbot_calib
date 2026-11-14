@@ -70,6 +70,8 @@ destination=$1
 branch=$2
 url=$3
 export GIT_LFS_SKIP_SMUDGE=1
+# User-local Git LFS must also be visible to its standard Git hooks.
+export PATH="$HOME/.local/bin:$PATH"
 if [[ -e $destination ]]; then
   [[ -d $destination/.git ]] || { echo '目标已存在且不是独立Git工作区，未修改' >&2; exit 1; }
   [[ -z $(git -C "$destination" status --porcelain) ]] || { echo '目标有改动，未更新' >&2; exit 1; }

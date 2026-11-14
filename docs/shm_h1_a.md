@@ -19,7 +19,7 @@ H1/A自动使用仓库的`.venv-shm/bin/python`；其它fieldwork命令仍只需
 bash scripts/shm/setup_h1.sh --wheelhouse artifacts/shm_h1_wheels_20261114
 ```
 
-脚本仅安装项目venv和本工程绑定，不改系统Python或厂家环境。离线wheelhouse包含ARM64/Python3.10依赖；没有wheelhouse时使用正常pip源，需可用网络和可信系统时间。Debian缺ensurepip时，离线入口用官方pip wheel初始化venv，无需改系统包。模型碰撞数据`derived/bare_flange_1105_03_gauge_v2/collision.npz`须物化，不能用LFS指针代替；这与可选GUI显示网格无关。
+脚本在独立`build/shm-python`构建中安装项目venv、本工程绑定及SHM原生程序，并运行CTest，不改系统Python或厂家环境。离线wheelhouse包含ARM64/Python3.10依赖；没有wheelhouse时使用正常pip源，需可用网络和可信系统时间。Debian缺ensurepip时，离线入口用官方pip wheel初始化venv，无需改系统包。模型碰撞数据`derived/bare_flange_1105_03_gauge_v2/collision.npz`须物化，不能用LFS指针代替；这与可选GUI显示网格无关。
 
 ## 第一步：只读快照，规划一条H1小幅轨迹
 

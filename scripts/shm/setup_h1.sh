@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Project-local numerical runtime. No ROS source, system pip install or control commands.
+# Project-local numerical runtime and native SHM binaries. No ROS source, system pip install or control commands.
 set -euo pipefail
 repo=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)
 venv="$repo/.venv-shm"
@@ -33,10 +33,16 @@ args=()
 "$venv/bin/python" -m pip install "${args[@]}" -r "$repo/scripts/shm/requirements-h1.txt"
 cd "$repo"
 # No vendor Python modules or private LD_LIBRARY_PATH enter the extension build.
-env -u PYTHONPATH -u LD_LIBRARY_PATH "$venv/bin/python" -m pip install -e . --no-deps --no-build-isolation \
+env -u PYTHONPATH -u LD_LIBRARY_PATH CMAKE_BUILD_PARALLEL_LEVEL=1 "$venv/bin/python" -m pip install -e . --no-deps --no-build-isolation \
   --config-settings=build-dir=build/shm-python \
   --config-settings=cmake.define.CMAKE_PREFIX_PATH="$dependency_prefix" \
-  --config-settings=cmake.define.CALIB_BUILD_PYTHON=ON
+  --config-settings=cmake.define.CALIB_BUILD_PYTHON=ON \
+  --config-settings=cmake.define.CALIB_BUILD_SHM=ON \
+  --config-settings=cmake.define.CALIB_BUILD_SHM_MOCK=ON \
+  --config-settings=cmake.define.CMAKE_INSTALL_PREFIX="$repo/install/shm-core"
+ctest --test-dir build/shm-python --output-on-failure
+cmake --install build/shm-python --component Core
+cmake --install build/shm-python --component Shm
 "$venv/bin/python" -m pip check
 env -u PYTHONPATH -u LD_LIBRARY_PATH "$venv/bin/python" -c 'from casbot_calib import _core; import numpy,scipy,clarabel; print("SHM numerical runtime:",numpy.__version__,scipy.__version__,clarabel.__version__)'
 printf 'H1/A入口：CASBOT_SHM_PYTHON=%q bash fieldwork/shm/run.sh h1 --help\n' "$venv/bin/python"
