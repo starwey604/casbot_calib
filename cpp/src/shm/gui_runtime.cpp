@@ -29,7 +29,11 @@ Message parse(const std::string& line) {
     Json p;std::istringstream stream(line);boost::property_tree::read_json(stream,p);
     std::set<std::string> keys;for(const auto& item:p)if(!keys.insert(item.first).second)throw std::runtime_error("duplicate_key");
     m.id=p.get<std::uint64_t>("id");m.type=p.get<std::string>("type");m.control=p.get<std::uint64_t>("control",0);
-    if(m.type=="fields") {
+    if(m.type=="start") {
+      m.fields[3].fill(20);m.fields[4].fill(2);
+      if(p.get_child_optional("kp"))m.fields[3]=joint_values(p.get_child("kp"));
+      if(p.get_child_optional("kd"))m.fields[4]=joint_values(p.get_child("kd"));
+    }else if(m.type=="fields") {
       m.revision=p.get<std::uint64_t>("revision");
       int j=0;for(const auto* name:{"position","velocity","effort","kp","kd"})m.fields[j++]=joint_values(p.get_child(name));
     }else if(m.type=="renew") {m.challenge=p.get<std::uint64_t>("challenge");m.seq=p.get<std::uint64_t>("seq");}
@@ -148,8 +152,9 @@ int gui_main(int argc,char** argv) {
           else for(int j=0;j<29;++j)if(snap.status.joints[j].error_code)error="drive_fault";
           std::array<double,14> q{};
           for(int j=0;j<14;++j){q[j]=arm_position(snap.status,j);if(q[j]<joints[j].lower||q[j]>joints[j].upper)error="start_outside_urdf";}
+          for(int j=0;j<14;++j)if(m.fields[3][j]<0||m.fields[3][j]>settings.kp||m.fields[4][j]<0||m.fields[4][j]>settings.kd)error="initial_gains_range";
           if(!error.empty()){reply(io,m,false,error);continue;}
-          snap.command=initial_command(snap.status,hand,q,20,2);snap.control=m.id;snap.ack=false;snap.revision=0;snap.applied_at=0;pending_revision=0;
+          snap.command=initial_command(snap.status,hand,q,20,2);for(int j=0;j<14;++j)arm_target(snap.command,j,q[j],0,m.fields[3][j],m.fields[4][j]);snap.control=m.id;snap.ack=false;snap.revision=0;snap.applied_at=0;pending_revision=0;
           snap.challenge++;snap.expires=now+static_cast<std::int64_t>(settings.lease_ms*1e6);lease_end=snap.expires;last_send=now;
           reason="";change(0,"disabling");reply(io,m,true,"starting_at_measured_position");
         }else if(m.type=="renew") {

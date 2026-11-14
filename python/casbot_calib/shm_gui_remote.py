@@ -34,7 +34,7 @@ def serve(config):
     executor=Path(config.get('executor','install/shm-core/bin/shm_executor')).resolve()
     urdf=Path(config.get('urdf',URDF)).resolve()
     identity=model_identity(urdf)
-    mock=None;native=None;done=threading.Event();outgoing=queue.Queue(128)
+    mock=None;native=None;done=threading.Event();output_done=threading.Event();outgoing=queue.Queue(128)
     latest=[None,0];condition=threading.Condition();subscribers=[];listener=None
     def emit(item):
         try:outgoing.put_nowait(json_frame(item))
@@ -58,7 +58,7 @@ def serve(config):
             os.chmod(token,0o700);path=str(Path(token)/'telemetry.sock')
             listener=socket.socket(socket.AF_UNIX,socket.SOCK_STREAM);listener.bind(path);listener.listen(1);listener.settimeout(.1)
             def write_control():
-                while not done.is_set() or not outgoing.empty():
+                while not output_done.is_set() or not outgoing.empty():
                     try:packet=outgoing.get(timeout=.05)
                     except queue.Empty:continue
                     try:sys.stdout.buffer.write(packet);sys.stdout.buffer.flush()
@@ -72,7 +72,10 @@ def serve(config):
                             with condition:latest[:]=[frame(2,body),latest[1]+1];condition.notify_all()
                 except EOFError:pass
                 except Exception as error:emit(dict(type='error',reason=str(error)))
-                finally:done.set()
+                finally:
+                    if native.poll() is None:native.wait()
+                    if native.returncode:emit(dict(type='error',reason='原生退出 '+str(native.returncode)+'；日志 '+str(root/'bridge.log')))
+                    done.set()
             def subscribe():
                 # Exactly one display connection. A stalled writer cannot block native readout.
                 while not done.is_set():
@@ -107,6 +110,8 @@ def serve(config):
                 native.stdin.write((json.dumps(item,allow_nan=False,separators=(',',':'))+'\n').encode());native.stdin.flush()
         except Exception as error:
             emit(dict(type='error',reason=str(error)))
+            if not locals().get('threads'):
+                sys.stdout.buffer.write(json_frame(dict(type='error',reason=str(error))));sys.stdout.buffer.flush()
         finally:
             if native:
                 if native.stdin and not native.stdin.closed:native.stdin.close()
@@ -118,7 +123,7 @@ def serve(config):
                         # Never SIGKILL a hardware sender; leave diagnostics and ownership intact.
                         log.write(b'Native sender did not exit; do not restart or steal SHM owner\n');log.flush()
                 (root/'process.json').write_text(json.dumps(dict(returncode=native.poll(),ended_mono_ns=time.monotonic_ns()))+'\n')
-            done.set()
+            done.set();output_done.set()
             with condition:condition.notify_all()
             if listener:listener.close()
             for connection in list(subscribers):

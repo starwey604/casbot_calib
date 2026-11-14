@@ -46,12 +46,13 @@ class RemoteClient:
                     if message['type']=='remote_ready':
                         self.ready=message;self._display(message['socket'])
                     elif message['type']=='hello':self.hello=message
+                    elif message['type']=='error':self.failure=message['reason']
                     elif message['type']=='reply':
                         sent=self.requests.pop(message.get('id'),None)
                         if sent:self.rtt_ms=(time.monotonic_ns()-sent)*1e-6
                     self.messages.put_nowait(message)
             except (EOFError,OSError,ValueError,queue.Full) as error:
-                if not self.closed:self.failure='控制连接已断开：'+str(error)
+                if not self.closed:self.failure=self.failure or '控制连接已断开：'+str(error)
         def write_control():
             while not self.closed:
                 self.wake.wait(.05);self.wake.clear()

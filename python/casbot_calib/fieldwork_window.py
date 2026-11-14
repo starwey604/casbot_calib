@@ -56,11 +56,14 @@ def bind_window_opengl(glfw,window):
     return platform
 
 
-def run_window(args,root,monitor,mock):
+def run_window(args,root,monitor,mock,*,desk_factory=None):
     from pathlib import Path
     import glfw
     from imgui_bundle import imgui
-    from .fieldwork_gui import Desk,_setup_gui
+    from .fieldwork_style import setup_gui as _setup_gui
+    if desk_factory is None:
+        from .fieldwork_gui import Desk
+        desk_factory=lambda root:Desk(root,preview=args.preview,profile=args.profile)
     from .fieldwork_display import latest_json
     if not glfw.init():raise RuntimeError('无法初始化桌面GLFW显示')
     window=None;backend=None;desk=None;context=None;canvas=None
@@ -75,7 +78,7 @@ def run_window(args,root,monitor,mock):
         from OpenGL import GL
         context=imgui.create_context()
         imgui.get_io().set_ini_filename(str(Path(root)/'window.ini'))
-        desk=Desk(root,preview=args.preview,profile=args.profile)
+        desk=desk_factory(root)
         desk.cache_monitor=monitor;desk.owned_mock=mock;desk.gui_managed_ticks=True
         class CompactFontRenderer(ScissoredRenderer):
             def refresh_font_texture(self):
@@ -138,7 +141,7 @@ def run_window(args,root,monitor,mock):
                     verify=getattr(args,'verify_damage',False))
                 glfw.swap_buffers(window)
                 last_draw=now;drawn_q=None if desk.q is None else desk.q.copy();drawn_status=status
-                schedule.drawn(now,moving=moving,short=desk.short is not None)
+                schedule.drawn(now,moving=moving,short=desk.short is not None or (moving and getattr(desk,"active_render_fps",10)>=30))
                 if desk.reopen_root or (args.frames and desk.frame>=args.frames):break
             if now>=next_info:
                 latest_json(Path(root)/'view/display.json',dict(renderer=renderer,visible=desk.view_visible,
