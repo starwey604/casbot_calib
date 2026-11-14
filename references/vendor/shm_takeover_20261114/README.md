@@ -2,7 +2,7 @@
 
 2026-11-14从Orin `/workspace/embed_fusion/bin/` 只读取回，来源为现场安装版本（Orin墙钟1970不作采集日期依据）。未改厂家目录或systemd unit。
 
-- `run_ethercat_station.bash`、`common_function.bash`：原始文件。
+- `run_ethercat_station.bash`、`common_function.bash`：原始文件内容，归档副本取消可执行位。
 - `launcher_stop_excerpt.bash`：原launcher的`process_in_list`、`stop_apps`、`auto_stop`三个完整函数；不包含无关刷机/账户配置，不是完整launcher。
 
 这些文件只供本仓库调试对照，不执行、不自动安装到厂家目录。它们依赖厂家环境、绝对路径和其它脚本，不能直接改个文件名复制运行。

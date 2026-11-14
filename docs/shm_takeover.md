@@ -50,3 +50,5 @@ bash scripts/shm/prepare_field.sh --diagnose artifacts/新的诊断目录
 - [厂家相关脚本对照副本](../references/vendor/shm_takeover_20261114/README.md)与`python/casbot_calib/shm_takeover.py`。
 
 软件验证使用假服务/假进程状态和自有子进程，覆盖正常顺序、D线程阻塞、后台继承stdout、停止超时、只读诊断及Ctrl-C封存。部署后只执行只读诊断；本次未运行新停机路径、重启、主站启动或运动。
+
+Orin部署后的只读诊断保存在`artifacts/shm_takeover_diagnose_66978184978312/`：服务已转failed，但PID4507仍含D线程4523；`station_start_requested=false`。这次服务状态变化没有消除内核等待，现场恢复安排不变。软件验证日志为本机`artifacts/shm_prepare_hang_20261114/software_tests.log`、`proc_scan_test.log`；进程枚举测试修正了目录顺序假设后单独通过，实际检测仍逐线程判断。

@@ -134,7 +134,8 @@ def prepare(root,*,start_only=False,diagnose=False,host=None,runner=run_logged):
     result=dict(schema='casbot_shm_takeover_v2',completed=False,station_start_requested=False)
     try:
         if diagnose:
-            host.diagnostics(root);result['reason']='diagnosis_only_no_control';return 0
+            host.diagnostics(root);result['reason']='diagnosis_only_no_control'
+            print(f'只读诊断已保存：{root}',flush=True);return 0
         if not all((host.vendor/name).is_file() for name in ('launcher.bash','run_ethercat_station.bash')):
             raise HandoffError('厂家入口不存在，未停止业务')
         if any(s in ('deactivating','activating') for s in host.services().values()):
