@@ -7,7 +7,10 @@ CASBOT 双臂（14轴）动力学/运动学标定。硬件路径为 Orin 本机 
 在 Orin（`/home/nvidia/casbot_calib_shm`）上执行：
 
 ```bash
-# H1 静态重力标定（自动接管主站 -> 准备位 -> 静态采集 -> PSD 拟合）
+# Orin 首次部署或代码更新后初始化/重编环境（安装至 install/shm-core 并完成预检）
+bash calib/setup.sh
+
+# H1 静态重力标定（自动预检 -> 接管主站 -> 准备位 -> 静态采集 -> PSD 拟合）
 bash calib/dynamics_h1.sh
 
 # 全阶段动力学标定（H1 静态重力 -> H2 摩擦 -> H3 惯量）
@@ -31,14 +34,16 @@ bash calib/dynamics.sh
 bash scripts/humble/container.sh bash -c 'cmake --build --preset humble && ctest --preset humble' < /dev/null
 bash scripts/humble/container.sh env PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest -q < /dev/null
 
-# Orin 原生编译
-bash scripts/shm/build.sh --with-mock --build-dir build/shm-core \
-  --install-prefix "$PWD/install/shm-core" --dependency-prefix /opt/ros/humble
+# Orin 原生构建（完整 Python 数值环境 + C++ 执行器）
+bash calib/setup.sh
+
+# 仅构建 C++ SHM 执行器与物理 Mock（默认输出至 install/shm-core）
+bash scripts/shm/build.sh --with-mock
 ```
 
 ## 目录结构
 
-- `calib/`：交付入口脚本（`dynamics.sh`、`dynamics_h1.sh`..`h3.sh`、`gui.sh`、`dev.sh`）。
+- `calib/`：交付入口脚本（`setup.sh`、`dynamics.sh`、`dynamics_h1.sh`..`h3.sh`、`gui.sh`、`dev.sh`）。
 - `configs/`：机器人参数（`robot/dvt2.yaml`）与各阶段配方（`dynamics/h1.yaml`..`h3.yaml`）。
 - `cpp/`：动力学/碰撞核心、SHM 协议与 1kHz 原生执行器。
 - `python/casbot_calib/`：

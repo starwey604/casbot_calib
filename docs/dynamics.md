@@ -16,6 +16,9 @@
 ```bash
 cd /home/nvidia/casbot_calib_shm
 
+# 首次部署或更新 C++/Python 代码后初始化环境（平时不改代码无需重复执行；可传 --check 仅做预检）
+bash calib/setup.sh
+
 # 单跑 H1 静态重力（准备位 -> 正反接近静态采样 -> PSD 重力拟合 -> 候选 URDF）
 bash calib/dynamics_h1.sh
 
@@ -36,6 +39,7 @@ bash calib/dynamics.sh --resume
 ```
 
 全流程脚本：
+- `calib/setup.sh`：Orin 环境初始化、C++/Python 原生编译（统一安装到 `install/shm-core`）及模型 LFS 预检（`--check` 仅检查不重编）。
 - `calib/dynamics.sh`：按顺序执行 `H1 静态重力 -> H2 摩擦 -> H3 惯量`（H2/H3 待 P6 实现）。
 - `calib/dynamics_h1.sh` / `calib/dynamics_h2.sh` / `calib/dynamics_h3.sh`：单阶段入口。
 - `calib/gui.sh`：本机调参 GUI。

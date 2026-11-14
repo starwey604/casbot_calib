@@ -46,8 +46,10 @@ CASBOT双臂（14轴）运动学/动力学标定。唯一硬件路径是Orin本�
 # 本机：Humble容器只提供Pinocchio/Coal工具链。经docker exec运行时需重定向stdin。
 bash scripts/humble/container.sh env PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest -q < /dev/null
 bash scripts/humble/container.sh bash -c 'cmake --build --preset humble && ctest --preset humble' < /dev/null
-# Orin：
-bash scripts/shm/build.sh --with-mock --build-dir build/shm-core --install-prefix "$PWD/install/shm-core" --dependency-prefix /opt/ros/humble
+# Orin（完整数值环境 + C++ 执行器安装至 install/shm-core + 预检）：
+bash calib/setup.sh
+# 仅构建 C++ SHM 执行器与物理 Mock（默认 build/shm-core -> install/shm-core）：
+bash scripts/shm/build.sh --with-mock
 ```
 
 改了`cpp/`核心后要重建Python绑定再跑Python测试。x86_64产物不能复制到Orin，Orin用同一份源码原生编译（`scripts/shm/deploy_git.sh`同步）。

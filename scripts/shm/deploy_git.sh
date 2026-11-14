@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Clone/fetch committed source through an SSH tunnel to a temporary, read-only
-# loopback Git server. No public listener, repository push, or robot operations.
+# loopback Git server, and materialize the default DVT2 calibration bundle if needed.
+# No public listener, repository push, or robot operations.
 set -euo pipefail
 repo=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)
 host=''
@@ -8,22 +9,24 @@ destination=/home/nvidia/casbot_calib_shm
 branch=main
 port=19418
 committed_only=0
+sync_assets=1
+bundle_rel=python/casbot_calib/assets/models/casbot_hl12p1_dvt2/derived/bare_flange_1105_03_gauge_v2
 control_path=${CALIB_SSH_CONTROL_PATH:-/tmp/casbot-shm-%C}
 usage() {
   cat <<'EOF'
 用法：bash scripts/shm/deploy_git.sh --host nvidia@172.16.0.10 [选项]
-  --destination PATH   Orin上新克隆的绝对路径；默认 /home/nvidia/casbot_calib_shm
-  --branch NAME        本地已提交分支；默认main
-  --port N             本机与远端的loopback临时隧道端口；默认19418
+  --destination PATH   Orin 上的目标仓库绝对路径；默认 /home/nvidia/casbot_calib_shm
+  --branch NAME        本地已提交分支；默认 main
+  --port N             本机与远端的 loopback 临时隧道端口；默认 19418
   --committed-only     本地另有未提交工作时，仍只部署指定分支的已提交内容
-仅克隆或快进更新本脚本的源码仓库；默认要求本地干净，拒绝目标改动和分叉历史。
-LFS大资产保持指针；标定需另行物化默认模型包（见docs/dynamics.md）。不会连接真实SHM。
-SSH认证走正常SSH交互/agent/ControlMaster，不保存密码。
+  --no-assets          仅同步 Git 源码，不自动物化默认 DVT2 标定模型包
+仅克隆或快进更新已提交源码，并在远端默认模型包仍为 LFS 指针且已装 git-lfs 时自动同步默认模型资产。不会连接真实 SHM。
 EOF
 }
 while (($#)); do
   case "$1" in
     --committed-only) committed_only=1; shift ;;
+    --no-assets) sync_assets=0; shift ;;
     --host|--destination|--branch|--port)
       (($# >= 2)) || { usage >&2; exit 2; }
       case "$1" in
@@ -41,7 +44,7 @@ done
 git -C "$repo" check-ref-format --branch "$branch" >/dev/null
 git -C "$repo" show-ref --verify --quiet "refs/heads/$branch"
 if [[ -n $(git -C "$repo" status --porcelain) ]]; then
-  ((committed_only)) || { echo '请先提交本地工作区，或显式使用--committed-only' >&2; exit 1; }
+  ((committed_only)) || { echo '请先提交本地工作区，或显式使用 --committed-only' >&2; exit 1; }
   echo '只部署指定分支已提交内容；未提交工作不传输。' >&2
 fi
 git -C "$repo" log -1 --oneline "$branch"
@@ -84,3 +87,43 @@ else
 fi
 git -C "$destination" log -1 --oneline
 REMOTE
+
+if ((sync_assets)) && [[ -f "$repo/$bundle_rel/collision.npz" ]] && (( $(stat -c '%s' "$repo/$bundle_rel/collision.npz") > 1024 )); then
+  printf -v check_cmd 'bash -s -- %q %q' "$destination" "$bundle_rel"
+  asset_state=$(ssh "${ssh_options[@]}" "$host" "$check_cmd" <<'CHECK_ASSETS'
+set -euo pipefail
+export PATH="$HOME/.local/bin:$PATH"
+dst=$1; rel=$2
+need=0
+for f in "$dst/$rel/collision.npz" "$dst/$rel"/visual_meshes/*.stl; do
+  if [[ ! -f $f ]] || (( $(stat -c '%s' "$f") <= 1024 )); then
+    need=1
+    break
+  fi
+done
+if ((need == 0)); then
+  echo ready
+elif command -v git-lfs >/dev/null 2>&1; then
+  echo sync
+else
+  echo no_git_lfs
+fi
+CHECK_ASSETS
+)
+  if [[ $asset_state == sync ]]; then
+    echo '同步默认 DVT2 标定模型包资产（collision.npz + visual_meshes）...'
+    printf -v unpack_cmd 'bash -s -- %q %q' "$destination" "$bundle_rel"
+    tar -C "$repo" -cf - "$bundle_rel/collision.npz" "$bundle_rel/visual_meshes" \
+      | ssh "${ssh_options[@]}" "$host" "$unpack_cmd" <<'UNPACK_ASSETS'
+set -euo pipefail
+export GIT_LFS_SKIP_SMUDGE=1
+export PATH="$HOME/.local/bin:$PATH"
+dst=$1; rel=$2
+git -C "$dst" lfs install --local --skip-smudge >/dev/null
+tar -C "$dst" -xf -
+git -C "$dst" add -- "$rel"
+UNPACK_ASSETS
+  elif [[ $asset_state == no_git_lfs ]]; then
+    echo '提示：远端未检测到 git-lfs，默认模型包仍为 LFS 指针；安装 git-lfs 后重跑 deploy_git.sh 即可自动物化。' >&2
+  fi
+fi

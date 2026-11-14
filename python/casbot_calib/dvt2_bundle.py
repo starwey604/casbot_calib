@@ -67,12 +67,12 @@ def load_bundle(folder):
     if metadata.get('bundle_sha256') != bundle_identity(root, metadata):
         raise ValueError('Bundle profile, exclusions or scene identity changed')
     if 'viewer_sha256' in metadata:
-        if sha256((root / 'scene.xml').read_bytes()).hexdigest() != metadata['viewer_sha256']:
+        if sha256(_resource(root / 'scene.xml').read_bytes()).hexdigest() != metadata['viewer_sha256']:
             raise ValueError('Viewer asset identity changed')
     for filename,expected in metadata.get('viewer_files_sha256',{}).items():
-        if sha256((root/filename).read_bytes()).hexdigest()!=expected:
+        if sha256(_resource(root/filename).read_bytes()).hexdigest()!=expected:
             raise ValueError('Viewer asset identity changed: '+filename)
-    if sha256((root / 'model.urdf').read_bytes()).hexdigest() != metadata['urdf_sha256']:
+    if sha256(_resource(root / 'model.urdf').read_bytes()).hexdigest() != metadata['urdf_sha256']:
         raise ValueError('Derived URDF identity changed')
     engine = _core.ArmDynamics.from_urdf(str(root / 'model.urdf'))
     model = engine.model

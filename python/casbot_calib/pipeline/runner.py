@@ -5,7 +5,8 @@ import sys
 from ..shm_ready import ready_position
 from ..shm_takeover import HandoffError
 from .native import execute_with_start_replan, maybe_mock_context, native_snapshot
-from .robot import DEFAULT_ROBOT_CONFIG, find_executor, load_robot_config
+from .preflight import check_hardware_environment, check_model_bundle, check_native_binaries, check_python_runtime
+from .robot import DEFAULT_ROBOT_CONFIG, load_robot_config
 from .session import DEFAULT_OUTPUT_ROOT, Session
 from .stage import resolve_stages
 from .takeover import ensure_ready_channel
@@ -31,6 +32,10 @@ def run_pipeline(
     stage_objs = resolve_stages(stages)
     if stage_config is not None and len(stage_objs) != 1:
         raise ValueError('--config 仅在单阶段运行时使用')
+    if resume and plan_only:
+        raise ValueError('--resume 与 --plan-only 不能同时使用')
+    if mock and endpoint != '/shm_mc':
+        raise ValueError('--mock 自动创建私有测试端点，不同时指定 --endpoint')
 
     unimplemented = [s.name.upper() for s in stage_objs if not s.implemented]
     if unimplemented:
@@ -38,6 +43,8 @@ def run_pipeline(
             f'阶段 {", ".join(unimplemented)} 尚未实现；当前可运行 bash calib/dynamics_h1.sh（或 --stages h1）'
         )
 
+    check_python_runtime(require_solver=True)
+    check_model_bundle()
     robot_cfg = load_robot_config(robot_config)
     overrides = dict(stage_overrides or {})
     recipes = {
@@ -45,9 +52,13 @@ def run_pipeline(
         for s in stage_objs
     }
 
+    binary = None
+    if not plan_only and not resume:
+        binary = check_native_binaries(executor=executor, mock=mock, endpoint=endpoint)
+        if not mock:
+            check_hardware_environment(endpoint=endpoint)
+
     if resume:
-        if plan_only:
-            raise ValueError('--resume 与 --plan-only 不能同时使用')
         session = Session.resume(output_root=output_root, target=resume_target, model_context=robot_cfg['model_context'])
         if robot_id is not None and robot_id != session.metadata.get('robot_id'):
             raise ValueError(f'--robot={robot_id} 与待续跑会话机器编号 {session.metadata.get("robot_id")} 不一致')
@@ -82,9 +93,10 @@ def run_pipeline(
             print(f'[{stage.name.upper()}] 离线规划与连续碰撞检查通过：{report_path}', flush=True)
         return dict(session=session, completed=True, plan_only=True)
 
-    binary = find_executor(executor)
-    if mock and endpoint != '/shm_mc':
-        raise ValueError('--mock 自动创建私有测试端点，不同时指定 --endpoint')
+    if binary is None:
+        binary = check_native_binaries(executor=executor, mock=mock, endpoint=endpoint)
+        if not mock:
+            check_hardware_environment(endpoint=endpoint)
 
     channel_info = None
     if not mock:

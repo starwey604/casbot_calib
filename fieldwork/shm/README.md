@@ -14,8 +14,7 @@ bash fieldwork/shm/run.sh run C03 --joint-id 13
 ## 先编译安装（不连接机器人）
 
 ```bash
-bash scripts/shm/build.sh --with-mock --build-dir build/shm-core \
-  --install-prefix "$PWD/install/shm-core" --dependency-prefix /opt/ros/humble
+bash scripts/shm/build.sh --with-mock
 ```
 
 需要CMake3.22/C++17，以及已在Orin验证的Pinocchio/Coal算法库。基础CLI入口只用系统Python3标准库，不source ROS、不需要venv、域号或distrobox；H1/A需要数值环境，GUI在本机使用独立图形环境。当前`shm_executor`链接核心用于读取URDF；普通SHM协议构建仍可关闭核心。

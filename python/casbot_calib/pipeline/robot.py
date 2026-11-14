@@ -28,7 +28,6 @@ def find_executor(explicit=None):
         return binary
     for candidate in (
         DEFAULT_EXECUTOR,
-        ROOT / 'install/shm-native/bin/shm_executor',
         ROOT / 'build/shm-core/cpp/src/shm/shm_executor',
         ROOT / 'build/humble/cpp/src/shm/shm_executor',
     ):
