@@ -1,3 +1,58 @@
-# H3 惯量/周期激励标定，待 P6 实现
+mode: small
 ready_pose: true
-gravity_feedforward: h1_or_nominal
+gravity_feedforward: true
+
+small:
+  home_deg: [0.0, 20.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, -20.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+  joints:
+    - left_shoulder_pitch_joint
+    - right_shoulder_pitch_joint
+  amplitude_deg: 6.0
+  pose_offsets_deg:
+    train: [-3.0, 3.0]
+    validation: [0.0]
+  train_seeds: [401]
+  validation_seeds: [501]
+  period_s: 6.0
+  periods: 3
+  discard_periods: 1
+  timing:
+    initial_hold_s: 0.5
+    transition_s: 3.0
+    excitation_ramp_s: 1.5
+    final_hold_s: 0.5
+  planning_envelope:
+    speed_rad_s: 0.15
+    acceleration_rad_s2: 0.4
+    jerk_rad_s3: 2.0
+  maximum_acceleration_rad_s2: 1.8
+  maximum_jerk_rad_s3: 8.0
+
+full:
+  home_deg: [0.0, 45.0, 0.0, -45.0, 0.0, 0.0, 0.0, 0.0, -45.0, 0.0, -45.0, 0.0, 0.0, 0.0]
+  joints: all
+  amplitude_deg: [7.0, 4.5, 7.0, 7.0, 8.5, 7.0, 8.5, 7.0, 4.5, 7.0, 7.0, 8.5, 7.0, 8.5]
+  pose_offsets_deg:
+    train: [-2.5, 2.5]
+    validation: [0.0]
+  train_seeds: [401, 402]
+  validation_seeds: [501]
+  period_s: 6.0
+  periods: 3
+  discard_periods: 1
+  timing:
+    initial_hold_s: 0.5
+    transition_s: 3.0
+    excitation_ramp_s: 1.5
+    final_hold_s: 0.5
+  planning_envelope:
+    speed_rad_s: 0.5
+    acceleration_rad_s2: 1.0
+    jerk_rad_s3: 5.0
+  maximum_acceleration_rad_s2: 2.5
+  maximum_jerk_rad_s3: 12.0
+
+harmonics: 12
+phase_points: 256
+torque_floor_nm: 0.2
+ridge: 0.0001

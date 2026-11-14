@@ -147,8 +147,9 @@ def native_execute_once(
 
 def open_mock_context(stage_dir, executor, robot_config, mock_config=None):
     from ..shm_mock import SHMMock
-    source = Path(mock_config) if mock_config else ROOT / 'configs/shm/h1_mock.json'
-    return SHMMock(Path(stage_dir) / 'mock', executor, source, urdf=urdf_for(robot_config))
+    if mock_config is not None:
+        return SHMMock(Path(stage_dir) / 'mock', executor, Path(mock_config))
+    return SHMMock(Path(stage_dir) / 'mock', executor, ROOT / 'configs/shm/h1_mock.json', urdf=urdf_for(robot_config))
 
 
 def execute_with_start_replan(

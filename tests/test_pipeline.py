@@ -24,14 +24,22 @@ def test_operator_help_hides_dev_and_mock_flags():
         assert hidden not in help_text
 
 
-def test_unimplemented_stages_fail_fast_before_touching_shm(tmp_path):
-    res = subprocess.run(
-        ['bash', str(ROOT / 'calib/dynamics_h2.sh'), '--output-root', str(tmp_path / 'out')],
+def test_invalid_stage_or_mode_fails_fast_before_touching_shm(tmp_path):
+    res_smoke = subprocess.run(
+        ['bash', str(ROOT / 'calib/dynamics_h2.sh'), '--mode', 'smoke', '--output-root', str(tmp_path / 'out_smoke')],
         capture_output=True, text=True,
     )
-    assert res.returncode == 2
-    assert '尚未实现' in res.stderr
-    assert not (tmp_path / 'out').exists()
+    assert res_smoke.returncode == 2
+    assert '仅适用于 H1' in res_smoke.stderr
+    assert not (tmp_path / 'out_smoke').exists()
+
+    res_unknown = subprocess.run(
+        ['bash', str(ROOT / 'calib/dynamics.sh'), '--stages', 'h1,h9', '--output-root', str(tmp_path / 'out_unknown')],
+        capture_output=True, text=True,
+    )
+    assert res_unknown.returncode == 2
+    assert '未知标定阶段' in res_unknown.stderr
+    assert not (tmp_path / 'out_unknown').exists()
 
 
 def test_plan_only_runs_offline_and_persists_robot_id(tmp_path):

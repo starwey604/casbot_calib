@@ -30,7 +30,8 @@ def run_pipeline(
     mock_config=None,
 ):
     stage_objs = resolve_stages(stages)
-    if stage_config is not None and len(stage_objs) != 1:
+    is_stage_map = isinstance(stage_config, dict) and bool(stage_config) and set(stage_config) <= {'h1', 'h2', 'h3'}
+    if stage_config is not None and not is_stage_map and len(stage_objs) != 1:
         raise ValueError('--config 仅在单阶段运行时使用')
     if resume and plan_only:
         raise ValueError('--resume 与 --plan-only 不能同时使用')
@@ -48,7 +49,11 @@ def run_pipeline(
     robot_cfg = load_robot_config(robot_config)
     overrides = dict(stage_overrides or {})
     recipes = {
-        s.name: s.load_recipe(stage_config if stage_config is not None else s.default_config, **overrides)
+        s.name: s.load_recipe(
+            stage_config.get(s.name, s.default_config) if is_stage_map
+            else (stage_config if stage_config is not None else s.default_config),
+            **overrides,
+        )
         for s in stage_objs
     }
 
@@ -173,7 +178,7 @@ def build_parser():
     p.add_argument('--plan-only', action='store_true', help='只生成轨迹并完成连续碰撞/限位/速度检查，不连接设备')
     p.add_argument('--robot', default=None, metavar='ID', help='机器序列号/标识（首次指定后自动记住）')
     p.add_argument('--config', type=Path, default=None, help='单阶段自定义配方 YAML')
-    p.add_argument('--mode', choices=('small', 'full', 'smoke'), default=None, help='H1 模式覆盖（small/full/smoke）')
+    p.add_argument('--mode', choices=('small', 'full', 'smoke'), default=None, help='标定模式覆盖（small/full；smoke 仅限 H1）')
     p.add_argument('--smoke', action='store_true', help='在 H1 静态采集前加入一次准备位往返冒烟（或单独跑冒烟）')
 
     # Internal dev/test hooks hidden from operator --help.

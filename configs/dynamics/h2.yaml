@@ -1,3 +1,52 @@
-# H2 摩擦标定（匀速 + 起动静摩擦），待 P6 实现
+mode: small
 ready_pose: true
-gravity_feedforward: h1_or_nominal
+gravity_feedforward: true
+
+small:
+  home_deg: [0.0, 20.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, -20.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+  joints:
+    - left_shoulder_pitch_joint
+    - right_shoulder_pitch_joint
+  stroke_half_deg: 7.0
+  pose_offsets_deg:
+    train: [-3.0, 3.0]
+    validation: [0.0]
+  speeds_rad_s:
+    train: [0.03, 0.05]
+    validation: [0.04]
+  timing:
+    initial_hold_s: 0.5
+    transition_s: 3.0
+    speed_ramp_s: 0.4
+    reverse_hold_s: 0.25
+    plateau_trim_s: 0.15
+    final_hold_s: 0.5
+  planning_envelope:
+    speed_rad_s: 0.05
+    acceleration_rad_s2: 0.15
+    jerk_rad_s3: 1.5
+
+full:
+  home_deg: [0.0, 45.0, 0.0, -45.0, 0.0, 0.0, 0.0, 0.0, -45.0, 0.0, -45.0, 0.0, 0.0, 0.0]
+  joints: all
+  stroke_half_deg: 7.0
+  pose_offsets_deg:
+    train: [-3.0, 3.0]
+    validation: [0.0]
+  speeds_rad_s:
+    train: [0.04, 0.08, 0.12]
+    validation: [0.06, 0.10]
+  timing:
+    initial_hold_s: 0.5
+    transition_s: 2.5
+    speed_ramp_s: 0.25
+    reverse_hold_s: 0.2
+    plateau_trim_s: 0.15
+    final_hold_s: 0.5
+  planning_envelope:
+    speed_rad_s: 0.5
+    acceleration_rad_s2: 1.0
+    jerk_rad_s3: 5.0
+
+pair_points: 24
+onset_speed_rad_s: 0.005

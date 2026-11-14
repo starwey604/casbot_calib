@@ -50,6 +50,10 @@ class Session:
         self.metadata = metadata
 
     @property
+    def robot_id(self):
+        return self.metadata['robot_id']
+
+    @property
     def state_root(self):
         return self.output_root / 'state'
 
