@@ -9,6 +9,7 @@ artifacts/
 .conda/
 .venv/
 .venv-humble/
+.venv-shm/
 install/
 log/
 cmake-build-*/

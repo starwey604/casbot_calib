@@ -58,6 +58,8 @@ def parser():
     p = argparse.ArgumentParser(description='SHM现场逐例确认；默认预览，一次一例。无需ROS。')
     sub = p.add_subparsers(dest='action', required=True)
     sub.add_parser('list', help='列用例、当前支持范围和建议顺序')
+    sub.add_parser('h1', help='H1快照/规划/执行/重力分析（需要数值Python环境）')
+    sub.add_parser('a-evidence', help='A分析，使用SHM观测时间（需要数值Python环境）')
     for action in ('inspect', 'snapshot', 'observe', 'probe', 'prepare', 'activate', 'run', 'execute'):
         a = sub.add_parser(action)
         a.add_argument('--output', type=Path, help='新目录；省略则自动生成')
@@ -206,7 +208,8 @@ def preview(a):
         d['non_arm_targets_raw'] = {str(j): struct.unpack_from('<i', data, 12+j*16+2)[0]
                                     for j in list(range(12))+[26, 27, 28]}
     if a.action=='execute':
-        d.update(reference=str(a.reference.resolve()),reference_schema=a.bundle['schema'],duration_s=a.duration,
+        d.update(collision_check='native_URDF_only; H1 certificates checked by h1 execute wrapper',
+                 reference=str(a.reference.resolve()),reference_schema=a.bundle['schema'],duration_s=a.duration,
                  origin=a.bundle.get('origin','absolute'),joint_id=None,joint_label='双臂14轴',
                  input_notice='直接五字段不隐式平滑' if a.bundle['schema']=='casbot_shm_fields_v1' else '同一条七次Hermite参考的q/v')
     if a.action=='execute':
@@ -692,7 +695,15 @@ def _native_action(a,root,peer=None,peer_close=None):
 
 
 def main(argv=None):
-    a = parser().parse_args(argv)
+    values=list(sys.argv[1:] if argv is None else argv)
+    if values and values[0] in ('h1','a-evidence'):
+        try:
+            if values[0]=='h1':from .shm_h1 import main as implementation
+            else:from .shm_a_evidence import main as implementation
+        except ImportError as error:
+            print('H1/A需要数值Python环境：'+str(error),file=sys.stderr);return 2
+        return implementation(values[1:])
+    a = parser().parse_args(values)
     try:
         return run_action(a)
     except (ValueError, OSError, KeyError, ET.ParseError, subprocess.SubprocessError, TypeError, IndexError, OverflowError) as error:

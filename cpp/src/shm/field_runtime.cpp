@@ -290,7 +290,7 @@ int field_main(int argc,char** argv) {
     settings<<"case="<<(o.mode=="--execute"?o.which:"read_only")<<"\nshm="<<o.name<<"\nmode="<<o.mode
       <<"\nnon_arm="<<(o.mode=="--execute"?"disabled":"not_commanded")
       <<"\nhand_policy="<<(o.mode=="--execute"?"explicit_frozen_command_bytes":"not_commanded")<<"\nurdf="<<o.urdf
-      <<"\ncollision_check="<<(o.mode=="--execute"?"disabled_by_user":"not_applicable")<<'\n';
+      <<"\ncollision_check="<<(o.mode=="--execute"?(o.reference.empty()?"disabled_by_user":"not_performed_by_native_reference_mode"):"not_applicable")<<'\n';
     if(o.reference.empty())settings<<"joint_id="<<o.id<<"\namplitude="<<o.amplitude<<"\nsegment_s="<<o.segment<<"\nkp="<<o.kp<<"\nkd="<<o.kd<<"\nother_arm="<<(o.other_disabled?"disabled":"hold")<<'\n';
     else settings<<"reference="<<o.reference<<"\nreference_targets=all_14_arms\n";
     settings.close();

@@ -3,4 +3,8 @@ set -euo pipefail
 repo_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)
 cd "$repo_dir"
 export PYTHONPATH="$repo_dir/python${PYTHONPATH:+:$PYTHONPATH}"
-exec python3 -m casbot_calib.shm_fieldwork "$@"
+python=${CASBOT_SHM_PYTHON:-python3}
+if [[ ! -v CASBOT_SHM_PYTHON && ( ${1:-} == h1 || ${1:-} == a-evidence ) && -x "$repo_dir/.venv-shm/bin/python" ]]; then
+  python="$repo_dir/.venv-shm/bin/python"
+fi
+exec "$python" -m casbot_calib.shm_fieldwork "$@"

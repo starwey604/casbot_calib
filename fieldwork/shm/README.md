@@ -73,6 +73,10 @@ bash fieldwork/shm/run.sh execute artifacts/my_shm_fields/reference.json --mock 
 
 这里的通用入口用于当前**URDF位置/参考速度检查的双臂fieldwork探索**，不做碰撞放行，不是H1–H4/K5执行入口。它们的规划/碰撞和数据合同保持原状，尚未迁移。实机执行仍需有效接管窗口和显式`--hand-background FILE`；只改变输入模式，不自动停业务/握手，也不把Mock验证记为C08物理尺度确认。
 
+## H1/A：现场确认后进入标定流程
+
+新增`h1 snapshot/plan-jog/plan-static/execute/analyse/replan`与`a-evidence`入口，见[H1/A完整操作](../../docs/shm_h1_a.md)。H1保留连续参考及实际观测折线碰撞检查；本页C03的URDF-only例外不适用于H1。数值入口自动使用项目`.venv-shm`，普通C00–C06仍只需系统Python。
+
 ## 下次到场重新接入：先留背景，再停业务，只启主站
 
 如果Orin已重启，新开窗口；若未重启但上次测试状态未知，先核对当前进程/主站状态，不能重复握手来解卡。以下接管步骤只在确实需要新开主站时执行。

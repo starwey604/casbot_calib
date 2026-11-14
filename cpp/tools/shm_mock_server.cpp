@@ -55,7 +55,21 @@ int main(int argc,char** argv) {
     physical.current_tau=config.get<double>("current_tau_s");physical.torque_limit=config.get<double>("torque_limit_nm");physical.gain=Eigen::VectorXd::Constant(14,config.get<double>("gain_nm_a"));
     if(physical.integration_ns>50000)throw std::runtime_error("Mock integration must be <=50us");
     casbot::SimulatedArmDevice device(casbot::ArmDynamics(model),physical,initial);
-    device.set_drive_enabled(0,Eigen::VectorXi::Zero(14));device.advance_to(0);
+    CommandFrame held{};Eigen::VectorXi enabled=Eigen::VectorXi::Zero(14);
+    const bool initial_on=config.get<bool>("initial_drive_enabled",false);
+    if(initial_on) {
+      const auto f=config.get_child("initial_fields");
+      const auto q=joint_values(f.get_child("position")),v=joint_values(f.get_child("velocity")),
+        torque=joint_values(f.get_child("effort")),kp=joint_values(f.get_child("kp")),kd=joint_values(f.get_child("kd"));
+      casbot::ArmCommand command;command.send_ns=0;command.q.resize(14);command.dq.resize(14);command.torque.resize(14);command.kp.resize(14);command.kd.resize(14);
+      for(int j=0;j<14;++j) {
+        if(kp[j]<0||kp[j]>500||kd[j]<0||kd[j]>50)throw std::runtime_error("Initial PD outside bounds");
+        arm_target(held,j,q[j],v[j],kp[j],kd[j],torque[j]);held.joints[j+12].control_word=15;held.joints[j+12].mode=-1;
+        const auto value=arm_command(held,j);command.q[j]=value.position;command.dq[j]=value.velocity;command.torque[j]=value.effort;command.kp[j]=value.kp;command.kd[j]=value.kd;
+      }
+      enabled.setOnes();device.submit(command);
+    }
+    device.set_drive_enabled(0,enabled);device.advance_to(0);
     const auto root=std::filesystem::path(output);if(!root.parent_path().empty())std::filesystem::create_directories(root.parent_path());
     if(!std::filesystem::create_directory(root))throw std::runtime_error("Mock output must be new");
     std::filesystem::copy_file(config_file,root/"config.json");
@@ -69,7 +83,7 @@ int main(int argc,char** argv) {
     if(stopped)return 0;
     StatusFrame status{};status.hand_count=2;status.crc=65535; // Actual source joint_count=0, all slots retained.
     for(int j=0;j<29;++j)status.joints[j].status_word=0x231;
-    CommandFrame held{};Eigen::VectorXi enabled=Eigen::VectorXi::Zero(14);
+    if(initial_on)for(int j=12;j<26;++j){status.joints[j].status_word=0x237;status.joints[j].mode=-1;}
     const auto origin=mono();auto next=origin;std::int64_t received=0,published=0,dropped=0,max_late=0;
     const auto fault_after=config.get<std::int64_t>("fault_after_commands",-1);
     while(!stopped) {
@@ -104,7 +118,7 @@ int main(int argc,char** argv) {
       timespec deadline{next/1000000000LL,next%1000000000LL};
       while(clock_nanosleep(CLOCK_MONOTONIC,TIMER_ABSTIME,&deadline,nullptr)==EINTR&&!stopped){}
     }
-    std::ofstream(root/"result.txt")<<"physics_model=shared_ArmSimulationSession\ncommands_adopted="<<received<<"\nstatus_published="<<published<<"\nstatus_queue_full="<<dropped<<"\nmax_late_ns="<<max_late<<"\nvirtual_time_ns="<<device.time_ns()<<"\n";
+    std::ofstream(root/"result.txt")<<"physics_model=shared_ArmSimulationSession\ninitial_drive_enabled="<<initial_on<<"\ncommands_adopted="<<received<<"\nstatus_published="<<published<<"\nstatus_queue_full="<<dropped<<"\nmax_late_ns="<<max_late<<"\nvirtual_time_ns="<<device.time_ns()<<"\n";
     return 0;
   }catch(const std::exception& e){std::cerr<<"MOCK ERROR "<<e.what()<<'\n';if(!output.empty()&&std::filesystem::is_directory(output))std::ofstream(std::filesystem::path(output)/"failure.txt")<<e.what()<<'\n';return 1;}
 }

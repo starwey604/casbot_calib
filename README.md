@@ -5,6 +5,7 @@ C++动力学/碰撞/模拟核心，Python规划与辨识，以及Orin本机Ether
 ## 先选入口
 
 - **[SHM现场工具](fieldwork/shm/README.md)**：C00–C06逐例观测、接管、双臂动作和停止专项，原始帧、时钟与人工观察一起留证。
+- **[SHM H1/A](docs/shm_h1_a.md)**：测得起点、连续碰撞参考、显式重力前馈、静态辨识及观测时间A分析。
 - **[SHM构建与Git部署](docs/shm_build.md)**：本机Humble与Orin使用同一份源码分别原生编译。
 - **[SHM迁移与ROS退役](docs/shm_migration_plan.md)**：当前实现范围及下一步。
 - [动力学原理](docs/dual_arm_dynamics_plan.md)、[运动学K1–K5](docs/kinematics_trical_plan.md)、[TriCal固件](firmware/README.md)。
@@ -53,7 +54,7 @@ bash scripts/humble/container.sh casbot-calib render-staged \
   artifacts/my_staged --output artifacts/my_staged_video
 ```
 
-当前模型为`casbot_hl12p1_dvt2_bare_flange_1105_03_gauge_v2`。模型资产、辨识内核、连续参考/碰撞检查及正式S3/S4/P0数据合同保留。H1–H4与GUI尚在迁移，不能把旧ROS发布stamp或新主站stamp当作驱动采样时刻。
+当前模型为`casbot_hl12p1_dvt2_bare_flange_1105_03_gauge_v2`。模型资产、辨识内核、连续参考/碰撞检查及正式S3/S4/P0数据合同保留。H1/A已新增SHM入口；H2–H4、GUI与K5仍待迁移，不能把旧ROS发布stamp或新主站stamp当作驱动采样时刻。
 
 ## ROS退役范围
 

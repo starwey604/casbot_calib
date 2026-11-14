@@ -45,6 +45,7 @@ if(CALIB_BUILD_CORE)
     find_package(pybind11 2.13 CONFIG REQUIRED)
     pybind11_add_module(_core cpp/src/bindings.cpp cpp/src/arm_bindings.cpp cpp/src/arm_simulator_bindings.cpp cpp/src/collision_bindings.cpp)
     target_link_libraries(_core PRIVATE calib_core)
+    set_target_properties(_core PROPERTIES INSTALL_RPATH_USE_LINK_PATH TRUE)
     install(TARGETS _core
       LIBRARY DESTINATION casbot_calib COMPONENT Python
       RUNTIME DESTINATION casbot_calib COMPONENT Python)

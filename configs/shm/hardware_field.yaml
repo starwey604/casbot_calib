@@ -1,0 +1,60 @@
+schema_version: casbot_shm_h1_v1
+transport: shm_mc
+command_period_ns: 1000000
+collision_scene: ../collision_scene.yaml
+gravity_feedforward: nominal_reference
+kp:
+- 20.0
+- 20.0
+- 20.0
+- 20.0
+- 20.0
+- 20.0
+- 20.0
+- 20.0
+- 20.0
+- 20.0
+- 20.0
+- 20.0
+- 20.0
+- 20.0
+kd:
+- 2.0
+- 2.0
+- 2.0
+- 2.0
+- 2.0
+- 2.0
+- 2.0
+- 2.0
+- 2.0
+- 2.0
+- 2.0
+- 2.0
+- 2.0
+- 2.0
+feedforward_limit_nm: 100.0
+model_context:
+  schema_version: casbot_model_context_v1
+  model_id: casbot_hl12p1_dvt2_bare_flange_1105_03_gauge_v2
+  bundle_sha256: 0b441d3068069cec7201f2d36015079e356069bf49082335ebd733680a0a643a
+  urdf_sha256: ec5eee7144d1d90ba2cc4032e397786eb55f3d0c0540fac912a9cb3122a07efe
+initial_hold_s: 0.5
+final_hold_s: 0.5
+anchor_transition_s: 4.0
+start_tolerance_rad: 0.005
+maximum_velocity_rad_s: 1.5
+effort_gain: 1.0
+effort_zero_nm: 0.0
+gravity_world:
+- 0.0
+- 0.0
+- -9.81
+assumptions:
+  non_arm: user_supported_legs_waist_head_disabled_hands_frozen_explicit_source
+  stop: request_disable_and_wait_ack_no_physical_stop_proof_no_assumed_watchdog
+  feedback_time: master_conversion_ms_mapped_to_local_monotonic_not_acquisition
+  channels: same_frame_alignment_development_default
+  effort: module_estimated_output_Nm_0.01Nm_integer_scale_pending_load_check
+  pd: module_local_five_field_PD_no_hidden_compensation
+  gravity_feedforward: nominal_gravity_at_reference_q_frozen_1ms_ZOH_not_online_actual_q_compensation

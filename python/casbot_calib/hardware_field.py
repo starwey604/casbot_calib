@@ -21,8 +21,7 @@ from .artifact_io import sha256
 from .sdk_binary import executor_binary
 
 
-class FieldContractError(ValueError):
-    """Changed sealed inputs, execution mismatch or failed geometric proof."""
+from .field_artifacts import FieldContractError, seal, check_seal, output_outside
 
 
 def load_profile(path, *, manual=False):
@@ -61,30 +60,6 @@ def load_profile(path, *, manual=False):
         validate_connection(config['connection'])
     return config
 
-
-def seal(root):
-    root = Path(root)
-    write_json(root / 'manifest.json', {str(p.relative_to(root)): sha256(p)
-        for p in sorted(root.rglob('*')) if p.is_file() and p != root / 'manifest.json'})
-
-
-def output_outside(output, *inputs):
-    path = Path(output).resolve()
-    if any(path == Path(root).resolve() or Path(root).resolve() in path.parents for root in inputs):
-        raise ValueError('Field output must be outside frozen input bundles')
-    return path
-
-
-def check_seal(root):
-    root = Path(root); manifest = json.loads((root / 'manifest.json').read_text())
-    # Static preset manifests wrap the map; field bundles use the map directly.
-    entries = manifest.get('files', manifest)
-    actual = {str(p.relative_to(root)) for p in root.rglob('*') if p.is_file() and p != root / 'manifest.json'}
-    if actual != set(entries): raise FieldContractError('Field manifest coverage changed')
-    for name, digest in entries.items():
-        path = (root / name).resolve()
-        if not path.is_relative_to(root.resolve()) or sha256(path) != digest:
-            raise FieldContractError('Frozen field input changed: ' + name)
 
 
 def params(config, names, *, manual=False):
@@ -277,27 +252,7 @@ def prepare_field(profile, static_plan, snapshot, output, *, max_poses_per_split
     return finish_plan(root, config, motion, trials, dict(**selection, **binding, replan_recipe=recipe))
 
 
-def _static_motion(config, start, recipe):
-    """Rebuild the same selected static targets from a newly measured start."""
-    motion = Motion('hardware_static_sequence', 'gravity', start)
-    motion.add(config['initial_hold_s'], start, label='observed_start_hold')
-    add_bounded_move(motion, recipe['home_rad'], config['anchor_transition_s'], recipe['planning_envelope'], 'to_preset_anchor')
-    trials = []
-    for metadata in recipe['motions']:
-        name = metadata['trial_name']
-        begin = motion.duration; knots = metadata['knots_s']; labels = metadata['labels']; measure = None
-        for i, label in enumerate(labels):
-            state = np.asarray(metadata['states'][i + 1])
-            if np.max(abs(state[1:])) > 1e-12: raise ValueError('Static field expects rest-to-rest preset segments')
-            a = motion.duration
-            motion.add(knots[i + 1] - knots[i], state[0], label=label)
-            if label == 'static_measure': measure = (a, motion.duration)
-        if measure is None: raise ValueError('Missing static measurement window')
-        trials.append(dict(name=name, conditions=metadata['conditions'], begin_s=begin, end_s=motion.duration,
-            measure_begin_s=measure[0], measure_end_s=measure[1]))
-    add_bounded_move(motion, start, config['anchor_transition_s'], recipe['planning_envelope'], 'return_observed_start')
-    motion.add(config['final_hold_s'], start, label='observed_start_final_hold')
-    return motion, trials
+from .field_motion import static_motion as _static_motion, jog_motion
 
 
 def prepare_jog(profile, snapshot, output, joint_name, amplitude_deg=1., *, anchor_rad=None):
@@ -311,33 +266,7 @@ def _prepare_jog(config, snapshot, output, joint_name, amplitude_deg, *, anchor_
     if joint_name not in names or not np.isfinite(amplitude_deg) or not 0 < amplitude_deg <= 5:
         raise ValueError('Named arm joint and commissioning amplitude in (0,5] degrees required')
     root = output_outside(output, snapshot); root.mkdir(parents=True, exist_ok=False)
-    motion = Motion('hardware_direction_jog', 'position', start, dict(joint=names.index(joint_name), amplitude_deg=amplitude_deg))
-    motion.add(config['initial_hold_s'], start, label='observed_start_hold')
-    envelope = dict(speed_rad_s=.05, acceleration_rad_s2=.1, jerk_rad_s3=1.)
-    anchor = start if anchor_rad is None else np.asarray(anchor_rad, dtype=float)
-    if anchor.shape != (14,) or not np.isfinite(anchor).all(): raise ValueError('Finite 14-axis comparison anchor required')
-    if anchor_rad is not None:
-        add_bounded_move(motion, anchor, config['anchor_transition_s'], envelope, 'to_comparison_anchor')
-    comparison_begin = motion.duration
-    comparison = Motion('frequency_reference', 'position', anchor)
-    for sign in (1, -1, 0):
-        q = anchor.copy(); q[names.index(joint_name)] += sign * np.deg2rad(amplitude_deg)
-        add_bounded_move(motion, q, config['anchor_transition_s'], envelope, 'direction_jog')
-        motion.add(1., q, label='direction_hold')
-        add_bounded_move(comparison, q, config['anchor_transition_s'], envelope, 'direction_jog')
-        comparison.add(1., q, label='direction_hold')
-    comparison_end = motion.duration
-    if anchor_rad is not None:
-        add_bounded_move(motion, start, config['anchor_transition_s'], envelope, 'return_measured_start')
-    motion.add(config['final_hold_s'], start, label='observed_start_final_hold')
-    import hashlib
-    definition = dict(joint=joint_name, amplitude_deg=amplitude_deg, anchor_rad=anchor.tolist(),
-        knots_s=comparison.knots, states=np.asarray(comparison.states).tolist(), labels=comparison.labels)
-    motion.conditions.update(comparison_window_s=[comparison_begin, comparison_end],
-        comparison_reference_sha256=hashlib.sha256(json.dumps(definition, sort_keys=True).encode()).hexdigest(),
-        comparison_anchor_rad=anchor.tolist())
-    recipe = dict(kind='jog', joint=joint_name, amplitude_deg=amplitude_deg,
-        anchor_rad=None if anchor_rad is None else anchor.tolist())
+    motion, recipe = jog_motion(config,start,names,joint_name,amplitude_deg,anchor_rad=anchor_rad)
     return finish_plan(root, config, motion, [], dict(**binding, **(bindings or {}), replan_recipe=recipe))
 
 
@@ -607,50 +536,4 @@ def analyse_field(plan, capture, output, *, windows_only=False):
     return report
 
 
-def write_gravity_candidate(means, config, output, metadata):
-    """Shared H1/H2 PSD fit and export; caller owns output creation/sealing."""
-    from .rigid_identification import fit_rigid, model_from_parameters
-    from .dynamic_export import write_inertial_urdf, check_reload
-    output = Path(output); engine, _ = model_for(config)
-    model = engine.model; model.gravity_world = np.asarray(config.get('gravity_world', model.gravity_world)); engine = type(engine)(model)
-    batches = {'train': [], 'validation': []}; by_pose = {}; spreads = []
-    for row in means:
-        if row.get('q') is None or row.get('torque') is None:continue
-        c = row['conditions']; by_pose.setdefault((c['batch'], c['pose']), []).append(row)
-    for (split, pose), rows in by_pose.items():
-        q = np.array([r['q'] for r in rows]); z = np.zeros_like(q)
-        y = engine.regressor_batch(q, z, z)['regressor'].mean(axis=0)
-        torque = np.mean([r['torque'] for r in rows], axis=0)
-        spreads.append(np.ptp(np.array([r['torque'] for r in rows]),axis=0)/2)
-        batches[split].append((y, torque, pose))
-    if not all(batches.values()): raise ValueError('Disjoint training/validation pairs required')
-    y = np.array([r[0] for r in batches['train']]); target = np.array([r[1] for r in batches['train']])
-    fit = fit_rigid(y, target, engine.rigid_parameters(), robust_scale=.1)
-    vy = np.array([r[0] for r in batches['validation']]); vt = np.array([r[1] for r in batches['validation']])
-    prediction = vy @ np.asarray(fit['parameters']); rmse = np.sqrt(np.mean((prediction - vt) ** 2, axis=0))
-    nominal_rmse = np.sqrt(np.mean((vy @ engine.rigid_parameters() - vt) ** 2, axis=0))
-    candidate = model_from_parameters(engine, fit['parameters'])
-    write_json(output / 'calibration.json', dict(schema_version='casbot_field_gravity_candidate_v1',
-        scope='exploratory commissioning representative; not accepted S4 export', parameters=fit['parameters'],
-        joint_names=metadata['joint_names'], gravity_world=np.asarray(engine.model.gravity_world),
-        source_model_sha256=metadata['source_model_sha256'], effort_gain=config['effort_gain'], effort_zero_nm=config['effort_zero_nm'],
-        source_assumptions=config['assumptions'], friction_identified=False, inertias_identified=False,
-        sdk_compensation_modified=False, auto_deploy=False,
-        **({'model_context':config['model_context']} if 'model_context' in config else {})))
-    with (output / 'bodies.csv').open('w', newline='', encoding='utf-8') as stream:
-        writer = csv.writer(stream); writer.writerow(['joint', 'mass_kg', 'com_x_m', 'com_y_m', 'com_z_m', 'status'])
-        writer.writerows([j.name, j.body.mass, *j.body.com, 'aggregate representative; not uniquely measured'] for j in candidate.model.joints)
-    source_path = urdf_for(config)
-    aggregation = write_inertial_urdf(source_path, candidate, output / 'candidate_exploratory.urdf')
-    reload_report = check_reload(output / 'candidate_exploratory.urdf', candidate, source_path)
-    write_json(output / 'urdf_reload.json', reload_report)
-    report = dict(passed=bool(reload_report['passed']), fit_succeeded=True, stage='gravity', fit=fit,
-        frequency_scope='local command publication and feedback callback; not motor acquisition or device adoption rate',
-        validation_rmse_nm=rmse, nominal_validation_rmse_nm=nominal_rmse,
-        paired_approach_half_spread_nm=np.max(spreads, axis=0),
-        training_poses=[r[2] for r in batches['train']], validation_poses=[r[2] for r in batches['validation']],
-        scope='exploratory field gravity under recorded assumptions; not qualified S3/S4/P0 acceptance',
-        hardware_calibration_accepted=False, physical_stop_verified=False, sample_time_known=False,
-        torque_scale_verified=False, source_assumptions=config['assumptions'], aggregation=aggregation,
-        individual_body_parameters_unique=False, inertias_identified=False, auto_deploy=False)
-    return report
+from .field_gravity import write_gravity_candidate
