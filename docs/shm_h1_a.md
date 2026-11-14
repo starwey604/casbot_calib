@@ -19,7 +19,11 @@ H1/A自动使用仓库的`.venv-shm/bin/python`；其它fieldwork命令仍只需
 bash scripts/shm/setup_h1.sh --wheelhouse artifacts/shm_h1_wheels_20261114
 ```
 
-脚本在独立`build/shm-python`构建中安装项目venv、本工程绑定及SHM原生程序，并运行CTest，不改系统Python或厂家环境。离线wheelhouse包含ARM64/Python3.10依赖；没有wheelhouse时使用正常pip源，需可用网络和可信系统时间。Debian缺ensurepip时，离线入口用官方pip wheel初始化venv，无需改系统包。模型碰撞数据`derived/bare_flange_1105_03_gauge_v2/collision.npz`须物化，不能用LFS指针代替；这与可选GUI显示网格无关。
+脚本在独立`build/shm-python`构建中安装项目venv、本工程绑定及SHM原生程序，并运行CTest，不改系统Python或厂家环境。离线wheelhouse包含ARM64/Python3.10依赖；没有wheelhouse时使用正常pip源，需可用网络和可信系统时间。Debian缺ensurepip时，离线入口用官方pip wheel初始化venv，无需改系统包。模型包`derived/bare_flange_1105_03_gauge_v2/`须完整物化：包括`collision.npz`及`visual_meshes/`。现有模型绑定合同也核对显示资产，不能只复制碰撞缓存或用LFS指针代替。源码可继续用Git部署，缺失资产可用rsync从本机已物化包定点同步，不必等待远端LFS下载。
+
+独立URDF导出/重加载校验还使用与CMake相同依赖前缀的Python Pinocchio/eigenpy/Coal。setup仅在项目venv链接这三个数学模块，不source ROS、不导入ROS通信包或把整个系统site-packages加入venv。Orin已验证Pinocchio4.0.0与项目NumPy1.26.4兼容。
+
+ARM原生解析固定观测frame时出现最大`1.11e-16`浮点差异。加载器保留URDF/资源精确绑定、运动轴几何及frame拓扑精确比较；仅固定frame矩阵在`8×float64 epsilon`绝对误差内恢复为冻结值，恢复后几何摘要必须完全一致。不会重写原模型身份或接受改变的几何。
 
 ## 第一步：只读快照，规划一条H1小幅轨迹
 

@@ -32,6 +32,9 @@ args=()
 [[ -z $wheelhouse ]] || args+=(--no-index --find-links "$wheelhouse")
 "$venv/bin/python" -m pip install "${args[@]}" -r "$repo/scripts/shm/requirements-h1.txt"
 cd "$repo"
+# Reuse exactly the CMake dependency prefix for independent URDF export/reload.
+# Only these three math modules are linked; no ROS environment/site directory.
+env -u PYTHONPATH -u LD_LIBRARY_PATH "$venv/bin/python" scripts/shm/link_math_bindings.py --dependency-prefix "$dependency_prefix"
 # No vendor Python modules or private LD_LIBRARY_PATH enter the extension build.
 env -u PYTHONPATH -u LD_LIBRARY_PATH CMAKE_BUILD_PARALLEL_LEVEL=1 "$venv/bin/python" -m pip install -e . --no-deps --no-build-isolation \
   --config-settings=build-dir=build/shm-python \
