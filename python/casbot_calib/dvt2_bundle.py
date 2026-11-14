@@ -25,6 +25,40 @@ def bundle_identity(root, metadata):
     ))
 
 
+
+def _bind_frozen_frames(engine, frozen):
+    """Restore frozen fixed frames after verified URDF parsing on another CPU.
+
+    Moving-axis geometry remains exact. Only fixed-frame roundoff within eight
+    float64 epsilons is accepted, then replaced, not retained as a new identity.
+    """
+    actual = geometry_manifest(engine, 'dvt2_locked_v1')
+    if actual['geometry_sha256'] == frozen['geometry_sha256']:
+        return engine
+    expected, current = frozen['geometry'], actual['geometry']
+    if ({k:v for k,v in expected.items() if k != 'frames'} !=
+            {k:v for k,v in current.items() if k != 'frames'}):
+        raise ValueError('Derived geometry differs from frozen bundle: moving geometry')
+    if len(expected['frames']) != len(current['frames']):
+        raise ValueError('Derived geometry differs from frozen bundle: frame count')
+    model = engine.model
+    frames = model.frames
+    for frame, ref, observed in zip(frames, expected['frames'], current['frames']):
+        if ref['name'] != observed['name'] or ref['parent'] != observed['parent']:
+            raise ValueError('Derived geometry differs from frozen bundle: frame topology')
+        target, value = np.asarray(ref['placement']), np.asarray(observed['placement'])
+        if not np.allclose(target, value, rtol=0, atol=8*np.finfo(np.float64).eps):
+            raise ValueError('Derived geometry differs from frozen bundle: '+frame.name)
+        placement = _core.ArmPose()
+        placement.rotation, placement.translation = target[:3,:3], target[:3,3]
+        frame.placement = placement
+    model.frames = frames
+    engine = _core.ArmDynamics(model)
+    if geometry_manifest(engine, 'dvt2_locked_v1')['geometry_sha256'] != frozen['geometry_sha256']:
+        raise ValueError('Derived geometry differs from frozen bundle after frame restoration')
+    return engine
+
+
 def load_bundle(folder):
     root = Path(folder).resolve()
     metadata = read(root / 'model.json')
@@ -48,8 +82,7 @@ def load_bundle(folder):
         raise ValueError('Derived model identities differ')
     if [j.name for j in model.joints] != metadata['joint_names']:
         raise ValueError('Derived joint order changed')
-    if geometry_manifest(engine, 'dvt2_locked_v1')['geometry_sha256'] != metadata['geometry']['geometry_sha256']:
-        raise ValueError('Derived geometry differs from frozen bundle')
+    engine = _bind_frozen_frames(engine, metadata['geometry'])
     return engine, metadata
 
 
