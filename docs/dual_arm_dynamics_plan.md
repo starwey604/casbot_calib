@@ -40,10 +40,10 @@ flowchart TD
 | :--- | :--- |
 | **[arm_dynamics.hpp](../cpp/include/casbot_calib/arm_dynamics.hpp)** (C++ Pinocchio) | 解析 URDF 树形模型，批量计算刚体回归矩阵 $Y(q, \dot{q}, \ddot{q}) \in \mathbb{R}^{14 \times 140}$（满足 $\tau_{\text{rigid}} = Y\theta + \tau_{\text{rotor}}$）、质量矩阵 $M(q)$、重力向量 $g(q)$ 与正运动学 FK。 |
 | **[collision.hpp](../cpp/include/casbot_calib/collision.hpp)** (C++ Coal) | 基于机器人 16 个凸包外包络与环境夹具，对规划出的连续多项式轨迹（Bernstein 导数界）和实测折线做连续防碰撞证明（默认保持 **10mm** 安全余量）。 |
-| **[position_executor.cpp](../ros/casbot_calib_vendor/src/position_executor.cpp)** (C++ ROS 2) | 实机与 SDK Mock 共用的实时控制发送器。申请 `/motion/upper_body_debug` 模式，以 500Hz 向 `/upper_body_debug/joint_cmd` 发送 14 轴五字段指令，并执行零 PD 力矩斜坡实时监控（`SdkBreakaway`）。 |
+| **position_executor.cpp** (C++ ROS 2) | 实机与 SDK Mock 共用的实时控制发送器。申请 `/motion/upper_body_debug` 模式，以 500Hz 向 `/upper_body_debug/joint_cmd` 发送 14 轴五字段指令，并执行零 PD 力矩斜坡实时监控（`SdkBreakaway`）。 |
 | **[rigid_identification.py](../python/casbot_calib/rigid_identification.py)** (Python Clarabel) | 组装 $4 \times 4$ 伪惯性矩阵半正定锥约束（PSD Cone）、阶段冻结等式约束与 SVD 零空间正则化，调用 Clarabel 求解物理合法的 140 维刚体参数。 |
-| **[staged_identification.py](../python/casbot_calib/staged_identification.py)** / **[staged_inertia.py](../python/casbot_calib/staged_inertia.py)** | 实现重力正反配对平均、匀速摩擦位置网格插值半差、傅里叶周期投影求导与惯量辨识的核心算法。 |
-| **[hardware_batch.py](../python/casbot_calib/hardware_batch.py)** / **[hardware_friction.py](../python/casbot_calib/hardware_friction.py)** / **[hardware_inertia.py](../python/casbot_calib/hardware_inertia.py)** | 实机 H2、H3、H4 批次规划、断点续采（`--resume`）、起点自动重规划与离线报告生成。 |
+| **staged_identification.py** / **staged_inertia.py** | 实现重力正反配对平均、匀速摩擦位置网格插值半差、傅里叶周期投影求导与惯量辨识的核心算法。 |
+| **hardware_batch.py** / **hardware_friction.py** / **hardware_inertia.py** | 实机 H2、H3、H4 批次规划、断点续采（`--resume`）、起点自动重规划与离线报告生成。 |
 
 ---
 
@@ -64,8 +64,8 @@ flowchart TD
 ---
 
 ### 2. H2 阶段：静态重力标定（正反接近抵消静摩擦）
-* **配置文件**：[configs/hardware_batch.yaml](../configs/hardware_batch.yaml)、[configs/static_field_nominal.yaml](../configs/static_field_nominal.yaml)
-* **实现代码**：[staged_identification.py (`identify_gravity`)](../python/casbot_calib/staged_identification.py)
+* **配置文件**：configs/hardware_batch.yaml、[configs/static_field_nominal.yaml](../configs/static_field_nominal.yaml)
+* **实现代码**：staged_identification.py (`identify_gravity`)
 * **实验设计**：
   * 从 570 个无碰撞候选姿态中，按重力回归矩阵信息量选出每臂 **24 个训练姿态 + 8 个验证姿态**（双臂共 64 个静态姿态）。
   * 当机械臂停在目标姿态 $q^*$ 时（$\dot{q}=0, \ddot{q}=0$），实测力矩为 $\tau = Y(q^*, 0, 0)\theta + \tau_{\text{stiction}}$。
@@ -77,8 +77,8 @@ flowchart TD
 ---
 
 ### 3. H3 阶段：运动摩擦与零 PD 起动摩擦
-* **配置文件**：[configs/hardware_friction.yaml](../configs/hardware_friction.yaml)
-* **实现代码**：[staged_identification.py (`friction_pair_projection`)](../python/casbot_calib/staged_identification.py)、[sdk_breakaway.hpp](../ros/casbot_calib_vendor/include/sdk_breakaway.hpp)
+* **配置文件**：configs/hardware_friction.yaml
+* **实现代码**：staged_identification.py (`friction_pair_projection`)、sdk_breakaway.hpp
 * **前置条件**：冻结 H2 标定出的重力模型。在 H3 运行期间，`position_executor` 会实时根据实测角度计算冻结重力力矩 $\hat{\tau}_g(q)$ 并填入下发指令的 `effort` 前馈通道。
 
 #### (1) 运动摩擦（黏滞 $b$ + 库仑 $f_c$，112 条匀速轨迹）
@@ -101,8 +101,8 @@ flowchart TD
 ---
 
 ### 4. H4 阶段：周期加速度激励、惯量辨识与 2×2 控制对照
-* **配置文件**：[configs/hardware_inertia.yaml](../configs/hardware_inertia.yaml)
-* **实现代码**：[staged_inertia.py](../python/casbot_calib/staged_inertia.py)、[hardware_inertia.py](../python/casbot_calib/hardware_inertia.py)
+* **配置文件**：configs/hardware_inertia.yaml
+* **实现代码**：staged_inertia.py、hardware_inertia.py
 * **前置条件**：同时冻结 H2 的重力可观测约束与 H3 的全部摩擦参数 $(b, f_c, f_s)$。
 
 #### (1) 傅里叶周期轨迹与解析求导（避免差分噪声爆炸）
@@ -147,7 +147,7 @@ $$Y_{\text{gravity}} \theta = \hat{\tau}_{\text{gravity}}$$
 ## 🚀 五、常用命令速查表
 
 ### 1. 现场实机联调与分阶段标定（H1 → H4）
-详细步骤参见 [fieldwork 现场手册](../fieldwork/ros/README.md) 与 [实机 CLI 路径](hardware_execution_path.md)：
+详细步骤参见 fieldwork 现场手册 与 实机 CLI 路径：
 
 ```bash
 read -r -p "请输入现场确认的 ROS_DOMAIN_ID: " calib_domain_id

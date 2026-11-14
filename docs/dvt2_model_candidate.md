@@ -1,8 +1,8 @@
 # 使用DVT2固定腰部双臂候选模型
 
-N2已生成可独立加载的14轴普通手候选。它保留源整机的固定部件、左右实际装配和惯性，用同一模型生成碰撞资源及只读显示场景；这是前序普通手技术候选，当前默认已切换为`bare_flange_1105_03_gauge_v2`，见[N4收尾](dvt2_n4_closeout.md)；本页以下保留该候选的原验证条件。
+N2已生成可独立加载的14轴普通手候选。它保留源整机的固定部件、左右实际装配和惯性，用同一模型生成碰撞资源及只读显示场景；这是前序普通手技术候选，当前默认已切换为`bare_flange_1105_03_gauge_v2`，见N4收尾；本页以下保留该候选的原验证条件。
 
-**本页保留前序普通手候选的使用说明。** 2026-11-05的实际装配已由1105_03 STEP明确为拆普通手、裸法兰依次安装同一三表工具；当前候选、孔位与升降结果见[1105_03说明](trical_1105_hole_trials.md)。本页的`assembly_confirmed: false`只描述这份普通手历史候选，不代表仍需询问用户。
+**本页保留前序普通手候选的使用说明。** 2026-11-05的实际装配已由1105_03 STEP明确为拆普通手、裸法兰依次安装同一三表工具；当前候选、孔位与升降结果见1105_03说明。本页的`assembly_confirmed: false`只描述这份普通手历史候选，不代表仍需询问用户。
 
 ## 从已安装的包读取候选
 
@@ -83,4 +83,4 @@ bash scripts/humble/container.sh python -m casbot_calib.dvt2_validate \
 
 本机本轮汇总见`artifacts/dvt2_n2_delivery_v1/delivery.json`：39项相关测试、完整源模型对照及24段场景门禁通过；独立wheel与Models/ament安装通过。最终中文回放为`artifacts/dvt2_n2_render_v3/dvt2_candidate_zh.mp4`，已解码查看；场景原始证据见`artifacts/dvt2_n2_validation_v1/scene.json`。这些本地产物不随Git提交；Linux已执行，Windows实际运行留待CI。旧模型的数值验收仍归旧输入，不移作新模型标定成功的证据。
 
-下一步先确认保留手/拆手和末端安装，再由[N3](dvt2_model_migration_plan.md#n3所有消费者一起切换新模型成为唯一默认)统一切换消费者；N4重跑新模型的动力学、SDK Mock和K1–K4流程。
+下一步先确认保留手/拆手和末端安装，再由N3统一切换消费者；N4重跑新模型的动力学、SDK Mock和K1–K4流程。

@@ -1,6 +1,6 @@
 # 资料来源与首版落实
 
-原资料保留在相邻 `casbot_tasks/references/dynamics_identification_2026-10-19/`；新仓库不重复复制四十余 MB PDF。CSV 索引见 [literature.csv](sources/literature.csv)，其中的 `local_pdf` 相对于原资料目录。Robotica 2024 那篇仍需机构订阅，不阻碍首版实验。
+原资料保留在相邻 `casbot_tasks/references/dynamics_identification_2026-10-19/`；新仓库不重复复制四十余 MB PDF。CSV 索引见 literature.csv，其中的 `local_pdf` 相对于原资料目录。Robotica 2024 那篇仍需机构订阅，不阻碍首版实验。
 
 | 资料 | 在本项目中的使用 |
 | --- | --- |
@@ -18,11 +18,11 @@
 ## 当前 task 的来源记录
 
 - `scripts/trical_sphere_calibration/README.md`：evt6 右臂、21 个 joint origin 平移参数；位置约束有规范自由度，仿真 10 µm 噪声不是实机精度。
-- 2026-10-28新增[双臂TriCal K1–K5计划与K1基础](kinematics_trical_plan.md)：具名TCP、三表理想几何/观测格式及合成球架已接入；自动对中、MDH/Hayati、几何辨识和外测验收仍待后续实现，不将旧演示或论文精度作为当前验收。
-- 后续[K2合成测量闭环](kinematics_trical_k2.md)接入三表Mock、有限测头/行程、自动对中及稳定窗口；仍不含MDH/Hayati、几何参数求解、真实表杆载荷或实机精度结论。
-- [K3合成几何辨识](kinematics_trical_k3.md)落实TriCal式(1)的MDH/Hayati变换顺序、Pinocchio几何回归量、训练选点/选参及独立批次位置约束验证。每臂三非共线球心和固定工具/球架计量输入是本轮合成条件；真实表杆载荷、独立外测和实机精度仍未验收。
-- [K4合成重复性与回放](kinematics_trical_k4.md)在同一规范/选参下重新采两批，三批估计用样本标准差及公共TCP预测离散度报告条件重复性；提供独立配准外部位置记录接口，默认外测/间隔复标仍为未测量，不套用论文精度或ISO AP/RP称谓。
-- `scripts/casbot_dual_arm_model/guitar_strumming_config.yaml`：20251015 模型、500 Hz、100 mm／1 m/s／50 ms；本项目只复用动作规格和代理弦参数。原配置快照见 [legacy_guitar_strumming.yaml](sources/legacy_guitar_strumming.yaml)。
+- 2026-10-28新增双臂TriCal K1–K5计划与K1基础：具名TCP、三表理想几何/观测格式及合成球架已接入；自动对中、MDH/Hayati、几何辨识和外测验收仍待后续实现，不将旧演示或论文精度作为当前验收。
+- 后续K2合成测量闭环接入三表Mock、有限测头/行程、自动对中及稳定窗口；仍不含MDH/Hayati、几何参数求解、真实表杆载荷或实机精度结论。
+- K3合成几何辨识落实TriCal式(1)的MDH/Hayati变换顺序、Pinocchio几何回归量、训练选点/选参及独立批次位置约束验证。每臂三非共线球心和固定工具/球架计量输入是本轮合成条件；真实表杆载荷、独立外测和实机精度仍未验收。
+- K4合成重复性与回放在同一规范/选参下重新采两批，三批估计用样本标准差及公共TCP预测离散度报告条件重复性；提供独立配准外部位置记录接口，默认外测/间隔复标仍为未测量，不套用论文精度或ISO AP/RP称谓。
+- `scripts/casbot_dual_arm_model/guitar_strumming_config.yaml`：20251015 模型、500 Hz、100 mm／1 m/s／50 ms；本项目只复用动作规格和代理弦参数。原配置快照见 legacy_guitar_strumming.yaml。
 - `scripts/casbot_dual_arm_model/output/source_model_issues.md` 和 `benchmark_model_audit.md`：旧 MJCF 的统一 armature=0.2、damping=0.5 来源未确认，不能当作本项目真值。后来的手部质量修正仍不是实测负载；两版本手臂模型不可混用。
 
 ## ENCOS 能力依据与限制
@@ -39,14 +39,14 @@
 
 ## 新增产品研发需求
 
-[机械臂研发需求](<../references/机械臂研发需求(1).pdf>)：七轴S-R-S机械臂的KIN/DYN/PLAN/CTRL需求、阶段与测量口径。逐项来源页、原优先级、验收目标与当前实验的对应关系见 [需求对应表](requirements_matrix.md) 和 [CSV](sources/requirements_matrix.csv)。源文件摘要记录在对应表中；待定产品目标不采用现有合成门槛代填。
+[机械臂研发需求](<../references/机械臂研发需求(1).pdf>)：七轴S-R-S机械臂的KIN/DYN/PLAN/CTRL需求、阶段与测量口径。逐项来源页、原优先级、验收目标与当前实验的对应关系见 需求对应表 和 CSV。源文件摘要记录在对应表中；待定产品目标不采用现有合成门槛代填。
 
 ## R1刚体计算后端
 
-[Pinocchio官方项目](https://github.com/stack-of-tasks/pinocchio)：本轮按用户指定，采用其C++正/逆动力学、质量矩阵、重力、速度耦合和运动学接口，未保留自实现递归动力学。锁文件固定3.9.0；接口映射、独立二连杆解析校验与七轴几何来源见 [R1说明](arm_r1.md)。
+[Pinocchio官方项目](https://github.com/stack-of-tasks/pinocchio)：本轮按用户指定，采用其C++正/逆动力学、质量矩阵、重力、速度耦合和运动学接口，未保留自实现递归动力学。锁文件固定3.9.0；接口映射、独立二连杆解析校验与七轴几何来源见 R1说明。
 
 2026-10-27 扩展到 `computeJointTorqueRegressor`、`computeRNEADerivatives`、`computeABADerivatives` 和TCP雅可比；参数顺序/原点惯量与摩擦/转子分离约定见同一说明。有限差分仅用于验证解析导数，后续辨识不再手写整臂刚体回归展开。
 
-[Boost.Odeint官方实现](https://github.com/boostorg/odeint/tree/boost-1.88.0)：统一固定步长RK4与官方Eigen适配，版本来自双平台现有Boost1.88锁记录。事件调度仍由项目维护，后端与验证说明见 [统一积分接口](integration_backend.md)。
+[Boost.Odeint官方实现](https://github.com/boostorg/odeint/tree/boost-1.88.0)：统一固定步长RK4与官方Eigen适配，版本来自双平台现有Boost1.88锁记录。事件调度仍由项目维护，后端与验证说明见 统一积分接口。
 
-当前Humble主环境实际使用Pinocchio4.0.0、Coal3.0.3和Boost1.74；上述3.9/1.88对应保留的conda回归环境。新版分阶段流程的论文落实、数值方法与适用边界见[分阶段流程](collision_staged_workflow.md)，不以文献实验精度代替本项目实机指标。
+当前Humble主环境实际使用Pinocchio4.0.0、Coal3.0.3和Boost1.74；上述3.9/1.88对应保留的conda回归环境。新版分阶段流程的论文落实、数值方法与适用边界见分阶段流程，不以文献实验精度代替本项目实机指标。

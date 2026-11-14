@@ -6,7 +6,7 @@
 
 ## 已部署旧版本的Orin窗口直接执行
 
-下列是2026-11-13已验证旧版本的直接用法；新[fieldwork CLI](../fieldwork/shm/README.md)待到场部署。该次主站已启动并完成握手；**没有重启Orin时，不要重复停业务或运行`shm_channel_start`**。SSH登录后运行下面的命令，每次只测一轴：
+下列是2026-11-13已验证旧版本的直接用法；新[fieldwork CLI](../../fieldwork/shm/README.md)待到场部署。该次主站已启动并完成握手；**没有重启Orin时，不要重复停业务或运行`shm_channel_start`**。SSH登录后运行下面的命令，每次只测一轴：
 
 ```bash
 cd /home/nvidia/casbot_calib_shm
@@ -50,7 +50,7 @@ bash scripts/shm/build.sh --with-core --build-dir build/shm-core \
   --install-prefix "$PWD/install/shm-core" --dependency-prefix /opt/ros/humble
 ```
 
-代码通过[Git部署入口](shm_build.md#通过-ssh-从本地-git-克隆到-orin)传到Orin，不再导出或传输碰撞场景。
+代码通过[Git部署入口](../shm_build.md#通过-ssh-从本地-git-克隆到-orin)传到Orin，不再导出或传输碰撞场景。
 
 程序位于`install/shm-core/bin/shm_joint_test`。安装RPATH使用本次显式链接的算法库前缀，不要求加载厂家运控环境。
 
@@ -137,4 +137,4 @@ install/shm-core/bin/shm_channel_start --fresh-master /shm_mc
 
 ### 用户随后自行尝试ID13
 
-用户报告：ID12暂时没问题，随后换ID13试了一次，Orin似乎卡住；用户决定暂不深究。尚未取得这次运行的命令、原始数据与退出结果，原因未定，不能归为Bash操作问题，也不能记为ID13完成。下次到场先确认当前开机/主站与测试进程状态，再开新会话，不resume旧尝试。后续优先建设fieldwork逐例记录和报告，见[实施顺序](shm_migration_plan.md#6-id12之后先交付明天可用的shm-fieldwork)。
+用户报告：ID12暂时没问题，随后换ID13试了一次，Orin似乎卡住；用户决定暂不深究。尚未取得这次运行的命令、原始数据与退出结果，原因未定，不能归为Bash操作问题，也不能记为ID13完成。下次到场先确认当前开机/主站与测试进程状态，再开新会话，不resume旧尝试。后续优先建设fieldwork逐例记录和报告，见实施顺序。

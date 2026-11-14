@@ -1,6 +1,6 @@
 # prepare停机阻塞：由仓库维护接管流程
 
-前一开机窗口的旧主站`ecat_ros_pub`线程卡在`ec_master/ecrt_master_sdo_upload`，systemd已发SIGKILL仍未退出。随后现场重启，新窗口已完成prepare、主站启动及fresh-master握手，见[本轮现场记录](shm_field_observations_20261114.md)。
+前一开机窗口的旧主站`ecat_ros_pub`线程卡在`ec_master/ecrt_master_sdo_upload`，systemd已发SIGKILL仍未退出。随后现场重启，新窗口已完成prepare、主站启动及fresh-master握手，见[本轮现场记录](records/shm_field_observations_20261114.md)。
 
 新脚本在本次接管完成了退出检查和启动流程；能否持续避免SDO阻塞仍待后续。以后若再遇到同类未解除的内核等待，先在固定支撑和现场物理停止安排下恢复Orin，不在失败队列上直接activate/start-only。
 

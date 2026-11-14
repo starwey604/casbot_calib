@@ -1,8 +1,8 @@
 # Humble主开发环境
 
-整体轮次见[迁移和标定计划](humble_migration_plan.md)。本入口使用已有Docker后端distrobox `ros2-humble`，与宿主共享仓库绝对路径；不会继承宿主conda环境。原conda环境暂保留作迁移回归。
+整体轮次见迁移和标定计划。本入口使用已有Docker后端distrobox `ros2-humble`，与宿主共享仓库绝对路径；不会继承宿主conda环境。原conda环境暂保留作迁移回归。
 
-本机M1已完成，见[验收记录](humble_m1_validation.md)。完整自动验证入口：`bash scripts/humble/container.sh bash scripts/humble/validate.sh artifacts/my_humble_validation`，输出目录必须不存在；可追加冻结基线目录作为第二个参数做数值对照。环境准备统一使用下述 `setup.sh`，验证脚本本身不改。
+本机M1已完成，见验收记录。完整自动验证入口：`bash scripts/humble/container.sh bash scripts/humble/validate.sh artifacts/my_humble_validation`，输出目录必须不存在；可追加冻结基线目录作为第二个参数做数值对照。环境准备统一使用下述 `setup.sh`，验证脚本本身不改。
 
 ## 安装和构建
 

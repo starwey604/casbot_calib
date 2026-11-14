@@ -1,6 +1,6 @@
 # SHM 原生构建与 Orin 源码部署
 
-当前提供可独立消费的`casbot_calib::shm`协议库、IPC/时钟工具、共用runtime的`shm_executor`与[`shm_joint_test`原型](shm_joint_test.md)，以及双臂物理`shm_mock_server`。执行器支持C00–C06、冻结七次Hermite参考和独立五字段。用法见[fieldwork手册](../fieldwork/shm/README.md)；CSV导入、在线手动信箱和H1–H4/GUI/K5消费者仍待迁移。
+当前提供可独立消费的`casbot_calib::shm`协议库、IPC/时钟工具、共用runtime的`shm_executor`与[`shm_joint_test`原型](records/shm_joint_test.md)，以及双臂物理`shm_mock_server`。执行器支持C00–C06、冻结七次Hermite参考和独立五字段。用法见[fieldwork手册](../fieldwork/shm/README.md)；CSV导入、在线手动信箱和H1–H4/GUI/K5消费者仍待迁移。
 
 ## 构建、测试和安装
 
@@ -84,7 +84,7 @@ bash scripts/shm/deploy_git.sh --host nvidia@172.16.0.10
 - 编译期检查消息/手部大小、关键偏移与外层对齐；固定夹具独立预期字段检查，保留所有字节，拒绝错误长度，验证非对齐输入复制。
 - 独立安装后 `find_package(... COMPONENTS Shm)` 的 C++ 消费者可链接运行。
 - SHM 单独构建不需要算法库；核心开启时原测试继续使用原数值模型。
-- 队列同步、双臂五字段定点转换、分段时钟映射、原始记录和私有物理联跑均有测试。真实通道采样/滤波、力矩尺度、退出物理行为仍按[现场手册](shm_field_validation.md)确认。
+- 队列同步、双臂五字段定点转换、分段时钟映射、原始记录和私有物理联跑均有测试。真实通道采样/滤波、力矩尺度、退出物理行为仍按[现场手册](records/shm_field_validation.md)确认。
 
 ### 2026-11-13 实际部署结果
 
@@ -164,7 +164,7 @@ bash fieldwork/shm/run.sh h1 --help
 - `af5fb51`：按用户选择支持显式ID12 ±10°，jog参考速度仍0.05rad/s，自动延长段长；默认幅度仍1°。10°离线连续参考通过，含准备的参考时长43.043261916秒。
 - `013871b`：起点停稳速度默认统一0.2rad/s，覆盖H1–H4、K执行适配、GUI手动/回零的Python与原生入口。共享Python/C++默认、3份现场profile及设置面板一致；停止观察和测量窗口判据不改。Humble相关默认/边界/GUI/硬件消费者检查通过，SDK core/vendor重新编译通过。补充SDK CTest为7通过、`gzip_chunks`未运行：可执行文件位置已有同名历史输出目录，本轮保留该目录；这项不是启动策略检查。
 - 最新源码已用现有只读Git隧道快进到Orin，重建`shm_gui_bundle`及新增策略检查，8项SHM CTest通过，安装Core/Shm组件（含公共默认头文件）。未改厂家环境、墙钟、主站或接管窗口。
-- 实机同一boot窗口两次±1°、两次±10°；最终`site_v6_10deg`获用户确认完整动作流程正常。成功命令43627条、跳过0，失能应答，正式接收路径检查通过；不是静态重力拟合或其它轴激励验收。逐次结果及实际位置偏差见[现场记录](shm_field_observations_20261114.md#h1脚本准备位与id12往返)。
+- 实机同一boot窗口两次±1°、两次±10°；最终`site_v6_10deg`获用户确认完整动作流程正常。成功命令43627条、跳过0，失能应答，正式接收路径检查通过；不是静态重力拟合或其它轴激励验收。逐次结果及实际位置偏差见[现场记录](records/shm_field_observations_20261114.md#h1脚本准备位与id12往返)。
 
 本机证据：`artifacts/shm_h1_ready_20261114/`，其中`local_checks/`、`start_policy/`保存软件检查，`orin/`保存安装版私有闭环、实机start/plan/capture/analysis、逐例数值读回与用户原话。Orin原始目录为`artifacts/shm_h1_ready_20261114/`；现场序号v3只读起点条件拒绝、v4仅规划未执行，均保留，v5/v6才是新版10°实测。
 
@@ -174,4 +174,4 @@ bash fieldwork/shm/run.sh h1 --help
 
 随后实机完成301.411秒参考、八窗分析及探索拟合，用户确认动作正常且没有手托/推。数据揭示部分2°接近实际位移很小；已把首末50ms时间曝光平均q位移加入SHM流式分析器，并通过包含参考/实际位移不一致及八窗私有闭环的5项新测试。原封存实机分析不回写，新增实际接近读回保存在父目录`approach_observation.json`。
 
-源码、证据和实测正负结果见[静态重力报告](shm_static_gravity_20261114.md)；本机`artifacts/shm_h1_static_small_20261114/`含`software/`及完整Orin副本。用户将建议的新接近试验留到下次，本轮没有执行±15°/5°新配方或部署拟合候选。
+源码、证据和实测正负结果见[静态重力报告](records/shm_static_gravity_20261114.md)；本机`artifacts/shm_h1_static_small_20261114/`含`software/`及完整Orin副本。用户将建议的新接近试验留到下次，本轮没有执行±15°/5°新配方或部署拟合候选。
