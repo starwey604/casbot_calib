@@ -19,6 +19,7 @@ from .static_field import _move as add_bounded_move
 from .run_marker import run_marker
 from .artifact_io import sha256
 from .sdk_binary import executor_binary
+from .field_defaults import start_velocity_limit
 
 
 from .field_artifacts import FieldContractError, seal, check_seal, output_outside
@@ -28,6 +29,7 @@ def load_profile(path, *, manual=False):
     path = Path(path).resolve(); config = yaml.safe_load(path.read_text(encoding='utf-8'))
     if config.get('schema_version') != 'casbot_hardware_field_v1' or config.get('execution_scope') != 'hardware_position_stream':
         raise ValueError('Explicit hardware field profile required')
+    config['start_velocity_rad_s']=start_velocity_limit(config)
     if type(config['command_hz']) is not int or config['command_hz'] not in (100, 250, 500):
         raise ValueError('Field command rates are 100/250/500 Hz')
     if config['command_topic'] != '/upper_body_debug/joint_cmd' or config['mode_service'] != '/motion/upper_body_debug' or config['stop_service']:
@@ -65,6 +67,7 @@ def load_profile(path, *, manual=False):
 def params(config, names, *, manual=False):
     if manual:
         return dict(execution_scope=config['execution_scope'],joint_names=names,
+            start_velocity_rad_s=start_velocity_limit(config),
             **{k:config[k] for k in ('joint_topic','feedback_type','mode_topic','command_topic','mode_service','stop_service',
                 'max_feedback_age_ns','max_mode_age_ns','transition_timeout_ns','maximum_velocity_rad_s')},
             command_period_ns=1_000_000_000//config['command_hz'],vel_scale=config.get('vel_scale',.1))
@@ -78,6 +81,7 @@ def params(config, names, *, manual=False):
     if any(not name.startswith('breakaway_') and name not in allowed for name in extra):raise ValueError('Only explicit SDK experiment parameters may extend the executor')
     experiment.update(extra)
     return dict(execution_scope=config['execution_scope'], joint_names=names,
+        start_velocity_rad_s=start_velocity_limit(config),
         **{k: config[k] for k in ('joint_topic', 'feedback_type', 'mode_topic', 'command_topic', 'mode_service', 'stop_service',
             'max_feedback_age_ns', 'max_mode_age_ns', 'transition_timeout_ns', 'start_tolerance_rad',
             'maximum_velocity_rad_s', 'vel_scale')},
@@ -199,7 +203,9 @@ def _read_snapshot(root):
     with (Path(root) / 'execution/snapshot.csv').open() as stream: row = next(csv.DictReader(stream))
     q = np.array([float(row['q' + str(j)]) for j in range(14)])
     v = np.array([float(row['v' + str(j)]) for j in range(14)])
-    if not np.isfinite(q).all() or not np.isfinite(v).all() or np.max(abs(v)) >= .02:
+    request=Path(root)/'request.json'
+    config=json.loads(request.read_text()).get('config',{}) if request.is_file() else {}
+    if not np.isfinite(q).all() or not np.isfinite(v).all() or np.max(abs(v)) >= start_velocity_limit(config):
         raise ValueError('Complete stationary field snapshot required')
     return q
 

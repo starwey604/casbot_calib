@@ -14,6 +14,7 @@ from .shm_data import ROOT,NAMES,DIRECTION,OFFSET
 from .shm_reference import snapshot_positions,export_motion
 from .staged_motion import gate_motion,derivative_bounds
 from .run_marker import run_marker
+from .field_defaults import start_velocity_limit
 
 DEFAULT_PROFILE=ROOT/'configs/shm/hardware_field.yaml'
 DEFAULT_EXECUTOR=ROOT/'install/shm-core/bin/shm_executor'
@@ -26,6 +27,7 @@ def load_profile(path):
     path=Path(path).resolve();c=yaml.safe_load(path.read_text())
     if c.get('schema_version')!='casbot_shm_h1_v1' or c.get('transport')!='shm_mc':raise ValueError('需要明确的SHM H1 profile')
     if c['command_period_ns']!=1_000_000 or c['start_tolerance_rad']!=.005:raise ValueError('本版原生周期1ms、起点误差0.005rad')
+    c['start_velocity_rad_s']=start_velocity_limit(c)
     for key in ('initial_hold_s','final_hold_s','anchor_transition_s','maximum_velocity_rad_s','feedforward_limit_nm'):
         if not np.isfinite(c[key]) or c[key]<=0:raise ValueError('须为正有限值：'+key)
     if c['maximum_velocity_rad_s']>1.5 or c['feedforward_limit_nm']>100:raise ValueError('超出当前现场参考包络')
@@ -68,7 +70,8 @@ def measured_start(snapshot_root,config):
         raise FieldContractError('快照与H1模型不一致')
     raw=(root/'native/status.bin').read_bytes();q=np.asarray(snapshot_positions(root))
     velocity=np.array([DIRECTION[j]*struct.unpack_from('<i',raw,12+(j+12)*16+6)[0]*1e-6 for j in range(14)])
-    if not np.isfinite(q).all() or np.max(abs(velocity))>=.02:raise ValueError('H1需要完整、当前停稳的起点（|v|<0.02rad/s）')
+    threshold=start_velocity_limit(config)
+    if not np.isfinite(q).all() or np.max(abs(velocity))>=threshold:raise ValueError(f'H1需要完整、当前停稳的起点（|v|<{threshold:g}rad/s）')
     if any(struct.unpack_from('<H',raw,12+j*16+14)[0] for j in range(29)):raise ValueError('快照有驱动故障；不开始H1')
     return q,metadata
 

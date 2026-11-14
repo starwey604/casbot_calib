@@ -22,7 +22,7 @@ def test_default_warn_and_distinct_velocity_contracts():
     assert np.all(a['observed_action']==0)
     s['defaults']['input_velocity']=3.;s['defaults']['observed_velocity']=.2
     lo,hi,tuning,v=policy.command_bounds(valid(s),LOWER,UPPER)
-    assert np.all(v==3.) and s['general']['start_velocity']==.02
+    assert np.all(v==3.) and s['general']['start_velocity']==.2
     np.testing.assert_array_equal(lo,LOWER);np.testing.assert_array_equal(hi,UPPER)
 
 

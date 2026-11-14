@@ -43,6 +43,7 @@ initial_hold_s: 0.5
 final_hold_s: 0.5
 anchor_transition_s: 4.0
 start_tolerance_rad: 0.005
+start_velocity_rad_s: 0.2
 maximum_velocity_rad_s: 1.5
 effort_gain: 1.0
 effort_zero_nm: 0.0

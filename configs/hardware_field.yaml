@@ -16,6 +16,7 @@ max_feedback_age_ns: 2000000000
 max_mode_age_ns: 3000000000
 transition_timeout_ns: 3000000000
 start_tolerance_rad: 0.005
+start_velocity_rad_s: 0.2
 maximum_velocity_rad_s: 1.5
 vel_scale: 0.1
 effort_gain: 1.0

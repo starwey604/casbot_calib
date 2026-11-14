@@ -20,8 +20,9 @@ from .shm_gui_client import RemoteClient
 from .shm_gui_protocol import FIELDS
 from .fieldwork_display import configure_graphics_environment
 from .fieldwork_frames import FrameBuffer, WIDTH, HEIGHT
+from .field_defaults import START_VELOCITY_RAD_S,start_velocity_limit
 
-SETTINGS=dict(velocity_limit=1.5,input_velocity_limit=1.5,effort_limit=10.,kp_max=100.,kd_max=10.,lease_ms=1000.,feedback_ms=2000.,send_ms=2000.,transition_ms=3000.,end_velocity=False,axes={})
+SETTINGS=dict(start_velocity_rad_s=START_VELOCITY_RAD_S,velocity_limit=1.5,input_velocity_limit=1.5,effort_limit=10.,kp_max=100.,kd_max=10.,lease_ms=1000.,feedback_ms=2000.,send_ms=2000.,transition_ms=3000.,end_velocity=False,axes={})
 PHASES={-1:'只读',0:'失能确认',1:'切换 MIT',2:'按实际起点使能',3:'控制中',4:'正在失能'}
 
 
@@ -108,8 +109,9 @@ class Desk:
         if not self.control_available:
             self.message='当前仅可只读：需要原生协议v2及本开机窗口手部背景。';return
         if self.phase!=-1 or self.settings_pending is not None or self.zero_job or self.zero_control:return
-        if max(abs(v) for v in self.feedback['dq'])>=.02:
-            self.start_waiting=True;self.await_start=True;self.message='等待实际速度低于 0.02rad/s；尚未请求使能，可停止取消。';return
+        threshold=start_velocity_limit(self.settings)
+        if max(abs(v) for v in self.feedback['dq'])>=threshold:
+            self.start_waiting=True;self.await_start=True;self.message=f'等待实际速度低于 {threshold:g}rad/s；尚未请求使能，可停止取消。';return
         self.start_waiting=False
         self.commands['position']=np.array(self.feedback['q']);self.commands['velocity']=np.zeros(14);self.commands['effort']=np.zeros(14)
         try:validate_fields(self.commands,self.client.hello,self.settings)
@@ -144,7 +146,8 @@ class Desk:
                         from .shm_gui_zero import validate_zero,plan_zero
                         try:
                             target=validate_zero(item['value'],self.context.identity,self.client.ready['mock'])
-                            if not self.feedback or max(abs(x) for x in self.feedback['dq'])>=.02:raise ValueError('回零起点尚未停稳（|dq|<0.02rad/s），本次未规划')
+                            threshold=start_velocity_limit(self.settings)
+                            if not self.feedback or max(abs(x) for x in self.feedback['dq'])>=threshold:raise ValueError(f'回零起点尚未停稳（|dq|<{threshold:g}rad/s），本次未规划')
                             self.zero_job=self.jobs.submit(plan_zero,list(self.feedback['q']),target,self.commands['kp'].tolist(),self.commands['kd'].tolist());self.zero_job.generation=self.operation_generation;self.message='正在检查回零 C3 连续参考与碰撞。'
                         except ValueError as error:self.message=str(error)
                         self.zero_request=None
@@ -172,7 +175,7 @@ class Desk:
                         if not lo<=s['q'][j]<=hi:self.observation_warnings.append(dict(id=j+12,field='位置',value=s['q'][j],threshold=lo if s['q'][j]<lo else hi,unit='rad',action='告警'))
                         limit=1.5 if self.zero_control else policy['velocity_limit']
                         if abs(s['dq'][j])>limit:self.observation_warnings.append(dict(id=j+12,field='速度',value=s['dq'][j],threshold=limit,unit='rad/s',action='请求结束' if self.zero_control or policy['end_velocity'] else '告警'))
-                if self.start_waiting and max(abs(v) for v in s['dq'])<.02:self.start()
+                if self.start_waiting and max(abs(v) for v in s['dq'])<start_velocity_limit(self.settings):self.start()
                 if self.zero_control==s['control'] and s['phase']>=0:self.zero_seen=True
                 if self.zero_control==s['control'] and self.zero_seen and s['phase']==-1:self.zero_control=None;self.zero_seen=False
                 if self.commands is None:
@@ -356,8 +359,8 @@ class Desk:
                 changed,value=imgui.checkbox('速度越限结束（位置始终只告警）',draft.get('end_velocity',self.settings_draft['end_velocity']))
                 if changed:draft['end_velocity']=value
                 if not self.override_axis:
-                    for key,label in [('lease_ms','控制租约 ms'),('feedback_ms','反馈断流超时 ms'),('send_ms','持续发送失败超时 ms'),('transition_ms','模式切换超时 ms')]:
-                        _,draft[key]=imgui.input_double(label,draft[key],0,0,'%.1f')
+                    for key,label in [('start_velocity_rad_s','启动停稳速度 rad/s'),('lease_ms','控制租约 ms'),('feedback_ms','反馈断流超时 ms'),('send_ms','持续发送失败超时 ms'),('transition_ms','模式切换超时 ms')]:
+                        _,draft[key]=imgui.input_double(label,draft[key],0,0,'%.3f' if key=='start_velocity_rad_s' else '%.1f')
                 if button('应用并等待原生回执',self.connected and self.settings_pending is None):
                     self.pending_settings=copy.deepcopy(self.settings_draft);self.settings_pending=self.client.send('settings',**self.pending_settings)
             imgui.end()

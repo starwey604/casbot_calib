@@ -1,5 +1,6 @@
 #pragma once
 #include "json_input.hpp"
+#include <casbot_calib/field_defaults.hpp>
 #include <algorithm>
 namespace casbot::shm {
 struct GuiAxisPolicy {
@@ -10,10 +11,13 @@ struct GuiAxisPolicy {
 struct GuiPolicy {
   std::array<GuiAxisPolicy,14> axes{};
   double lease_ms=1000,feedback_ms=2000,send_ms=2000,transition_ms=3000;
+  double start_velocity=casbot::field_start_velocity_rad_s;
 };
 inline double policy_number(const Json& p,const char* key,double fallback){const auto n=p.get_child_optional(key);return n?finite_number(*n):fallback;}
 inline GuiPolicy gui_policy(const Json& json,const Joints& lower,const Joints& upper,const Joints& velocity) {
   GuiPolicy result;
+  result.start_velocity=policy_number(json,"start_velocity_rad_s",casbot::field_start_velocity_rad_s);
+  if(result.start_velocity<=0)throw std::runtime_error("start_velocity_settings_range");
   result.lease_ms=policy_number(json,"lease_ms",1000);result.feedback_ms=policy_number(json,"feedback_ms",2000);
   result.send_ms=policy_number(json,"send_ms",2000);result.transition_ms=policy_number(json,"transition_ms",3000);
   if(result.lease_ms<200||result.lease_ms>10000||result.feedback_ms<20||result.feedback_ms>30000||result.send_ms<20||result.send_ms>30000||result.transition_ms<20||result.transition_ms>30000)throw std::runtime_error("communication_settings_range");

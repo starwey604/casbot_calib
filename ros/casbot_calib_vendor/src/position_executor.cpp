@@ -6,6 +6,7 @@
 #include "vendor_common.hpp"
 #include "sdk_breakaway.hpp"
 #include <casbot_calib/arm_dynamics.hpp>
+#include <casbot_calib/field_defaults.hpp>
 #include <crb_ros_msg/msg/upper_joint_data.hpp>
 #include <crb_ros_msg/msg/joint_state_data.hpp>
 #include <std_msgs/msg/string.hpp>
@@ -101,6 +102,8 @@ class PositionExecutor final : public rclcpp::Node {
     timeout_=declare_parameter<std::int64_t>("transition_timeout_ns",1000000000);
     startup_timeout_=declare_parameter<std::int64_t>("startup_timeout_ns",10000000000);
     tolerance_=declare_parameter<double>("start_tolerance_rad",.004);
+    start_velocity_=declare_parameter<double>("start_velocity_rad_s",casbot::field_start_velocity_rad_s);
+    if(!std::isfinite(start_velocity_)||start_velocity_<=0)throw std::runtime_error("Invalid start velocity limit");
     max_velocity_=declare_parameter<double>("maximum_velocity_rad_s",hardware_?1.5:.5);
     vel_scale_=declare_parameter<double>("vel_scale",.1);
     period_=declare_parameter<std::int64_t>("command_period_ns",2000000);
@@ -201,7 +204,7 @@ class PositionExecutor final : public rclcpp::Node {
         // A pending manual start is a visible, cancellable wait, not a 10 s deadline.
         if(!fresh(now)) {stable_at_=0;notice("waiting_feedback","wait",{{"","feedback_callback_age",state_.receive?double(now-state_.receive)*1e-6:std::numeric_limits<double>::quiet_NaN(),double(max_age_)*1e-6,"ms"}});return;}
         if(now-mode_at_>=mode_age_) {stable_at_=0;notice("waiting_mode_feedback","wait",{{"","mode_callback_age",mode_at_?double(now-mode_at_)*1e-6:std::numeric_limits<double>::quiet_NaN(),double(mode_age_)*1e-6,"ms"}});return;}
-        auto moving=motion_observations(policy_file_.empty()?.02:policy_.general[ManualPolicy::StartVelocity]);
+        auto moving=motion_observations(policy_file_.empty()?start_velocity_:policy_.general[ManualPolicy::StartVelocity]);
         if(!moving.empty()) {stable_at_=0;notice("waiting_stationary","wait",moving);return;}
         if(!stable_at_)stable_at_=now;
         if(!policy_file_.empty()&&now-stable_at_<policy_.ns(ManualPolicy::StartStable)) {notice("waiting_stationary_window","wait");return;}
@@ -213,7 +216,7 @@ class PositionExecutor final : public rclcpp::Node {
         if(!mode_client_->service_is_ready()) {notice("waiting_mode_service","wait");return;}
         mode_future_=request(mode_client_,true);event("ENTERING","request_upper_debug");return;
       }
-      if(fresh(now)&&speed()<.02&&now-mode_at_<mode_age_) {
+      if(fresh(now)&&speed()<start_velocity_&&now-mode_at_<mode_age_) {
         if(snapshot_) {save_snapshot();finish(true,"snapshot_only");return;}
         if(manual_&&!std::filesystem::exists(manual_file_))return;
         if(manual_&&!load_manual())return;
@@ -567,7 +570,7 @@ class PositionExecutor final : public rclcpp::Node {
   bool manual_archive_=false;std::shared_ptr<spdlog::details::thread_pool> archive_pool_;
   AsyncCsv events_,received_,commands_,limits_log_;
   std::string phase_,mode_,fault_,command_topic_,scope_;std::int64_t began_=0,phase_at_=0,mode_at_=0,start_=0,last_index_=-1,last_publish_=0,stable_at_=0,skips_=0,last_graph_check_=0;
-  std::int64_t max_age_,mode_age_,timeout_,period_,startup_timeout_;double tolerance_,max_velocity_,vel_scale_;
+  std::int64_t max_age_,mode_age_,timeout_,period_,startup_timeout_;double tolerance_,max_velocity_,vel_scale_,start_velocity_;
   std::string limits_key_;std::int64_t last_limits_=0;
   std::string notice_key_;std::int64_t notice_since_=0,last_notice_=0;
   bool recording_paused_=false;std::string recording_pause_file_;

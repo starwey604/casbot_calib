@@ -158,8 +158,8 @@ int gui_main(int argc,char** argv) {
           else for(int j=0;j<29;++j)if(snap.status.joints[j].error_code)error="drive_fault";
           std::array<double,14> q{};
           for(int j=0;j<14;++j){q[j]=arm_position(snap.status,j);if(q[j]<settings.policy.axes[j].input_lower||q[j]>settings.policy.axes[j].input_upper)error="start_outside_urdf";}
-          for(int j=0;j<14;++j)if(std::abs(arm_feedback(snap.status,j).velocity)>=.02)error="start_not_stationary_zero_writes";
-          if(m.reference)for(int j=0;j<14;++j)if(std::abs(q[j]-m.reference->at(0).state[0][j])>.005||std::abs(arm_feedback(snap.status,j).velocity)>=.02)error="reference_start_mismatch_zero_writes";
+          for(int j=0;j<14;++j)if(std::abs(arm_feedback(snap.status,j).velocity)>=settings.policy.start_velocity)error="start_not_stationary_zero_writes";
+          if(m.reference)for(int j=0;j<14;++j)if(std::abs(q[j]-m.reference->at(0).state[0][j])>.005||std::abs(arm_feedback(snap.status,j).velocity)>=settings.policy.start_velocity)error="reference_start_mismatch_zero_writes";
           for(int j=0;j<14;++j)if(m.fields[3][j]<0||m.fields[3][j]>settings.policy.axes[j].kp||m.fields[4][j]<0||m.fields[4][j]>settings.policy.axes[j].kd)error="initial_gains_range";
           if(!error.empty()){reply(io,m,false,error);continue;}
           active_settings=settings;

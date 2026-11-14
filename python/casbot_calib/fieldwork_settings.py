@@ -1,15 +1,16 @@
-"""Versioned manual-desk policy. No change to sealed connection or H1–H4 limits."""
+"""Versioned manual-desk policy; existing records keep their saved limits."""
 import copy
 import json
 from pathlib import Path
 import numpy as np
 from .hardware_batch import atomic_json
+from .field_defaults import START_VELOCITY_RAD_S,start_velocity_limit
 
 AXIS_KEYS=('input_lower','input_upper','input_velocity','input_effort','kp_max','kd_max',
            'observed_lower','observed_upper','observed_velocity','observed_action')
 OBSERVED=AXIS_KEYS[6:]
 # observed_action applies to speed; position bounds only produce recorded warnings.
-GLOBAL_DEFAULTS=dict(start_velocity=.02,start_stable_s=0.,stop_velocity=.02,stop_stable_s=.1,
+GLOBAL_DEFAULTS=dict(start_velocity=START_VELOCITY_RAD_S,start_stable_s=0.,stop_velocity=.02,stop_stable_s=.1,
     stop_timeout_s=3.,feedback_timeout_s=2.,mode_timeout_s=3.,rpc_timeout_s=3.,
     heartbeat_timeout_s=2.,maximum_duration_s=0.,short_amplitude_deg=1.,short_min_s=2.,short_max_s=12.)
 WIRE_GLOBAL_KEYS=tuple(GLOBAL_DEFAULTS)
@@ -26,6 +27,7 @@ def defaults(config,names,context):
             input_effort=t['effort_limit_nm'],kp_max=t['kp_max'],kd_max=t['kd_max'],observed_lower=None,
             observed_upper=None,observed_velocity=float(config['maximum_velocity_rad_s']),observed_action=0),
         overrides={},general=dict(GLOBAL_DEFAULTS,feedback_timeout_s=config['max_feedback_age_ns']*1e-9,
+            start_velocity=start_velocity_limit(config),
             command_hz=float(config.get('command_hz',500)),mode_timeout_s=config['max_mode_age_ns']*1e-9,rpc_timeout_s=config['transition_timeout_ns']*1e-9),
         mock=dict(MOCK_DEFAULTS,**config.get('mock_limits',{})))
 

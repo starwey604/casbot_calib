@@ -68,7 +68,7 @@ bash fieldwork/shm/run.sh h1 plan-jog artifacts/site_h1/start \
   --joint-id 12 --amplitude-deg 1 --output artifacts/site_h1/jog
 ```
 
-快照保存完整35槽状态、当前模型/连接范围；规划沿用原H1停稳起点条件`|v|<0.02rad/s`。小幅轨迹保持原H1“正向→反向→起点”波形，不是C03的先负后正波形。所有结点先规范到整数纳秒，再做连续碰撞、URDF位置与参考速度检查。
+快照保存完整35槽状态、当前模型/连接范围；起点停稳速度采用统一现场默认`|v|<0.2rad/s`，配置键`start_velocity_rad_s`。该默认覆盖H1–H4、K系列接入、GUI手动和回零，不改变测量窗口判据或运行中的速度上限。小幅轨迹保持原H1“正向→反向→起点”波形，不是C03的先负后正波形。所有结点先规范到整数纳秒，再做连续碰撞、URDF位置与参考速度检查。
 
 默认profile为`configs/shm/hardware_field.yaml`，逐轴Kp20/Kd2。H1**明确开启名义重力前馈**：在参考位置上用Pinocchio计算，冻结为1ms ZOH时间表；整数输出未变化的相邻条目合并，实际编码不变。它与旧SDK按实际位置在线计算补偿不同，配方/计划均写明`nominal_reference`。不加摩擦前馈，GUI手动模式仍不隐藏补偿。需要无重力前馈时另建profile显式选择`none`，不要编辑已封存计划。
 
