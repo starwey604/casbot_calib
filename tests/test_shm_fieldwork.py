@@ -241,3 +241,90 @@ def test_hangup_to_wrapper_disables_owned_native_sender(master, tmp_path):
         finally:
             if process.poll() is None:
                 process.terminate();process.wait(timeout=7)
+
+
+def test_repeated_hangup_still_finalizes_exit_and_report(master, tmp_path):
+    """SSH/PTTY can hang up both the shell and its job; cleanup must finish once."""
+    name, _ = master();out=tmp_path/'repeated_hangup'
+    with (tmp_path/'wrapper.log').open('wb') as log:
+        process=subprocess.Popen([sys.executable,'-m','casbot_calib.shm_fieldwork','run','C01','--execute',
+            *map(str,flags(name,out)),'--hand-background',str(ROOT/'tests/fixtures/shm/command_slot_0.bin'),
+            '--duration','5'],stdout=log,stderr=log)
+        try:
+            deadline=time.monotonic()+4
+            while process.poll() is None and time.monotonic()<deadline:
+                events=out/'native/events.csv'
+                if events.exists() and 'hold_begin' in events.read_text():break
+                time.sleep(.01)
+            assert process.poll() is None
+            for _ in range(40):
+                if process.poll() is not None:break
+                process.send_signal(signal.SIGHUP);time.sleep(.002)
+            process.wait(timeout=7)
+            assert (out/'result.json').exists(),(tmp_path/'wrapper.log').read_text()
+            result=json.loads((out/'result.json').read_text())
+            assert result['native']['reason']=='operator_interrupt' and result['native']['disable_ack']=='1'
+            assert result['process']['operator_interrupted'] and 'ended_mono_ns' in result['process']
+            assert result['process']['returncode']==1
+        finally:
+            if process.poll() is None:process.terminate();process.wait(timeout=7)
+
+
+
+def test_pty_close_preserves_native_exit_and_wrapper_report(master,tmp_path):
+    import pty,select,shlex
+    name,_=master();out=tmp_path/'pty_hangup'
+    command=[sys.executable,'-m','casbot_calib.shm_fieldwork','run','C01','--execute',
+        *map(str,flags(name,out)),'--hand-background',str(ROOT/'tests/fixtures/shm/command_slot_0.bin'),'--duration','5']
+    pid,fd=pty.fork()
+    if pid==0:
+        os.execvp('bash',['bash','--noprofile','--norc','-i'])
+    try:
+        os.write(fd,(shlex.join(command)+'\n').encode())
+        deadline=time.monotonic()+4
+        while time.monotonic()<deadline:
+            if select.select([fd],[],[],.01)[0]:os.read(fd,16384)
+            events=out/'native/events.csv'
+            if events.exists() and 'hold_begin' in events.read_text():break
+        else:pytest.fail('Private fixture never reached hold phase')
+        os.close(fd);fd=None
+        deadline=time.monotonic()+5
+        while not (out/'result.json').exists() and time.monotonic()<deadline:time.sleep(.01)
+        assert (out/'result.json').exists()
+        result=json.loads((out/'result.json').read_text())
+        assert result['native']['reason']=='operator_interrupt' and result['native']['disable_ack']=='1'
+        assert result['process']['interrupt_signal']=='SIGHUP' and 'ended_mono_ns' in result['process']
+    finally:
+        if fd is not None:os.close(fd)
+        done,_=os.waitpid(pid,os.WNOHANG)
+        if not done:
+            os.kill(pid,signal.SIGTERM);os.waitpid(pid,0)
+
+
+def test_hangup_during_offline_report_keeps_completed_metadata(master,tmp_path):
+    name,_=master();out=tmp_path/'report_hangup'
+    code='''import sys,time
+from pathlib import Path
+from casbot_calib import shm_fieldwork as fw
+original=fw.report
+def slow_report(root):
+    Path(root,'offline_report_entered').touch()
+    time.sleep(.15)
+    return original(root)
+fw.report=slow_report
+raise SystemExit(fw.main(sys.argv[1:]))
+'''
+    with (tmp_path/'report_wrapper.log').open('wb') as log:
+        process=subprocess.Popen([sys.executable,'-c',code,'run','C01','--execute',
+            *map(str,flags(name,out)),'--hand-background',str(ROOT/'tests/fixtures/shm/command_slot_0.bin'),'--duration','.05'],
+            stdout=log,stderr=log)
+        try:
+            deadline=time.monotonic()+4
+            while not (out/'offline_report_entered').exists() and process.poll() is None and time.monotonic()<deadline:time.sleep(.01)
+            assert (out/'offline_report_entered').exists()
+            assert 'ended_mono_ns' in json.loads((out/'process.json').read_text())
+            process.send_signal(signal.SIGHUP);process.wait(timeout=5)
+            assert (out/'result.json').exists()
+            assert json.loads((out/'result.json').read_text())['execution_completed']
+        finally:
+            if process.poll() is None:process.terminate();process.wait(timeout=5)

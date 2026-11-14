@@ -238,15 +238,23 @@ def new_run(a):
     return root
 
 
-def supervise(command, root, *, disappear=False, termination='sigterm', quiet=3, timeout=60, peer=None):
+def supervise(command, root, *, disappear=False, termination='sigterm', quiet=3, timeout=60, peer=None, defer_hup_restore=False):
     """Only signals Popen handles owned by this invocation, never a discovered PID."""
     root = Path(root)
     with (root/'terminal.log').open('wb') as log:
         child = subprocess.Popen(command, stdout=log, stderr=subprocess.STDOUT)
         probe = None
         previous = {}
+        stopping = False
+        meta = dict(command=command, pid=child.pid, started_mono_ns=time.monotonic_ns(), termination_sent=None)
         def handler(signum, _frame):
-            # SIGHUP is forwarded too: SSH loss cannot leave a normal owner unmanaged.
+            nonlocal stopping
+            if signum == signal.SIGHUP:meta['hangup_received'] = True
+            # One terminal hangup can reach the shell and its job more than once.
+            # Do not interrupt the bounded cleanup/metadata commit a second time.
+            if stopping:return
+            stopping = True
+            meta['interrupt_signal'] = signal.Signals(signum).name
             if child.poll() is None:
                 child.send_signal(signal.SIGTERM)
             if probe is not None and probe.poll() is None:
@@ -254,7 +262,6 @@ def supervise(command, root, *, disappear=False, termination='sigterm', quiet=3,
             raise KeyboardInterrupt
         for sig in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP):
             previous[sig] = signal.signal(sig, handler)
-        meta = dict(command=command, pid=child.pid, started_mono_ns=time.monotonic_ns(), termination_sent=None)
         dump(root/'process.json', meta)
         limit = time.monotonic()+timeout
         def stop_owned(process):
@@ -326,16 +333,21 @@ def supervise(command, root, *, disappear=False, termination='sigterm', quiet=3,
             meta['operator_interrupted'] = True
         finally:
             # This is ownership cleanup, not robot recovery. Native TERM attempts disable.
-            stop_owned(child)
-            if probe is not None:
-                stop_owned(probe)
-            for sig, old in previous.items():
-                signal.signal(sig, old)
-            meta['returncode'] = child.returncode
-            meta['ended_mono_ns'] = time.monotonic_ns()
-            if probe is not None:
-                meta['probe_returncode'] = probe.returncode
-            dump(root/'process.json', meta)
+            stopping = True
+            try:
+                stop_owned(child)
+                if probe is not None:
+                    stop_owned(probe)
+                meta['returncode'] = child.returncode
+                meta['ended_mono_ns'] = time.monotonic_ns()
+                if probe is not None:
+                    meta['probe_returncode'] = probe.returncode
+                dump(root/'process.json', meta)
+            finally:
+                for sig, old in previous.items():
+                    # Keep late/repeat HUP from killing the offline report writer.
+                    # _native_action restores the caller's HUP handler at its end.
+                    signal.signal(sig, signal.SIG_IGN if sig == signal.SIGHUP and defer_hup_restore else old)
     return meta
 
 
@@ -682,6 +694,13 @@ def prepare_subprocess(command):
 
 
 def _native_action(a,root,peer=None,peer_close=None):
+    # A lost terminal must not interrupt the offline report after native cleanup.
+    previous_hup = signal.getsignal(signal.SIGHUP)
+    try:return _native_action_impl(a,root,peer=peer,peer_close=peer_close)
+    finally:signal.signal(signal.SIGHUP, previous_hup)
+
+
+def _native_action_impl(a,root,peer=None,peer_close=None):
     if a.action == 'prepare':
         command = ['bash', str(ROOT/'scripts/shm/prepare_field.sh')]
         command += ['--start-only', str(a.start_only.resolve())] if a.start_only else [str(root/'takeover')]
@@ -715,7 +734,7 @@ def _native_action(a,root,peer=None,peer_close=None):
     try:
         meta = supervise(command, root, disappear=a.action == 'run' and a.case == 'C06',
                          termination=getattr(a, 'termination', 'sigterm'), quiet=getattr(a, 'quiet_s', 3),
-                         peer=peer, timeout=((3*a.segment_s+.5 if a.case in ('C03', 'C04') else a.duration+a.quiet_s)+20)
+                         peer=peer, defer_hup_restore=True, timeout=((3*a.segment_s+.5 if a.case in ('C03', 'C04') else a.duration+a.quiet_s)+20)
                          if a.action in ('run','execute') else getattr(a, 'duration', 3)+10)
     except OSError as error:
         dump(root/'process.json', dict(command=command, spawn_error=str(error), returncode=127))

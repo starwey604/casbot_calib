@@ -45,4 +45,4 @@
 - 用户反馈已登记到`after_ctrl_c`、`no_commands`和`sender_term`的`observations.jsonl/md`、`report.md`；汇总原话为根目录`lifecycle_observations_20261114.json`。
 - 本机完整回收在`artifacts/shm_lifecycle_20261114/lifecycle_69415435241802/`，流数据核对摘要为同级`readback.json`。
 
-SSH会话断开/重新登录、真实网络中断、SIGKILL及主站死亡都未由本轮测试覆盖；本轮也未新增故障注入或恢复动作。下一项由用户选择后再单独开展，不自动连续执行。
+本组三项没有覆盖SSH会话断开、真实网络中断、SIGKILL或主站死亡。用户随后授权并完成的SSH/PTTY连接关闭见[独立记录](shm_ssh_disconnect_20261114.md)；其它情形仍未测，不自动连续执行。
