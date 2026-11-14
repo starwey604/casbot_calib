@@ -55,7 +55,7 @@ class ObservationReader:
             values=np.array([[float(row[prefix+str(j)]) for j in range(14)] for prefix in ('q','v','effort')])
             if not np.isfinite(values).all():raise ValueError('SHM反馈含非有限q/velocity/effort')
             yield dict(index=index,receive_ns=receive,observation_time_ns=at,source_timestamp_ms=source,
-                clock_segment=segment,frame_counter=int(row['frame_counter']),elapsed_s=(at-self.origin)*1e-9,
+                clock_segment=segment,frame_counter=int(row['frame_counter']),phase=int(row.get('phase',-1)),elapsed_s=(at-self.origin)*1e-9,
                 time_ambiguous=uncertain or backward,q=values[0],dq=values[1],effort_raw=values[2])
 
     def window(self,interval,segment=None):

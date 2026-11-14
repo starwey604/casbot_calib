@@ -95,7 +95,7 @@ def static_recipe(preset,config,*,max_poses_per_split=None,candidate_ids=None):
                 selection=dict(selected_candidate_ids=list(selected),preset_manifest_sha256=sha256(root/'manifest.json')))
 
 
-def reference_effort(motion,engine,config):
+def reference_effort(motion,engine,config,preparation=None):
     if config['gravity_feedforward']=='none':return [dict(t_ns=0,value=[0.]*14)]
     curve=motion.polynomial();last=round(motion.duration*1e9);period=config['command_period_ns'];rows=[];previous=None
     # Keep each actual integer-output change, not millions of repeated hold rows.
@@ -103,6 +103,9 @@ def reference_effort(motion,engine,config):
     for first in range(0,last+period,period*4096):
         times=np.arange(first,min(last+period,first+period*4096),period,dtype=np.int64);times=np.minimum(times,last)
         torque=engine.gravity_batch(curve(times*1e-9))
+        if preparation is not None:
+            from .shm_ready import handover_fraction
+            torque*=handover_fraction(times,preparation)[:,None]
         if not np.isfinite(torque).all() or np.max(abs(torque))>config['feedforward_limit_nm']:raise ValueError('名义重力前馈超出显式力矩范围；不夹取')
         codes=np.trunc(torque*np.asarray(DIRECTION)*100).astype(np.int64)
         for ns,value,code in zip(times,torque,codes):
@@ -110,7 +113,7 @@ def reference_effort(motion,engine,config):
     return rows
 
 
-def prepare(profile,snapshot_root,output,*,joint_id=12,amplitude_deg=1.,preset=None,max_poses_per_split=None,candidate_ids=None,executor=DEFAULT_EXECUTOR,recipe=None):
+def prepare(profile,snapshot_root,output,*,joint_id=12,amplitude_deg=1.,preset=None,max_poses_per_split=None,candidate_ids=None,executor=DEFAULT_EXECUTOR,recipe=None,with_ready=False):
     c=load_profile(profile) if not isinstance(profile,dict) else profile
     start,binding=measured_start(snapshot_root,c);engine,source=model_for(c)
     if recipe is None:
@@ -118,20 +121,41 @@ def prepare(profile,snapshot_root,output,*,joint_id=12,amplitude_deg=1.,preset=N
         else:
             if joint_id not in range(12,26) or not np.isfinite(amplitude_deg) or not 0<amplitude_deg<=5:raise ValueError('H1小幅测试使用ID12–25、幅度(0,5]度')
             recipe=dict(kind='jog',joint=NAMES[joint_id-12],amplitude_deg=amplitude_deg,anchor_rad=None)
-    if recipe['kind']=='static':motion,trials=static_motion(c,start,recipe)
-    elif recipe['kind']=='jog':motion,_=jog_motion(c,start,list(NAMES),recipe['joint'],recipe['amplitude_deg'],anchor_rad=recipe['anchor_rad']);trials=[]
+        if with_ready:recipe['preparation']='arm_ready_v1'
+    ready=None;prefix=None;formal_start=start
+    if recipe.get('preparation') is not None:
+        if recipe['preparation']!='arm_ready_v1':raise ValueError('未知准备姿态配方')
+        from .shm_ready import preparation,ready_position
+        prefix,ready=preparation(start,engine,c['maximum_velocity_rad_s']);formal_start=ready_position()
+    if recipe['kind']=='static':motion,trials=static_motion(c,formal_start,recipe)
+    elif recipe['kind']=='jog':motion,_=jog_motion(c,formal_start,list(NAMES),recipe['joint'],recipe['amplitude_deg'],anchor_rad=recipe['anchor_rad']);trials=[]
     else:raise ValueError('未知H1配方')
     # Time rounding changes the reference: normalize BEFORE all certificates.
     motion.knots=[round(t*1e9)*1e-9 for t in motion.knots]
     for trial in trials:
         for key in ('begin_s','end_s','measure_begin_s','measure_end_s'):trial[key]=round(trial[key]*1e9)*1e-9
     root=output_outside(output,snapshot_root,*([preset] if preset else []));root.mkdir(parents=True,exist_ok=False)
-    gate=gate_motion(collision_for(c,engine),motion,c['scene']['clearance_m']);write_json(root/'collision_reference.json',gate)
+    gate=gate_motion(collision_for(c,engine),motion,c['scene']['clearance_m'])
+    if ready is not None:
+        gate.update(scope='formal_calibration_reference_only',execution_offset_ns=ready['calibration_begin_ns'])
+        write_json(root/'preparation.json',ready);write_json(root/'calibration_motion.json',motion.metadata())
+    write_json(root/'collision_reference.json',gate)
     if not gate['passed']:seal(root);raise FieldContractError('H1连续参考碰撞/URDF检查未通过；没有发送命令')
     if np.max(derivative_bounds(motion.polynomial()))>c['maximum_velocity_rad_s']*(1+1e-9):raise FieldContractError('H1参考速度越限')
-    bundle=export_motion(motion,kp=c['kp'],kd=c['kd'],effort=reference_effort(motion,engine,c))
-    bundle.update(purpose='shm_h1_collision_checked',gravity_feedforward=c['gravity_feedforward'],
+    if ready is not None:
+        from .shm_ready import prepend
+        motion=prepend(prefix,motion)
+        for trial in trials:
+            for key in ('begin_s','end_s','measure_begin_s','measure_end_s'):
+                trial[key]=(ready['calibration_begin_ns']+round(trial[key]*1e9))*1e-9
+    bundle=export_motion(motion,kp=c['kp'],kd=c['kd'],effort=reference_effort(motion,engine,c,ready))
+    bundle.update(purpose='shm_h1_ready_then_collision_checked' if ready else 'shm_h1_collision_checked',gravity_feedforward=c['gravity_feedforward'],
                   observed_velocity_limit_rad_s=c['maximum_velocity_rad_s'])
+    if ready is not None:
+        from .shm_ready import pd_schedule
+        bundle.update(pd_schedule=pd_schedule(ready,c['kp'],c['kd']),markers=[
+            dict(t_ns=0,event='ready_begin'),dict(t_ns=ready['move_end_ns'],event='ready_field_handover_begin'),
+            dict(t_ns=ready['calibration_begin_ns'],event='h1_calibration_begin')])
     write_json(root/'reference.json',bundle);write_json(root/'motion.json',motion.metadata())
     binary=Path(executor).resolve()
     if not binary.is_file():raise ValueError('找不到H1执行器：'+str(binary))
@@ -141,6 +165,7 @@ def prepare(profile,snapshot_root,output,*,joint_id=12,amplitude_deg=1.,preset=N
         executor_sha256=sha256(binary),reference_sha256=sha256(root/'reference.json'),
         time_quantization='knots rounded to integer nanoseconds before collision/velocity proof',
         hidden_compensation=False,hardware_calibration_accepted=False,**run_marker())
+    if ready is not None:metadata['preparation']=ready
     if binding['scope']=='private_mock':
         fixture=read(Path(snapshot_root)/'mock/config.json');fixture['urdf']=str(urdf_for(c));write_json(root/'mock.json',fixture)
     write_json(root/'plan.json',metadata);seal(root);return metadata
@@ -166,7 +191,9 @@ def _execute_once(plan,output,*,executor=DEFAULT_EXECUTOR,endpoint='/shm_mc',moc
     if hand_background:args+=['--hand-background',str(hand_background)]
     if do_execute:args+=['--execute']
     if not do_execute:return fw.main(args)
-    print('H1封存计划及模型/连续参考碰撞证明已核对，开始原生执行。',flush=True)
+    print('H1封存计划及模型/正式参考碰撞证明已核对，开始原生执行。',flush=True)
+    if metadata.get('preparation'):
+        print('先执行URDF-only准备段：双肩roll +20°/-20°，其余双臂0°，Kp20/Kd2；不中断使能接入H1。',flush=True)
     code=fw.main(args);root=Path(output)
     if root.is_dir():
         copied=root/'native/reference.json'
@@ -241,6 +268,8 @@ def main(argv=None):
             a.add_argument('--preset',type=Path,required=True);a.add_argument('--max-poses-per-split',type=int);a.add_argument('--candidate-id',action='append')
         if action=='plan-jog':
             a.add_argument('--joint-id',type=int,choices=range(12,26),default=12);a.add_argument('--amplitude-deg',type=float,default=1.)
+        if action in ('plan-jog','plan-static'):
+            a.add_argument('--with-ready',action='store_true',help='先脚本复位准备姿态（仅准备段跳过碰撞；URDF/速度仍检查），同次使能接正式H1')
         if action in ('snapshot','execute'):
             a.add_argument('--mock',action='store_true');a.add_argument('--endpoint',default='/shm_mc')
         if action=='snapshot':a.add_argument('--mock-config',type=Path)
@@ -251,7 +280,7 @@ def main(argv=None):
     try:
         if a.action=='snapshot':snapshot(a.profile,a.output,executor=a.executor,endpoint=a.endpoint,mock=a.mock,mock_config=a.mock_config)
         elif a.action in ('plan-jog','plan-static'):
-            prepare(a.profile,a.snapshot,a.output,executor=a.executor,**(dict(joint_id=a.joint_id,amplitude_deg=a.amplitude_deg) if a.action=='plan-jog' else dict(preset=a.preset,max_poses_per_split=a.max_poses_per_split,candidate_ids=a.candidate_id)))
+            prepare(a.profile,a.snapshot,a.output,executor=a.executor,with_ready=a.with_ready,**(dict(joint_id=a.joint_id,amplitude_deg=a.amplitude_deg) if a.action=='plan-jog' else dict(preset=a.preset,max_poses_per_split=a.max_poses_per_split,candidate_ids=a.candidate_id)))
         elif a.action=='execute':return execute(a.plan,a.output,executor=a.executor,endpoint=a.endpoint,mock=a.mock,hand_background=a.hand_background,do_execute=a.execute)
         elif a.action=='replan':replan(a.plan,a.snapshot,a.output,executor=a.executor)
         else:analyse(a.plan,a.capture,a.output,windows_only=a.windows_only)

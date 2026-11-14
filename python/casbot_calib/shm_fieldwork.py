@@ -218,6 +218,9 @@ def preview(a):
             d.pop(key,None)
         d['background']['other_arms']='双臂按bundle逐轴目标；进入阶段先保持新鲜实际起点'
         d['kp']=a.bundle['kp'];d['kd']=a.bundle['kd']
+        if 'pd_schedule' in a.bundle:
+            d['pd_schedule']=a.bundle['pd_schedule'];d['pd_interpolation']='quintic smoothstep between schedule knots; hold last'
+        if 'markers' in a.bundle:d['reference_markers']=a.bundle['markers']
         if a.bundle['schema']=='casbot_shm_fields_v1':
             d['fields']={key:a.bundle[key] for key in ('position','velocity','effort')}
             first=a.bundle['effort']

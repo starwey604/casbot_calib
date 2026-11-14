@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <stdexcept>
+#include <string_view>
 namespace casbot::shm {
 namespace {
 JointVector casteljau(std::array<JointVector,8> coefficients,int degree,double u) {
@@ -24,7 +25,9 @@ Reference Reference::load(const std::string& file) {
   if(origin!="absolute"&&origin!="measured_start")throw std::invalid_argument("Unknown reference origin");
   r.relative_=origin=="measured_start";
   if(r.relative_&&r.direct_)throw std::invalid_argument("Direct fields use explicit absolute positions");
-  if(json.get<std::string>("purpose","")=="shm_h1_collision_checked"||json.get<std::string>("purpose","")=="shm_gui_zero_collision_checked") {
+  const auto purpose_node=json.get_child_optional("purpose");
+  const std::string_view purpose=purpose_node?std::string_view(purpose_node->data()):std::string_view{};
+  if(purpose=="shm_h1_collision_checked"||purpose=="shm_gui_zero_collision_checked"||purpose=="shm_h1_ready_then_collision_checked") {
     if(r.direct_||r.relative_)throw std::invalid_argument("H1 uses frozen absolute trajectories");
     r.observed_velocity_=json.get<double>("observed_velocity_limit_rad_s");
     if(!std::isfinite(r.observed_velocity_)||r.observed_velocity_<=0||r.observed_velocity_>1.5)throw std::invalid_argument("Invalid H1 observed velocity limit");
@@ -51,6 +54,23 @@ Reference Reference::load(const std::string& file) {
   if(r.knots_.size()<2||r.knots_.size()!=r.states_.size()||r.knots_[0]!=0||r.knots_.back()<=0||r.knots_.back()>3600000000000LL)
     throw std::invalid_argument("Invalid reference knots/states/duration");
   for(std::size_t k=1;k<r.knots_.size();++k)if(r.knots_[k]<=r.knots_[k-1])throw std::invalid_argument("Reference knots must increase strictly");
+  if(const auto schedule=json.get_child_optional("pd_schedule")) {
+    if(r.direct_)throw std::invalid_argument("PD schedule requires a trajectory");
+    for(const auto& row:*schedule) {
+      Gains g{row.second.get<std::int64_t>("t_ns"),joint_values(row.second.get_child("kp")),joint_values(row.second.get_child("kd"))};
+      if(g.at<0||g.at>r.duration_ns()||(r.gains_.empty()?g.at!=0:g.at<=r.gains_.back().at))throw std::invalid_argument("Invalid PD schedule times");
+      for(int j=0;j<14;++j)if(g.kp[j]<0||g.kp[j]>500||g.kd[j]<0||g.kd[j]>50)throw std::invalid_argument("Scheduled PD outside explicit interface bounds");
+      r.gains_.push_back(g);
+    }
+    if(r.gains_.empty())throw std::invalid_argument("Empty PD schedule");
+  }
+  if(const auto markers=json.get_child_optional("markers"))for(const auto& row:*markers) {
+    auto t=row.second.get<std::int64_t>("t_ns");auto event=row.second.get<std::string>("event");
+    if(t<0||t>r.duration_ns()||(!r.markers_.empty()&&t<=r.markers_.back().first)||event.empty()||
+       event.find_first_not_of("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_")!=std::string::npos)
+      throw std::invalid_argument("Invalid reference marker");
+    r.markers_.push_back({t,event});
+  }
   if(r.effort_.empty()||r.effort_[0].first!=0)throw std::invalid_argument("Effort table must begin at zero");
   for(std::size_t k=0;k<r.effort_.size();++k) {
     if(r.effort_[k].first<0||r.effort_[k].first>r.duration_ns()||(k&&r.effort_[k].first<=r.effort_[k-1].first))throw std::invalid_argument("Invalid effort table times");
@@ -84,6 +104,14 @@ void Reference::resolve_origin(const JointVector& measured) {
 }
 ReferenceValue Reference::at(std::int64_t t)const {
   t=std::clamp<std::int64_t>(t,0,duration_ns());ReferenceValue result;result.kp=kp_;result.kd=kd_;
+  if(!gains_.empty()) {
+    const auto after=std::upper_bound(gains_.begin(),gains_.end(),t,[](auto time,const auto& row){return time<row.at;});
+    const auto& before=*(after-1);result.kp=before.kp;result.kd=before.kd;
+    if(after!=gains_.end()) {
+      const double u=double(t-before.at)/double(after->at-before.at),s=u*u*u*(10+u*(-15+6*u));
+      for(int j=0;j<14;++j){result.kp[j]+=(after->kp[j]-before.kp[j])*s;result.kd[j]+=(after->kd[j]-before.kd[j])*s;}
+    }
+  }
   const auto effort=std::upper_bound(effort_.begin(),effort_.end(),t,[](auto time,const auto& row){return time<row.first;});
   result.effort=(effort-1)->second;
   if(direct_){result.state=states_[0];return result;}

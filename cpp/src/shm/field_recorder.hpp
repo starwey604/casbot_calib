@@ -39,7 +39,7 @@ class Recorder {
     for(int j=0;j<14;++j){commands_<<",q"<<j;feedback_<<",q"<<j;}
     for(int j=0;j<14;++j){commands_<<",v"<<j<<",effort"<<j<<",kp"<<j<<",kd"<<j;feedback_<<",v"<<j<<",effort"<<j;}
     for(int j=0;j<35;++j)feedback_<<",status"<<j<<",mode"<<j<<",error"<<j;
-    commands_<<'\n';feedback_<<'\n';events_<<"mono_ns,phase,event\n";
+    commands_<<'\n';feedback_<<",phase\n";events_<<"mono_ns,phase,event\n";
     pairs_<<"mono_before_ns,wall_ns,mono_after_ns,offset_ns,clock_segment,jump_detected\n";
     queues_<<"mono_ns,passive,cmd_count,cmd_write,cmd_read,cmd_published,status_count,status_write,status_read,status_published\n";
     worker_=std::thread([this] {
@@ -81,7 +81,7 @@ class Recorder {
             for(int j=0;j<14;++j)feedback_<<','<<arm_position(r.state,j);
             for(int j=0;j<14;++j){const auto& a=r.state.joints[j+12];feedback_<<','<<arm_direction[j]*static_cast<double>(a.velocity)*1e-6<<','<<arm_direction[j]*a.torque*.01;}
             for(const auto& a:r.state.joints)feedback_<<','<<a.status_word<<','<<a.mode<<','<<a.error_code;
-            feedback_<<'\n';
+            feedback_<<','<<r.phase<<'\n';
           }
           if(r.at-last_flush>=20000000){
             flush();last_flush=r.at;

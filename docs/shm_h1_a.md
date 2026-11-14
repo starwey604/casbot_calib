@@ -2,7 +2,36 @@
 
 先按[fieldwork手册](../fieldwork/shm/README.md)完成本次开机窗口的接管与选定用例。H1/A已独立于ROS：Orin本机C++负责1ms执行与完整帧记录，Python负责快照、碰撞规划和数值分析。GUI已接入，用户已在实机确认双臂14轴ID、方向、零点及渲染对应一致，见[现场记录](shm_field_observations_20261114.md#最新gui双臂14轴映射确认)。
 
-H1与C03的区别是：**H1始终检查原模型的连续参考碰撞及实际接收位置折线**。逐轴fieldwork的URDF-only例外不传入H1。当前场景仍是DVT2裸法兰整机/地面，不能套用到未建模的工具或障碍物。
+H1正式标定段检查原模型的连续参考碰撞及实际接收位置折线。2026-11-14新增用户明确批准的**脚本准备前缀**：只有这一段跳过碰撞，连续URDF位置及参考速度仍检查；旧入口不加选项时维持原完整检查。当前场景仍是DVT2裸法兰整机/地面。
+
+## 从自然下垂姿态直接开始：脚本准备位 → H1
+
+手臂自然下垂贴腿时，使用`--with-ready`，不需要GUI手动展开或先运行回零。准备位为ID13左肩roll **+20°**、ID20右肩roll **−20°**，其余双臂关节 **0°**。这是保存的参考角度，不修改编码器零点。
+
+```bash
+R=artifacts/shm_h1/ready_$(date +%s%N)
+bash fieldwork/shm/run.sh h1 snapshot --output "$R/start"
+bash fieldwork/shm/run.sh h1 plan-jog "$R/start" --with-ready \
+  --joint-id 12 --amplitude-deg 1 --output "$R/plan"
+HAND=artifacts/本次接管/before/native/command.bin
+bash fieldwork/shm/run.sh h1 execute "$R/plan" \
+  --hand-background "$HAND" --output "$R/capture" --execute
+bash fieldwork/shm/run.sh h1 analyse "$R/plan" "$R/capture" --output "$R/analysis"
+```
+
+同一个原生发送器完成：
+
+1. 当前实际位置保持0.5秒，再用C3参考同步展开/清零双臂，最少5秒，参考速度不超过0.15rad/s，幅度大时自动增加时长；Kp20/Kd2、前馈0。
+2. 在准备目标保持位置参考，用2秒平滑接入本次H1的PD与显式重力前馈，再保持1秒。默认仍20/2；不复制反馈总effort为前馈。
+3. 直接接入通过完整碰撞检查的H1参考，中间不失能、不换owner。小幅正向→反向→准备位；最终请求失能并等待应答。
+
+所有正式参考在发送前完成证明；准备段单独检查URDF/速度。`preparation.json`记录跳过范围、目标、PD及交接时刻；`calibration_motion.json`是正式参考，`motion.json`/`reference.json`是实际完整时间轴。`collision_reference.json`明确仅覆盖正式段，并给出相对完整执行的偏移。原生事件`ready_begin`、`ready_field_handover_begin`、`h1_calibration_begin`可用于现场对照。
+
+分析保留全部原始反馈，但碰撞折线检查只覆盖准备完成后的正式phase3区间；准备、进入/退出失能区间明确排除。静态窗口和jog比较窗已平移到完整执行时间轴，不把展开数据混进标定。A的0秒仍是首条执行命令，选窗应读取`plan.json`的`preparation.calibration_begin_ns`，不会偷偷把准备段从时钟中扣掉。
+
+`plan-static`也支持`--with-ready`：先准备，再走准备位到预设工作姿态、全部静态任务及返回准备位的完整碰撞检查路径。起点自动重规划会保留准备配方；驱动/通信/模式故障仍结束整个会话，不自动恢复。
+
+复用组件位于`python/casbot_calib/shm_ready.py`，与GUI无关；后续执行流程可组合它与各自正式参考，不必复制复位逻辑。
 
 ## 在Orin运行
 
@@ -115,4 +144,4 @@ H1默认使用单独的`configs/shm/h1_mock.json`：**启动前已明确设置�
 
 2026-11-14已完成Orin原生构建/安装和私有物理闭环：小幅轨迹、两姿态四窗口静态PSD拟合/候选URDF重加载、A分析均通过。完整证据见[构建记录](shm_build.md#2026-11-14-orin-r3-h1a数值环境与安装闭环已完成)。本轮没有控制真实机器人。
 
-GUI映射现场确认已完成；下一步从本页1°小幅H1开始，再接少量正反接近静态姿态。H1按配方显式加入名义重力前馈，区别于GUI默认前馈0；采样窗口不要手托/推手臂，避免外力混入重力拟合。保持已有模型/场景和连续碰撞合同，使用本次实机快照/计划，不复用Mock记录。当前H1实机采集尚未开始。
+GUI映射现场确认已完成。首次H1从自然下垂起点规划时，起点保持段左髋roll/左腕pitch间距约3.26mm，小于10mm要求，未发送运动；用户随后批准上述脚本准备前缀。下一步用新版`--with-ready`做ID12 ±1°，再接少量正反接近静态姿态。采样窗口不要手托/推手臂，避免外力混入重力拟合。

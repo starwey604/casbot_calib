@@ -133,6 +133,7 @@ void run(Channel& channel,StatusFrame state,const CommandFrame& hand,const Eigen
   binary(root/"background.bin",command);
   const auto t0=mono();std::int64_t next=t0,phase_begin=t0,last_receive=t0,last_send=t0,first_stream=0,max_gap=0,first_write=0,last_pair=t0-1000000000LL,writes=0,skips=0;
   int phase=0;bool phase_sent=false,done=false,disable_ack=false;std::string failure;
+  std::size_t marker_index=0;
   const bool jogging=o.which=="C03"||o.which=="C04";
   auto send=[&](std::int64_t now){command.frame_counter++;command.timestamp=now/1000000;return channel.send(command);};
   auto change=[&](int p,const char* event){phase=p;phase_begin=mono();phase_sent=false;recorder.event(p,event);};
@@ -183,6 +184,8 @@ void run(Channel& channel,StatusFrame state,const CommandFrame& hand,const Eigen
         const std::int64_t relative_ns=first_stream?now-first_stream:0;
         const double elapsed=relative_ns*1e-9;
         if(reference) {
+          while(marker_index<reference->markers().size()&&relative_ns>=reference->markers()[marker_index].first)
+            recorder.event(3,reference->markers()[marker_index++].second);
           const auto value=reference->at(relative_ns);
           for(int j=0;j<14;++j)arm_target(command,j,value.state[0][j],value.state[1][j],value.kp[j],value.kd[j],value.effort[j]);
         }

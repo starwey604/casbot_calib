@@ -68,10 +68,11 @@ def analyse(plan,capture,output,*,windows_only=False):
     if source['sha256']!=m['source_model_sha256']:raise FieldContractError('H1模型变化')
     geometry=collision_for(c,engine);reader=ObservationReader(capture)
     motion=read(plan/'motion.json');curve=BPoly.from_derivatives(motion['knots_s'],np.asarray(motion['states']))
-    interval=motion['conditions'].get('comparison_window_s',[0,m['duration_ns']*1e-9])
+    ready=m.get('preparation');calibration_begin=ready['calibration_begin_ns']*1e-9 if ready else 0.
+    interval=motion['conditions'].get('comparison_window_s',[calibration_begin,m['duration_ns']*1e-9])
     tracking=TimeMean();windows=[TimeMean() for _ in m['trials']];maximum_speed=[0.]*len(windows)
     begins=[t['measure_begin_s'] for t in m['trials']];ends=[t['measure_end_s'] for t in m['trials']]
-    block=[];proofs=[];count=0;first_receive=None;last_receive=None
+    block=[];proofs=[];count=0;checked=0;excluded=0;first_receive=None;last_receive=None
     def prove(rows):
         q=np.array([r['q'] for r in rows]);ns=np.array([r['receive_ns'] for r in rows],dtype=np.int64)
         proof=certify_polyline(geometry,q,(ns-ns[0])*1e-9,clearance_m=c['scene']['clearance_m'],block_samples=1024)
@@ -80,9 +81,14 @@ def analyse(plan,capture,output,*,windows_only=False):
     for row in reader.rows():
         count+=1
         if first_receive is None:first_receive=row['receive_ns']
-        last_receive=row['receive_ns'];block.append(row)
-        if len(block)==1024:prove(block);block=[block[-1]]
+        last_receive=row['receive_ns']
         elapsed=row['elapsed_s']
+        if ready is None or (row['phase']==3 and elapsed>=calibration_begin):
+            checked+=1;block.append(row)
+            if len(block)==1024:prove(block);block=[block[-1]]
+        else:
+            if len(block)>1:prove(block)
+            block=[];excluded+=1
         if interval[0]<=elapsed<interval[1]:
             error=row['q']-curve(elapsed)
             tracking.add(row,np.r_[error*error,row['q']])
@@ -92,6 +98,7 @@ def analyse(plan,capture,output,*,windows_only=False):
             windows[index].add(row,np.r_[row['q'],torque]);maximum_speed[index]=max(maximum_speed[index],float(np.max(abs(row['dq']))))
     if len(block)>1:prove(block)
     if count<2:raise ValueError('H1没有可分析的完整反馈')
+    if checked<2:raise ValueError('H1正式参考段没有可分析的完整反馈')
     means=[]
     for trial,values,speed in zip(m['trials'],windows,maximum_speed):
         value=values.result();available=value is not None
@@ -112,7 +119,12 @@ def analyse(plan,capture,output,*,windows_only=False):
         tracking_rmse_rad=np.sqrt(position[:14]) if position is not None else None,
         tracking_unavailable_reason=tracking.error,reference_scope='nominal continuous reference and received piecewise-linear path, not unobserved physical motion',
         source_plan_manifest_sha256=sha256(plan/'manifest.json'),source_capture_manifest_sha256=sha256(capture/'manifest.json'))
-    write_json(root/'collision_received_interpolant.json',dict(passed=True,chunks=proofs,feedback_rows=count))
+    if ready:
+        report.update(preparation=ready,calibration_begin_s=calibration_begin,
+            reference_scope='formal calibration continuous reference and received piecewise-linear path; preparation collision check explicitly skipped')
+    write_json(root/'collision_received_interpolant.json',dict(passed=True,chunks=proofs,feedback_rows=count,
+        collision_checked_rows=checked,excluded_rows=excluded,execution_begin_s=calibration_begin,
+        scope='formal_phase3_only_preparation_and_entry_exit_excluded' if ready else 'full_capture'))
     write_json(root/'static_windows.json',means)
     if m['stage']!='position':
         if windows_only:report.update(analysis_available=any(r['available'] for r in means),stage='gravity_windows')

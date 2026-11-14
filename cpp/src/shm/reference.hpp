@@ -20,6 +20,7 @@ class Reference {
   bool direct_fields() const{return direct_;}
   double observed_velocity_limit() const{return observed_velocity_;}
   bool measured_origin() const{return relative_;}
+  const std::vector<std::pair<std::int64_t,std::string>>& markers() const{return markers_;}
   void resolve_origin(const JointVector& measured);
  private:
   bool direct_=false,relative_=false;
@@ -28,6 +29,9 @@ class Reference {
   std::vector<std::array<JointVector,4>> states_;
   std::vector<std::array<JointVector,8>> coefficients_;
   JointVector kp_{},kd_{};
+  struct Gains {std::int64_t at;JointVector kp,kd;};
+  std::vector<Gains> gains_;
+  std::vector<std::pair<std::int64_t,std::string>> markers_;
   std::vector<std::pair<std::int64_t,JointVector>> effort_;
 };
 }  // namespace casbot::shm
