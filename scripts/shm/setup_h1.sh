@@ -37,6 +37,7 @@ env -u PYTHONPATH -u LD_LIBRARY_PATH CMAKE_BUILD_PARALLEL_LEVEL=1 "$venv/bin/pyt
   --config-settings=build-dir=build/shm-python \
   --config-settings=cmake.define.CMAKE_PREFIX_PATH="$dependency_prefix" \
   --config-settings=cmake.define.CALIB_BUILD_PYTHON=ON \
+  --config-settings=cmake.define.pybind11_DIR="$("$venv/bin/python" -m pybind11 --cmakedir)" \
   --config-settings=cmake.define.CALIB_BUILD_SHM=ON \
   --config-settings=cmake.define.CALIB_BUILD_SHM_MOCK=ON \
   --config-settings=cmake.define.CMAKE_INSTALL_PREFIX="$repo/install/shm-core"
