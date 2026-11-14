@@ -52,7 +52,7 @@ def test_desk_control_remote_mock_and_settings(tmp_path):
             time.sleep(.01)
         raise AssertionError(desk.message)
     try:
-        spin(lambda:desk.connected and desk.client.hello)
+        spin(lambda:desk.connected and desk.client.hello and desk.settings_pending is None)
         setup_gui(desk);io=imgui.get_io();io.display_size=imgui.ImVec2(1440,980);io.delta_time=1/60;io.fonts.get_tex_data_as_rgba32()
         desk.start();spin(lambda:desk.phase==3)
         desk.commands['position'][0]+=.005;desk.dirty=True;spin(lambda:desk.feedback['revision']==1)

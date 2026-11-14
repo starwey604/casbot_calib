@@ -255,6 +255,10 @@ class Desk:
                 self.byte_rate=max(0,(used-self.byte_sample[1])/(now-self.byte_sample[0]));self.byte_sample=(now,used)
             remaining=f'，预计剩余 {max(0,limit-used)/self.byte_rate:.0f}s' if self.byte_rate>0 and not self.feedback['recording_stopped'] else ''
             imgui.text_disabled(f'原生记录 {used/1048576:.1f} / {limit/1048576:.0f}MiB，{self.byte_rate/1048576:.2f}MiB/s'+remaining)
+        if self.feedback and self.client:
+            age=max(0,(self.feedback['mono_ns']-self.feedback['receive_ns'])*1e-6);gap=max(0,(time.monotonic_ns()-self.client.received_at)*1e-6)
+            latency=f'，RPC往返 {self.client.rtt_ms:.1f}ms' if self.client.rtt_ms is not None else ''
+            imgui.text_disabled(f'主站出队距遥测发送 {age:.1f}ms，本机距收包 {gap:.1f}ms'+latency)
         if self.recording_error:imgui.text_colored(imgui.ImVec4(.75,.15,.12,1),self.recording_error)
         if self.render_error:imgui.text_wrapped(self.render_error)
         imgui.separator();width=imgui.get_content_region_avail().x;height=imgui.get_content_region_avail().y

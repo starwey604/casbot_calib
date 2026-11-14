@@ -133,3 +133,23 @@ def test_video_failure_does_not_publish_final_file(client,tmp_path,monkeypatch):
     output=tmp_path/'failed.mp4'
     with pytest.raises(RuntimeError,match='injected'):archive.export_video(saved,output)
     assert not output.exists() and not output.with_name('failed.pending.mp4').exists()
+
+
+def test_bridge_zero_reference_full_protocol_with_explicit_zero_gravity_fixture(tmp_path):
+    from casbot_calib.shm_gui_client import RemoteClient
+    from test_shm_fieldwork import ROOT,NATIVE
+    config=json.loads((ROOT/'configs/shm/gui_mock.json').read_text())
+    config['urdf']=str((ROOT/'configs/shm'/config['urdf']).resolve());config['gravity_world']=[0,0,0]
+    config['initial_fields']['effort']=[0.]*14;config['purpose']='zero_protocol_only_explicit_zero_gravity_fixture'
+    path=tmp_path/'fixture.json';path.write_text(json.dumps(config))
+    c=RemoteClient(dict(output=str(tmp_path/'remote_zero'),mock=True,executor=str(NATIVE/'shm_executor'),mock_config=str(path)),tmp_path/'zero_local');c.connect()
+    try:
+        wait(c,lambda:c.ready and c.hello and c.latest and c.latest['receive_ns'])
+        q=list(c.latest['q']);target=list(q);target[0]+=.001
+        planned=plan_zero(q,target,[20.]*14,[2.]*14,duration_s=1.)
+        c.send('zero_return',**planned);wait(c,lambda:c.latest['phase']==3)
+        wait(c,lambda:c.latest['phase']==-1,timeout=5)
+        assert c.latest['disable_ack'] and abs(c.latest['q'][0]-target[0])<.001
+        c.close();result=json.loads((Path(c.ready['workspace'])/'native/result.json').read_text())
+        assert result['reason']=='reference_completed'
+    finally:c.close()
