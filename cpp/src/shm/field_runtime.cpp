@@ -2,6 +2,7 @@
 #include <casbot_calib/shm/channel.hpp>
 #include <casbot_calib/shm/clock.hpp>
 #include "reference.hpp"
+#include "field_limits.hpp"
 #include "field_recorder.hpp"
 #include "native_clock.hpp"
 #include <casbot_calib/shm/arm_jog.hpp>
@@ -149,7 +150,7 @@ void observe(const Options& o) {
   write_result(root,failure.empty()?(interrupted?"operator_interrupt":"observe_completed"):failure,failure.empty(),recorder.stopped);
   if(!failure.empty())throw std::runtime_error(failure);
 }
-void run(Channel& channel,StatusFrame state,const CommandFrame& hand,const Eigen::VectorXd& q0,const Options& o,const Reference* reference=nullptr) {
+void run(Channel& channel,StatusFrame state,const CommandFrame& hand,const Eigen::VectorXd& q0,const Options& o,const casbot::ArmModel& model,const Reference* reference=nullptr) {
   const auto root=std::filesystem::path(o.output);Recorder recorder(root);ClockMap clock;
   auto command=baseline(state,hand,q0,o);
   if(reference){auto initial=reference->at(0);for(int j=0;j<14;++j)arm_target(command,j,q0[j],0,initial.kp[j],initial.kd[j]);}
@@ -159,6 +160,8 @@ void run(Channel& channel,StatusFrame state,const CommandFrame& hand,const Eigen
   const bool jogging=o.which=="C03"||o.which=="C04";
   auto send=[&](std::int64_t now){command.frame_counter++;command.timestamp=now/1000000;return channel.send(command);};
   auto change=[&](int p,const char* event){phase=p;phase_begin=mono();phase_sent=false;recorder.event(p,event);};
+  std::array<double,14> lower{},upper{};std::string previous_limits;std::int64_t last_limit=0;
+  for(int j=0;j<14;++j){lower[j]=model.joints[j].lower;upper[j]=model.joints[j].upper;}
   recorder.event(0,"disabling");
   try {
     while(!done) {
@@ -168,6 +171,20 @@ void run(Channel& channel,StatusFrame state,const CommandFrame& hand,const Eigen
       if(now-last_pair>=1000000000LL){r.clock=clock.pair();r.has_pair=true;last_pair=now;r.queues=channel.diagnostics();r.has_queues=true;}
       r.received=channel.receive(state);r.receive_at=r.received?mono():0;
       if(r.received)last_receive=r.receive_at;
+      if(r.received&&reference&&reference->observed_velocity_limit()>0) {
+        const auto limits=field_limits(state,lower,upper,reference->observed_velocity_limit());
+        std::string key;int end_joint=-1;
+        for(const auto& limit:limits){key+=std::to_string(limit.joint)+limit.field;if(limit.end_control)end_joint=limit.joint;}
+        if(key!=previous_limits||(!key.empty()&&now-last_limit>=1000000000LL)) {
+          if(key.empty())recorder.limit(r.receive_at,phase,-1,"",0,0,"","recovered");
+          for(const auto& limit:limits)recorder.limit(r.receive_at,phase,limit.joint+12,limit.field,limit.value,limit.threshold,limit.unit,limit.end_control?"end_control":"warn");
+          previous_limits=key;last_limit=now;
+        }
+        if(end_joint>=0) {
+          r.phase=phase;r.state=state;r.segment=clock.segment();r.observation=clock.observation(state.timestamp);recorder.push(std::move(r));
+          throw std::runtime_error("observed_velocity_limit_slot_"+std::to_string(end_joint+12));
+        }
+      }
       if(now-last_receive>2000000000LL)throw std::runtime_error("feedback_timeout");
       if(phase!=6&&now-last_send>2000000000LL)throw std::runtime_error("command_queue_timeout");
       for(int i=0;i<29;++i)if(state.joints[i].error_code)throw std::runtime_error("drive_error_slot_"+std::to_string(i)+"_"+std::to_string(state.joints[i].error_code));
@@ -334,7 +351,7 @@ int field_main(int argc,char** argv) {
     for(int j=0;j<14;++j)if(q0[j]<model.model().joints[j].lower||q0[j]>model.model().joints[j].upper)throw std::runtime_error("Measured start outside URDF limit at joint ID "+std::to_string(j+12));
     state=fresh(channel);if((positions(state)-q0).cwiseAbs().maxCoeff()>.005)throw std::runtime_error("Start changed during preflight; no commands sent");
     const auto hand=read_background(o.background);binary(root/"hand_background_source.bin",hand);
-    run(channel,state,hand,q0,o,reference.get());return 0;
+    run(channel,state,hand,q0,o,model.model(),reference.get());return 0;
   }catch(const std::exception& e){
     std::cerr<<"ERROR "<<e.what()<<'\n';
     if(created&&!std::filesystem::exists(std::filesystem::path(o.output)/"result.txt"))write_result(o.output,e.what(),false,false);

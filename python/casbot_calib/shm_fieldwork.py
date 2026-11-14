@@ -267,8 +267,17 @@ def supervise(command, root, *, disappear=False, termination='sigterm', quiet=3,
                 meta.setdefault('cleanup_hard_killed_pids', []).append(process.pid)
                 process.kill();process.wait(timeout=5)
         last_event = None
+        last_limit = None
         def progress():
-            nonlocal last_event
+            nonlocal last_event, last_limit
+            limits = root/'native/observed_limits.csv'
+            if limits.exists():
+                with limits.open('rb') as stream:
+                    stream.seek(max(0, limits.stat().st_size-2048))
+                    tail = stream.read().decode(errors='replace').splitlines()
+                if tail and tail[-1] != last_limit and not tail[-1].startswith('receive_mono_ns'):
+                    last_limit = tail[-1]
+                    print('反馈限制：' + last_limit, flush=True)
             path = root/'native/events.csv'
             if not path.exists():
                 return
@@ -457,6 +466,19 @@ def snapshot_summary(folder):
     return result
 
 
+def summarize_limits(folder):
+    result = dict(count=0, actions={}, last_by_joint_field={})
+    path = Path(folder)/'observed_limits.csv'
+    if path.exists():
+        with path.open() as stream:
+            for row in csv.DictReader(stream):
+                result['count'] += 1
+                action = row['action']
+                result['actions'][action] = result['actions'].get(action, 0)+1
+                result['last_by_joint_field'][row['joint_id']+':'+row['field']] = row
+    return result
+
+
 def report(root):
     root = Path(root).resolve()
     case_file = root/'case.json'
@@ -466,6 +488,7 @@ def report(root):
     native = text_result(folder/'result.txt')
     feedback = summarize_feedback(folder, case.get('codec'));commands = summarize_commands(folder, case.get('codec'))
     timing = timing_summary(folder)
+    limits = summarize_limits(folder)
     snapshot = snapshot_summary(folder)
     observations = [json.loads(row) for row in (root/'observations.jsonl').read_text().splitlines()] if (root/'observations.jsonl').exists() else []
     planned_kill = process.get('termination_sent') == 'sigkill' and process.get('returncode') == -signal.SIGKILL
@@ -499,7 +522,7 @@ def report(root):
     result = dict(schema='casbot_shm_field_case_v1', case=case, process=process, native=native,
                   execution_completed=completed, conclusion=observations[-1]['conclusion'] if observations else ('inconclusive' if process or native else 'not_run'),
                   observation_recorded=bool(observations), observations=observations,
-                  feedback=feedback, commands=commands, mock_exit=mock_exit, timing=timing, snapshot=snapshot, recording_notes=reasons,
+                  feedback=feedback, commands=commands, mock_exit=mock_exit, timing=timing, snapshot=snapshot, observed_limits=limits, recording_notes=reasons,
                   probe=summarize_feedback(root/'probe', case.get('codec')) if (root/'probe').is_dir() else None,
                   physical_stop_observed='unknown')
     # Human observations establish only what their text actually says, not an automatic pass.
@@ -512,6 +535,8 @@ def report(root):
              f'- STREAM阶段最大成功发送间隔：{timing["streaming_send_gap_ns"].get("max", "无")} ns',
              f'- stamp重复/倒退：{feedback["repeated_stamp"]}/{feedback["backward_stamp"]}；帧号缺口：{feedback["counter_gap"]}',
              '- stamp为主站毫秒墙钟；接收时刻另存，不作驱动采样时刻或单向执行延迟。', '']
+    if limits['count']:
+        lines += [f'- 反馈限制事件：{limits["count"]}条，动作计数{limits["actions"]}；完整轴/值/阈值见native/observed_limits.csv。']
     if timing['clock_pairs']:
         lines += [f'- 时钟配对：{len(timing["clock_pairs"])}次；分段：{sorted({r["clock_segment"] for r in timing["clock_pairs"]})}；原始stamp量化1ms。']
     if timing['events']:

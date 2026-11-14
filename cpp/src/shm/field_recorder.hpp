@@ -11,22 +11,25 @@
 #include <iomanip>
 #include <mutex>
 #include <thread>
+#include <sstream>
 namespace casbot::shm {
 struct Record {
   std::int64_t at=0,send_at=0,receive_at=0,observation=0;
   int phase=0,segment=0;bool sent=false,received=false,passive=false;
-  CommandFrame cmd{};StatusFrame state{};QueueDiagnostics queues{};bool has_queues=false;std::string event;ClockPair clock{};bool has_pair=false;
+  CommandFrame cmd{};StatusFrame state{};QueueDiagnostics queues{};bool has_queues=false;std::string event,limit;ClockPair clock{};bool has_pair=false;
 };
 class Recorder {
   std::mutex mutex_;std::condition_variable ready_;std::deque<Record> queue_;
   bool done_=false;std::thread worker_;std::filesystem::path root_;
-  std::ofstream commands_,feedback_,events_,raw_cmd_,raw_status_,pairs_,passive_cmd_,queues_;
+  std::ofstream commands_,feedback_,events_,raw_cmd_,raw_status_,pairs_,passive_cmd_,queues_,limits_;
  public:
   std::atomic<bool> stopped{false};
   explicit Recorder(const std::filesystem::path& root):root_(root) {
+    limits_.open(root/"observed_limits.csv");
     commands_.open(root/"commands.csv");feedback_.open(root/"feedback.csv");events_.open(root/"events.csv");
     raw_cmd_.open(root/"commands.bin",std::ios::binary);raw_status_.open(root/"feedback.bin",std::ios::binary);pairs_.open(root/"clock_pairs.csv");passive_cmd_.open(root/"passive_commands.bin",std::ios::binary);queues_.open(root/"queues.csv");
-    for(auto* s:{&commands_,&feedback_,&events_,&raw_cmd_,&raw_status_,&pairs_,&passive_cmd_,&queues_})s->exceptions(std::ios::badbit|std::ios::failbit);
+    for(auto* s:{&commands_,&feedback_,&events_,&raw_cmd_,&raw_status_,&pairs_,&passive_cmd_,&queues_,&limits_})s->exceptions(std::ios::badbit|std::ios::failbit);
+    limits_<<"receive_mono_ns,phase,joint_id,field,value,threshold,unit,action\n";
     commands_<<std::setprecision(17)<<"send_mono_ns,phase,frame_counter";
     feedback_<<std::setprecision(17)<<"receive_mono_ns,source_timestamp_ms,frame_counter,observation_time_ns,clock_segment,passive";
     for(int j=0;j<14;++j){commands_<<",q"<<j;feedback_<<",q"<<j;}
@@ -42,6 +45,7 @@ class Recorder {
           Record r;
           {std::unique_lock<std::mutex> lock(mutex_);ready_.wait(lock,[&]{return done_||!queue_.empty();});
             if(queue_.empty())break;r=std::move(queue_.front());queue_.pop_front();}
+          if(!r.limit.empty())limits_<<r.at<<','<<r.phase<<','<<r.limit<<'\n';
           if(!r.event.empty()) {
             events_<<r.at<<','<<r.phase<<','<<r.event<<'\n';events_.flush();
             if(r.event=="kill_ready"||r.event=="passive_ready") {
@@ -79,11 +83,16 @@ class Recorder {
       }catch(const std::exception&){stopped=true;}
     });
   }
-  void flush(){for(auto* s:{&commands_,&feedback_,&events_,&raw_cmd_,&raw_status_,&pairs_,&passive_cmd_,&queues_})s->flush();}
+  void flush(){for(auto* s:{&commands_,&feedback_,&events_,&raw_cmd_,&raw_status_,&pairs_,&passive_cmd_,&queues_,&limits_})s->flush();}
   void push(Record r) {
     if(stopped)return;
     {std::lock_guard<std::mutex> lock(mutex_);if(queue_.size()>=4096){stopped=true;return;}queue_.push_back(std::move(r));}
     ready_.notify_one();
+  }
+  void limit(std::int64_t receive,int phase,int joint,const char* field,double value,double threshold,const char* unit,const char* action) {
+    Record r;r.at=receive;r.phase=phase;std::ostringstream text;
+    text<<std::setprecision(17)<<joint<<','<<field<<','<<value<<','<<threshold<<','<<unit<<','<<action;
+    r.limit=text.str();push(std::move(r));
   }
   void event(int phase,const std::string& event) {Record r;r.at=mono();r.phase=phase;r.event=event;push(std::move(r));}
   void finish(){{std::lock_guard<std::mutex> lock(mutex_);done_=true;}ready_.notify_one();if(worker_.joinable())worker_.join();}

@@ -130,7 +130,8 @@ def prepare(profile,snapshot_root,output,*,joint_id=12,amplitude_deg=1.,preset=N
     if not gate['passed']:seal(root);raise FieldContractError('H1连续参考碰撞/URDF检查未通过；没有发送命令')
     if np.max(derivative_bounds(motion.polynomial()))>c['maximum_velocity_rad_s']*(1+1e-9):raise FieldContractError('H1参考速度越限')
     bundle=export_motion(motion,kp=c['kp'],kd=c['kd'],effort=reference_effort(motion,engine,c))
-    bundle.update(purpose='shm_h1_collision_checked',gravity_feedforward=c['gravity_feedforward'])
+    bundle.update(purpose='shm_h1_collision_checked',gravity_feedforward=c['gravity_feedforward'],
+                  observed_velocity_limit_rad_s=c['maximum_velocity_rad_s'])
     write_json(root/'reference.json',bundle);write_json(root/'motion.json',motion.metadata())
     binary=Path(executor).resolve()
     if not binary.is_file():raise ValueError('找不到H1执行器：'+str(binary))

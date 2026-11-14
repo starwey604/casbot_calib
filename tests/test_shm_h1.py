@@ -128,3 +128,25 @@ def test_fault_during_execution_ends_collection_without_resume(tmp_path,config):
     assert len(result['attempts'])==1 and not result['execution_completed'] and not result['resume_permitted']
     assert 'drive_error' in result['attempts'][0]['reason']
     with pytest.raises(FieldContractError,match='未完成'):analyse(plan,out,tmp_path/'not_a_success')
+
+
+def test_native_h1_observed_velocity_ends_and_records_trigger(tmp_path):
+    from casbot_calib import shm_fieldwork as fw
+    from casbot_calib.shm_reference import jog_bundle
+    cfg=json.loads((ROOT/'configs/shm/h1_mock.json').read_text())
+    bundle=jog_bundle(cfg['initial_q'],12,.001,1)
+    for row in bundle['states']:row[0]=cfg['initial_q'][:]
+    bundle.update(purpose='shm_h1_collision_checked',observed_velocity_limit_rad_s=.00001)
+    reference=tmp_path/'reference.json';reference.write_text(json.dumps(bundle))
+    out=tmp_path/'velocity_fault'
+    assert fw.main(['execute',str(reference),'--executor',str(NATIVE),'--mock',
+                    '--mock-config',str(ROOT/'configs/shm/h1_mock.json'),'--output',str(out),'--execute'])!=0
+    report=json.loads((out/'result.json').read_text())
+    assert report['native']['reason'].startswith('observed_velocity_limit_slot_')
+    assert report['native']['disable_ack']=='1' and not report['execution_completed']
+    assert report['observed_limits']['actions']['end_control']>0
+    with (out/'native/observed_limits.csv').open() as f:limits=list(csv.DictReader(f))
+    with (out/'native/feedback.csv').open() as f:feedback=list(csv.DictReader(f))
+    assert any(row['receive_mono_ns']==limits[0]['receive_mono_ns'] for row in feedback)
+    with (out/'native/commands.csv').open() as f:commands=list(csv.DictReader(f))
+    assert all(int(row['phase']) in (0,5) for row in commands)
