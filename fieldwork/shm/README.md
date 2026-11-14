@@ -75,7 +75,7 @@ bash fieldwork/shm/run.sh execute artifacts/my_shm_fields/reference.json --mock 
 
 ## H1/A：现场确认后进入标定流程
 
-新增`h1 snapshot/plan-jog/plan-static/execute/analyse/replan`与`a-evidence`入口，见[H1/A完整操作](../../docs/shm_h1_a.md)。H1保留连续参考及实际观测折线碰撞检查；本页C03的URDF-only例外不适用于H1。数值入口自动使用项目`.venv-shm`，普通C00–C06仍只需系统Python。
+新增`h1 snapshot/plan-jog/plan-static/execute/analyse/replan`与`a-evidence`入口，见[H1/A完整操作](../../docs/shm_h1_a.md)。自然下垂起步可在`plan-jog/plan-static`加`--with-ready`：脚本先到双肩roll ±20°/其余双臂0°，同次使能接正式轨迹；仅这个用户批准的准备前缀跳过碰撞，仍检查URDF/参考速度，正式段保留连续参考与实际接收折线检查。ID12 `--amplitude-deg 10`已实机确认流程正常，默认起点停稳速度统一0.2rad/s。数值入口自动使用项目`.venv-shm`，普通C00–C06仍只需系统Python。
 
 ## 下次到场重新接入：先留背景，再停业务，只启主站
 

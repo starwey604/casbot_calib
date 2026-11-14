@@ -157,3 +157,13 @@ bash fieldwork/shm/run.sh h1 --help
 操作手册见[SHM H1/A](shm_h1_a.md)。本机证据为`artifacts/shm_h1_r3_20261114/`：`orin_setup_final.log`、`orin_final_validation.log`、`orin_h1_final.log`、`orin_final_entrypoints.log`、`orin_assets_rsync.log`、`reload_readback.log`及取回的完整`orin_h1_final/`。对应原始闭环在Orin的`artifacts/shm_h1_r3_orin_20261114_final/`保留。
 
 本轮只跑私有SHM端点，没有停业务/启动真实主站或发送机器人命令。Orin墙钟仍为1970，构建日志有未来文件告警，测试时间依本机执行记录标识，不冒充设备时间已校准。用户下一步完成fieldwork与H1实机验证；GUI随后推进。
+
+### 2026-11-14 可复用准备位、统一起点默认与H1实机
+
+- `f465f7c`：`shm_ready.py`将URDF-only准备前缀与碰撞检查的正式H1合成一条C3参考。准备前馈0，固定准备目标处平滑交接PD/显式名义重力；没有GUI接管或中间失能。原生增加可选PD时间表、阶段标记及反馈CSV阶段列；旧无前缀入口不变。Humble/Orin均编译安装并通过8项SHM CTest；Orin安装版`verify_ready.py`私有物理闭环25084行反馈、一次使能、最后失能，正式段分析通过。
+- `af5fb51`：按用户选择支持显式ID12 ±10°，jog参考速度仍0.05rad/s，自动延长段长；默认幅度仍1°。10°离线连续参考通过，含准备的参考时长43.043261916秒。
+- `013871b`：起点停稳速度默认统一0.2rad/s，覆盖H1–H4、K执行适配、GUI手动/回零的Python与原生入口。共享Python/C++默认、3份现场profile及设置面板一致；停止观察和测量窗口判据不改。Humble相关默认/边界/GUI/硬件消费者检查通过，SDK core/vendor重新编译通过。补充SDK CTest为7通过、`gzip_chunks`未运行：可执行文件位置已有同名历史输出目录，本轮保留该目录；这项不是启动策略检查。
+- 最新源码已用现有只读Git隧道快进到Orin，重建`shm_gui_bundle`及新增策略检查，8项SHM CTest通过，安装Core/Shm组件（含公共默认头文件）。未改厂家环境、墙钟、主站或接管窗口。
+- 实机同一boot窗口两次±1°、两次±10°；最终`site_v6_10deg`获用户确认完整动作流程正常。成功命令43627条、跳过0，失能应答，正式接收路径检查通过；不是静态重力拟合或其它轴激励验收。逐次结果及实际位置偏差见[现场记录](shm_field_observations_20261114.md#h1脚本准备位与id12往返)。
+
+本机证据：`artifacts/shm_h1_ready_20261114/`，其中`local_checks/`、`start_policy/`保存软件检查，`orin/`保存安装版私有闭环、实机start/plan/capture/analysis、逐例数值读回与用户原话。Orin原始目录为`artifacts/shm_h1_ready_20261114/`；现场序号v3只读起点条件拒绝、v4仅规划未执行，均保留，v5/v6才是新版10°实测。
