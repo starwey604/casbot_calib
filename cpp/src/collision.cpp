@@ -3,17 +3,22 @@
 #include <coal/distance.h>
 #include <coal/shape/convex.h>
 #include <algorithm>
+#include <atomic>
 #include <cmath>
 #include <limits>
 #include <mutex>
 #include <set>
 #include <stdexcept>
+#ifdef _OPENMP
+#include <omp.h>
+#endif
 
 namespace casbot {
 struct CollisionChecker::Impl {
   ArmDynamics model;
   ArmWorkspace workspace;
   std::vector<CollisionGeometry> geometries;
+  std::vector<Eigen::Matrix4d> local_placements;
   std::vector<std::shared_ptr<coal::CollisionGeometry>> shapes;
   std::vector<std::pair<int,int>> pairs;
   std::vector<std::unique_ptr<coal::ComputeDistance>> solvers;
@@ -25,6 +30,7 @@ struct CollisionChecker::Impl {
     const auto config=model.model();const int n=static_cast<int>(config.joints.size()),count=static_cast<int>(geometry.size());
     base=config.base.matrix();
     if(count<2)throw std::invalid_argument("At least two collision geometries required");
+    local_placements.reserve(count);
     Eigen::MatrixXd body_radii=Eigen::MatrixXd::Zero(count,n);
     std::set<std::string> names;
     for(int i=0;i<count;++i) {
@@ -35,6 +41,7 @@ struct CollisionChecker::Impl {
          !pose.allFinite() || (g.placement.rotation.transpose()*g.placement.rotation-Eigen::Matrix3d::Identity()).norm()>1e-10 ||
          std::abs(g.placement.rotation.determinant()-1.)>1e-10)
         throw std::invalid_argument("Invalid named convex collision geometry");
+      local_placements.push_back(pose);
       auto points=std::make_shared<std::vector<coal::Vec3s>>();points->reserve(g.vertices.rows());
       double radius=0.;
       for(Eigen::Index j=0;j<g.vertices.rows();++j) {
@@ -81,28 +88,94 @@ std::string CollisionChecker::backend_version() {return std::string("coal-")+COA
 Eigen::MatrixXd CollisionChecker::motion_radii() const {return impl_->radii;}
 std::vector<std::pair<int,int>> CollisionChecker::pairs() const {return impl_->pairs;}
 CollisionBatch CollisionChecker::check_batch(const Eigen::MatrixXd& positions) {
-  auto& s=*impl_;std::lock_guard<std::mutex> lock(s.mutex);const auto n=s.radii.cols();
-  if(positions.cols()!=static_cast<Eigen::Index>(n) || !positions.allFinite())throw std::invalid_argument("Expected finite q[N,J]");
-  CollisionBatch output;output.distances.resize(positions.rows(),s.pairs.size());output.worst_pair.resize(positions.rows());
-  output.first_point.resize(positions.rows(),3);output.second_point.resize(positions.rows(),3);
-  std::vector<coal::Transform3s> poses;poses.reserve(s.geometries.size());
-  coal::DistanceRequest request(true,true);
-  for(Eigen::Index row=0;row<positions.rows();++row) {
-    const auto joints=s.workspace.fk(positions.row(row).transpose());poses.clear();
-    for(const auto& g:s.geometries) {
-      const Eigen::Matrix4d transform=(g.parent<0?(g.attached_to_base?s.base:Eigen::Matrix4d::Identity()):joints[g.parent])*g.placement.matrix();
-      poses.emplace_back(Eigen::Matrix3d(transform.topLeftCorner<3,3>()),Eigen::Vector3d(transform.topRightCorner<3,1>()));
+  auto& s=*impl_;
+  const auto n=s.radii.cols();
+  if(positions.cols()!=static_cast<Eigen::Index>(n) || !positions.allFinite())
+    throw std::invalid_argument("Expected finite q[N,J]");
+  const Eigen::Index rows=positions.rows();
+  CollisionBatch output;
+  output.distances.resize(rows,s.pairs.size());
+  output.worst_pair.resize(rows);
+  output.first_point.resize(rows,3);
+  output.second_point.resize(rows,3);
+  if(rows==0) return output;
+  if(rows<8) {
+    std::lock_guard<std::mutex> lock(s.mutex);
+    std::vector<coal::Transform3s> poses;
+    poses.reserve(s.geometries.size());
+    coal::DistanceRequest request(true,true);
+    for(Eigen::Index row=0;row<rows;++row) {
+      const auto joints=s.workspace.fk(positions.row(row).transpose());
+      poses.clear();
+      for(std::size_t i=0;i<s.geometries.size();++i) {
+        const auto& g=s.geometries[i];
+        const Eigen::Matrix4d transform=(g.parent<0?(g.attached_to_base?s.base:Eigen::Matrix4d::Identity()):joints[g.parent])*s.local_placements[i];
+        poses.emplace_back(Eigen::Matrix3d(transform.topLeftCorner<3,3>()),Eigen::Vector3d(transform.topRightCorner<3,1>()));
+      }
+      double minimum=std::numeric_limits<double>::infinity();
+      for(std::size_t p=0;p<s.pairs.size();++p) {
+        coal::DistanceResult result;
+        const auto pair=s.pairs[p];
+        const double distance=(*s.solvers[p])(poses[pair.first],poses[pair.second],request,result);
+        if(!std::isfinite(distance))
+          throw std::runtime_error("Coal distance query failed; refusing to certify path");
+        output.distances(row,p)=distance;
+        if(distance<minimum) {
+          minimum=distance;
+          output.worst_pair[row]=static_cast<int>(p);
+          output.first_point.row(row)=result.nearest_points[0].transpose();
+          output.second_point.row(row)=result.nearest_points[1].transpose();
+        }
+      }
     }
-    double minimum=std::numeric_limits<double>::infinity();
-    for(std::size_t p=0;p<s.pairs.size();++p) {
-      coal::DistanceResult result;const auto pair=s.pairs[p];
-      const double distance=(*s.solvers[p])(poses[pair.first],poses[pair.second],request,result);
-      if(!std::isfinite(distance))throw std::runtime_error("Coal distance query failed; refusing to certify path");
-      output.distances(row,p)=distance;
-      if(distance<minimum) {minimum=distance;output.worst_pair[row]=p;
-        output.first_point.row(row)=result.nearest_points[0].transpose();output.second_point.row(row)=result.nearest_points[1].transpose();}
+    return output;
+  }
+  std::atomic<bool> failed{false};
+#ifdef _OPENMP
+#pragma omp parallel
+#endif
+  {
+    ArmWorkspace local_ws=s.model.workspace();
+    std::vector<coal::ComputeDistance> local_solvers;
+    local_solvers.reserve(s.pairs.size());
+    for(const auto& pair:s.pairs)
+      local_solvers.emplace_back(s.shapes[pair.first].get(),s.shapes[pair.second].get());
+    std::vector<coal::Transform3s> poses;
+    poses.reserve(s.geometries.size());
+    coal::DistanceRequest request(true,true);
+#ifdef _OPENMP
+#pragma omp for schedule(static)
+#endif
+    for(Eigen::Index row=0;row<rows;++row) {
+      if(failed.load(std::memory_order_relaxed)) continue;
+      const auto joints=local_ws.fk(positions.row(row).transpose());
+      poses.clear();
+      for(std::size_t i=0;i<s.geometries.size();++i) {
+        const auto& g=s.geometries[i];
+        const Eigen::Matrix4d transform=(g.parent<0?(g.attached_to_base?s.base:Eigen::Matrix4d::Identity()):joints[g.parent])*s.local_placements[i];
+        poses.emplace_back(Eigen::Matrix3d(transform.topLeftCorner<3,3>()),Eigen::Vector3d(transform.topRightCorner<3,1>()));
+      }
+      double minimum=std::numeric_limits<double>::infinity();
+      for(std::size_t p=0;p<s.pairs.size();++p) {
+        coal::DistanceResult result;
+        const auto pair=s.pairs[p];
+        const double distance=local_solvers[p](poses[pair.first],poses[pair.second],request,result);
+        if(!std::isfinite(distance)) {
+          failed.store(true,std::memory_order_relaxed);
+          break;
+        }
+        output.distances(row,p)=distance;
+        if(distance<minimum) {
+          minimum=distance;
+          output.worst_pair[row]=static_cast<int>(p);
+          output.first_point.row(row)=result.nearest_points[0].transpose();
+          output.second_point.row(row)=result.nearest_points[1].transpose();
+        }
+      }
     }
   }
+  if(failed.load(std::memory_order_relaxed))
+    throw std::runtime_error("Coal distance query failed; refusing to certify path");
   return output;
 }
 }

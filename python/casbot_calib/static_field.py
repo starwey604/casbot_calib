@@ -10,11 +10,19 @@ from pathlib import Path
 from time import perf_counter
 import numpy as np
 import yaml
+from scipy.interpolate import BPoly
 from .data import write_json
 from .model_runtime import model_for, collision_for
 from .rigid_identification import parameter_scales
-from .staged_motion import Motion, derivative_bounds, gate_motion
+from .staged_motion import Motion, derivative_bounds, gate_motion, restricted_coefficients
 from .artifact_io import sha256
+
+_UNIT_SEPTIC = BPoly.from_derivatives([0.0, 1.0], [[0.0, 0.0, 0.0, 0.0], [1.0, 0.0, 0.0, 0.0]])
+_SEPTIC_ANALYTIC_PEAKS = (35.0 / 16.0, 84.0 / (5.0 * float(np.sqrt(5.0))), 105.0 / 2.0)
+_SEPTIC_BERNSTEIN8_PEAKS = tuple(
+    float(np.max(np.abs(restricted_coefficients(_UNIT_SEPTIC, k, 8))) * (1.0 + 1e-10))
+    for k in (1, 2, 3)
+)
 
 
 def validate_config(config, engine, source):
@@ -84,12 +92,11 @@ def candidate_pool(config, engine):
 
 
 def _move(motion, target, minimum, envelope, label):
-    unit = Motion('unit', 'gravity', motion.states[-1][0]).add(1., target)
-    curve = unit.polynomial()
-    peaks = [float(np.max(derivative_bounds(curve, order))) for order in (1, 2, 3)]
-    limits = [envelope[k] for k in ('speed_rad_s', 'acceleration_rad_s2', 'jerk_rad_s3')]
-    duration = max(minimum, *(float((p / limit) ** (1 / order)) for order, (p, limit) in enumerate(zip(peaks, limits), 1)))
-    motion.add(duration * (1 + 1e-10), target, label=label)
+    max_dq = float(np.max(np.abs(np.asarray(target, dtype=float) - motion.states[-1][0])))
+    peaks = (p * max_dq + 1e-12 for p in _SEPTIC_BERNSTEIN8_PEAKS)
+    limits = (envelope['speed_rad_s'], envelope['acceleration_rad_s2'], envelope['jerk_rad_s3'])
+    duration = max(minimum, *(float((p / limit) ** (1.0 / order)) for order, (p, limit) in enumerate(zip(peaks, limits), 1)))
+    motion.add(duration * (1.0 + 1e-10), target, label=label)
 
 
 def paired_motions(row, config, *, split):

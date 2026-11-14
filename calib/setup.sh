@@ -56,7 +56,7 @@ fi
 [[ -z ${CONDA_PREFIX:-} ]] || { echo '请先退出 conda 环境再运行 calib/setup.sh' >&2; exit 1; }
 
 if [[ -z $wheelhouse ]]; then
-  for cand in "$repo"/artifacts/shm_h1_wheels* "$repo"/artifacts/wheelhouse*; do
+  for cand in "$repo"/artifacts/wheelhouse_aarch64 "$repo"/artifacts/wheelhouse* "$repo"/artifacts/shm_h1_wheels*; do
     if [[ -d $cand ]]; then
       wheelhouse=$cand
       break

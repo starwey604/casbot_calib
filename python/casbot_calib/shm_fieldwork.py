@@ -13,7 +13,26 @@ import time
 import uuid
 import xml.etree.ElementTree as ET
 
-from .shm_data import ROOT, URDF, DIRECTION, OFFSET, PARTS, NAMES
+from .shm_data import (
+    COMMAND_RECORD_DTYPE,
+    DIRECTION,
+    FEEDBACK_RECORD_DTYPE,
+    NAMES,
+    OFFSET,
+    PARTS,
+    ROOT,
+    URDF,
+)
+
+try:
+    import numpy as _np
+except ImportError:
+    _np = None
+
+try:
+    import orjson as _orjson
+except ImportError:
+    _orjson = None
 CASES = {
     'C00': ('全轴被动基线', '不出队、不写命令；原业务退出/主站启停分别保存快照。'),
     'C01': ('首帧与接管', '失能→MIT→按新鲜实际位置使能保持→有限时间后失能。'),
@@ -27,10 +46,49 @@ CASES = {
 }
 
 
+def _reject_nonfinite(value):
+    if isinstance(value, float):
+        if not math.isfinite(value):
+            raise ValueError('Out of range float values are not JSON compliant')
+    elif _np is not None and isinstance(value, _np.ndarray):
+        if value.dtype.kind == 'f' and not _np.isfinite(value).all():
+            raise ValueError('Out of range float values are not JSON compliant')
+    elif _np is not None and isinstance(value, _np.floating):
+        if not _np.isfinite(value):
+            raise ValueError('Out of range float values are not JSON compliant')
+    elif isinstance(value, dict):
+        for v in value.values():
+            _reject_nonfinite(v)
+    elif isinstance(value, (list, tuple)):
+        for v in value:
+            _reject_nonfinite(v)
+
+
+def _orjson_default(obj):
+    if _np is not None:
+        if isinstance(obj, _np.ndarray):
+            if obj.dtype.kind in 'biuf':
+                return _np.ascontiguousarray(obj)
+            return obj.tolist()
+        if isinstance(obj, _np.generic):
+            return obj.item()
+    raise TypeError(f'Object of type {type(obj).__name__} is not JSON serializable')
+
+
 def dump(path, value):
     path = Path(path)
     temporary = path.with_name(path.name + '.tmp')
-    temporary.write_text(json.dumps(value, ensure_ascii=False, indent=2, allow_nan=False) + '\n')
+    if _orjson is not None:
+        raw = _orjson.dumps(
+            value,
+            option=_orjson.OPT_SERIALIZE_NUMPY | _orjson.OPT_NON_STR_KEYS | _orjson.OPT_INDENT_2,
+            default=_orjson_default,
+        )
+        if b'null' in raw:
+            _reject_nonfinite(value)
+        temporary.write_bytes(raw + b'\n')
+    else:
+        temporary.write_text(json.dumps(value, ensure_ascii=False, indent=2, allow_nan=False) + '\n')
     temporary.replace(path)
 
 
@@ -373,16 +431,110 @@ def span_update(s, value):
         s['last']=value;s['min']=min(s['min'], value);s['max']=max(s['max'], value)
 
 
+def _span_from_array(arr):
+    if len(arr) == 0:
+        return {}
+    return dict(
+        first=arr[0].item(),
+        last=arr[-1].item(),
+        min=arr.min().item(),
+        max=arr.max().item(),
+    )
+
+
+def _unique_sorted_int(col, *, exclude_zero=False):
+    if len(col) == 0:
+        return []
+    if exclude_zero and not _np.any(col):
+        return []
+    compact = col if len(col) <= 1 else _np.r_[col[:1], col[1:][col[1:] != col[:-1]]]
+    vals = _np.unique(compact)
+    if exclude_zero:
+        return [int(x) for x in vals if x != 0]
+    return [int(x) for x in vals]
+
+
+def _affine_span(raw_span, d, off):
+    if not raw_span:
+        return {}
+    f_first = float(d * raw_span['first'] * 1e-6 + off)
+    f_last = float(d * raw_span['last'] * 1e-6 + off)
+    a = float(d * raw_span['min'] * 1e-6 + off)
+    b = float(d * raw_span['max'] * 1e-6 + off)
+    return dict(first=f_first, last=f_last, min=min(a, b), max=max(a, b))
+
+
 def summarize_feedback(folder, codec=None):
+    folder = Path(folder)
     direction = (codec or {}).get('direction', DIRECTION)
     offset_rad = (codec or {}).get('offset_rad', OFFSET)
     path = folder/'feedback.bin'
-    result = dict(count=0, trailing_bytes=path.stat().st_size % 704 if path.exists() else 0,
+    size = path.stat().st_size if path.exists() else 0
+    result = dict(count=0, trailing_bytes=size % 704 if path.exists() else 0,
                   receive_gap_ns={}, source_step_ms={}, repeated_stamp=0, backward_stamp=0,
                   repeated_counter=0, counter_gap=0, backward_counter=0,
                   joints=[dict(id=j, raw_position={}, q_rad={} if 12 <= j <= 25 else None,
                                raw_velocity={}, raw_torque={}, statuses=[], modes=[], errors=[]) for j in range(35)],
                   hands=[dict(hand=h, errors=[], global_statuses=[], items=[dict(position={}, velocity={}, current={}, statuses=[]) for _ in range(6)]) for h in range(2)])
+    count = size // 704
+    if count == 0:
+        return result
+    if _np is not None and FEEDBACK_RECORD_DTYPE is not None:
+        recs = _np.fromfile(path, dtype=FEEDBACK_RECORD_DTYPE, count=count)
+        result['count'] = int(count)
+        if count > 1:
+            recv = recs['receive_mono_ns'].astype(_np.int64)
+            result['receive_gap_ns'] = _span_from_array(_np.diff(recv))
+            stamps = recs['frame']['timestamp']
+            if int(stamps.max()) <= _np.iinfo(_np.int64).max:
+                result['source_step_ms'] = _span_from_array(_np.diff(stamps.astype(_np.int64)))
+            else:
+                steps = [int(b) - int(a) for a, b in zip(stamps[:-1], stamps[1:])]
+                result['source_step_ms'] = dict(first=steps[0], last=steps[-1], min=min(steps), max=max(steps))
+            result['repeated_stamp'] = int(_np.sum(stamps[1:] == stamps[:-1]))
+            result['backward_stamp'] = int(_np.sum(stamps[1:] < stamps[:-1]))
+            counters = recs['frame']['frame_counter']
+            result['repeated_counter'] = int(_np.sum(counters[1:] == counters[:-1]))
+            result['backward_counter'] = int(_np.sum(counters[1:] < counters[:-1]))
+            inc = counters[1:] > counters[:-1]
+            if _np.any(inc):
+                result['counter_gap'] = int(_np.sum(counters[1:][inc] - counters[:-1][inc] - _np.uint64(1)))
+        joints = recs['frame']['joints']
+        pos_all = joints['position']
+        vel_all = joints['velocity']
+        trq_all = joints['torque']
+        sw_all = joints['status_word']
+        md_all = joints['mode']
+        err_all = joints['error_code']
+        pos_min, pos_max = pos_all.min(axis=0), pos_all.max(axis=0)
+        vel_min, vel_max = vel_all.min(axis=0), vel_all.max(axis=0)
+        trq_min, trq_max = trq_all.min(axis=0), trq_all.max(axis=0)
+        has_joint_err = bool(_np.any(err_all))
+        for j, s in enumerate(result['joints']):
+            raw_pos = dict(first=pos_all[0, j].item(), last=pos_all[-1, j].item(), min=pos_min[j].item(), max=pos_max[j].item())
+            s['raw_position'] = raw_pos
+            s['raw_velocity'] = dict(first=vel_all[0, j].item(), last=vel_all[-1, j].item(), min=vel_min[j].item(), max=vel_max[j].item())
+            s['raw_torque'] = dict(first=trq_all[0, j].item(), last=trq_all[-1, j].item(), min=trq_min[j].item(), max=trq_max[j].item())
+            if 12 <= j <= 25:
+                s['q_rad'] = _affine_span(raw_pos, direction[j - 12], offset_rad[j - 12])
+            s['statuses'] = _unique_sorted_int(sw_all[:, j])
+            s['modes'] = _unique_sorted_int(md_all[:, j])
+            s['errors'] = _unique_sorted_int(err_all[:, j], exclude_zero=True) if has_joint_err else []
+        hands = recs['frame']['hands']
+        hj_all = hands['joints']
+        hp_min, hp_max = hj_all['position'].min(axis=0), hj_all['position'].max(axis=0)
+        hv_min, hv_max = hj_all['velocity'].min(axis=0), hj_all['velocity'].max(axis=0)
+        hc_min, hc_max = hj_all['current'].min(axis=0), hj_all['current'].max(axis=0)
+        for h, s in enumerate(result['hands']):
+            s['global_statuses'] = _unique_sorted_int(hands['global_status'][:, h])
+            s['errors'] = _unique_sorted_int(hands['error_code'][:, h], exclude_zero=True)
+            hj = hj_all[:, h, :]
+            for item_idx, item in enumerate(s['items']):
+                item['position'] = dict(first=hj['position'][0, item_idx].item(), last=hj['position'][-1, item_idx].item(), min=hp_min[h, item_idx].item(), max=hp_max[h, item_idx].item())
+                item['velocity'] = dict(first=hj['velocity'][0, item_idx].item(), last=hj['velocity'][-1, item_idx].item(), min=hv_min[h, item_idx].item(), max=hv_max[h, item_idx].item())
+                item['current'] = dict(first=hj['current'][0, item_idx].item(), last=hj['current'][-1, item_idx].item(), min=hc_min[h, item_idx].item(), max=hc_max[h, item_idx].item())
+                item['statuses'] = _unique_sorted_int(hj['status'][:, item_idx])
+        return result
     last = None
     status_sets = [set() for _ in range(35)];mode_sets=[set() for _ in range(35)];errors=[set() for _ in range(35)]
     hands = [[set(), set(), [set() for _ in range(6)]] for _ in range(2)]
@@ -424,11 +576,27 @@ def summarize_feedback(folder, codec=None):
 
 
 def summarize_commands(folder, codec=None):
+    folder = Path(folder)
     direction = (codec or {}).get('direction', DIRECTION)
     offset_rad = (codec or {}).get('offset_rad', OFFSET)
     path = folder/'commands.bin'
-    result = dict(count=0, trailing_bytes=path.stat().st_size % 752 if path.exists() else 0,
+    size = path.stat().st_size if path.exists() else 0
+    result = dict(count=0, trailing_bytes=size % 752 if path.exists() else 0,
                   send_gap_ns={}, arms=[dict(id=j+12, q_rad={}) for j in range(14)])
+    count = size // 752
+    if count == 0:
+        return result
+    if _np is not None and COMMAND_RECORD_DTYPE is not None:
+        recs = _np.fromfile(path, dtype=COMMAND_RECORD_DTYPE, count=count)
+        result['count'] = int(count)
+        if count > 1:
+            result['send_gap_ns'] = _span_from_array(_np.diff(recs['send_mono_ns'].astype(_np.int64)))
+        arm_pos = recs['frame']['joints']['position'][:, 12:26]
+        arm_min, arm_max = arm_pos.min(axis=0), arm_pos.max(axis=0)
+        for j, arm in enumerate(result['arms']):
+            raw_span = dict(first=arm_pos[0, j].item(), last=arm_pos[-1, j].item(), min=arm_min[j].item(), max=arm_max[j].item())
+            arm['q_rad'] = _affine_span(raw_span, direction[j], offset_rad[j])
+        return result
     last = None
     for data in records(path, 752):
         at = struct.unpack_from('<q', data)[0];result['count'] += 1
@@ -442,6 +610,7 @@ def summarize_commands(folder, codec=None):
 
 
 def timing_summary(folder):
+    folder = Path(folder)
     result = dict(events=[], clock_pairs=[], streaming_send_gap_ns={})
     event_path = folder/'events.csv'
     if event_path.exists():
@@ -452,6 +621,32 @@ def timing_summary(folder):
         with path.open() as stream:
             result['clock_pairs'] = [r for r in csv.DictReader(stream) if all(r.get(k) for k in
                 ('mono_before_ns', 'wall_ns', 'mono_after_ns', 'offset_ns', 'clock_segment', 'jump_detected'))]
+    cmd_bin = folder/'commands.bin'
+    if _np is not None and COMMAND_RECORD_DTYPE is not None and cmd_bin.is_file() and result['events']:
+        count = cmd_bin.stat().st_size // 752
+        if count > 1:
+            sends = _np.fromfile(cmd_bin, dtype=COMMAND_RECORD_DTYPE, count=count)['send_mono_ns'].astype(_np.int64)
+            intervals = []
+            start_ns = None
+            for ev in result['events']:
+                p = ev.get('phase')
+                t = int(ev['mono_ns'])
+                if p == '3' and start_ns is None:
+                    start_ns = t
+                elif p != '3' and start_ns is not None:
+                    intervals.append((start_ns, t))
+                    start_ns = None
+            if start_ns is not None:
+                intervals.append((start_ns, _np.iinfo(_np.int64).max))
+            gaps = []
+            for lo, hi in intervals:
+                i0 = int(_np.searchsorted(sends, lo, side='left'))
+                i1 = int(_np.searchsorted(sends, hi, side='left'))
+                if i1 - i0 > 1:
+                    gaps.append(_np.diff(sends[i0:i1]))
+            if gaps:
+                result['streaming_send_gap_ns'] = _span_from_array(_np.concatenate(gaps))
+        return result
     path = folder/'commands.csv';last = None
     if path.exists():
         with path.open() as stream:

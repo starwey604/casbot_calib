@@ -15,7 +15,7 @@ if [[ ! -f "$venv_activate" ]]; then
   exit 1
 fi
 source "$venv_activate"
-export OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 CMAKE_BUILD_PARALLEL_LEVEL=1
+export OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS="${OMP_NUM_THREADS:-8}" CMAKE_BUILD_PARALLEL_LEVEL="${CMAKE_BUILD_PARALLEL_LEVEL:-8}"
 export MPLBACKEND=Agg MUJOCO_GL=egl
 export MPLCONFIGDIR="$repo_dir/artifacts/humble_migration/matplotlib"
 cd "$repo_dir"

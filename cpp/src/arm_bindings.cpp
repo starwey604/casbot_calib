@@ -5,6 +5,9 @@
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
 #include <algorithm>
+#ifdef _OPENMP
+#include <omp.h>
+#endif
 namespace py=pybind11;
 using namespace casbot;
 namespace {
@@ -111,10 +114,20 @@ void bind_arm(py::module_& m) {
       if(std::find(names.begin(),names.end(),frame)==names.end())throw std::invalid_argument("Unknown observation frame: "+frame);
       py::array_t<double> points({count,py::ssize_t(3)}),placement({count,py::ssize_t(3),6*n}),joint({count,py::ssize_t(3),n});
       auto pp=points.mutable_unchecked<2>();auto gg=placement.mutable_unchecked<3>();auto jj=joint.mutable_unchecked<3>();
-      {py::gil_scoped_release release;auto workspace=engine.workspace();
-        for(py::ssize_t row=0;row<count;++row){const auto result=workspace.point_geometry(q.row(row).transpose(),frame,d.row(row).transpose());
-          for(int a=0;a<3;++a){pp(row,a)=result.position[a];for(py::ssize_t b=0;b<6*n;++b)gg(row,a,b)=result.placements(a,b);
-            for(py::ssize_t b=0;b<n;++b)jj(row,a,b)=result.joints(a,b);}
+      {
+        py::gil_scoped_release release;
+#ifdef _OPENMP
+#pragma omp parallel if(count >= 16)
+#endif
+        {
+          auto workspace=engine.workspace();
+#ifdef _OPENMP
+#pragma omp for schedule(static)
+#endif
+          for(py::ssize_t row=0;row<count;++row){const auto result=workspace.point_geometry(q.row(row).transpose(),frame,d.row(row).transpose());
+            for(int a=0;a<3;++a){pp(row,a)=result.position[a];for(py::ssize_t b=0;b<6*n;++b)gg(row,a,b)=result.placements(a,b);
+              for(py::ssize_t b=0;b<n;++b)jj(row,a,b)=result.joints(a,b);}
+          }
         }
       }
       py::dict result;result["positions"]=points;result["placement_jacobians"]=placement;result["joint_jacobians"]=joint;return result;
@@ -126,12 +139,22 @@ void bind_arm(py::module_& m) {
       if(std::find(names.begin(),names.end(),frame)==names.end())throw std::invalid_argument("Unknown observation frame: "+frame);
       const py::ssize_t count=owned.rows();py::array_t<double> poses({count,py::ssize_t(4),py::ssize_t(4)}),jacobians({count,py::ssize_t(6),n});
       auto pp=poses.mutable_unchecked<3>();auto jj=jacobians.mutable_unchecked<3>();
-      {py::gil_scoped_release release;auto workspace=engine.workspace();
-        for(py::ssize_t row=0;row<count;++row) {
-          const Eigen::VectorXd q=owned.row(row).transpose();const auto pose=workspace.frame_pose(q,frame);
-          const auto jacobian=workspace.frame_jacobian(q,frame);
-          for(int i=0;i<4;++i)for(int k=0;k<4;++k)pp(row,i,k)=pose(i,k);
-          for(int i=0;i<6;++i)for(py::ssize_t k=0;k<n;++k)jj(row,i,k)=jacobian(i,k);
+      {
+        py::gil_scoped_release release;
+#ifdef _OPENMP
+#pragma omp parallel if(count >= 16)
+#endif
+        {
+          auto workspace=engine.workspace();
+#ifdef _OPENMP
+#pragma omp for schedule(static)
+#endif
+          for(py::ssize_t row=0;row<count;++row) {
+            const Eigen::VectorXd q=owned.row(row).transpose();const auto pose=workspace.frame_pose(q,frame);
+            const auto jacobian=workspace.frame_jacobian(q,frame);
+            for(int i=0;i<4;++i)for(int k=0;k<4;++k)pp(row,i,k)=pose(i,k);
+            for(int i=0;i<6;++i)for(py::ssize_t k=0;k<n;++k)jj(row,i,k)=jacobian(i,k);
+          }
         }
       }
       py::dict result;result["poses"]=poses;result["jacobians"]=jacobians;return result;
@@ -139,11 +162,22 @@ void bind_arm(py::module_& m) {
     .def("gravity_batch",[](const ArmDynamics& engine,const Eigen::MatrixXd& positions) {
       const Eigen::MatrixXd owned=positions;const py::ssize_t n=engine.model().joints.size();
       if(owned.cols()!=n || !owned.allFinite())throw std::invalid_argument("Expected finite gravity positions[N,J]");
-      py::array_t<double> gravity({static_cast<py::ssize_t>(owned.rows()),n});auto output=gravity.mutable_unchecked<2>();
-      {py::gil_scoped_release release;auto workspace=engine.workspace();
-        for(Eigen::Index i=0;i<owned.rows();++i) {
-          const auto value=workspace.gravity(owned.row(i).transpose());
-          for(Eigen::Index j=0;j<n;++j)output(i,j)=value[j];
+      const py::ssize_t count=owned.rows();
+      py::array_t<double> gravity({count,n});auto output=gravity.mutable_unchecked<2>();
+      {
+        py::gil_scoped_release release;
+#ifdef _OPENMP
+#pragma omp parallel if(count >= 16)
+#endif
+        {
+          auto workspace=engine.workspace();
+#ifdef _OPENMP
+#pragma omp for schedule(static)
+#endif
+          for(py::ssize_t i=0;i<count;++i) {
+            const auto value=workspace.gravity(owned.row(i).transpose());
+            for(py::ssize_t j=0;j<n;++j)output(i,j)=value[j];
+          }
         }
       }
       return gravity;
@@ -160,12 +194,20 @@ void bind_arm(py::module_& m) {
       auto gg=gravity.mutable_unchecked<2>();auto ff=friction.mutable_unchecked<2>();auto tt=total.mutable_unchecked<2>();
       {
         py::gil_scoped_release release;
-        auto runtime=engine.workspace();
-        for(py::ssize_t row=0;row<count;++row) {
-          const ArmTerms terms=runtime.components(input.q.row(row).transpose(),input.dq.row(row).transpose(),input.ddq.row(row).transpose());
-          for(py::ssize_t j=0;j<n;++j) {
-            for(py::ssize_t k=0;k<n;++k) mm(row,j,k)=terms.mass_matrix(j,k);
-            ii(row,j)=terms.inertia[j];vv(row,j)=terms.velocity[j];gg(row,j)=terms.gravity[j];ff(row,j)=terms.friction[j];tt(row,j)=terms.total[j];
+#ifdef _OPENMP
+#pragma omp parallel if(count >= 16)
+#endif
+        {
+          auto runtime=engine.workspace();
+#ifdef _OPENMP
+#pragma omp for schedule(static)
+#endif
+          for(py::ssize_t row=0;row<count;++row) {
+            const ArmTerms terms=runtime.components(input.q.row(row).transpose(),input.dq.row(row).transpose(),input.ddq.row(row).transpose());
+            for(py::ssize_t j=0;j<n;++j) {
+              for(py::ssize_t k=0;k<n;++k) mm(row,j,k)=terms.mass_matrix(j,k);
+              ii(row,j)=terms.inertia[j];vv(row,j)=terms.velocity[j];gg(row,j)=terms.gravity[j];ff(row,j)=terms.friction[j];tt(row,j)=terms.total[j];
+            }
           }
         }
       }
@@ -179,14 +221,22 @@ void bind_arm(py::module_& m) {
       auto yy=regressor.mutable_unchecked<3>();auto rr=rotor.mutable_unchecked<2>();auto ff=friction.mutable_unchecked<2>();
       {
         py::gil_scoped_release release;
-        auto runtime=engine.workspace();
-        for(py::ssize_t row=0;row<count;++row) {
-          const Eigen::VectorXd position=input.q.row(row).transpose(),velocity=input.dq.row(row).transpose(),acceleration=input.ddq.row(row).transpose();
-          const auto y=runtime.torque_regressor(position,velocity,acceleration);
-          const auto r=runtime.rotor_torque(acceleration);const auto f=runtime.friction(velocity);
-          for(py::ssize_t j=0;j<n;++j) {
-            for(py::ssize_t k=0;k<p;++k) yy(row,j,k)=y(j,k);
-            rr(row,j)=r[j];ff(row,j)=f[j];
+#ifdef _OPENMP
+#pragma omp parallel if(count >= 16)
+#endif
+        {
+          auto runtime=engine.workspace();
+#ifdef _OPENMP
+#pragma omp for schedule(static)
+#endif
+          for(py::ssize_t row=0;row<count;++row) {
+            const Eigen::VectorXd position=input.q.row(row).transpose(),velocity=input.dq.row(row).transpose(),acceleration=input.ddq.row(row).transpose();
+            const auto y=runtime.torque_regressor(position,velocity,acceleration);
+            const auto r=runtime.rotor_torque(acceleration);const auto f=runtime.friction(velocity);
+            for(py::ssize_t j=0;j<n;++j) {
+              for(py::ssize_t k=0;k<p;++k) yy(row,j,k)=y(j,k);
+              rr(row,j)=r[j];ff(row,j)=f[j];
+            }
           }
         }
       }

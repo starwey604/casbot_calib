@@ -38,7 +38,7 @@ def _clone_bundle_shallow(src, dst):
 
 def test_default_bundle_and_python_runtime_pass():
     versions = check_python_runtime(require_solver=True)
-    assert 'pinocchio' in versions and 'clarabel' in versions
+    assert all(k in versions for k in ('pinocchio', 'clarabel', 'cvxpy', 'orjson', 'cma'))
     info = check_model_bundle()
     assert info['model_id'] == 'casbot_hl12p1_dvt2_bare_flange_1105_03_gauge_v2'
     assert info['geometries'] > 14

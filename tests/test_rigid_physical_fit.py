@@ -2,6 +2,7 @@
 import numpy as np
 import pytest
 pytest.importorskip('clarabel')
+pytest.importorskip('cvxpy')
 from casbot_calib.rigid_identification import pseudo_inertia,fit_rigid,model_from_parameters
 from casbot_calib.dual_model import nominal_dual_arm
 

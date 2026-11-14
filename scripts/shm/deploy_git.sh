@@ -10,7 +10,9 @@ branch=main
 port=19418
 committed_only=0
 sync_assets=1
+sync_wheels=1
 bundle_rel=python/casbot_calib/assets/models/casbot_hl12p1_dvt2/derived/bare_flange_1105_03_gauge_v2
+wheelhouse_rel=artifacts/wheelhouse_aarch64
 control_path=${CALIB_SSH_CONTROL_PATH:-/tmp/casbot-shm-%C}
 usage() {
   cat <<'EOF'
@@ -20,13 +22,15 @@ usage() {
   --port N             本机与远端的 loopback 临时隧道端口；默认 19418
   --committed-only     本地另有未提交工作时，仍只部署指定分支的已提交内容
   --no-assets          仅同步 Git 源码，不自动物化默认 DVT2 标定模型包
-仅克隆或快进更新已提交源码，并在远端默认模型包仍为 LFS 指针且已装 git-lfs 时自动同步默认模型资产。不会连接真实 SHM。
+  --no-wheels          不同步本机 artifacts/wheelhouse_aarch64/ 离线轮子
+仅克隆或快进更新已提交源码，并在远端默认模型包仍为 LFS 指针且已装 git-lfs 时自动同步默认模型资产；若本机存在离线 wheelhouse，自动同步缺失的 aarch64/通用 .whl。不会连接真实 SHM。
 EOF
 }
 while (($#)); do
   case "$1" in
     --committed-only) committed_only=1; shift ;;
     --no-assets) sync_assets=0; shift ;;
+    --no-wheels) sync_wheels=0; shift ;;
     --host|--destination|--branch|--port)
       (($# >= 2)) || { usage >&2; exit 2; }
       case "$1" in
@@ -125,5 +129,43 @@ git -C "$dst" add -- "$rel"
 UNPACK_ASSETS
   elif [[ $asset_state == no_git_lfs ]]; then
     echo '提示：远端未检测到 git-lfs，默认模型包仍为 LFS 指针；安装 git-lfs 后重跑 deploy_git.sh 即可自动物化。' >&2
+  fi
+fi
+
+if ((sync_wheels)) && [[ -d "$repo/$wheelhouse_rel" ]]; then
+  mapfile -t local_wheels < <(
+    find "$repo/$wheelhouse_rel" -maxdepth 1 -type f -name '*.whl' ! -name '*x86_64*.whl' -printf '%f\n' | sort
+  )
+  if ((${#local_wheels[@]} > 0)); then
+    printf -v check_wheels_cmd 'bash -s -- %q' "$destination/$wheelhouse_rel"
+    remote_existing=$(ssh "${ssh_options[@]}" "$host" "$check_wheels_cmd" <<'CHECK_WHEELS'
+set -euo pipefail
+dir=$1
+if [[ -d $dir ]]; then
+  find "$dir" -maxdepth 1 -type f -name '*.whl' -printf '%f\n' | sort
+fi
+CHECK_WHEELS
+)
+    declare -A have_wheel=()
+    while IFS= read -r w; do
+      [[ -n $w ]] && have_wheel["$w"]=1
+    done <<< "$remote_existing"
+    missing_wheels=()
+    for w in "${local_wheels[@]}"; do
+      if [[ -z ${have_wheel["$w"]:-} ]]; then
+        missing_wheels+=("$w")
+      fi
+    done
+    if ((${#missing_wheels[@]} > 0)); then
+      echo "同步离线 wheelhouse（新增 ${#missing_wheels[@]} 个 .whl）至 $destination/$wheelhouse_rel ..."
+      printf -v unpack_wheels_cmd 'bash -s -- %q' "$destination/$wheelhouse_rel"
+      tar -C "$repo/$wheelhouse_rel" -cf - "${missing_wheels[@]}" \
+        | ssh "${ssh_options[@]}" "$host" "$unpack_wheels_cmd" <<'UNPACK_WHEELS'
+set -euo pipefail
+dir=$1
+mkdir -p "$dir"
+tar -C "$dir" -xf -
+UNPACK_WHEELS
+    fi
   fi
 fi

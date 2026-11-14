@@ -21,10 +21,15 @@ def _is_lfs_pointer(path):
         return stream.read(80).startswith(LFS_PREFIX)
 
 
-def check_python_runtime(*, require_solver=True):
-    required = ('numpy', 'scipy', 'yaml', 'pinocchio', 'casbot_calib._core')
-    if require_solver:
-        required = (*required, 'clarabel')
+def check_python_runtime(*, require_solver=True, reanalyse_only=False):
+    if reanalyse_only:
+        required = ('numpy', 'scipy', 'yaml', 'orjson', 'casbot_calib._core')
+        if require_solver:
+            required = (*required, 'clarabel', 'cvxpy')
+    else:
+        required = ('numpy', 'scipy', 'yaml', 'orjson', 'pinocchio', 'casbot_calib._core')
+        if require_solver:
+            required = (*required, 'clarabel', 'cvxpy', 'cma')
     versions = {}
     missing = []
     for name in required:

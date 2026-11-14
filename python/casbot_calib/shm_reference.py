@@ -5,6 +5,16 @@ from pathlib import Path
 import struct
 from .shm_data import NAMES, DIRECTION, OFFSET
 
+try:
+    import numpy as _np
+except ImportError:
+    _np = None
+
+try:
+    import orjson as _orjson
+except ImportError:
+    _orjson = None
+
 
 def snapshot_positions(path):
     path=Path(path)
@@ -56,7 +66,46 @@ def fields_bundle(q, joint, *, position=None, velocity=0, effort=0, kp=20,kd=2,d
                 purpose='shm_fieldwork_urdf_only',transition='direct_fields_no_hidden_smoothing')
 
 
+def _reject_nonfinite(value):
+    if isinstance(value, float):
+        if not math.isfinite(value):
+            raise ValueError('Reference bundle contains non-finite float (NaN or Inf)')
+    elif _np is not None and isinstance(value, _np.ndarray):
+        if value.dtype.kind == 'f' and not _np.isfinite(value).all():
+            raise ValueError('Reference bundle contains non-finite array values (NaN or Inf)')
+    elif _np is not None and isinstance(value, _np.floating):
+        if not _np.isfinite(value):
+            raise ValueError('Reference bundle contains non-finite float (NaN or Inf)')
+    elif isinstance(value, dict):
+        for v in value.values():
+            _reject_nonfinite(v)
+    elif isinstance(value, (list, tuple)):
+        for v in value:
+            _reject_nonfinite(v)
+
+
+def _orjson_default(obj):
+    if _np is not None:
+        if isinstance(obj, _np.ndarray):
+            if obj.dtype.kind in 'biuf':
+                return _np.ascontiguousarray(obj)
+            return obj.tolist()
+        if isinstance(obj, _np.generic):
+            return obj.item()
+    raise TypeError(f'Object of type {type(obj).__name__} is not JSON serializable')
+
+
 def save_bundle(root, bundle):
     root=Path(root);root.mkdir(parents=True,exist_ok=False)
-    (root/'reference.json').write_text(json.dumps(bundle,ensure_ascii=False,indent=2,allow_nan=False)+'\n')
-    return root/'reference.json'
+    target=root/'reference.json'
+    tmp=target.with_name(target.name+'.tmp')
+    if _orjson is not None:
+        raw=_orjson.dumps(bundle,option=_orjson.OPT_SERIALIZE_NUMPY,default=_orjson_default)
+        if b'null' in raw:
+            _reject_nonfinite(bundle)
+        tmp.write_bytes(raw+b'\n')
+    else:
+        _reject_nonfinite(bundle)
+        tmp.write_text(json.dumps(bundle,ensure_ascii=False,separators=(',',':'),allow_nan=False)+'\n',encoding='utf-8')
+    tmp.replace(target)
+    return target

@@ -2,6 +2,7 @@
 
 Python Pinocchio is only needed to build/verify a bundle, not to consume one.
 """
+from copy import copy, deepcopy
 import json
 from hashlib import sha256
 from pathlib import Path
@@ -10,6 +11,30 @@ from . import _core
 from .collision import CollisionProfile, box_geometry
 from .kinematics import geometry_manifest, digest
 from .model_sources import _resource
+
+_BUNDLE_CACHE = {}
+_PROFILE_CACHE = {}
+
+
+def _bundle_fingerprint(root: Path):
+    try:
+        meta_path = root / 'model.json'
+        st_meta = meta_path.stat()
+        metadata = json.loads(meta_path.read_text(encoding='utf-8'))
+        rels = ['model.json', 'model.urdf', 'collision.json', 'collision.npz', 'trical_scene.json']
+        if 'viewer_sha256' in metadata:
+            rels.append('scene.xml')
+        rels.extend(sorted(metadata.get('viewer_files_sha256', {}).keys()))
+        stats = []
+        for rel in rels:
+            p = root / rel
+            st = p.stat()
+            stats.append((rel, st.st_mtime_ns, st.st_size))
+        return (str(root), st_meta.st_mtime_ns, tuple(stats))
+    except OSError:
+        return None
+    except Exception:
+        return None
 
 
 def read(path):
@@ -61,6 +86,10 @@ def _bind_frozen_frames(engine, frozen):
 
 def load_bundle(folder):
     root = Path(folder).resolve()
+    fp = _bundle_fingerprint(root)
+    if fp is not None and fp in _BUNDLE_CACHE:
+        cached_model, cached_meta = _BUNDLE_CACHE[fp]
+        return _core.ArmDynamics(cached_model), deepcopy(cached_meta)
     metadata = read(root / 'model.json')
     if metadata['schema_version'] != 'casbot_dvt2_bundle_v1':
         raise ValueError('Unsupported DVT2 bundle')
@@ -83,11 +112,22 @@ def load_bundle(folder):
     if [j.name for j in model.joints] != metadata['joint_names']:
         raise ValueError('Derived joint order changed')
     engine = _bind_frozen_frames(engine, metadata['geometry'])
+    if fp is not None:
+        _BUNDLE_CACHE[fp] = (engine.model, deepcopy(metadata))
     return engine, metadata
 
 
 def robot_profile(folder, *, environment=True):
-    root = Path(folder)
+    root = Path(folder).resolve()
+    fp = _bundle_fingerprint(root)
+    cache_key = (fp, bool(environment)) if fp is not None else None
+    if cache_key is not None and cache_key in _PROFILE_CACHE:
+        cached = _PROFILE_CACHE[cache_key]
+        cloned = copy(cached)
+        cloned.metadata = deepcopy(cached.metadata)
+        if hasattr(cached, 'pair_clearance_m'):
+            cloned.pair_clearance_m = cached.pair_clearance_m.copy()
+        return cloned
     engine, metadata = load_bundle(root)
     cache = read(root / 'collision.json')
     if cache['urdf_sha256'] != metadata['urdf_sha256']:
@@ -114,13 +154,19 @@ def robot_profile(folder, *, environment=True):
             pose.rotation = np.asarray(row.get('rotation', np.eye(3)))
             g.placement = pose
             geometry.append(g)
-    return CollisionProfile(engine, geometry, excluded, {
+    built = CollisionProfile(engine, geometry, excluded, {
         **cache,
         'geometry_sha256': metadata['geometry']['geometry_sha256'],
         'scene': metadata['scene'],
         'actual_geometry_count': len(geometry),
         'model_id': engine.model.model_id,
     })
+    if cache_key is not None:
+        _PROFILE_CACHE[cache_key] = built
+        cloned = copy(built)
+        cloned.metadata = deepcopy(built.metadata)
+        return cloned
+    return built
 
 
 def trical_scene(folder):

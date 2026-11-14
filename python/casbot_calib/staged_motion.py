@@ -5,11 +5,14 @@ coefficient convex hulls give conservative continuous-time velocity bounds;
 sampled maxima are never used as interval certificates.
 """
 from dataclasses import dataclass, field
+from math import factorial
+from time import perf_counter
 import numpy as np
 from scipy.interpolate import BPoly,PPoly
-from math import factorial
 from .collision import certify_reference
 from .control_policy import PD_FACTORS,CONTROL_GROUPS
+
+_ANALYTIC_PATH_MODEL = 'analytic reference conditional on supplied global derivative bounds and position allowance'
 
 
 @dataclass
@@ -72,6 +75,221 @@ def derivative_bounds(curve,order=1,subdivisions=8):
     return bound*(1+1e-10)+1e-12
 
 
+def _stationary_pose_cache(profile):
+    cache = getattr(profile, '_stationary_pose_cache', None)
+    if cache is None:
+        cache = {}
+        profile._stationary_pose_cache = cache
+    return cache
+
+
+def _stationary_segment_report(profile, q_i, a, b, label, seg_idx, entry, thresholds, clearance_m, queries, wall_s):
+    d = entry['distances']
+    nearest = int(np.argmin(d - thresholds))
+    distance = float(d[nearest])
+    pair = profile.pairs[nearest]
+    mid_local = float((b - a) / 2.0)
+    witness = dict(
+        parameter=mid_local,
+        time=mid_local,
+        q=q_i.tolist(),
+        first=profile.names[pair[0]],
+        second=profile.names[pair[1]],
+        distance_m=distance,
+        first_point=entry['first_point'].tolist() if nearest == entry['worst_pair'] else None,
+        second_point=entry['second_point'].tolist() if nearest == entry['worst_pair'] else None,
+    )
+    passed_seg = bool(np.all(d > thresholds))
+    zeros = [0.0] * profile.joints
+    if passed_seg:
+        return dict(
+            passed=True,
+            reason='bounded_intervals_certified',
+            minimum_sampled_distance_m=distance,
+            certified_lower_bound_m=distance,
+            clearance_m=clearance_m,
+            witness=witness,
+            queries=queries,
+            certified_intervals=1,
+            wall_s=wall_s,
+            path_model=_ANALYTIC_PATH_MODEL,
+            velocity_bound_rad_s=zeros,
+            position_allowance_rad=zeros.copy(),
+            segment=seg_idx,
+            label=label,
+            start_s=a,
+            end_s=b,
+        )
+    return dict(
+        passed=False,
+        reason='collision_or_clearance',
+        minimum_sampled_distance_m=distance,
+        witness=witness,
+        queries=queries,
+        wall_s=wall_s,
+        path_model=_ANALYTIC_PATH_MODEL,
+        velocity_bound_rad_s=zeros,
+        position_allowance_rad=zeros.copy(),
+        segment=seg_idx,
+        label=label,
+        start_s=a,
+        end_s=b,
+    )
+
+
+def _gate_segments_batched(profile, curve, motion, moving_specs, thresholds, clearance_m, max_depth=16):
+    states = []
+    pending = []
+    for pos, (seg_idx, a, b, raw_vel, allowance) in enumerate(moving_specs):
+        duration_s = float(b - a)
+        velocity = np.broadcast_to(np.asarray(raw_vel, dtype=float), (profile.joints,)).copy()
+        if duration_s <= 0 or not np.isfinite(velocity).all() or np.any(velocity < 0):
+            raise ValueError('Invalid reference derivative bound')
+        allow_vec = np.zeros(profile.joints) if allowance is None else np.asarray(allowance, dtype=float).copy()
+        if allow_vec.shape != (profile.joints,) or not np.isfinite(allow_vec).all() or np.any(allow_vec < 0):
+            raise ValueError('Invalid reference position allowance')
+        states.append(dict(
+            seg_idx=seg_idx,
+            a=float(a),
+            b=float(b),
+            velocity=velocity,
+            allow_vec=allow_vec,
+            minimum=np.inf,
+            lower_min=np.inf,
+            witness=None,
+            queries=0,
+            certified=0,
+            status='pending',
+            reason=None,
+            wall_s=0.0,
+        ))
+        pending.append((pos, 0.0, duration_s, 0))
+
+    earliest_failed = len(states)
+    chunk_size = 512
+    while pending:
+        pending = [item for item in pending if item[0] < earliest_failed and states[item[0]]['status'] == 'pending']
+        if not pending:
+            break
+        next_round = []
+        for offset in range(0, len(pending), chunk_size):
+            t0 = perf_counter()
+            chunk = [
+                item for item in pending[offset:offset + chunk_size]
+                if item[0] < earliest_failed and states[item[0]]['status'] == 'pending'
+            ]
+            if not chunk:
+                continue
+            pos_arr = np.array([c[0] for c in chunk], dtype=int)
+            lo_arr = np.array([c[1] for c in chunk], dtype=float)
+            hi_arr = np.array([c[2] for c in chunk], dtype=float)
+            mid_local = (lo_arr + hi_arr) / 2.0
+            a_arr = np.array([states[p]['a'] for p in pos_arr], dtype=float)
+            q = np.asarray(curve(a_arr + mid_local), dtype=float)
+            vel_mat = np.array([states[p]['velocity'] for p in pos_arr], dtype=float)
+            allow_mat = np.array([states[p]['allow_vec'] for p in pos_arr], dtype=float)
+            var_bounds = (hi_arr - lo_arr)[:, None] * vel_mat / 2.0 + allow_mat
+            observed = profile.check(q)
+            distances = observed['distances']
+            lower = distances - var_bounds @ profile.radii.T
+            dt_each = (perf_counter() - t0) / len(chunk)
+
+            for k, (pos, lo, hi, depth) in enumerate(chunk):
+                st = states[pos]
+                if pos >= earliest_failed or st['status'] != 'pending':
+                    continue
+                st['queries'] += 1
+                st['wall_s'] += dt_each
+                nearest = int(np.argmin(distances[k] - thresholds))
+                distance = float(distances[k, nearest])
+                bound = float(lower[k].min())
+                if distance < st['minimum']:
+                    st['minimum'] = distance
+                    pair = profile.pairs[nearest]
+                    m_loc = float(mid_local[k])
+                    st['witness'] = dict(
+                        parameter=m_loc,
+                        time=m_loc,
+                        q=q[k].tolist(),
+                        first=profile.names[pair[0]],
+                        second=profile.names[pair[1]],
+                        distance_m=distance,
+                        first_point=(
+                            observed['first_point'][k].tolist()
+                            if nearest == observed['worst_pair'][k]
+                            else None
+                        ),
+                        second_point=(
+                            observed['second_point'][k].tolist()
+                            if nearest == observed['worst_pair'][k]
+                            else None
+                        ),
+                    )
+                if np.any(distances[k] <= thresholds):
+                    st['status'] = 'failed'
+                    st['reason'] = 'collision_or_clearance'
+                    earliest_failed = min(earliest_failed, pos)
+                elif np.all(lower[k] > thresholds):
+                    st['certified'] += 1
+                    st['lower_min'] = min(st['lower_min'], bound)
+                elif depth >= max_depth:
+                    st['status'] = 'failed'
+                    st['reason'] = 'interval_not_certified'
+                    earliest_failed = min(earliest_failed, pos)
+                else:
+                    m_loc = float(mid_local[k])
+                    next_round.extend([(pos, lo, m_loc, depth + 1), (pos, m_loc, hi, depth + 1)])
+
+        active_next = {item[0] for item in next_round if item[0] < earliest_failed}
+        for pos in range(min(len(states), earliest_failed)):
+            if states[pos]['status'] == 'pending' and pos not in active_next:
+                states[pos]['status'] = 'passed'
+                states[pos]['reason'] = 'bounded_intervals_certified'
+        pending = next_round
+
+    reports = {}
+    stop_pos = min(len(states), earliest_failed + 1)
+    for st in states[:stop_pos]:
+        seg_idx = st['seg_idx']
+        if st['status'] == 'passed':
+            rep = dict(
+                passed=True,
+                reason='bounded_intervals_certified',
+                minimum_sampled_distance_m=st['minimum'],
+                certified_lower_bound_m=st['lower_min'],
+                clearance_m=clearance_m,
+                witness=st['witness'],
+                queries=st['queries'],
+                certified_intervals=st['certified'],
+                wall_s=st['wall_s'],
+                path_model=_ANALYTIC_PATH_MODEL,
+                velocity_bound_rad_s=st['velocity'].tolist(),
+                position_allowance_rad=st['allow_vec'].tolist(),
+                segment=seg_idx,
+                label=motion.labels[seg_idx],
+                start_s=st['a'],
+                end_s=st['b'],
+            )
+        else:
+            rep = dict(
+                passed=False,
+                reason=st['reason'],
+                minimum_sampled_distance_m=st['minimum'],
+                witness=st['witness'],
+                queries=st['queries'],
+                wall_s=st['wall_s'],
+                path_model=_ANALYTIC_PATH_MODEL,
+                velocity_bound_rad_s=st['velocity'].tolist(),
+                position_allowance_rad=st['allow_vec'].tolist(),
+                segment=seg_idx,
+                label=motion.labels[seg_idx],
+                start_s=st['a'],
+                end_s=st['b'],
+            )
+        reports[seg_idx] = rep
+    return reports
+
+
 def gate_motion(profile,motion,clearance_m=.01):
     curve=motion.polynomial();bounds=derivative_bounds(curve)
     allowance_labels=motion.conditions.get('allowance_labels',('static_dwell','torque_ramp'))
@@ -100,16 +318,105 @@ def gate_motion(profile,motion,clearance_m=.01):
         if any(a>b for a,b in zip(peaks,[1.,8.,200.])) or minimum_velocity<=.02:
             return dict(passed=False,reason='dedicated_probe_envelope',joint_limits=limit_report,segments=[],
                 minimum_distance_m=float(profile.check([motion.home])['distances'].min()),queries=1,wall_s=0.,motion=motion.name)
-    rows=[]
+
+    if not np.isfinite(clearance_m) or clearance_m<0:
+        raise ValueError('Invalid clearance/refinement depth')
+    thresholds=np.asarray(getattr(profile,'pair_clearance_m',np.full(len(profile.pairs),clearance_m)),dtype=float)
+    if thresholds.shape!=(len(profile.pairs),) or not np.isfinite(thresholds).all():
+        raise ValueError('Invalid audited pair clearances')
+
+    cache=_stationary_pose_cache(profile)
+    native_id=id(profile.native)
+    seg_kinds=[]
+    uncached_keys=[]
+    uncached_poses=[]
+    seen_uncached=set()
     for i,(a,b) in enumerate(zip(motion.knots[:-1],motion.knots[1:])):
         allowance=motion.conditions.get('position_allowance_rad') if motion.labels[i] in allowance_labels else None
         if allowance is not None and motion.conditions.get('joint_box_refinement',False):
+            seg_kinds.append(('box',i,a,b,allowance,None))
+        elif allowance is None and np.array_equal(motion.states[i][0],motion.states[i+1][0]) and not np.any(motion.states[i][1:]) and not np.any(motion.states[i+1][1:]):
+            q_i=np.ascontiguousarray(motion.states[i][0],dtype=np.float64)
+            key=(native_id,q_i.tobytes())
+            if key not in cache and key not in seen_uncached:
+                seen_uncached.add(key)
+                uncached_keys.append(key)
+                uncached_poses.append(q_i)
+            seg_kinds.append(('stationary',i,a,b,None,key))
+        else:
+            seg_kinds.append(('moving',i,a,b,allowance,None))
+
+    stat_batch_dt=0.
+    if uncached_poses:
+        t_stat=perf_counter()
+        obs_stat=profile.check(np.array(uncached_poses))
+        stat_batch_dt=(perf_counter()-t_stat)/len(uncached_poses)
+        for k,key in enumerate(uncached_keys):
+            cache[key]=dict(
+                distances=obs_stat['distances'][k].copy(),
+                worst_pair=int(obs_stat['worst_pair'][k]),
+                first_point=obs_stat['first_point'][k].copy(),
+                second_point=obs_stat['second_point'][k].copy(),
+            )
+
+    fresh_keys=set(uncached_keys)
+    stationary_reports={}
+    earliest_stat_fail=len(seg_kinds)
+    for kind,i,a,b,_,key in seg_kinds:
+        if kind=='stationary':
+            t0=perf_counter()
+            was_fresh=key in fresh_keys
+            fresh_keys.discard(key)
+            rep=_stationary_segment_report(
+                profile,motion.states[i][0],a,b,motion.labels[i],i,
+                cache[key],thresholds,clearance_m,
+                1 if was_fresh else 0,
+                (stat_batch_dt if was_fresh else 0.)+(perf_counter()-t0),
+            )
+            stationary_reports[i]=rep
+            if not rep['passed'] and i<earliest_stat_fail:
+                earliest_stat_fail=i
+
+    active_limit=min(len(seg_kinds),earliest_stat_fail+1)
+    rows=[]
+    moving_run=[]
+
+    def _flush_moving():
+        nonlocal rows
+        if not moving_run:
+            return True
+        batched=_gate_segments_batched(profile,curve,motion,moving_run,thresholds,clearance_m)
+        for seg_idx,_,_,_,_ in moving_run:
+            if seg_idx not in batched:
+                break
+            rows.append(batched[seg_idx])
+            if not batched[seg_idx]['passed']:
+                moving_run.clear()
+                return False
+        moving_run.clear()
+        return True
+
+    for kind,i,a,b,allowance,_ in seg_kinds[:active_limit]:
+        if kind=='moving':
+            moving_run.append((i,a,b,bounds[i],allowance))
+        elif kind=='stationary':
+            if not _flush_moving():
+                break
+            rows.append(stationary_reports[i])
+            if not stationary_reports[i]['passed']:
+                break
+        else:
+            if not _flush_moving():
+                break
             from .collision import certify_reference_box
             report=certify_reference_box(profile,lambda t,a=a:curve(t+a),b-a,bounds[i],allowance,clearance_m)
-        else:report=certify_reference(profile,lambda t,a=a:curve(t+a),b-a,bounds[i],clearance_m=clearance_m,initial_step_s=b-a,position_allowance=allowance)
-        report.update(segment=i,label=motion.labels[i],start_s=a,end_s=b)
-        rows.append(report)
-        if not report['passed']:break
+            report.update(segment=i,label=motion.labels[i],start_s=a,end_s=b)
+            rows.append(report)
+            if not report['passed']:
+                break
+    else:
+        _flush_moving()
+
     return dict(passed=all(r['passed'] for r in rows) and len(rows)==len(motion.labels),segments=rows,
         minimum_distance_m=min(r['minimum_sampled_distance_m'] for r in rows),queries=sum(r['queries'] for r in rows),
         wall_s=sum(r['wall_s'] for r in rows),motion=motion.name,
