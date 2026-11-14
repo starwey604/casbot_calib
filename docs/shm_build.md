@@ -154,7 +154,7 @@ bash fieldwork/shm/run.sh h1 --help
   --output artifacts/新的私有验收目录
 ```
 
-操作手册见[SHM H1/A](shm_h1_a.md)。本机证据为`artifacts/shm_h1_r3_20261114/`：`orin_setup_final.log`、`orin_final_validation.log`、`orin_h1_final.log`、`orin_final_entrypoints.log`、`orin_assets_rsync.log`、`reload_readback.log`及取回的完整`orin_h1_final/`。对应原始闭环在Orin的`artifacts/shm_h1_r3_orin_20261114_final/`保留。
+操作手册见[动力学标定指南](dynamics.md)。本机证据为`artifacts/shm_h1_r3_20261114/`：`orin_setup_final.log`、`orin_final_validation.log`、`orin_h1_final.log`、`orin_final_entrypoints.log`、`orin_assets_rsync.log`、`reload_readback.log`及取回的完整`orin_h1_final/`。对应原始闭环在Orin的`artifacts/shm_h1_r3_orin_20261114_final/`保留。
 
 本轮只跑私有SHM端点，没有停业务/启动真实主站或发送机器人命令。Orin墙钟仍为1970，构建日志有未来文件告警，测试时间依本机执行记录标识，不冒充设备时间已校准。用户下一步完成fieldwork与H1实机验证；GUI随后推进。
 

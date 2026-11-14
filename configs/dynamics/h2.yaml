@@ -1,0 +1,3 @@
+# H2 摩擦标定（匀速 + 起动静摩擦），待 P6 实现
+ready_pose: true
+gravity_feedforward: h1_or_nominal

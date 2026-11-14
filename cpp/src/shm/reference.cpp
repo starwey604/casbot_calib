@@ -27,10 +27,11 @@ Reference Reference::load(const std::string& file) {
   if(r.relative_&&r.direct_)throw std::invalid_argument("Direct fields use explicit absolute positions");
   const auto purpose_node=json.get_child_optional("purpose");
   const std::string_view purpose=purpose_node?std::string_view(purpose_node->data()):std::string_view{};
-  if(purpose=="shm_h1_collision_checked"||purpose=="shm_gui_zero_collision_checked"||purpose=="shm_h1_ready_then_collision_checked") {
-    if(r.direct_||r.relative_)throw std::invalid_argument("H1 uses frozen absolute trajectories");
+  if(purpose=="shm_calib_collision_checked"||purpose=="shm_calib_ready_then_collision_checked"||
+     purpose=="shm_h1_collision_checked"||purpose=="shm_gui_zero_collision_checked"||purpose=="shm_h1_ready_then_collision_checked") {
+    if(r.direct_||r.relative_)throw std::invalid_argument("Calibration reference uses frozen absolute trajectories");
     r.observed_velocity_=json.get<double>("observed_velocity_limit_rad_s");
-    if(!std::isfinite(r.observed_velocity_)||r.observed_velocity_<=0||r.observed_velocity_>1.5)throw std::invalid_argument("Invalid H1 observed velocity limit");
+    if(!std::isfinite(r.observed_velocity_)||r.observed_velocity_<=0||r.observed_velocity_>1.5)throw std::invalid_argument("Invalid observed velocity limit");
   }
   joint_names(json.get_child("joint_names"));r.kp_=joint_values(json.get_child("kp"));r.kd_=joint_values(json.get_child("kd"));
   for(int j=0;j<14;++j)if(r.kp_[j]<0||r.kp_[j]>500||r.kd_[j]<0||r.kd_[j]>50)throw std::invalid_argument("Reference PD outside explicit interface bounds");

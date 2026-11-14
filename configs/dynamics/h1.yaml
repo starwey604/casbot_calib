@@ -1,0 +1,61 @@
+mode: small
+ready_pose: true
+gravity_feedforward: nominal_reference
+
+smoke_jog:
+  enabled: false
+  joint_id: 12
+  amplitude_deg: 10.0
+
+small:
+  joints:
+    - left_shoulder_pitch_joint
+    - right_shoulder_pitch_joint
+  target_offset_deg: 15.0
+  approach_offset_deg: 5.0
+  timing:
+    initial_hold_s: 0.5
+    minimum_transition_s: 4.0
+    minimum_paired_approach_s: 2.0
+    settle_s: 2.0
+    measure_s: 3.0
+    final_hold_s: 0.5
+  planning_envelope:
+    speed_rad_s: 0.05
+    acceleration_rad_s2: 0.1
+    jerk_rad_s3: 1.0
+
+full:
+  home_deg: [0.0, 70.0, 0.0, -60.0, 0.0, 0.0, 0.0, 0.0, -70.0, 0.0, -60.0, 0.0, 0.0, 0.0]
+  single_axis_offsets_deg: [-75.0, -45.0, -20.0, 0.0, 20.0, 45.0, 75.0]
+  combination_offsets_deg: [-30.0, 0.0, 30.0]
+  combination_joints:
+    left:
+      - left_shoulder_roll_joint
+      - left_shoulder_yaw_joint
+      - left_elbow_pitch_joint
+      - left_wrist_yaw_joint
+      - left_wrist_pitch_joint
+    right:
+      - right_shoulder_roll_joint
+      - right_shoulder_yaw_joint
+      - right_elbow_pitch_joint
+      - right_wrist_yaw_joint
+      - right_wrist_pitch_joint
+  approach_offset_deg: 2.0
+  train_poses_per_arm: 24
+  validation_poses_per_arm: 8
+  validation_seed: 20261030
+  information_ridge: 1.0e-6
+  rank_rtol: 1.0e-7
+  timing:
+    initial_hold_s: 0.5
+    minimum_transition_s: 2.0
+    minimum_paired_approach_s: 1.0
+    settle_s: 2.0
+    measure_s: 1.0
+    final_hold_s: 0.5
+  planning_envelope:
+    speed_rad_s: 0.5
+    acceleration_rad_s2: 1.0
+    jerk_rad_s3: 5.0

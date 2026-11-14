@@ -71,13 +71,11 @@ bash fieldwork/shm/run.sh execute artifacts/my_shm_fields/reference.json --mock 
 
 `casbot_shm_fields_v1`保存绝对位置及独立velocity/effort/kp/kd，不自动平滑、不把velocity当位置导数；上例0.129Nm编码为0.12Nm。CLI的Kp/Kd施加于全部双臂14轴，位置/速度/前馈覆盖所选轴；需要逐轴不同PD时显式编辑bundle数组。直接字段从streaming阶段生效，结束清除速度/前馈并请求失能；轨迹模式末端静止保持0.5秒后退出。两者都不加隐藏补偿。
 
-这里的通用入口用于当前**URDF位置/参考速度检查的双臂fieldwork探索**，不做碰撞放行，不是H1–H4/K5执行入口。H2–H4/K5尚未迁移，规划/碰撞和数据合同保持原状；H1使用下节独立入口。实机执行仍需有效接管窗口和显式`--hand-background FILE`；只改变输入模式，不自动停业务/握手，也不把Mock验证记为C08物理尺度确认。
+这里的通用入口用于**URDF位置/参考速度检查的双臂底层开发探索**，不做碰撞检查，也不是正式动力学标定入口（正式标定用`calib/dynamics*.sh`）。实机执行底层fieldwork命令时需有效接管窗口和显式`--hand-background FILE`。
 
-## H1/A：现场确认后进入标定流程
+## 正式标定流程（H1–H3）
 
-新增`h1 snapshot/plan-jog/plan-static/execute/analyse/replan`与`a-evidence`入口，见[H1/A完整操作](../../docs/shm_h1_a.md)。自然下垂起步可在`plan-jog/plan-static`加`--with-ready`：脚本先到双肩roll ±20°/其余双臂0°，同次使能接正式轨迹；仅这个用户批准的准备前缀跳过碰撞，仍检查URDF/参考速度，正式段保留连续参考与实际接收折线检查。ID12 `--amplitude-deg 10`已实机确认流程正常，默认起点停稳速度统一0.2rad/s。数值入口自动使用项目`.venv-shm`，普通C00–C06仍只需系统Python。
-
-`h1 preset-small --output 新目录`离线生成左右肩pitch ±18°四目标、八个正反接近窗口，最远接近点±20°。随后用`plan-static --preset 预设目录 --with-ready`接入同一个执行器；配置在`configs/shm/static_small.yaml`，完整操作及实际q重力对照输出见上面的H1/A指南。
+H1静态重力已收敛至统一入口`bash calib/dynamics_h1.sh`（自动完成通道检查/接管、背景帧复用、规划、执行与辨识；详见[动力学标定指南](../../docs/dynamics.md)）。底层诊断与`a-evidence`保留在`bash calib/dev.sh`。
 
 ## 下次到场重新接入：先留背景，再停业务，只启主站
 
@@ -206,7 +204,7 @@ bash fieldwork/shm/run.sh status artifacts/shm_fieldwork
 
 ## 本轮可完成哪些确认
 
-C00–C06已有CLI机制；到场后逐例填[确认台账](../../docs/shm_field_validation.md)，不能由软件测试替代实物观察。C03当前只覆盖双臂，C04只提供既定全身背景与对侧臂保持/失能对照；未实现头部主动jog、腿腰保持配方和手部主动映射。C07手模式/单位未定，只读留证；C08按已定安排后续源码/尺度核验。本轮不把这些未测部分记为全部确认完成。
+C00–C06已有CLI机制；到场后逐例填[确认台账](../../docs/records/shm_field_validation.md)，不能由软件测试替代实物观察。C03当前只覆盖双臂，C04只提供既定全身背景与对侧臂保持/失能对照；未实现头部主动jog、腿腰保持配方和手部主动映射。C07手模式/单位未定，只读留证；C08按已定安排后续源码/尺度核验。本轮不把这些未测部分记为全部确认完成。
 
 ## 笔记本 GUI
 

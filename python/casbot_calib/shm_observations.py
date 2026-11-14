@@ -12,9 +12,9 @@ def native_directory(root):
     result=root/'result.json'
     if result.exists():
         value=json.loads(result.read_text())
-        if value.get('schema_version')=='casbot_shm_h1_collection_v1':
+        if isinstance(value.get('effective_capture'),str):
             child=(root/value['effective_capture']).resolve()
-            if not child.is_relative_to(root):raise ValueError('H1采集路径越界')
+            if not child.is_relative_to(root):raise ValueError('采集路径越界')
             root=child
     return root/'native' if (root/'native').is_dir() else root
 

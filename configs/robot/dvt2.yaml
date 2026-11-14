@@ -1,0 +1,10 @@
+kp: 20.0
+kd: 2.0
+feedforward_limit_nm: 100.0
+maximum_velocity_rad_s: 1.5
+effort_gain: 1.0
+effort_zero_nm: 0.0
+gravity_world: [0.0, 0.0, -9.81]
+initial_hold_s: 0.5
+final_hold_s: 0.5
+anchor_transition_s: 4.0

@@ -59,7 +59,6 @@ def parser():
     sub = p.add_subparsers(dest='action', required=True)
     sub.add_parser('list', help='列用例、当前支持范围和建议顺序')
     sub.add_parser('gui', help='本机GUI及渲染，通过SSH连接Orin或私有Mock')
-    sub.add_parser('h1', help='H1快照/规划/执行/重力分析（需要数值Python环境）')
     sub.add_parser('a-evidence', help='A分析，使用SHM观测时间（需要数值Python环境）')
     for action in ('inspect', 'snapshot', 'observe', 'probe', 'prepare', 'activate', 'run', 'execute'):
         a = sub.add_parser(action)
@@ -761,13 +760,12 @@ def _native_action_impl(a,root,peer=None,peer_close=None):
 
 def main(argv=None):
     values=list(sys.argv[1:] if argv is None else argv)
-    if values and values[0] in ('h1','a-evidence','gui'):
+    if values and values[0] in ('a-evidence','gui'):
         try:
             if values[0]=='gui':from .shm_gui import main as implementation
-            elif values[0]=='h1':from .shm_h1 import main as implementation
             else:from .shm_a_evidence import main as implementation
         except ImportError as error:
-            print('H1/A需要数值Python环境：'+str(error),file=sys.stderr);return 2
+            print('GUI/A分析需要数值Python环境：'+str(error),file=sys.stderr);return 2
         return implementation(values[1:])
     a = parser().parse_args(values)
     try:

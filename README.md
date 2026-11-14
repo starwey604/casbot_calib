@@ -1,37 +1,49 @@
 # CASBOT Calibration
 
-CASBOT双臂运动学/动力学标定。C++负责动力学、碰撞与1kHz SHM执行；Python负责规划、辨识与现场编排。硬件接口为Orin本机EtherCAT中间件共享内存（SHM）。
+CASBOT 双臂（14轴）动力学/运动学标定。硬件路径为 Orin 本机 EtherCAT 中间件共享内存（SHM，`/shm_mc`）：C++ `shm_executor` 负责 1kHz 执行与完整记录，Python 负责轨迹规划、碰撞检查、参数辨识与流程编排。
 
-## 入口
+## 快速开始
 
-- [SHM现场工具](fieldwork/shm/README.md)：接管、C系列逐例确认、双臂动作。
-- [H1静态重力](docs/shm_h1_a.md)：准备位、碰撞检查参考、重力前馈、静态辨识。
-- [调参GUI](docs/shm_gui.md)：本机渲染，经SSH控制Orin。
-- [构建与部署](docs/shm_build.md)：本机Humble容器与Orin使用同一份源码分别原生编译。
+在 Orin（`/home/nvidia/casbot_calib_shm`）上执行：
 
 ```bash
-bash fieldwork/shm/run.sh list
+# H1 静态重力标定（自动接管主站 -> 准备位 -> 静态采集 -> PSD 拟合）
+bash calib/dynamics_h1.sh
+
+# 全阶段动力学标定（H1 静态重力 -> H2 摩擦 -> H3 惯量）
+bash calib/dynamics.sh
 ```
+
+结果自动保存在 `artifacts/calib/latest/`（查看 `h1/report.md` 与 `h1/analysis/candidate.urdf`）。
+
+## 文档
+
+- [动力学标定操作指南](docs/dynamics.md)：运动前检查、运行命令、配方配置、结果判读。
+- [调参 GUI](docs/shm_gui.md)：本机渲染，经 SSH 连接 Orin（`bash calib/gui.sh --host nvidia@172.16.0.10`）。
+- [构建与部署](docs/shm_build.md)：本机 Humble 容器与 Orin 原生编译说明。
+- [开发与底层现场工具](fieldwork/shm/README.md)：`bash calib/dev.sh` 诊断与 C00–C06 底层用例。
+- `docs/records/`：历次实机验证与现场观测记录。
 
 ## 构建与测试
 
 ```bash
-# Orin
+# 本机（Humble 容器提供 Pinocchio/Coal 工具链）
+bash scripts/humble/container.sh bash -c 'cmake --build --preset humble && ctest --preset humble' < /dev/null
+bash scripts/humble/container.sh env PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest -q < /dev/null
+
+# Orin 原生编译
 bash scripts/shm/build.sh --with-mock --build-dir build/shm-core \
   --install-prefix "$PWD/install/shm-core" --dependency-prefix /opt/ros/humble
-
-# 本机（Humble容器只用于提供Pinocchio/Coal工具链）
-bash scripts/humble/container.sh bash scripts/humble/validate.sh
 ```
 
-## 目录
+## 目录结构
 
-- `cpp/`：动力学/碰撞核心、SHM协议与执行器、测试。
-- `python/casbot_calib/`：规划、辨识、现场编排、GUI。
-- `fieldwork/shm/`：现场入口。
-- `configs/`：模型场景与现场配方。
-- `scripts/shm/`：Orin构建、部署、私有Mock联跑。
-- `scripts/humble/`：本机容器工具链。
-- `firmware/`：TriCal BLE–USB固件（独立工作区）。
+- `calib/`：交付入口脚本（`dynamics.sh`、`dynamics_h1.sh`..`h3.sh`、`gui.sh`、`dev.sh`）。
+- `configs/`：机器人参数（`robot/dvt2.yaml`）与各阶段配方（`dynamics/h1.yaml`..`h3.yaml`）。
+- `cpp/`：动力学/碰撞核心、SHM 协议与 1kHz 原生执行器。
+- `python/casbot_calib/`：
+  - `pipeline/`：会话管理、自动接管、原生执行器封装、统一运行器。
+  - `stages/dynamics/`：H1 静态重力、H2 摩擦、H3 惯量阶段实现。
+- `scripts/`：构建、同步与环境脚本。
 
-旧ROS/SDK实现及离线研究代码见`ros`分支。`artifacts/`、`build/`、`install/`不入Git。
+旧 ROS/SDK 实现及离线研究代码已归档至 `ros` 分支。`artifacts/`、`build/`、`install/` 不入 Git。
