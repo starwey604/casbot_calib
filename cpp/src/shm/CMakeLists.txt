@@ -10,10 +10,10 @@ target_include_directories(calib_shm PUBLIC
 target_compile_options(calib_shm PRIVATE -Wall -Wextra -Wpedantic)
 
 if(CALIB_BUILD_CORE)
-  add_library(calib_shm_field STATIC field_runtime.cpp reference.cpp)
+  add_library(calib_shm_field STATIC field_runtime.cpp reference.cpp gui_runtime.cpp)
   target_link_libraries(calib_shm_field PUBLIC calib_shm calib_core)
   target_include_directories(calib_shm_field PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
-  foreach(tool IN ITEMS shm_joint_test shm_executor shm_reference_check)
+  foreach(tool IN ITEMS shm_joint_test shm_executor shm_reference_check shm_gui_owner)
     add_executable(${tool} ${PROJECT_SOURCE_DIR}/cpp/tools/${tool}.cpp)
     target_link_libraries(${tool} PRIVATE calib_shm_field)
     set_target_properties(${tool} PROPERTIES INSTALL_RPATH_USE_LINK_PATH TRUE)

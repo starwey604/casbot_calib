@@ -1,4 +1,5 @@
 #include "field_runtime.hpp"
+#include "field_common.hpp"
 #include <casbot_calib/shm/channel.hpp>
 #include <casbot_calib/shm/clock.hpp>
 #include "reference.hpp"
@@ -40,16 +41,6 @@ template<class Frame> void binary(const std::filesystem::path& path,const Frame&
   std::ofstream f(path,std::ios::binary); f.exceptions(std::ios::badbit|std::ios::failbit);
   f.write(reinterpret_cast<const char*>(&frame),sizeof(frame));
 }
-struct OwnerLease {
-  int fd=-1;
-  explicit OwnerLease(std::string name) {
-    if(name.empty()||name[0]!='/')name='/'+name;
-    fd=shm_open(name.c_str(),O_RDONLY,0);
-    if(fd<0)throw std::runtime_error("Owner lease: SHM not available");
-    if(flock(fd,LOCK_EX|LOCK_NB)) {close(fd);fd=-1;throw std::runtime_error("Another fieldwork owner is using this SHM endpoint");}
-  }
-  ~OwnerLease(){if(fd>=0)close(fd);}
-};
 struct Options {
   std::string mode,name="/shm_mc",output,urdf,background,which="C03",reference;
   int id=12;double amplitude=.5,segment=5,kp=20,kd=2,duration=3,quiet=3;
@@ -88,31 +79,16 @@ StatusFrame fresh(Channel& channel) {
   }
   throw std::runtime_error(interrupted?"operator_interrupt":"No fresh changing master frame counter within 2 seconds");
 }
-using Pair=ClockPair;
-class ClockMap : public SourceClock {
- public:
-  Pair pair() {
-    const auto before=mono();timespec w{};
-    if(clock_gettime(CLOCK_REALTIME,&w))throw std::runtime_error("clock_gettime realtime");
-    const auto after=mono();
-    return accept(before,w.tv_sec*1000000000LL+w.tv_nsec,after);
-  }
-};
 bool selected(int j,const Options& o){return !o.other_disabled||((j<7)==(o.id<19));}
 CommandFrame baseline(const StatusFrame& s,const CommandFrame& hand,const Eigen::VectorXd& q,const Options& o) {
-  CommandFrame c{};c.joint_count=29;c.hand_count=hand.hand_count;c.hands=hand.hands;
-  for(int i=0;i<29;++i){c.joints[i].position=s.joints[i].position;c.joints[i].control_word=6;c.joints[i].mode=s.joints[i].mode;}
-  for(int j=0;j<14;++j)arm_target(c,j,q[j],0,o.kp,o.kd);
-  return c;
+  std::array<double,14> values{};for(int j=0;j<14;++j)values[j]=q[j];
+  return initial_command(s,hand,values,o.kp,o.kd);
 }
+ArmMask selection(const Options& o){ArmMask mask{};for(int j=0;j<14;++j)mask[j]=selected(j,o);return mask;}
 bool arm_ack(const StatusFrame& s,unsigned word,const Options& o,bool mit=false) {
-  for(int j=0;j<14;++j) {
-    const auto& a=s.joints[j+12];
-    const unsigned expected=selected(j,o)?word:0x21;
-    if(!drive_state_is(a.status_word,expected)||(mit&&selected(j,o)&&a.mode!=-1))return false;
-  }
-  return true;
+  return drive_ack(s,word,selection(o),mit);
 }
+
 void write_result(const std::filesystem::path& root,const std::string& reason,bool completed,
                   bool recording_stopped,std::int64_t first=0,std::int64_t max_gap=0,
                   std::int64_t writes=0,std::int64_t failures=0,std::int64_t first_write=0,bool ack=false) {
@@ -190,13 +166,9 @@ void run(Channel& channel,StatusFrame state,const CommandFrame& hand,const Eigen
       for(int i=0;i<29;++i)if(state.joints[i].error_code)throw std::runtime_error("drive_error_slot_"+std::to_string(i)+"_"+std::to_string(state.joints[i].error_code));
       if(phase!=3&&phase!=6&&now-phase_begin>3000000000LL)throw std::runtime_error("transition_timeout_phase_"+std::to_string(phase));
       if(phase_sent&&now-phase_begin>20000000) {
-        if(phase==0) {
-          bool ack=arm_ack(state,0x21,o);
-          for(int j=0;j<29;++j)if((j<12||j>25)&&(state.joints[j].status_word&4))ack=false;
-          if(ack)change(1,"switching_mit");
-        }else if(phase==1&&arm_ack(state,0x21,o,true))change(2,"enabling_at_start");
-        else if(phase==2&&arm_ack(state,0x27,o,true))change(3,reference?"reference_begin":jogging?"jog_begin":"hold_begin");
-        else if(phase==4&&arm_ack(state,0x21,o)){done=true;disable_ack=true;recorder.event(4,"disable_ack");}
+        const auto p=drive_phase_next(phase,state,selection(o));
+        if(p==-1){done=true;disable_ack=true;recorder.event(4,"disable_ack");}
+        else if(p!=phase)change(p,p==1?"switching_mit":p==2?"enabling_at_start":reference?"reference_begin":jogging?"jog_begin":"hold_begin");
       }
       for(int j=0;j<14;++j) {
         if(phase>=1&&selected(j,o))command.joints[j+12].mode=-1;

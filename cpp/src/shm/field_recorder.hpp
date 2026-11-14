@@ -20,11 +20,13 @@ struct Record {
 };
 class Recorder {
   std::mutex mutex_;std::condition_variable ready_;std::deque<Record> queue_;
+  std::uint64_t budget_;
   bool done_=false;std::thread worker_;std::filesystem::path root_;
   std::ofstream commands_,feedback_,events_,raw_cmd_,raw_status_,pairs_,passive_cmd_,queues_,limits_;
  public:
   std::atomic<bool> stopped{false};
-  explicit Recorder(const std::filesystem::path& root):root_(root) {
+  std::atomic<std::uint64_t> external_bytes{0};
+  explicit Recorder(const std::filesystem::path& root,std::uint64_t budget=0):root_(root),budget_(budget) {
     limits_.open(root/"observed_limits.csv");
     commands_.open(root/"commands.csv");feedback_.open(root/"feedback.csv");events_.open(root/"events.csv");
     raw_cmd_.open(root/"commands.bin",std::ios::binary);raw_status_.open(root/"feedback.bin",std::ios::binary);pairs_.open(root/"clock_pairs.csv");passive_cmd_.open(root/"passive_commands.bin",std::ios::binary);queues_.open(root/"queues.csv");
@@ -45,6 +47,7 @@ class Recorder {
           Record r;
           {std::unique_lock<std::mutex> lock(mutex_);ready_.wait(lock,[&]{return done_||!queue_.empty();});
             if(queue_.empty())break;r=std::move(queue_.front());queue_.pop_front();}
+          if(stopped)continue;
           if(!r.limit.empty())limits_<<r.at<<','<<r.phase<<','<<r.limit<<'\n';
           if(!r.event.empty()) {
             events_<<r.at<<','<<r.phase<<','<<r.event<<'\n';events_.flush();
@@ -77,7 +80,10 @@ class Recorder {
             for(const auto& a:r.state.joints)feedback_<<','<<a.status_word<<','<<a.mode<<','<<a.error_code;
             feedback_<<'\n';
           }
-          if(r.at-last_flush>=20000000){flush();last_flush=r.at;}
+          if(r.at-last_flush>=20000000){
+            flush();last_flush=r.at;
+            if(budget_){std::uint64_t bytes=external_bytes;for(auto* stream:{&commands_,&feedback_,&events_,&raw_cmd_,&raw_status_,&pairs_,&passive_cmd_,&queues_,&limits_})bytes+=static_cast<std::uint64_t>(stream->tellp());if(bytes>=budget_)stopped=true;}
+          }
         }
         flush();
       }catch(const std::exception&){stopped=true;}
