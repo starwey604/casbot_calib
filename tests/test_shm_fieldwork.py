@@ -207,7 +207,7 @@ def test_partial_records_reported_and_not_resumed(tmp_path):
 def test_setup_report_and_prepare_private_rejected_without_side_effects(tmp_path, monkeypatch):
     out = tmp_path/'setup'
     called=[]
-    monkeypatch.setattr(fw.subprocess, 'call', lambda command: called.append(command) or 0)
+    monkeypatch.setattr(fw, 'prepare_subprocess', lambda command: called.append(command) or dict(command=command,returncode=0))
     assert fw.main(['prepare', '--execute', '--output', str(out)]) == 0
     assert called and json.loads((out/'result.json').read_text())['execution_completed']
     assert '未封存' not in (out/'report.md').read_text()

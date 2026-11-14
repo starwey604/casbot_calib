@@ -81,6 +81,8 @@ bash fieldwork/shm/run.sh execute artifacts/my_shm_fields/reference.json --mock 
 
 如果Orin已重启，新开窗口；若未重启但上次测试状态未知，先核对当前进程/主站状态，不能重复握手来解卡。以下接管步骤只在确实需要新开主站时执行。
 
+`prepare`现在先请求旧主站SIGTERM退出（15秒上限），确认全部存活线程退出后再调用厂家stop；实际服务/线程检查通过后才启动新主站。超时或已有停止job未完成会结束并写`takeover/prepare_result.json`及`diagnosis.*`。当前SDO内核阻塞须先现场重启清除；详见[接管说明](../../docs/shm_takeover.md)。
+
 ```bash
 # 原业务还运行时：O_RDONLY/pread取证，不出队。
 bash fieldwork/shm/run.sh inspect --output artifacts/shm_tomorrow/before

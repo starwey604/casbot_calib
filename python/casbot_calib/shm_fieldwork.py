@@ -666,14 +666,31 @@ def run_action(a):
     return _native_action(a,root)
 
 
+
+def prepare_subprocess(command):
+    child = subprocess.Popen(command)
+    meta = dict(command=command, pid=child.pid, operator_interrupted=False)
+    try:meta['returncode'] = child.wait()
+    except KeyboardInterrupt:
+        meta['operator_interrupted'] = True
+        if child.poll() is None:child.send_signal(signal.SIGINT)
+        try:child.wait(timeout=15)
+        except subprocess.TimeoutExpired:
+            child.kill();child.wait(timeout=3);meta['cleanup_timeout'] = True
+        meta['returncode'] = 130
+    return meta
+
+
 def _native_action(a,root,peer=None,peer_close=None):
     if a.action == 'prepare':
         command = ['bash', str(ROOT/'scripts/shm/prepare_field.sh')]
         command += ['--start-only', str(a.start_only.resolve())] if a.start_only else [str(root/'takeover')]
         # Vendor stop may ask interactively: retain stdin/terminal and log via script.
-        code = subprocess.call(command)
-        dump(root/'process.json', dict(command=command, returncode=code))
-        print('主站未自动握手。查看takeover/station.log，确认后单独activate --execute。')
+        meta = prepare_subprocess(command)
+        code = meta['returncode']
+        dump(root/'process.json', meta)
+        if code == 0:print('主站未自动握手。查看takeover/station.log，确认后单独activate --execute。')
+        else:print('准备未完成；查看takeover/prepare_result.json及diagnosis.txt，不继续activate或重试运动。')
         report(root);return code
     if a.action == 'activate':
         command = [str(a.executor.resolve().with_name('shm_channel_start')), '--fresh-master', a.endpoint]
