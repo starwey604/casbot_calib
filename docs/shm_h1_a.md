@@ -1,10 +1,12 @@
 # SHM H1/A：先做现场确认，再做短轨迹和静态重力
 
-先按[fieldwork手册](../fieldwork/shm/README.md)完成本次开机窗口的接管与选定用例。H1/A已独立于ROS：Orin本机C++负责1ms执行与完整帧记录，Python负责快照、碰撞规划和数值分析；GUI留到本轮现场反馈后接入。
+先按[fieldwork手册](../fieldwork/shm/README.md)完成本次开机窗口的接管与选定用例。H1/A已独立于ROS：Orin本机C++负责1ms执行与完整帧记录，Python负责快照、碰撞规划和数值分析。GUI已接入，用户已在实机确认双臂14轴ID、方向、零点及渲染对应一致，见[现场记录](shm_field_observations_20261114.md#最新gui双臂14轴映射确认)。
 
 H1与C03的区别是：**H1始终检查原模型的连续参考碰撞及实际接收位置折线**。逐轴fieldwork的URDF-only例外不传入H1。当前场景仍是DVT2裸法兰整机/地面，不能套用到未建模的工具或障碍物。
 
 ## 在Orin运行
+
+从GUI切换时，先点“停止并失能”，再点“断开”释放只读owner；仅停止控制仍占有状态出队，不能与H1 CLI并开。沿用当前有效接管窗口，不重复prepare/activate；Orin重启后才重新建立窗口。
 
 ```bash
 cd /home/nvidia/casbot_calib_shm
@@ -37,7 +39,7 @@ bash fieldwork/shm/run.sh h1 plan-jog artifacts/site_h1/start \
 
 快照保存完整35槽状态、当前模型/连接范围；规划沿用原H1停稳起点条件`|v|<0.02rad/s`。小幅轨迹保持原H1“正向→反向→起点”波形，不是C03的先负后正波形。所有结点先规范到整数纳秒，再做连续碰撞、URDF位置与参考速度检查。
 
-默认profile为`configs/shm/hardware_field.yaml`，逐轴Kp20/Kd2。H1**明确开启名义重力前馈**：在参考位置上用Pinocchio计算，冻结为1ms ZOH时间表；整数输出未变化的相邻条目合并，实际编码不变。它与旧SDK按实际位置在线计算补偿不同，配方/计划均写明`nominal_reference`。不加摩擦前馈，GUI未来仍不隐藏补偿。需要无重力前馈时另建profile显式选择`none`，不要编辑已封存计划。
+默认profile为`configs/shm/hardware_field.yaml`，逐轴Kp20/Kd2。H1**明确开启名义重力前馈**：在参考位置上用Pinocchio计算，冻结为1ms ZOH时间表；整数输出未变化的相邻条目合并，实际编码不变。它与旧SDK按实际位置在线计算补偿不同，配方/计划均写明`nominal_reference`。不加摩擦前馈，GUI手动模式仍不隐藏补偿。需要无重力前馈时另建profile显式选择`none`，不要编辑已封存计划。
 
 ## 第二步：预览，再显式执行和分析
 
@@ -113,4 +115,4 @@ H1默认使用单独的`configs/shm/h1_mock.json`：**启动前已明确设置�
 
 2026-11-14已完成Orin原生构建/安装和私有物理闭环：小幅轨迹、两姿态四窗口静态PSD拟合/候选URDF重加载、A分析均通过。完整证据见[构建记录](shm_build.md#2026-11-14-orin-r3-h1a数值环境与安装闭环已完成)。本轮没有控制真实机器人。
 
-下次现场：先按fieldwork手册建立本次接管窗口并保留手部背景，再逐例验证，然后从本页1°小幅H1开始；不要复用Mock快照/计划或本轮私有结果作为实机结论。GUI等这轮反馈后接入。
+GUI映射现场确认已完成；下一步从本页1°小幅H1开始，再接少量正反接近静态姿态。H1按配方显式加入名义重力前馈，区别于GUI默认前馈0；采样窗口不要手托/推手臂，避免外力混入重力拟合。保持已有模型/场景和连续碰撞合同，使用本次实机快照/计划，不复用Mock记录。当前H1实机采集尚未开始。
