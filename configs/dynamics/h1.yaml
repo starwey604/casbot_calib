@@ -8,6 +8,8 @@ smoke_jog:
   amplitude_deg: 10.0
 
 small:
+  parallel_arms: true
+  direct_pose_chain: true
   joints:
     - left_shoulder_pitch_joint
     - right_shoulder_pitch_joint
@@ -26,6 +28,8 @@ small:
     jerk_rad_s3: 1.0
 
 full:
+  parallel_arms: true
+  direct_pose_chain: true
   home_deg: [0.0, 70.0, 0.0, -60.0, 0.0, 0.0, 0.0, 0.0, -70.0, 0.0, -60.0, 0.0, 0.0, 0.0]
   single_axis_offsets_deg: [-75.0, -45.0, -20.0, 0.0, 20.0, 45.0, 75.0]
   combination_offsets_deg: [-30.0, 0.0, 30.0]
@@ -42,7 +46,7 @@ full:
       - right_elbow_pitch_joint
       - right_wrist_yaw_joint
       - right_wrist_pitch_joint
-  approach_offset_deg: 2.0
+  approach_offset_deg: 5.0
   train_poses_per_arm: 24
   validation_poses_per_arm: 8
   validation_seed: 20261030

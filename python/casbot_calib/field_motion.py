@@ -23,6 +23,14 @@ def static_motion(config, start, recipe):
         if measure is None: raise ValueError('Missing static measurement window')
         trials.append(dict(name=name, conditions=metadata['conditions'], begin_s=begin, end_s=motion.duration,
             measure_begin_s=measure[0], measure_end_s=measure[1]))
+    if not np.allclose(motion.states[-1][0], recipe['home_rad'], atol=1e-12):
+        add_bounded_move(
+            motion,
+            recipe['home_rad'],
+            recipe.get('return_anchor_s', config['anchor_transition_s']),
+            recipe['planning_envelope'],
+            'return_preset_anchor',
+        )
     add_bounded_move(motion, start, config['anchor_transition_s'], recipe['planning_envelope'], 'return_observed_start')
     motion.add(config['final_hold_s'], start, label='observed_start_final_hold')
     return motion, trials

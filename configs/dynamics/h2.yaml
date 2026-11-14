@@ -29,17 +29,18 @@ small:
 full:
   home_deg: [0.0, 45.0, 0.0, -45.0, 0.0, 0.0, 0.0, 0.0, -45.0, 0.0, -45.0, 0.0, 0.0, 0.0]
   joints: all
-  stroke_half_deg: 7.0
+  stroke_half_deg: 8.0
   pose_offsets_deg:
     train: [-3.0, 3.0]
     validation: [0.0]
   speeds_rad_s:
-    train: [0.04, 0.08, 0.12]
-    validation: [0.06, 0.10]
+    train: [0.025, 0.08, 0.20, 0.35]
+    validation: [0.05, 0.14, 0.28]
   timing:
     initial_hold_s: 0.5
-    transition_s: 2.5
+    transition_s: 1.5
     speed_ramp_s: 0.25
+    max_plateau_s: 1.5
     reverse_hold_s: 0.2
     plateau_trim_s: 0.15
     final_hold_s: 0.5

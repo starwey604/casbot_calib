@@ -24,6 +24,8 @@ def _load_valid_calibration(cal_path, robot_config):
         cal = json.loads(cal_path.read_text(encoding='utf-8'))
     except (OSError, ValueError):
         return None
+    if cal.get('accepted') is False:
+        return None
     if cal.get('model_context') != robot_config['model_context']:
         return None
     if len(cal.get('parameters', ())) != 140:
@@ -41,7 +43,13 @@ def _find_upstream_calibration(session, stage_candidates, robot_config):
     # 1. Same session first.
     for st_name in stage_candidates:
         rec = session.stage_record(st_name)
-        if rec and rec.get('status') == 'completed' and rec.get('fit_succeeded') and rec.get('calibration_json'):
+        if (
+            rec
+            and rec.get('status') == 'completed'
+            and rec.get('fit_succeeded')
+            and rec.get('accepted', True) is not False
+            and rec.get('calibration_json')
+        ):
             cal_path = session.root / rec['calibration_json']
             cal = _load_valid_calibration(cal_path, robot_config)
             if cal is not None:
@@ -65,7 +73,13 @@ def _find_upstream_calibration(session, stage_candidates, robot_config):
             stages_meta = meta.get('stages') or {}
             for st_name in stage_candidates:
                 rec = stages_meta.get(st_name)
-                if rec and rec.get('status') == 'completed' and rec.get('fit_succeeded') and rec.get('calibration_json'):
+                if (
+                    rec
+                    and rec.get('status') == 'completed'
+                    and rec.get('fit_succeeded')
+                    and rec.get('accepted', True) is not False
+                    and rec.get('calibration_json')
+                ):
                     cal_path = candidate_dir / rec['calibration_json']
                     cal = _load_valid_calibration(cal_path, robot_config)
                     if cal is not None:
@@ -80,6 +94,7 @@ def resolve_stage_prior(session, stage_name, robot_config):
     model = nominal.model
     model.gravity_world = np.asarray(robot_config['gravity_world'], dtype=float)
     nominal = type(nominal)(model)
+    nominal_rotor = np.array([float(j.rotor_inertia) for j in nominal.model.joints], dtype=float)
 
     candidates = ('h1',) if stage_name == 'h2' else ('h2', 'h1') if stage_name == 'h3' else ()
     cal, source_kind, source_path = _find_upstream_calibration(session, candidates, robot_config)
@@ -89,8 +104,19 @@ def resolve_stage_prior(session, stage_name, robot_config):
         viscous = np.asarray(cal.get('viscous', [0.0] * 14), dtype=float)
         coulomb = np.asarray(cal.get('coulomb', [0.0] * 14), dtype=float)
         static_friction = np.asarray(cal.get('static_friction', coulomb), dtype=float)
-        smoothing = float(cal.get('smoothing_velocity', 0.001))
-        stribeck = float(cal.get('stribeck_velocity', 0.005))
+        smoothing_raw = cal.get('smoothing_velocity', 0.001)
+        smoothing = (
+            np.asarray(smoothing_raw, dtype=float)
+            if isinstance(smoothing_raw, (list, tuple, np.ndarray))
+            else float(smoothing_raw)
+        )
+        stribeck_raw = cal.get('stribeck_velocity', 0.005)
+        stribeck = (
+            np.asarray(stribeck_raw, dtype=float)
+            if isinstance(stribeck_raw, (list, tuple, np.ndarray))
+            else float(stribeck_raw)
+        )
+        rotor_inertia = np.asarray(cal.get('rotor_inertia', nominal_rotor), dtype=float)
     else:
         parameters = np.asarray(nominal.rigid_parameters(), dtype=float)
         viscous = np.zeros(14, dtype=float)
@@ -98,6 +124,7 @@ def resolve_stage_prior(session, stage_name, robot_config):
         static_friction = np.zeros(14, dtype=float)
         smoothing = 0.001
         stribeck = 0.005
+        rotor_inertia = nominal_rotor.copy()
 
     engine = model_from_parameters(
         nominal,
@@ -107,6 +134,7 @@ def resolve_stage_prior(session, stage_name, robot_config):
         static=static_friction,
         smoothing_velocity=smoothing,
         stribeck_velocity=stribeck,
+        rotor_inertia=rotor_inertia,
     )
     return dict(
         source=source_kind,
@@ -117,36 +145,73 @@ def resolve_stage_prior(session, stage_name, robot_config):
         static_friction=static_friction,
         smoothing_velocity=smoothing,
         stribeck_velocity=stribeck,
+        rotor_inertia=rotor_inertia,
         engine=engine,
         nominal_engine=nominal,
         model_source=model_source,
     )
 
 
-def build_gravity_effort_rows(motion, engine, robot_config, preparation_cert=None, *, enabled=True):
-    if not enabled:
+def build_feedforward_effort_rows(
+    motion,
+    engine,
+    robot_config,
+    preparation_cert=None,
+    *,
+    mode='gravity',
+    step_ns=5_000_000,
+):
+    if mode not in ('none', 'gravity', 'nominal_reference', 'gravity_friction'):
+        raise ValueError(f'未知前馈模式：{mode}')
+    if mode == 'none':
         return [dict(t_ns=0, value=[0.0] * 14)]
+
+    step = int(step_ns)
+    if step <= 0:
+        raise ValueError('step_ns 须为正整数纳秒')
+
     curve = motion.polynomial()
     last = round(motion.duration * 1e9)
-    period = robot_config['command_period_ns']
-    rows = []
-    previous = None
-    chunk = period * 4096
-    for first in range(0, last + 1, chunk):
-        times = np.arange(first, min(last + 1, first + chunk), period, dtype=np.int64)
-        if first + chunk > last and (len(times) == 0 or times[-1] != last):
-            times = np.r_[times, np.int64(last)]
-        torque = engine.gravity_batch(curve(times * 1e-9))
-        if preparation_cert is not None:
-            torque *= handover_fraction(times, preparation_cert)[:, None]
-        if not np.isfinite(torque).all() or np.max(np.abs(torque)) > robot_config['feedforward_limit_nm']:
-            raise ValueError('重力前馈超出显式力矩上限；不夹取')
-        codes = np.trunc(torque * np.asarray(DIRECTION) * 100).astype(np.int64)
-        for ns, value, code in zip(times, torque, codes):
-            if previous is None or np.any(code != previous):
-                rows.append(dict(t_ns=int(ns), value=value.tolist()))
-                previous = code.copy()
-    return rows
+    anchors = [0, last]
+    if preparation_cert is not None:
+        anchors.extend([
+            int(preparation_cert['move_end_ns']),
+            int(preparation_cert['handover_end_ns']),
+            int(preparation_cert['calibration_begin_ns']),
+        ])
+    anchors = [t for t in anchors if 0 <= t <= last]
+    times = np.unique(np.r_[np.arange(0, last + 1, step, dtype=np.int64), np.asarray(anchors, dtype=np.int64)])
+
+    t_s = times * 1e-9
+    q = np.asarray(curve(t_s), dtype=float)
+    torque = np.asarray(engine.gravity_batch(q), dtype=float)
+    if mode == 'gravity_friction':
+        dq = np.asarray(curve(t_s, nu=1), dtype=float)
+        viscous = np.array([j.friction.viscous for j in engine.model.joints], dtype=float)
+        coulomb = np.array([j.friction.coulomb for j in engine.model.joints], dtype=float)
+        torque = torque + viscous[None, :] * dq + coulomb[None, :] * np.tanh(dq / 0.02)
+
+    if preparation_cert is not None:
+        torque = torque * handover_fraction(times, preparation_cert)[:, None]
+
+    if not np.isfinite(torque).all() or np.max(np.abs(torque)) > robot_config['feedforward_limit_nm']:
+        raise ValueError('重力前馈超出显式力矩上限；不夹取')
+
+    codes = np.trunc(torque * np.asarray(DIRECTION, dtype=float)[None, :] * 100.0).astype(np.int64)
+    keep = np.r_[True, np.any(codes[1:] != codes[:-1], axis=1)]
+    kept_times = times[keep].tolist()
+    kept_torques = torque[keep].tolist()
+    return [dict(t_ns=t, value=v) for t, v in zip(kept_times, kept_torques)]
+
+
+def build_gravity_effort_rows(motion, engine, robot_config, preparation_cert=None, *, enabled=True):
+    return build_feedforward_effort_rows(
+        motion,
+        engine,
+        robot_config,
+        preparation_cert,
+        mode='gravity' if enabled else 'none',
+    )
 
 
 def compose_stage_reference(
@@ -157,6 +222,7 @@ def compose_stage_reference(
     *,
     ready_pose=True,
     gravity_feedforward=True,
+    feedforward_mode=None,
     markers=None,
     max_speed_cap=None,
     max_acceleration_cap=None,
@@ -194,12 +260,13 @@ def compose_stage_reference(
     else:
         motion = formal_motion
 
-    effort = build_gravity_effort_rows(
+    resolved_ff_mode = ('gravity' if gravity_feedforward else 'none') if feedforward_mode is None else str(feedforward_mode)
+    effort = build_feedforward_effort_rows(
         motion,
         prior_engine,
         robot_config,
         prep_cert,
-        enabled=gravity_feedforward,
+        mode=resolved_ff_mode,
     )
     bundle = export_motion(
         motion,
@@ -261,20 +328,21 @@ def read_verified_stage_capture(plan_meta, capture_dir, robot_config):
     ):
         raise ValueError(f'原生执行未正常完成或记录中断：{native}')
 
-    rows = list(reader.rows())
-    if len(rows) < 10:
+    arr = reader.arrays()
+    n_rows = int(len(arr['receive_ns']))
+    if n_rows < 10:
         raise ValueError('SHM 有效反馈帧数过少')
 
     calib_begin_ns = int(plan_meta.get('calibration_begin_ns', 0))
-    receive_ns = np.array([r['receive_ns'] for r in rows], dtype=np.int64)
-    obs_ns = np.array([r['observation_time_ns'] for r in rows], dtype=np.int64)
+    receive_ns = np.asarray(arr['receive_ns'], dtype=np.int64)
+    obs_ns = np.asarray(arr['observation_time_ns'], dtype=np.int64)
     rel_ns = obs_ns - np.int64(reader.origin)
-    phases = np.array([r['phase'] for r in rows], dtype=np.int64)
-    segments = np.array([r['clock_segment'] for r in rows], dtype=np.int64)
-    ambiguous = np.array([bool(r['time_ambiguous']) for r in rows], dtype=bool)
-    q = np.array([r['q'] for r in rows], dtype=float)
-    dq = np.array([r['dq'] for r in rows], dtype=float)
-    effort_raw = np.array([r['effort_raw'] for r in rows], dtype=float)
+    phases = np.asarray(arr['phase'], dtype=np.int64)
+    segments = np.asarray(arr['clock_segment'], dtype=np.int64)
+    ambiguous = np.asarray(arr['time_ambiguous'], dtype=bool)
+    q = np.asarray(arr['q'], dtype=float)
+    dq = np.asarray(arr['dq'], dtype=float)
+    effort_raw = np.asarray(arr['effort_raw'], dtype=float)
     effort_nm = (effort_raw - np.asarray(robot_config['effort_zero_nm'], dtype=float)) * np.asarray(robot_config['effort_gain'], dtype=float)
 
     formal_mask = (phases == 3) & (rel_ns >= calib_begin_ns)
@@ -308,9 +376,9 @@ def read_verified_stage_capture(plan_meta, capture_dir, robot_config):
         dq=dq,
         effort_raw=effort_raw,
         effort_nm=effort_nm,
-        feedback_rows=len(rows),
+        feedback_rows=n_rows,
         formal_rows=int(formal_mask.sum()),
-        mean_feedback_hz=(len(rows) - 1) / duration_s if duration_s > 0 else None,
+        mean_feedback_hz=(n_rows - 1) / duration_s if duration_s > 0 else None,
     )
     return obs, native, received_collision
 
@@ -355,4 +423,43 @@ def export_stage_candidate(out_dir, candidate_engine, robot_config):
         runtime_dynamics='runtime_dynamics.json',
         reload_passed=True,
         bodies=urdf_info['bodies'],
+    )
+
+
+def evaluate_stage_acceptance(baseline_rmse, candidate_rmse, *, axis_rows=(), reload_passed=True):
+    """Automatic holdout non-regression gate across overall and primary excited axes."""
+    baseline = float(baseline_rmse)
+    candidate = float(candidate_rmse)
+    degraded_axes = []
+    for joint_name, b_ax, c_ax in axis_rows:
+        if b_ax is None or c_ax is None:
+            continue
+        b_val = float(b_ax)
+        c_val = float(c_ax)
+        if (c_val - b_val) > max(0.05, 0.10 * b_val):
+            degraded_axes.append(str(joint_name))
+
+    if not reload_passed:
+        accepted = False
+        reason = 'urdf_reload_failed'
+    elif not np.isfinite([baseline, candidate]).all():
+        accepted = False
+        reason = 'nonfinite_validation_rmse'
+    elif candidate > baseline * 1.005 + 1e-4:
+        accepted = False
+        reason = 'overall_validation_degraded'
+    elif degraded_axes:
+        accepted = False
+        reason = 'active_axis_degraded:' + ','.join(degraded_axes)
+    else:
+        accepted = True
+        reason = 'passed'
+
+    return dict(
+        accepted=accepted,
+        baseline_rmse_nm=baseline,
+        candidate_rmse_nm=candidate,
+        improvement_nm=float(baseline - candidate),
+        degraded_axes=degraded_axes,
+        reason=reason,
     )

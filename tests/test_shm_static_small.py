@@ -22,7 +22,7 @@ def test_default_h1_small_stays_in_twenty_degree_shoulder_range(tmp_path):
     assert recipe['mode'] == 'small'
     assert recipe['small']['target_offset_deg'] == 15.0 and recipe['small']['approach_offset_deg'] == 5.0
     m = plan_h1(ready_position(), robot_cfg, recipe, tmp_path / 'plan')
-    assert len(m['trials']) == 8
+    assert len(m['trials']) == 4
     assert json.loads((tmp_path / 'plan/collision_reference.json').read_text())['passed']
     for row in m['static_motions']:
         assert row['labels'].count('static_measure') == 1
@@ -30,7 +30,7 @@ def test_default_h1_small_stays_in_twenty_degree_shoulder_range(tmp_path):
         np.testing.assert_allclose(states[:, 0, 1], np.deg2rad(20.0), atol=1e-15)
         np.testing.assert_allclose(states[:, 0, 8], -np.deg2rad(20.0), atol=1e-15)
         assert np.max(np.abs(states[:, 0, [0, 7]])) <= np.deg2rad(20.0) * (1 + 1e-12)
-        assert len(np.flatnonzero(np.ptp(states[:, 0, :], axis=0) > 1e-10)) == 1
+        assert set(np.flatnonzero(np.ptp(states[:, 0, :], axis=0) > 1e-10).tolist()) == {0, 7}
 
 
 def test_static_diagnostics_use_actual_q_and_keep_pair_pose_difference(tmp_path):
@@ -81,6 +81,8 @@ def test_eight_windows_physics_fit_and_solver_unavailable_report(tmp_path, monke
         mode='small',
         ready_pose=True,
         small=dict(
+            parallel_arms=False,
+            direct_pose_chain=False,
             joints=['left_shoulder_pitch_joint', 'right_shoulder_pitch_joint'],
             target_offset_deg=0.1,
             approach_offset_deg=0.03,

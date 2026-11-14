@@ -1,4 +1,4 @@
-"""H3 Inertia stage: periodic multisine excitation, harmonic Fourier projection, and gravity-locked 140-param PSD fit."""
+"""H3 Inertia stage: CMA-ES stratified multisine excitation, harmonic Fourier projection, and gravity-locked 140+14 PSD/rotor fit."""
 from copy import deepcopy
 import csv
 import json
@@ -8,10 +8,15 @@ from scipy.interpolate import BPoly
 from scipy.linalg import lstsq
 import yaml
 from ...data import write_json
-from ...dual_excitation import periodic_reference
+from ...dual_excitation import (
+    optimize_excitation_phases,
+    periodic_reference,
+    stratified_harmonics,
+)
+from ...model_runtime import collision_for
 from ...pipeline.robot import load_robot_config
 from ...pipeline.stage import Stage
-from ...rigid_identification import fit_rigid, model_from_parameters
+from ...rigid_identification import fit_rigid, model_from_parameters, parameter_scales
 from ...shm_data import NAMES, PARTS, ROOT
 from ...shm_ready import ready_position
 from ...shm_reference import save_bundle
@@ -19,6 +24,7 @@ from ...staged_motion import Motion
 from ...static_field import _move
 from .common import (
     compose_stage_reference,
+    evaluate_stage_acceptance,
     export_stage_candidate,
     read_verified_stage_capture,
     resolve_effective_plan_and_capture,
@@ -36,8 +42,15 @@ def load_h3_recipe(source=DEFAULT_H3_CONFIG, **overrides):
         path = Path(source or DEFAULT_H3_CONFIG).resolve()
         c = yaml.safe_load(path.read_text(encoding='utf-8')) or {}
 
-    if overrides.get('mode') is not None:
-        c['mode'] = overrides['mode']
+    explicit_ff_mode = ('feedforward_mode' in c and c['feedforward_mode'] is not None) or (
+        overrides.get('feedforward_mode') is not None
+    )
+    explicit_strat = 'stratified_harmonics' in c or overrides.get('stratified_harmonics') is not None
+
+    for key, val in overrides.items():
+        if val is not None:
+            c[key] = val
+
     c.setdefault('mode', 'small')
     if c['mode'] == 'smoke':
         raise ValueError('--mode smoke 仅适用于 H1 阶段（bash calib/dynamics_h1.sh --mode smoke）')
@@ -46,6 +59,16 @@ def load_h3_recipe(source=DEFAULT_H3_CONFIG, **overrides):
 
     c.setdefault('ready_pose', True)
     c.setdefault('gravity_feedforward', True)
+    if not explicit_ff_mode and not bool(c['gravity_feedforward']):
+        c['feedforward_mode'] = 'none'
+    else:
+        c.setdefault('feedforward_mode', 'gravity_friction')
+    if c['feedforward_mode'] not in ('none', 'gravity', 'nominal_reference', 'gravity_friction'):
+        raise ValueError(f'未知 H3 feedforward_mode：{c["feedforward_mode"]}')
+
+    c['cma_optimize'] = bool(c.get('cma_optimize', True))
+    c['identify_rotor_inertia'] = bool(c.get('identify_rotor_inertia', True))
+
     c.setdefault('harmonics', 12)
     c.setdefault('phase_points', 256)
     c.setdefault('torque_floor_nm', 0.2)
@@ -60,6 +83,52 @@ def load_h3_recipe(source=DEFAULT_H3_CONFIG, **overrides):
     if not np.isfinite([torque_floor, ridge]).all() or torque_floor <= 0 or ridge <= 0:
         raise ValueError('H3 torque_floor_nm 与 ridge 须为正有限值')
     c.update(harmonics=harmonics, phase_points=phase_points, torque_floor_nm=torque_floor, ridge=ridge)
+
+    if 'ridge_grid' not in c:
+        c['ridge_grid'] = [1.0e-5, 1.0e-4, 1.0e-3, 1.0e-2, 5.0e-2]
+    elif c['ridge_grid'] is not None:
+        rgrid = [float(x) for x in c['ridge_grid']]
+        if not rgrid or not np.isfinite(rgrid).all() or min(rgrid) <= 0:
+            raise ValueError('H3 ridge_grid 须为正有限值列表或 None')
+        c['ridge_grid'] = rgrid
+
+    strat_raw = dict(c.get('stratified_harmonics') or {})
+    strat_enabled = bool(strat_raw.get('enabled', True))
+    prox_raw = dict(strat_raw.get('proximal') or {})
+    dist_raw = dict(strat_raw.get('distal') or {})
+    default_dist_train = [2, 4, 6, 9] if harmonics >= 9 else sorted({1, 2, min(4, harmonics - 2), harmonics - 1})
+    default_dist_val = [2, 5, 7, 10] if harmonics >= 10 else sorted({2, 3, min(5, harmonics - 1), harmonics})
+    prox_train = [int(h) for h in prox_raw.get('train', [1, 2, 3, 5])]
+    prox_val = [int(h) for h in prox_raw.get('validation', [1, 3, 4, 6])]
+    dist_train = [int(h) for h in dist_raw.get('train', default_dist_train)]
+    dist_val = [int(h) for h in dist_raw.get('validation', default_dist_val)]
+    all_h = [*prox_train, *prox_val, *dist_train, *dist_val]
+    if (
+        len(prox_train) == 0
+        or len({len(prox_train), len(prox_val), len(dist_train), len(dist_val)}) != 1
+        or min(all_h) <= 0
+    ):
+        raise ValueError('H3 stratified_harmonics 各组谐波阶次须为等长正整数列表')
+    if strat_enabled and max(all_h) > harmonics:
+        if explicit_strat:
+            raise ValueError(f'H3 stratified_harmonics 最大阶次 ({max(all_h)}) 不能超过 harmonics ({harmonics})')
+        prox_train = [min(h, harmonics) for h in prox_train]
+        prox_val = [min(h, harmonics) for h in prox_val]
+        dist_train = [min(h, harmonics) for h in dist_train]
+        dist_val = [min(h, harmonics) for h in dist_val]
+    c['stratified_harmonics'] = dict(
+        enabled=strat_enabled,
+        proximal=dict(train=prox_train, validation=prox_val),
+        distal=dict(train=dist_train, validation=dist_val),
+    )
+
+    cma_raw = dict(c.get('cma') or {})
+    max_gen = int(cma_raw.get('max_generations', 12))
+    popsize = int(cma_raw.get('popsize', 10))
+    sample_pts = int(cma_raw.get('sample_points', 40))
+    if max_gen < 1 or popsize < 4 or sample_pts < 8:
+        raise ValueError('H3 cma 配置须满足 max_generations >= 1, popsize >= 4, sample_points >= 8')
+    c['cma'] = dict(max_generations=max_gen, popsize=popsize, sample_points=sample_pts)
 
     block = dict(c.get(c['mode']) or {})
     if not block:
@@ -117,7 +186,7 @@ def load_h3_recipe(source=DEFAULT_H3_CONFIG, **overrides):
     nums = [*timing.values(), *envelope.values(), max_acc, max_jerk]
     if not np.isfinite(nums).all() or min(nums) <= 0:
         raise ValueError('H3 timing、planning_envelope 与导数上限须为正有限值')
-    block.update(maximum_acceleration_rad_s2=max_acc, maximum_jerk_rad_s3=max_jerk)
+    block.update(timing=timing, planning_envelope=envelope, maximum_acceleration_rad_s2=max_acc, maximum_jerk_rad_s3=max_jerk)
 
     c[c['mode']] = block
     return c
@@ -133,6 +202,9 @@ def _append_enveloped_periodic_block(
     amplitude_rad,
     seed,
     validation,
+    phases=None,
+    harmonics_override=None,
+    amplitude_scales=None,
 ):
     period_s = period_ns * 1e-9
     ramp_s = ramp_ns * 1e-9
@@ -153,7 +225,18 @@ def _append_enveloped_periodic_block(
         spans_ns = np.diff(grid_ns)
         t = grid_ns[1:] * 1e-9
         phase = t - ramp_s if seg_mode == 'entry' else t if seg_mode == 'periodic' else periods * period_s + t
-        q, v, a, jrk = periodic_reference(phase, center, period_s, amplitude_rad, seed, validation, 'both')
+        q, v, a, jrk = periodic_reference(
+            phase,
+            center,
+            period_s,
+            amplitude_rad,
+            seed,
+            validation,
+            'both',
+            phases=phases,
+            harmonics_override=harmonics_override,
+            amplitude_scales=amplitude_scales,
+        )
         delta = q - center
 
         if seg_mode == 'periodic':
@@ -200,10 +283,23 @@ def plan_h3(q_start, robot_config, recipe, out_dir, *, session=None):
     active_indices = [NAMES.index(name) for name in cfg['joints']]
 
     period_ns = round(float(cfg['period_s']) * 1e9)
+    period_s = period_ns * 1e-9
     periods = int(cfg['periods'])
     discard_periods = int(cfg['discard_periods'])
     ramp_ns = round(float(timing['excitation_ramp_s']) * 1e9)
     trans_s = float(timing['transition_s'])
+
+    strat_cfg = recipe['stratified_harmonics']
+    cma_optimize = bool(recipe.get('cma_optimize', True))
+    cma_cfg = recipe['cma']
+    geometry = collision_for(robot_config, prior['engine']) if cma_optimize else None
+    vel_lim = (
+        min(robot_config['maximum_velocity_rad_s'], float(envelope.get('speed_rad_s', 1.5)) * 3.0)
+        if mode == 'full'
+        else float(robot_config['maximum_velocity_rad_s'])
+    )
+    acc_lim_opt = 0.72 * float(cfg['maximum_acceleration_rad_s2'])
+    jerk_lim_opt = 0.72 * float(cfg['maximum_jerk_rad_s3'])
 
     anchor = ready_position() if recipe['ready_pose'] else q_start.copy()
     formal = Motion(f'shm_h3_inertia_{mode}', 'inertia', anchor, dict(refine_position_bounds=True))
@@ -214,9 +310,58 @@ def plan_h3(q_start, robot_config, recipe, out_dir, *, session=None):
     block_idx = 0
 
     for split, seeds in (('train', cfg['train_seeds']), ('validation', cfg['validation_seeds'])):
+        is_val = split != 'train'
+        if strat_cfg['enabled']:
+            harm_mat = stratified_harmonics(
+                14,
+                validation=is_val,
+                proximal_train=strat_cfg['proximal']['train'],
+                proximal_val=strat_cfg['proximal']['validation'],
+                distal_train=strat_cfg['distal']['train'],
+                distal_val=strat_cfg['distal']['validation'],
+            )
+        else:
+            base_h = np.array([1, 3, 4, 6] if is_val else [1, 2, 3, 5], dtype=int)
+            harm_mat = np.broadcast_to(base_h[None, :], (14, len(base_h))).copy()
+        if int(np.max(harm_mat[active_indices])) > int(recipe['harmonics']):
+            raise ValueError('激励谐波阶次超出 Fourier 提取上限 harmonics')
+
         for pose_idx, offset_deg in enumerate(cfg['pose_offsets_deg'][split]):
             center = _posture_center(home_rad, np.deg2rad(offset_deg), active_indices)
             for seed in seeds:
+                if cma_optimize:
+                    opt = optimize_excitation_phases(
+                        prior['engine'],
+                        geometry,
+                        center,
+                        period_s=period_s,
+                        amplitude=amplitude_rad,
+                        harmonics=harm_mat,
+                        active=active_indices,
+                        validation=is_val,
+                        seed=seed,
+                        clearance_m=robot_config['scene']['clearance_m'],
+                        velocity_limits=vel_lim,
+                        acceleration_limit=acc_lim_opt,
+                        jerk_limit=jerk_lim_opt,
+                        sample_points=int(cma_cfg['sample_points']),
+                        popsize=int(cma_cfg['popsize']),
+                        max_generations=int(cma_cfg['max_generations']),
+                    )
+                    blk_phases = opt['phases']
+                    blk_harmonics = opt['harmonics']
+                    blk_amp_scales = opt['amplitude_scales']
+                    init_cond = opt['initial_condition_number']
+                    opt_cond = opt['optimized_condition_number']
+                    obs_rank = opt['observable_rank']
+                else:
+                    blk_phases = None
+                    blk_harmonics = harm_mat if strat_cfg['enabled'] else None
+                    blk_amp_scales = None
+                    init_cond = None
+                    opt_cond = None
+                    obs_rank = None
+
                 _move(formal, center, trans_s, envelope, 'to_excitation_center')
                 p_begin_ns, p_end_ns = _append_enveloped_periodic_block(
                     formal,
@@ -226,7 +371,10 @@ def plan_h3(q_start, robot_config, recipe, out_dir, *, session=None):
                     ramp_ns=ramp_ns,
                     amplitude_rad=amplitude_rad,
                     seed=seed,
-                    validation=(split != 'train'),
+                    validation=is_val,
+                    phases=blk_phases,
+                    harmonics_override=blk_harmonics,
+                    amplitude_scales=blk_amp_scales,
                 )
                 steady_begin_ns = p_begin_ns + discard_periods * period_ns
                 markers.append(dict(t_ns=steady_begin_ns, event=f'h3_block_{block_idx:02d}'))
@@ -242,6 +390,10 @@ def plan_h3(q_start, robot_config, recipe, out_dir, *, session=None):
                     discard_periods=discard_periods,
                     periodic_ns=[p_begin_ns, p_end_ns],
                     steady_ns=[steady_begin_ns, p_end_ns],
+                    harmonics=(blk_harmonics.tolist() if blk_harmonics is not None else harm_mat.tolist()),
+                    initial_condition_number=init_cond,
+                    optimized_condition_number=opt_cond,
+                    observable_rank=obs_rank,
                 ))
                 block_idx += 1
 
@@ -255,6 +407,7 @@ def plan_h3(q_start, robot_config, recipe, out_dir, *, session=None):
         robot_config,
         ready_pose=bool(recipe['ready_pose']),
         gravity_feedforward=bool(recipe['gravity_feedforward']),
+        feedforward_mode=recipe['feedforward_mode'],
         markers=markers,
         max_acceleration_cap=float(cfg['maximum_acceleration_rad_s2']),
         max_jerk_cap=float(cfg['maximum_jerk_rad_s3']),
@@ -265,12 +418,23 @@ def plan_h3(q_start, robot_config, recipe, out_dir, *, session=None):
         blk['steady_ns'] = [blk['steady_ns'][0] + offset_ns, blk['steady_ns'][1] + offset_ns]
 
     reference_path = save_bundle(out_dir, bundle)
+    stribeck_prior = (
+        prior['stribeck_velocity'].tolist()
+        if isinstance(prior['stribeck_velocity'], np.ndarray)
+        else prior['stribeck_velocity']
+    )
+    smoothing_prior = (
+        prior['smoothing_velocity'].tolist()
+        if isinstance(prior['smoothing_velocity'], np.ndarray)
+        else prior['smoothing_velocity']
+    )
     plan_meta = dict(
         schema='casbot_calib_h3_plan_v1',
         stage='h3',
         mode=mode,
         ready_pose=bool(recipe['ready_pose']),
         gravity_feedforward=bool(recipe['gravity_feedforward']),
+        feedforward_mode=recipe['feedforward_mode'],
         reference_file=reference_path.name,
         duration_ns=bundle['knots_ns'][-1],
         calibration_begin_ns=offset_ns,
@@ -284,8 +448,9 @@ def plan_h3(q_start, robot_config, recipe, out_dir, *, session=None):
             viscous=prior['viscous'].tolist(),
             coulomb=prior['coulomb'].tolist(),
             static_friction=prior['static_friction'].tolist(),
-            smoothing_velocity=prior['smoothing_velocity'],
-            stribeck_velocity=prior['stribeck_velocity'],
+            smoothing_velocity=smoothing_prior,
+            stribeck_velocity=stribeck_prior,
+            rotor_inertia=prior['rotor_inertia'].tolist(),
         ),
         active_joints=cfg['joints'],
         blocks=blocks,
@@ -356,7 +521,15 @@ def _gravity_constraints(prior_engine, prior_parameters):
     return (reg, reg @ prior_parameters), q
 
 
-def _extract_block_harmonic_data(obs, prior_engine, blk, harmonics, phase_points):
+def _extract_block_harmonic_data(
+    obs,
+    prior_engine,
+    blk,
+    harmonics,
+    phase_points,
+    *,
+    identify_rotor_inertia=True,
+):
     s_begin_ns, s_end_ns = blk['steady_ns']
     p_begin_ns = blk['periodic_ns'][0]
     period_s = blk['period_ns'] * 1e-9
@@ -407,14 +580,15 @@ def _extract_block_harmonic_data(obs, prior_engine, blk, harmonics, phase_points
     dq_meas_grid = phi_grid @ dq_coeffs
     eff_grid = phi_grid @ eff_coeffs
 
-    # Project measured physical friction (evaluated at deduplicated samples) and
-    # harmonic velocity friction consistently; using the harmonic trajectory kinematics
-    # avoids 1ms encoder quantization jitter at zero crossings.
     batch = prior_engine.regressor_batch(q_grid, dq_grid, ddq_grid)
     reg_band = _bandlimit_fft(batch['regressor'], harmonics)
-    rotor_band = _bandlimit_fft(batch['rotor_torque'], harmonics)
+    ddq_band = _bandlimit_fft(ddq_grid, harmonics)
     fric_band = _bandlimit_fft(batch['friction'], harmonics)
-    rigid_target = eff_grid - rotor_band - fric_band
+    if identify_rotor_inertia:
+        dyn_target = eff_grid - fric_band
+    else:
+        rotor_band = _bandlimit_fft(batch['rotor_torque'], harmonics)
+        dyn_target = eff_grid - rotor_band - fric_band
 
     vel_consistency_rmse = float(np.sqrt(np.mean((dq_grid - dq_meas_grid) ** 2)))
     eff_fit_rmse = float(np.sqrt(np.mean(weights[:, None] * ((phi @ eff_coeffs - eff_u) ** 2))))
@@ -426,7 +600,14 @@ def _extract_block_harmonic_data(obs, prior_engine, blk, harmonics, phase_points
         velocity_consistency_rmse_rad_s=vel_consistency_rmse,
         effort_harmonic_fit_rmse_nm=eff_fit_rmse,
     )
-    return reg_band, rigid_target, diag
+    return reg_band, ddq_band, dyn_target, diag
+
+
+def _build_rotor_regressor(ddq_active, active_indices):
+    rot_reg = np.zeros((len(ddq_active), len(active_indices), 14), dtype=float)
+    for pos, j in enumerate(active_indices):
+        rot_reg[:, pos, j] = ddq_active[:, pos]
+    return rot_reg
 
 
 def analyse_h3(plan_dir, capture_dir, out_dir, *, session=None):
@@ -441,20 +622,43 @@ def analyse_h3(plan_dir, capture_dir, out_dir, *, session=None):
     phase_points = int(recipe['phase_points'])
     torque_floor = float(recipe['torque_floor_nm'])
     ridge = float(recipe['ridge'])
+    ridge_grid = recipe.get('ridge_grid')
+    identify_rotor = bool(recipe.get('identify_rotor_inertia', True))
 
     obs, native, received_collision = read_verified_stage_capture(plan_meta, capture_dir, robot_config)
 
-    nominal = resolve_stage_prior(None, 'h3', robot_config)['nominal_engine']
-    prior_info = plan_meta['prior']
+    if session is not None:
+        live = resolve_stage_prior(session, 'h3', robot_config)
+        nominal = live['nominal_engine']
+        prior_info = dict(
+            source=live['source'],
+            source_path=live['source_path'],
+            parameters=live['parameters'].tolist(),
+            viscous=live['viscous'].tolist(),
+            coulomb=live['coulomb'].tolist(),
+            static_friction=live['static_friction'].tolist(),
+            smoothing_velocity=live['smoothing_velocity'],
+            stribeck_velocity=live['stribeck_velocity'],
+            rotor_inertia=live['rotor_inertia'].tolist(),
+        )
+    else:
+        nominal = resolve_stage_prior(None, 'h3', robot_config)['nominal_engine']
+        prior_info = plan_meta['prior']
+    nominal_rotor = np.array([float(jt.rotor_inertia) for jt in nominal.model.joints], dtype=float)
     prior_params = np.asarray(prior_info['parameters'], dtype=float)
+    prior_smoothing = prior_info.get('smoothing_velocity', 0.001)
+    prior_stribeck = prior_info.get('stribeck_velocity', 0.005)
+    prior_rotor = np.asarray(prior_info.get('rotor_inertia', nominal_rotor), dtype=float)
+
     prior_engine = model_from_parameters(
         nominal,
         prior_params,
         viscous=prior_info['viscous'],
         coulomb=prior_info['coulomb'],
         static=prior_info['static_friction'],
-        smoothing_velocity=float(prior_info['smoothing_velocity']),
-        stribeck_velocity=float(prior_info['stribeck_velocity']),
+        smoothing_velocity=prior_smoothing,
+        stribeck_velocity=prior_stribeck,
+        rotor_inertia=prior_rotor,
     )
 
     active_indices = [NAMES.index(name) for name in plan_meta['active_joints']]
@@ -462,35 +666,76 @@ def analyse_h3(plan_dir, capture_dir, out_dir, *, session=None):
     block_diagnostics = []
 
     for blk in plan_meta['blocks']:
-        reg_band, rigid_target, diag = _extract_block_harmonic_data(obs, prior_engine, blk, harmonics, phase_points)
-        split_blocks[blk['split']].append((reg_band[:, active_indices, :], rigid_target[:, active_indices]))
+        reg_band, ddq_band, dyn_target, diag = _extract_block_harmonic_data(
+            obs,
+            prior_engine,
+            blk,
+            harmonics,
+            phase_points,
+            identify_rotor_inertia=identify_rotor,
+        )
+        split_blocks[blk['split']].append((
+            reg_band[:, active_indices, :],
+            ddq_band[:, active_indices],
+            dyn_target[:, active_indices],
+        ))
         block_diagnostics.append(diag)
 
     if not split_blocks['train'] or not split_blocks['validation']:
         raise ValueError('H3 需要完整的训练与留出验证周期块')
 
     train_reg = np.concatenate([item[0] for item in split_blocks['train']], axis=0)
-    train_target = np.concatenate([item[1] for item in split_blocks['train']], axis=0)
+    train_ddq = np.concatenate([item[1] for item in split_blocks['train']], axis=0)
+    train_target = np.concatenate([item[2] for item in split_blocks['train']], axis=0)
     val_reg = np.concatenate([item[0] for item in split_blocks['validation']], axis=0)
-    val_target = np.concatenate([item[1] for item in split_blocks['validation']], axis=0)
+    val_ddq = np.concatenate([item[1] for item in split_blocks['validation']], axis=0)
+    val_target = np.concatenate([item[2] for item in split_blocks['validation']], axis=0)
+
+    train_rot_reg = _build_rotor_regressor(train_ddq, active_indices)
+    val_rot_reg = _build_rotor_regressor(val_ddq, active_indices)
 
     joint_scales = np.maximum(np.sqrt(np.mean(train_target ** 2, axis=0)), torque_floor)
     weighted_reg = (train_reg / joint_scales[None, :, None]).reshape(-1, 140)
     weighted_target = (train_target / joint_scales[None, :]).ravel()
 
     equalities, gravity_probe_q = _gravity_constraints(prior_engine, prior_params)
+
+    if identify_rotor:
+        weighted_rot_reg = (train_rot_reg / joint_scales[None, :, None]).reshape(-1, 14)
+        rotor_lower = np.zeros(14, dtype=float)
+        rotor_upper = np.full(14, 5.0, dtype=float)
+        prior_rotor_clamped = np.clip(prior_rotor, rotor_lower, rotor_upper)
+        aux_arg = (weighted_rot_reg, prior_rotor_clamped, rotor_lower, rotor_upper)
+        fixed_scales = np.r_[parameter_scales(prior_params), np.maximum(np.abs(prior_rotor_clamped), 0.05)]
+        val_data = (val_reg.reshape(-1, 140), val_target.ravel(), val_rot_reg.reshape(-1, 14))
+    else:
+        aux_arg = None
+        fixed_scales = None
+        val_data = (val_reg.reshape(-1, 140), val_target.ravel())
+
     fit = fit_rigid(
         weighted_reg,
         weighted_target,
         prior_params,
         equalities=equalities,
+        auxiliary=aux_arg,
+        fixed_scales=fixed_scales,
         torque_scale=1.0,
         robust_scale=0.5,
         ridge=ridge,
+        ridge_grid=ridge_grid,
+        validation_data=val_data if ridge_grid is not None else None,
         physical_length_scale=0.1,
         lift_residuals=True,
     )
     fitted_params = np.asarray(fit['parameters'], dtype=float)
+    if identify_rotor:
+        raw_rotor = np.clip(np.asarray(fit['auxiliary_parameters'], dtype=float), 0.0, 5.0)
+        fitted_rotor = prior_rotor.copy()
+        for j in active_indices:
+            fitted_rotor[j] = float(raw_rotor[j])
+    else:
+        fitted_rotor = prior_rotor.copy()
 
     candidate_engine = model_from_parameters(
         nominal,
@@ -498,8 +743,9 @@ def analyse_h3(plan_dir, capture_dir, out_dir, *, session=None):
         viscous=prior_info['viscous'],
         coulomb=prior_info['coulomb'],
         static=prior_info['static_friction'],
-        smoothing_velocity=float(prior_info['smoothing_velocity']),
-        stribeck_velocity=float(prior_info['stribeck_velocity']),
+        smoothing_velocity=prior_smoothing,
+        stribeck_velocity=prior_stribeck,
+        rotor_inertia=fitted_rotor,
     )
     max_gravity_change = float(np.max(np.abs(
         candidate_engine.gravity_batch(gravity_probe_q) - prior_engine.gravity_batch(gravity_probe_q)
@@ -507,8 +753,13 @@ def analyse_h3(plan_dir, capture_dir, out_dir, *, session=None):
     if max_gravity_change > 1e-4:
         raise RuntimeError(f'H3 拟合破坏了冻结静态重力子空间（最大偏差 {max_gravity_change:.3e} Nm）')
 
-    prior_val_pred = val_reg @ prior_params
-    cand_val_pred = val_reg @ fitted_params
+    if identify_rotor:
+        prior_val_pred = val_reg @ prior_params + val_rot_reg @ prior_rotor
+        cand_val_pred = val_reg @ fitted_params + val_rot_reg @ fitted_rotor
+    else:
+        prior_val_pred = val_reg @ prior_params
+        cand_val_pred = val_reg @ fitted_params
+
     prior_axis_rmse = np.sqrt(np.mean((prior_val_pred - val_target) ** 2, axis=0))
     cand_axis_rmse = np.sqrt(np.mean((cand_val_pred - val_target) ** 2, axis=0))
     overall_prior_rmse = float(np.sqrt(np.mean((prior_val_pred - val_target) ** 2)))
@@ -539,14 +790,42 @@ def analyse_h3(plan_dir, capture_dir, out_dir, *, session=None):
             ixx_kg_m2=float(inertia_diag[0]),
             iyy_kg_m2=float(inertia_diag[1]),
             izz_kg_m2=float(inertia_diag[2]),
+            rotor_inertia_kg_m2=float(fitted_rotor[j]),
             min_pseudo_inertia_eig=float(fit['minimum_pseudo_inertia_eigenvalues'][j]),
             prior_validation_rmse_nm=p_rmse,
             validation_rmse_nm=c_rmse,
         ))
 
+    acceptance = evaluate_stage_acceptance(
+        overall_prior_rmse,
+        overall_val_rmse,
+        axis_rows=[
+            (row['joint'], row['prior_validation_rmse_nm'], row['validation_rmse_nm'])
+            for row in axis_reports
+            if row['identified']
+        ],
+        reload_passed=exported['reload_passed'],
+    )
+
+    stribeck_out = (
+        prior_stribeck.tolist()
+        if isinstance(prior_stribeck, np.ndarray)
+        else list(prior_stribeck)
+        if isinstance(prior_stribeck, (list, tuple))
+        else float(prior_stribeck)
+    )
+    smoothing_out = (
+        prior_smoothing.tolist()
+        if isinstance(prior_smoothing, np.ndarray)
+        else list(prior_smoothing)
+        if isinstance(prior_smoothing, (list, tuple))
+        else float(prior_smoothing)
+    )
     calibration = dict(
         schema_version='casbot_shm_h3_calibration_v1',
         stage='h3',
+        accepted=acceptance['accepted'],
+        acceptance=acceptance,
         model_context=robot_config['model_context'],
         joint_names=list(NAMES),
         identified_joints=list(plan_meta['active_joints']),
@@ -559,8 +838,10 @@ def analyse_h3(plan_dir, capture_dir, out_dir, *, session=None):
         viscous=list(prior_info['viscous']),
         coulomb=list(prior_info['coulomb']),
         static_friction=list(prior_info['static_friction']),
-        smoothing_velocity=float(prior_info['smoothing_velocity']),
-        stribeck_velocity=float(prior_info['stribeck_velocity']),
+        smoothing_velocity=smoothing_out,
+        stribeck_velocity=stribeck_out,
+        rotor_inertia=fitted_rotor.tolist(),
+        selected_ridge=float(fit['scaled_prior_ridge']),
         max_gravity_change_nm=max_gravity_change,
         prior_validation_rmse_nm=overall_prior_rmse,
         validation_rmse_nm=overall_val_rmse,
@@ -573,13 +854,13 @@ def analyse_h3(plan_dir, capture_dir, out_dir, *, session=None):
         writer = csv.writer(stream)
         writer.writerow([
             'joint_index', 'shm_id', 'joint', 'identified',
-            'mass_kg', 'ixx_kg_m2', 'iyy_kg_m2', 'izz_kg_m2',
+            'mass_kg', 'ixx_kg_m2', 'iyy_kg_m2', 'izz_kg_m2', 'rotor_inertia_kg_m2',
             'min_pseudo_inertia_eig', 'prior_validation_rmse_nm', 'validation_rmse_nm',
         ])
         for row in axis_reports:
             writer.writerow([
                 row['joint_index'], row['shm_id'], row['joint'], row['identified'],
-                row['mass_kg'], row['ixx_kg_m2'], row['iyy_kg_m2'], row['izz_kg_m2'],
+                row['mass_kg'], row['ixx_kg_m2'], row['iyy_kg_m2'], row['izz_kg_m2'], row['rotor_inertia_kg_m2'],
                 row['min_pseudo_inertia_eig'], row['prior_validation_rmse_nm'], row['validation_rmse_nm'],
             ])
 
@@ -596,6 +877,10 @@ def analyse_h3(plan_dir, capture_dir, out_dir, *, session=None):
             minimum_distance_m=received_collision['minimum_sampled_distance_m'],
         ),
         fit_succeeded=True,
+        accepted=acceptance['accepted'],
+        acceptance=acceptance,
+        identify_rotor_inertia=identify_rotor,
+        selected_ridge=float(fit['scaled_prior_ridge']),
         observable_rank=fit['rank'],
         total_columns=fit['columns'],
         max_gravity_change_nm=max_gravity_change,
@@ -611,11 +896,12 @@ def analyse_h3(plan_dir, capture_dir, out_dir, *, session=None):
 
 
 def write_h3_summary_markdown(stage_dir, plan_meta, capture_summary, report):
+    prior_src = report['prior_source'] if report and report.get('prior_source') else plan_meta['prior']['source']
     lines = [
         '# H3 动力学激励与惯量标定报告',
         '',
-        f'- **模式**：`{plan_meta["mode"]}`（准备位前缀：`{"开启" if plan_meta["ready_pose"] else "关闭"}`）',
-        f'- **上游先验来源**：`{plan_meta["prior"]["source"]}`',
+        f'- **模式**：`{plan_meta["mode"]}`（准备位前缀：`{"开启" if plan_meta["ready_pose"] else "关闭"}`，前馈模式：`{plan_meta.get("feedforward_mode", "gravity")}`）',
+        f'- **上游先验来源**：`{prior_src}`',
         f'- **规划总时长**：{plan_meta["duration_ns"] * 1e-9:.2f} s（周期激励块：{len(plan_meta["blocks"])} 个）',
         f'- **参考轨迹最小碰撞间距**：{plan_meta["collision_certificate"]["minimum_distance_m"] * 1000:.2f} mm',
     ]
@@ -623,16 +909,19 @@ def write_h3_summary_markdown(stage_dir, plan_meta, capture_summary, report):
         lines.extend(['', '> 仅生成离线规划（`--plan-only`），未连接设备。'])
     else:
         hz = f'{report["mean_feedback_hz"]:.1f} Hz' if report.get('mean_feedback_hz') else 'n/a'
+        acc = report.get('acceptance') or {}
+        gate_str = '通过（自动采纳）' if acc.get('accepted', True) else f'未通过（{acc.get("reason", "degraded")}，自动回退上游先验）'
         lines.extend([
             f'- **有效反馈帧数**：{report["feedback_rows"]}（均值频率 {hz}，实测最小碰撞间距 {report["received_collision"]["minimum_distance_m"] * 1000:.2f} mm）',
-            f'- **PSD 惯量锥拟合**：成功（可观秩 `{report["observable_rank"]}/{report["total_columns"]}`，静态重力冻结偏差 `{report["max_gravity_change_nm"]:.2e} Nm`）',
+            f'- **PSD 惯量锥 + 转子惯量拟合**：成功（可观秩 `{report["observable_rank"]}/{report["total_columns"]}`，静态重力冻结偏差 `{report["max_gravity_change_nm"]:.2e} Nm`）',
             f'- **留出集整体动态力矩 RMSE**：上游先验 **{report["prior_validation_rmse_nm"]:.4f} Nm** → 拟合候选 **{report["validation_rmse_nm"]:.4f} Nm**',
+            f'- **防退化验收门禁**：{gate_str}',
             f'- **导出模型**：`analysis/{report["candidate_urdf"]}` + `analysis/{report["runtime_dynamics"]}`',
             '',
-            '## 逐轴质心主惯量与留出集动态力矩 RMSE（Nm）',
+            '## 逐轴质心主惯量、转子反射惯量与留出集动态力矩 RMSE（Nm）',
             '',
-            '| 关节 | SHM ID | Ixx (kg·m²) | Iyy (kg·m²) | Izz (kg·m²) | 先验 RMSE | 拟合后 RMSE |',
-            '| --- | :---: | ---: | ---: | ---: | ---: | ---: |',
+            '| 关节 | SHM ID | Ixx (kg·m²) | Iyy (kg·m²) | Izz (kg·m²) | 转子惯量 Ir (kg·m²) | 先验 RMSE | 拟合后 RMSE |',
+            '| --- | :---: | ---: | ---: | ---: | ---: | ---: | ---: |',
         ])
         for row in report['axes']:
             if not row['identified']:
@@ -642,6 +931,7 @@ def write_h3_summary_markdown(stage_dir, plan_meta, capture_summary, report):
             lines.append(
                 f'| {label} (`{row["joint"]}`) | {row["shm_id"]} '
                 f'| {row["ixx_kg_m2"]:.5f} | {row["iyy_kg_m2"]:.5f} | {row["izz_kg_m2"]:.5f} '
+                f'| {row["rotor_inertia_kg_m2"]:.5f} '
                 f'| {row["prior_validation_rmse_nm"]:.4f} | {row["validation_rmse_nm"]:.4f} |'
             )
 
