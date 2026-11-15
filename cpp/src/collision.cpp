@@ -21,7 +21,6 @@ struct CollisionChecker::Impl {
   std::vector<Eigen::Matrix4d> local_placements;
   std::vector<std::shared_ptr<coal::CollisionGeometry>> shapes;
   std::vector<std::pair<int,int>> pairs;
-  std::vector<std::unique_ptr<coal::ComputeDistance>> solvers;
   Eigen::MatrixXd radii;
   Eigen::Matrix4d base;
   std::mutex mutex;
@@ -66,7 +65,7 @@ struct CollisionChecker::Impl {
     }
     for(int a=0;a<count;++a)for(int b=a+1;b<count;++b) {
       if(geometry[a].parent==geometry[b].parent || disabled.count({a,b}))continue;
-      pairs.emplace_back(a,b);solvers.push_back(std::make_unique<coal::ComputeDistance>(shapes[a].get(),shapes[b].get()));
+      pairs.emplace_back(a,b);
     }
     if(pairs.empty())throw std::invalid_argument("No active moving collision pairs");
     radii.resize(pairs.size(),n);
@@ -103,7 +102,8 @@ CollisionBatch CollisionChecker::check_batch(const Eigen::MatrixXd& positions) {
     std::lock_guard<std::mutex> lock(s.mutex);
     std::vector<coal::Transform3s> poses;
     poses.reserve(s.geometries.size());
-    coal::DistanceRequest request(true,true);
+    // A fresh solver per query keeps GJK support guesses independent of row/thread history.
+    const coal::DistanceRequest request(true,true);
     for(Eigen::Index row=0;row<rows;++row) {
       const auto joints=s.workspace.fk(positions.row(row).transpose());
       poses.clear();
@@ -116,7 +116,8 @@ CollisionBatch CollisionChecker::check_batch(const Eigen::MatrixXd& positions) {
       for(std::size_t p=0;p<s.pairs.size();++p) {
         coal::DistanceResult result;
         const auto pair=s.pairs[p];
-        const double distance=(*s.solvers[p])(poses[pair.first],poses[pair.second],request,result);
+        const double distance=coal::distance(s.shapes[pair.first].get(),poses[pair.first],
+                                             s.shapes[pair.second].get(),poses[pair.second],request,result);
         if(!std::isfinite(distance))
           throw std::runtime_error("Coal distance query failed; refusing to certify path");
         output.distances(row,p)=distance;
@@ -136,13 +137,10 @@ CollisionBatch CollisionChecker::check_batch(const Eigen::MatrixXd& positions) {
 #endif
   {
     ArmWorkspace local_ws=s.model.workspace();
-    std::vector<coal::ComputeDistance> local_solvers;
-    local_solvers.reserve(s.pairs.size());
-    for(const auto& pair:s.pairs)
-      local_solvers.emplace_back(s.shapes[pair.first].get(),s.shapes[pair.second].get());
     std::vector<coal::Transform3s> poses;
     poses.reserve(s.geometries.size());
-    coal::DistanceRequest request(true,true);
+    // A fresh solver per query keeps GJK support guesses independent of row/thread history.
+    const coal::DistanceRequest request(true,true);
 #ifdef _OPENMP
 #pragma omp for schedule(static)
 #endif
@@ -159,7 +157,8 @@ CollisionBatch CollisionChecker::check_batch(const Eigen::MatrixXd& positions) {
       for(std::size_t p=0;p<s.pairs.size();++p) {
         coal::DistanceResult result;
         const auto pair=s.pairs[p];
-        const double distance=local_solvers[p](poses[pair.first],poses[pair.second],request,result);
+        const double distance=coal::distance(s.shapes[pair.first].get(),poses[pair.first],
+                                             s.shapes[pair.second].get(),poses[pair.second],request,result);
         if(!std::isfinite(distance)) {
           failed.store(true,std::memory_order_relaxed);
           break;

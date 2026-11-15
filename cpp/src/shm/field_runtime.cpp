@@ -309,7 +309,7 @@ int field_main(int argc,char** argv) {
     snapshot_output(root,state,model.model(),o.amplitude);
     if(o.mode=="--snapshot"){write_result(root,"snapshot_completed_no_commands",true,false);return 0;}
     if(o.background.empty())throw std::runtime_error("Explicit hand command background required");
-    const auto q0=positions(state);const auto& joint=model.model().joints[index];
+    const auto q0=positions(state);const auto joint=model.model().joints[index];
     if(reference&&reference->measured_origin()) {
       JointVector origin{},lower{},upper{},velocity{};
       std::ofstream origin_csv(root/"reference_origin.csv");origin_csv<<std::setprecision(17)<<"joint_id,q_rad\n";

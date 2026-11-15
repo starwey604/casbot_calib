@@ -466,14 +466,13 @@ def test_openmp_batch_equivalence_dynamics_and_collision():
         reps = (tiles, 1, 1) if pg_s[k].ndim == 3 else (tiles, 1)
         assert np.max(np.abs(np.tile(pg_s[k], reps) - pg_b[k])) < 1e-14
 
-    # CollisionChecker: fresh solver row-0 is exact (< 1e-14); stateful GJK warm-start across
-    # distinct preceding poses agrees within Coal's 1e-6 m GJK convergence tolerance (< 5e-6 m).
+    # Fresh GJK solvers keep distances independent of preceding poses and threads.
     fresh_serial = collision_for(cfg, engine)
     fresh_parallel = collision_for(cfg, engine)
     c_s = fresh_serial.check(q_small)
     c_b = fresh_parallel.check(q_big)
     assert np.max(np.abs(c_s['distances'][0] - c_b['distances'][0])) < 1e-14
-    assert np.max(np.abs(np.tile(c_s['distances'], (tiles, 1)) - c_b['distances'])) < 5e-6
+    assert np.max(np.abs(np.tile(c_s['distances'], (tiles, 1)) - c_b['distances'])) < 1e-12
     np.testing.assert_array_equal(np.tile(c_s['worst_pair'], tiles), c_b['worst_pair'])
 
 
