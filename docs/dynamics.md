@@ -58,6 +58,8 @@ bash calib/dynamics.sh --reanalyse artifacts/calib/DVT2_01/20261115_103000
 - H2 关节摩擦：[h2.yaml](../configs/dynamics/h2.yaml)（双臂镜像分组对数速度连续扫掠 + C++ 同构 Stribeck 拟合与零偏诊断，自动扣除 H1 重力）。
 - H3 惯量激励：[h3.yaml](../configs/dynamics/h3.yaml)（近远端带宽分层多正弦 + CMA-ES 相位寻优 + 平滑重力摩擦前馈 + 冻结 H1 重力子空间的 140 维刚体与 14 轴转子惯量联合锥拟合）。
 
+H1/H2/H3 共用机器人配置中的逐轴 `kp`、`kd`，数组顺序为左臂 ID12–18、右臂 ID19–25；无需逐阶段设置。准备位展开段保持 20/2，到位后平滑切换到配置增益。修改配置用于新规划的采集；`--reanalyse` 仍按原采集数据分析，不会改变历史增益。
+
 ## 4. 结果怎么看
 
 输出自动写入 `artifacts/calib/<机器编号>/<日期时间>/`，并自动更新软链接 `artifacts/calib/latest`：

@@ -1,5 +1,6 @@
-kp: 20.0
-kd: 2.0
+# SHM ID order: left 12–18, then right 19–25 (mirrored joint gains).
+kp: [65.0, 65.0, 30.0, 30.0, 30.0, 20.0, 20.0, 65.0, 65.0, 30.0, 30.0, 30.0, 20.0, 20.0]
+kd: [5.0, 5.0, 4.0, 2.0, 2.0, 2.0, 2.0, 5.0, 5.0, 4.0, 2.0, 2.0, 2.0, 2.0]
 feedforward_limit_nm: 100.0
 maximum_velocity_rad_s: 1.5
 effort_gain: 1.0

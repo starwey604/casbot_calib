@@ -22,6 +22,19 @@ if not NATIVE.exists():
 
 
 def test_dynamics_small_and_full_offline_plan_gates(tmp_path):
+    expected_kp = [65.0, 65.0, 30.0, 30.0, 30.0, 20.0, 20.0] * 2
+    expected_kd = [5.0, 5.0, 4.0, 2.0, 2.0, 2.0, 2.0] * 2
+
+    def check_gains(plan_dir):
+        meta = json.loads((plan_dir / 'plan.json').read_text())
+        reference = json.loads((plan_dir / 'reference.json').read_text())
+        for key, expected in (('kp', expected_kp), ('kd', expected_kd)):
+            assert meta['robot_config'][key] == expected
+            assert reference[key] == expected
+            assert reference['pd_schedule'][-1][key] == expected
+        assert reference['pd_schedule'][0]['kp'] == [20.0] * 14
+        assert reference['pd_schedule'][0]['kd'] == [2.0] * 14
+
     # 1. Full 3-stage CLI dynamics.sh --plan-only in default small mode.
     out_small = tmp_path / 'small_out'
     res = subprocess.run(
@@ -36,6 +49,7 @@ def test_dynamics_small_and_full_offline_plan_gates(tmp_path):
         assert sess['stages'][st]['status'] == 'planned'
         assert (latest / st / 'plan/reference.json').is_file()
         assert (latest / st / 'report.md').is_file()
+        check_gains(latest / st / 'plan')
 
     # 2. Full 14-axis mode offline planning + continuous collision gate on H2 and H3.
     out_full = tmp_path / 'full_out'
@@ -54,6 +68,7 @@ def test_dynamics_small_and_full_offline_plan_gates(tmp_path):
         assert len(meta['active_joints']) == 14
         assert meta['collision_certificate']['passed']
         assert meta['collision_certificate']['minimum_distance_m'] >= 0.01
+        check_gains(full_root / st / 'plan')
 
 
 def test_cross_session_prior_auto_discovery(tmp_path):
