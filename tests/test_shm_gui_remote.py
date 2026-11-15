@@ -89,3 +89,23 @@ def test_host_launcher_authenticates_three_owned_transports_without_storing_pass
     assert len([x for x in lines if '-O exit' in x])==3
     sockets=next(x for x in lines if x.startswith('SOCKETS=')).split('=',1)[1].split('|')
     assert len(set(sockets))==3 and all(x.startswith(str(tmp_path)) for x in sockets)
+
+
+def test_remote_cached_hand_background_imports_without_core_or_numpy(tmp_path):
+    import os, shutil, struct, subprocess
+    py3=shutil.which('python3') or '/usr/bin/python3'
+    bg=tmp_path/'boots'/'boot-xyz'/'hand_background.bin'
+    bg.parent.mkdir(parents=True)
+    payload=bytearray(744)
+    struct.pack_into('<H',payload,10,2)
+    bg.write_bytes(payload)
+    script=(
+        'import sys; sys.modules["numpy"] = None; sys.modules["casbot_calib._core"] = None; '
+        'import casbot_calib.shm_gui_remote; '
+        'from casbot_calib.shm_takeover import cached_hand_background; '
+        f'p = cached_hand_background({str(tmp_path)!r}, boot_id="boot-xyz"); '
+        'assert p is not None and p.name == "hand_background.bin"'
+    )
+    env={'PATH':os.environ.get('PATH',''),'PYTHONPATH':str(ROOT/'python')}
+    result=subprocess.run([py3,'-c',script],env=env,capture_output=True,text=True)
+    assert result.returncode==0,result.stderr

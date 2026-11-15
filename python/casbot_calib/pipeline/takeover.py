@@ -9,24 +9,20 @@ import subprocess
 import time
 from ..data import write_json
 from ..shm_data import ROOT
-from ..shm_takeover import HandoffError, Host, SERVICES, alive, prepare as prepare_takeover
+from ..shm_takeover import (
+    HandoffError,
+    Host,
+    SERVICES,
+    alive,
+    cached_hand_background,
+    current_boot_id,
+    prepare as prepare_takeover,
+    valid_hand_background,
+)
 
 CHANNEL_BYTES = 16 * 1024 * 1024
 STATUS_OFFSET = CHANNEL_BYTES // 2
 QUEUE_MAGIC = 0x11223344
-
-
-def current_boot_id(proc=Path('/proc')):
-    path = Path(proc) / 'sys/kernel/random/boot_id'
-    return path.read_text(encoding='utf-8').strip() if path.is_file() else 'unknown_boot'
-
-
-def valid_hand_background(path):
-    path = Path(path)
-    if not path.is_file():
-        return False
-    data = path.read_bytes()
-    return len(data) == 744 and struct.unpack_from('<H', data, 10)[0] <= 2
 
 
 def check_channel_unlocked(endpoint, dev_shm=Path('/dev/shm')):
@@ -106,12 +102,6 @@ def _search_prior_hand_background(boot_id, search_roots):
                 if valid_hand_background(candidate):
                     return candidate
     return None
-
-
-def cached_hand_background(state_root=ROOT / 'artifacts/calib/state', boot_id=None):
-    boot = boot_id or current_boot_id()
-    path = Path(state_root) / 'boots' / boot / 'hand_background.bin'
-    return path if valid_hand_background(path) else None
 
 
 def station_standalone(host):

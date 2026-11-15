@@ -54,7 +54,7 @@ def serve(config):
             else:
                 endpoint=config.get('endpoint','/shm_mc');background=config.get('hand_background')
                 if not background and endpoint=='/shm_mc':
-                    from .pipeline.takeover import cached_hand_background
+                    from .shm_takeover import cached_hand_background
                     cached=cached_hand_background()
                     if cached is not None:background=str(cached)
             arguments=[str(executor.with_name('shm_gui_owner')),'--shm',endpoint,'--output',str(root/'native'), '--urdf',str(urdf),'--budget-mib',str(config.get('budget_mib',512))]

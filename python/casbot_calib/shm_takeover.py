@@ -3,11 +3,32 @@ import argparse
 import json
 from pathlib import Path
 import signal
+import struct
 import subprocess
 import sys
 import time
 
+from .shm_data import ROOT
+
 SERVICES=('hl_orin_app.service','zero_calibration.service','arm_debug_tool.service')
+
+
+def current_boot_id(proc=Path('/proc')):
+    path=Path(proc)/'sys/kernel/random/boot_id'
+    return path.read_text(encoding='utf-8').strip() if path.is_file() else 'unknown_boot'
+
+
+def valid_hand_background(path):
+    path=Path(path)
+    if not path.is_file():return False
+    data=path.read_bytes()
+    return len(data)==744 and struct.unpack_from('<H',data,10)[0]<=2
+
+
+def cached_hand_background(state_root=ROOT/'artifacts/calib/state',boot_id=None):
+    boot=boot_id or current_boot_id()
+    path=Path(state_root)/'boots'/boot/'hand_background.bin'
+    return path if valid_hand_background(path) else None
 
 
 class HandoffError(RuntimeError):
