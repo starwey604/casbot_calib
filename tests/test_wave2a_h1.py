@@ -35,7 +35,7 @@ def test_h1_recipe_defaults_and_programmatic_inheritance():
 
     rec_full = load_h1_recipe(mode='full')
     assert rec_full['mode'] == 'full'
-    assert rec_full['full']['approach_offset_deg'] == pytest.approx(5.0)
+    assert rec_full['full']['approach_offset_deg'] == pytest.approx(8.0)
     assert rec_full['full']['parallel_arms'] is True
     assert rec_full['full']['direct_pose_chain'] is True
 
@@ -102,7 +102,7 @@ def test_h1_full_offline_planning_benchmark(tmp_path):
         k = motion['labels'].index('paired_approach')
         displacement = np.array(motion['states'][k + 1][0]) - motion['states'][k][0]
         wanted = np.zeros(14)
-        wanted[expected] = -conditions['approach'] * np.deg2rad(5.0)
+        wanted[expected] = -conditions['approach'] * np.deg2rad(recipe['full']['approach_offset_deg'])
         np.testing.assert_allclose(displacement, wanted, atol=1e-14)
     assert wall_s < 8.0, f'H1 full planning took {wall_s:.3f}s (>= 8.0s)'
 
@@ -499,6 +499,41 @@ def test_approach_observation_excludes_unmoved_wrong_direction_and_missing_feedb
     # Older records still use their original planned-direction contract.
     del row['paired_approach']
     np.testing.assert_array_equal(_approach_observation(row)[0], [1] * 4 + [0] * 10)
+
+
+def test_h1_strong_gravity_ridge_does_not_shrink_measured_stiction(tmp_path, monkeypatch):
+    from casbot_calib import rigid_identification
+    config = load_robot_config()
+    engine, source = model_for(config)
+    rng = np.random.default_rng(84)
+    hysteresis = np.linspace(0.3, 1.0, 14)
+    home = np.deg2rad([0, 70, 0, -60, 0, 0, 0, 0, -70, 0, -60, 0, 0, 0])
+    means = []
+    for batch in ('train', 'validation'):
+        for pose in range(6):
+            target = home + rng.uniform(-0.15, 0.15, 14)
+            for approach in (-1, 1):
+                q = target + approach * 0.02
+                means.append(dict(
+                    name=f'{batch}_{pose}_{approach}',
+                    conditions=dict(batch=batch, pose=pose, approach=approach, active_joints=list(range(14))),
+                    q=q.tolist(), torque=(engine.gravity(q) - approach * hysteresis).tolist(),
+                    paired_approach=dict(available=True,
+                        reference_displacement_rad=np.full(14, -approach * 0.08).tolist(),
+                        observed_displacement_rad=np.full(14, -approach * 0.06).tolist()),
+                ))
+    fit_rigid = rigid_identification.fit_rigid
+
+    def strong_ridge(*args, **kwargs):
+        kwargs['ridge_grid'] = [100.0]
+        return fit_rigid(*args, **kwargs)
+
+    monkeypatch.setattr(rigid_identification, 'fit_rigid', strong_ridge)
+    result = write_gravity_candidate(means, config, tmp_path,
+                                     dict(joint_names=list(NAMES), source_model_sha256=source['sha256']))
+    assert result['fit']['scaled_prior_ridge'] == 100.0
+    np.testing.assert_allclose(result['static_hysteresis_nm'], hysteresis, atol=1e-4)
+    assert result['overall_validation_rmse_nm'] < 1e-4
 
 
 def test_validation_pairs_require_both_opposite_observed_approaches(tmp_path, monkeypatch):

@@ -166,6 +166,9 @@ def write_gravity_candidate(means, config, output, metadata):
             prior,
             auxiliary=auxiliary,
             fixed_scales=fixed_scales,
+            # Stiction is a measured nuisance, not a zero-torque prior. Retain
+            # only a tiny tie-break for auxiliary axes without observations.
+            regularization_metric=np.diag(np.r_[np.ones(140), np.full(14, 1e-8)]),
             sample_weights=w_train.ravel(),
             robust_scale=0.1,
             ridge_grid=[1e-5, 1e-4, 1e-3, 1e-2, 1e-1, 5e-1, 1.0, 10.0, 100.0],
