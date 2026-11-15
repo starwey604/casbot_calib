@@ -21,7 +21,7 @@ from ...shm_data import NAMES, PARTS, ROOT
 from ...shm_ready import ready_position
 from ...shm_reference import save_bundle
 from ...staged_motion import Motion
-from ...static_field import _move
+from ...staged_motion import _move
 from .common import (
     compose_stage_reference,
     evaluate_stage_acceptance,

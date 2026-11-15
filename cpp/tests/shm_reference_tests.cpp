@@ -11,7 +11,7 @@
 
 namespace {
 
-void check(bool cond, const char* msg) {
+static void check(bool cond, const char* msg) {
   if (!cond) throw std::runtime_error(msg);
 }
 
@@ -61,7 +61,7 @@ std::string write_temp_reference(
 
 }  // namespace
 
-int main() {
+int test_shm_reference_tests() {
   using namespace casbot::shm;
   JointVector lower{}, upper{}, velocity{};
   lower.fill(-2.0);
@@ -107,5 +107,6 @@ int main() {
   check(caught_pos, "Expected out-of-limit position reference to throw");
 
   std::cout << "SHM reference Bernstein subdivision limits test passed\n";
+  return 0;
   return 0;
 }

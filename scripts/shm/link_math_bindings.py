@@ -6,12 +6,9 @@ import sys
 import sysconfig
 
 
-def main():
-    parser=argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--dependency-prefix',type=Path,default=Path('/opt/ros/humble'))
-    args=parser.parse_args()
+def link_bindings(dependency_prefix=Path('/opt/ros/humble')):
     if sys.prefix==sys.base_prefix:raise SystemExit('Run with the project venv Python, not system Python')
-    source=args.dependency_prefix.resolve()/f'lib/python{sys.version_info.major}.{sys.version_info.minor}/site-packages'
+    source=dependency_prefix.resolve()/f'lib/python{sys.version_info.major}.{sys.version_info.minor}/site-packages'
     target=Path(sysconfig.get_path('purelib'))
     pairs=[(source/name,target/name) for name in ('pinocchio','eigenpy','coal')]
     for src,dst in pairs:
@@ -20,6 +17,14 @@ def main():
             raise SystemExit('Existing venv module differs; not overwritten: '+str(dst))
     for src,dst in pairs:
         if not dst.is_symlink():dst.symlink_to(src,target_is_directory=True)
+    return source
+
+
+def main(argv=None):
+    parser=argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--dependency-prefix',type=Path,default=Path('/opt/ros/humble'))
+    args=parser.parse_args(argv)
+    source=link_bindings(args.dependency_prefix)
     import numpy
     import pinocchio as pin
     print(f'URDF export/reload math: Pinocchio {pin.__version__}, NumPy {numpy.__version__}, prefix {source}')

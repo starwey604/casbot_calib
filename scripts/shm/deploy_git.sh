@@ -11,7 +11,7 @@ port=19418
 committed_only=0
 sync_assets=1
 sync_wheels=1
-bundle_rel=python/casbot_calib/assets/models/casbot_hl12p1_dvt2/derived/bare_flange_1105_03_gauge_v2
+sync_prebuilt=0
 wheelhouse_rel=artifacts/wheelhouse_aarch64
 control_path=${CALIB_SSH_CONTROL_PATH:-/tmp/casbot-shm-%C}
 usage() {
@@ -22,8 +22,9 @@ usage() {
   --port N             本机与远端的 loopback 临时隧道端口；默认 19418
   --committed-only     本地另有未提交工作时，仍只部署指定分支的已提交内容
   --no-assets          仅同步 Git 源码，不自动物化默认 DVT2 标定模型包
+  --with-prebuilt      同步 dist/orin-aarch64/ 到 artifacts/prebuilt_aarch64/
   --no-wheels          不同步本机 artifacts/wheelhouse_aarch64/ 离线轮子
-仅克隆或快进更新已提交源码，并在远端默认模型包仍为 LFS 指针且已装 git-lfs 时自动同步默认模型资产；若本机存在离线 wheelhouse，自动同步缺失的 aarch64/通用 .whl。不会连接真实 SHM。
+仅克隆或快进更新已提交源码，并同步默认模型与 TriCal 碰撞资产；若本机存在离线 wheelhouse，自动同步缺失的 aarch64/通用 .whl。不会连接真实 SHM。
 EOF
 }
 while (($#)); do
@@ -31,6 +32,7 @@ while (($#)); do
     --committed-only) committed_only=1; shift ;;
     --no-assets) sync_assets=0; shift ;;
     --no-wheels) sync_wheels=0; shift ;;
+    --with-prebuilt) sync_prebuilt=1; shift ;;
     --host|--destination|--branch|--port)
       (($# >= 2)) || { usage >&2; exit 2; }
       case "$1" in
@@ -50,6 +52,11 @@ git -C "$repo" show-ref --verify --quiet "refs/heads/$branch"
 if [[ -n $(git -C "$repo" status --porcelain) ]]; then
   ((committed_only)) || { echo '请先提交本地工作区，或显式使用 --committed-only' >&2; exit 1; }
   echo '只部署指定分支已提交内容；未提交工作不传输。' >&2
+fi
+if ((sync_prebuilt)); then
+  [[ -f "$repo/dist/orin-aarch64/manifest.json" && -f "$repo/dist/orin-aarch64/shm-core-aarch64.tar.gz" ]] || {
+    echo '请先运行 bash scripts/shm/cross_build_orin.sh 生成预编译包' >&2; exit 1;
+  }
 fi
 git -C "$repo" log -1 --oneline "$branch"
 ssh_options=(-o ControlMaster=auto -o ControlPersist=60 -o "ControlPath=$control_path"
@@ -92,37 +99,13 @@ fi
 git -C "$destination" log -1 --oneline
 REMOTE
 
-if ((sync_assets)) && [[ -f "$repo/$bundle_rel/collision.npz" ]] && (( $(stat -c '%s' "$repo/$bundle_rel/collision.npz") > 1024 )); then
-  printf -v check_cmd 'bash -s -- %q %q' "$destination" "$bundle_rel"
-  asset_state=$(ssh "${ssh_options[@]}" "$host" "$check_cmd" <<'CHECK_ASSETS'
-set -euo pipefail
-export PATH="$HOME/.local/bin:$PATH"
-dst=$1; rel=$2
-need=0
-for f in "$dst/$rel/collision.npz" "$dst/$rel"/visual_meshes/*.stl; do
-  if [[ ! -f $f ]] || (( $(stat -c '%s' "$f") <= 1024 )); then
-    need=1
-    break
-  fi
-done
-if ((need == 0)); then
-  echo ready
-elif command -v git-lfs >/dev/null 2>&1; then
-  echo sync
-else
-  echo no_git_lfs
-fi
-CHECK_ASSETS
-)
-  if [[ $asset_state == sync ]]; then
-    echo '同步默认 DVT2 标定模型包资产（collision.npz + visual_meshes）...'
-    printf -v unpack_cmd 'export GIT_LFS_SKIP_SMUDGE=1 PATH="$HOME/.local/bin:$PATH" && git -C %q lfs install --local --skip-smudge >/dev/null && tar -C %q -xf - && git -C %q add -- %q' \
-      "$destination" "$destination" "$destination" "$bundle_rel"
-    tar -C "$repo" -cf - "$bundle_rel/collision.npz" "$bundle_rel/visual_meshes" \
-      | ssh "${ssh_options[@]}" "$host" "$unpack_cmd"
-  elif [[ $asset_state == no_git_lfs ]]; then
-    echo '提示：远端未检测到 git-lfs，默认模型包仍为 LFS 指针；安装 git-lfs 后重跑 deploy_git.sh 即可自动物化。' >&2
-  fi
+if ((sync_assets)); then
+  mapfile -t runtime_assets < <(python3 "$repo/scripts/shm/runtime_assets.py")
+  echo '同步默认模型和 TriCal 碰撞资产...'
+  printf -v unpack_cmd 'bash -c %q -- %q' \
+    'set -euo pipefail; export PATH="$HOME/.local/bin:$PATH"; git -C "$1" lfs install --local --skip-smudge >/dev/null; tar -C "$1" -xf -; cd "$1"; mapfile -t files < <(python3 scripts/shm/runtime_assets.py); git add -- "${files[@]}"' "$destination"
+  tar -C "$repo" -cf - "${runtime_assets[@]}" \
+    | ssh "${ssh_options[@]}" "$host" "$unpack_cmd"
 fi
 
 if ((sync_wheels)) && [[ -d "$repo/$wheelhouse_rel" ]]; then
@@ -151,10 +134,18 @@ CHECK_WHEELS
     done
     if ((${#missing_wheels[@]} > 0)); then
       echo "同步离线 wheelhouse（新增 ${#missing_wheels[@]} 个 .whl）至 $destination/$wheelhouse_rel ..."
-      printf -v unpack_wheels_cmd 'mkdir -p %q && tar -C %q -xf -' \
-        "$destination/$wheelhouse_rel" "$destination/$wheelhouse_rel"
+      printf -v unpack_wheels_cmd 'bash -c %q -- %q' \
+        'set -euo pipefail; mkdir -p "$1"; tar -C "$1" -xf -' "$destination/$wheelhouse_rel"
       tar -C "$repo/$wheelhouse_rel" -cf - "${missing_wheels[@]}" \
         | ssh "${ssh_options[@]}" "$host" "$unpack_wheels_cmd"
     fi
   fi
+fi
+
+if ((sync_prebuilt)); then
+  echo '同步 ARM64 wheel、C++ 安装包与 manifest ...'
+  printf -v unpack_prebuilt_cmd 'bash -c %q -- %q' \
+    'set -euo pipefail; mkdir -p "$1"; tar -C "$1" -xf -' "$destination/artifacts/prebuilt_aarch64"
+  tar -C "$repo/dist/orin-aarch64" -cf - . \
+    | ssh "${ssh_options[@]}" "$host" "$unpack_prebuilt_cmd"
 fi

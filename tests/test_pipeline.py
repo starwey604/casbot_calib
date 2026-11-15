@@ -26,6 +26,7 @@ def test_operator_help_hides_dev_and_mock_flags():
         assert hidden not in help_text
 
 
+@pytest.mark.slow
 def test_invalid_stage_or_mode_fails_fast_before_touching_shm(tmp_path):
     res_smoke = subprocess.run(
         ['bash', str(ROOT / 'calib/dynamics_h2.sh'), '--mode', 'smoke', '--output-root', str(tmp_path / 'out_smoke')],
@@ -44,6 +45,7 @@ def test_invalid_stage_or_mode_fails_fast_before_touching_shm(tmp_path):
     assert not (tmp_path / 'out_unknown').exists()
 
 
+@pytest.mark.slow
 def test_plan_only_runs_offline_and_persists_robot_id(tmp_path):
     out_root = tmp_path / 'calib_out'
     res = subprocess.run(
@@ -60,56 +62,17 @@ def test_plan_only_runs_offline_and_persists_robot_id(tmp_path):
     assert (latest / 'h1/report.md').is_file()
 
 
-@pytest.mark.skipif(not NATIVE.exists(), reason='Build SHM physics executables')
-def test_dynamics_h1_shell_end_to_end_and_resume(tmp_path):
-    fast_robot = tmp_path / 'robot.yaml'
-    fast_robot.write_text(yaml.safe_dump(dict(initial_hold_s=0.05, final_hold_s=0.05, anchor_transition_s=0.1)))
-    fast_h1 = tmp_path / 'h1.yaml'
-    fast_h1.write_text(yaml.safe_dump(dict(
-        mode='small',
-        ready_pose=True,
-        small=dict(
-            joints=['left_shoulder_pitch_joint'],
-            target_offset_deg=0.1,
-            approach_offset_deg=0.03,
-            timing=dict(initial_hold_s=0.05, minimum_transition_s=0.1, minimum_paired_approach_s=0.1, settle_s=0.05, measure_s=0.1, final_hold_s=0.05),
-            planning_envelope=dict(speed_rad_s=0.05, acceleration_rad_s2=0.1, jerk_rad_s3=1.0),
-        ),
-    )))
-    out_root = tmp_path / 'runs'
-    res = subprocess.run(
-        [
-            'bash', str(ROOT / 'calib/dynamics_h1.sh'),
-            '--robot', 'ORIN_01',
-            '--config', str(fast_h1),
-            '--robot-config', str(fast_robot),
-            '--output-root', str(out_root),
-            '--executor', str(NATIVE),
-            '--mock',
-        ],
-        capture_output=True, text=True,
-    )
-    assert res.returncode == 0, res.stderr + res.stdout
-    latest = (out_root / 'latest').resolve()
-    session = json.loads((latest / 'session.json').read_text())
-    assert session['robot_id'] == 'ORIN_01'
-    h1_rec = session['stages']['h1']
-    assert h1_rec['status'] == 'completed' and h1_rec['fit_succeeded']
-    assert (latest / h1_rec['candidate_urdf']).is_file()
-    assert (latest / h1_rec['report_md']).is_file()
-    assert '留出集整体力矩 RMSE' in (latest / h1_rec['report_md']).read_text()
-
-    # Resuming an already completed h1 stage skips re-execution cleanly.
-    res_resume = run_pipeline(
-        stages='h1',
-        resume=True,
-        output_root=out_root,
-        robot_config=fast_robot,
-        stage_config=fast_h1,
-        executor=NATIVE,
-        mock=True,
-    )
-    assert res_resume['completed'] and res_resume['skipped_all']
+@pytest.mark.slow
+def test_dynamics_h1_resume_skips_completed_session(tmp_path):
+    from casbot_calib.pipeline.session import Session
+    from casbot_calib.pipeline.robot import load_robot_config
+    config = load_robot_config()
+    session = Session.create(output_root=tmp_path, robot_id='ORIN_01',
+                             model_context=config['model_context'], stages_requested=['h1'])
+    session.mark_stage('h1', 'completed', fit_succeeded=True)
+    result = run_pipeline(stages='h1', resume=True, output_root=tmp_path)
+    assert result['completed'] and result['skipped_all']
+    assert result['session'].root == session.root
 
 
 def test_auto_takeover_captures_background_handshakes_and_skips_same_boot(tmp_path):

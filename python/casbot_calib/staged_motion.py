@@ -629,3 +629,19 @@ def enveloped_periodic_motion(name,stage,home,center,config,seed,validation=Fals
         for state in states:
             m.add(span,state[0],state[1],label='periodic' if mode=='periodic' else 'excitation_'+mode);m.states[-1]=state
     return m.add(transition,home,label='return_home').add(config['settle_s'],home,label='final_hold')
+
+
+_UNIT_SEPTIC = BPoly.from_derivatives([0.0, 1.0], [[0.0, 0.0, 0.0, 0.0], [1.0, 0.0, 0.0, 0.0]])
+_SEPTIC_ANALYTIC_PEAKS = (35.0 / 16.0, 84.0 / (5.0 * float(np.sqrt(5.0))), 105.0 / 2.0)
+_SEPTIC_BERNSTEIN8_PEAKS = tuple(
+    float(np.max(np.abs(restricted_coefficients(_UNIT_SEPTIC, k, 8))) * (1.0 + 1e-10))
+    for k in (1, 2, 3)
+)
+
+
+def _move(motion, target, minimum, envelope, label):
+    max_dq = float(np.max(np.abs(np.asarray(target, dtype=float) - motion.states[-1][0])))
+    peaks = (p * max_dq + 1e-12 for p in _SEPTIC_BERNSTEIN8_PEAKS)
+    limits = (envelope['speed_rad_s'], envelope['acceleration_rad_s2'], envelope['jerk_rad_s3'])
+    duration = max(minimum, *(float((p / limit) ** (1.0 / order)) for order, (p, limit) in enumerate(zip(peaks, limits), 1)))
+    motion.add(duration * (1.0 + 1e-10), target, label=label)

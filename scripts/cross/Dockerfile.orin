@@ -1,0 +1,65 @@
+# syntax=docker/dockerfile:1
+ARG LLVM_PACKAGE_VERSION=1:22.1.8~++20260613092327+e80beda6e255-1~exp1~20260613092437.81
+
+FROM --platform=linux/arm64 ros:humble-ros-base-jammy AS orin-arm64-runtime
+RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+    ros-humble-pinocchio ros-humble-coal libeigen3-dev \
+    libboost-dev libboost-filesystem-dev libboost-serialization-dev libboost-python-dev \
+    python3-dev python3-venv python3-numpy libgomp1 libgcc-11-dev libstdc++-11-dev \
+    ca-certificates curl gnupg file binutils zstd patchelf \
+    && rm -rf /var/lib/apt/lists/*
+ENTRYPOINT []
+CMD ["bash"]
+
+FROM orin-arm64-runtime AS orin-arm64-openmp
+ARG LLVM_PACKAGE_VERSION
+RUN curl -fsSL https://apt.llvm.org/llvm-snapshot.gpg.key | gpg --dearmor -o /usr/share/keyrings/llvm.gpg \
+    && echo 'deb [signed-by=/usr/share/keyrings/llvm.gpg] https://apt.llvm.org/jammy/ llvm-toolchain-jammy-22 main' > /etc/apt/sources.list.d/llvm.list \
+    && apt-get update && mkdir /tmp/openmp && cd /tmp/openmp \
+    && apt-get download "libomp5=${LLVM_PACKAGE_VERSION}" "libomp-22-dev=${LLVM_PACKAGE_VERSION}" \
+    && for package in *.deb; do dpkg-deb -x "$package" root; done \
+    && mkdir -p /opt/orin-openmp/lib /opt/orin-openmp/include /opt/orin-openmp/licenses \
+    && cp root/usr/lib/aarch64-linux-gnu/libomp.so.5 /opt/orin-openmp/lib/ \
+    && ln -s libomp.so.5 /opt/orin-openmp/lib/libomp.so \
+    && cp root/usr/lib/llvm-22/lib/clang/22/include/omp.h /opt/orin-openmp/include/ \
+    && cp root/usr/share/doc/libomp5/copyright /opt/orin-openmp/licenses/debian-copyright \
+    && curl -fsSL https://raw.githubusercontent.com/llvm/llvm-project/llvmorg-22.1.8/openmp/LICENSE.TXT -o /opt/orin-openmp/licenses/LICENSE.TXT \
+    && printf '%s\n' "$LLVM_PACKAGE_VERSION" > /opt/orin-openmp/version.txt
+
+FROM --platform=linux/amd64 ubuntu:22.04 AS orin-x86-cross-builder
+ARG LLVM_PACKAGE_VERSION
+RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+    ca-certificates curl gnupg cmake ninja-build ccache python3-dev python3-venv python3-pip \
+    file binutils-aarch64-linux-gnu zstd \
+    && curl -fsSL https://apt.llvm.org/llvm-snapshot.gpg.key | gpg --dearmor -o /usr/share/keyrings/llvm.gpg \
+    && echo 'deb [signed-by=/usr/share/keyrings/llvm.gpg] https://apt.llvm.org/jammy/ llvm-toolchain-jammy-22 main' > /etc/apt/sources.list.d/llvm.list \
+    && apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+    "clang-22=${LLVM_PACKAGE_VERSION}" "lld-22=${LLVM_PACKAGE_VERSION}" "llvm-22=${LLVM_PACKAGE_VERSION}" \
+    && rm -rf /var/lib/apt/lists/*
+RUN python3 -m venv /opt/build-python \
+    && /opt/build-python/bin/pip install --no-cache-dir crossenv==1.6.1
+COPY --from=orin-arm64-runtime /usr/lib/ /sysroot/arm64/usr/lib/
+COPY --from=orin-arm64-runtime /usr/include/ /sysroot/arm64/usr/include/
+COPY --from=orin-arm64-runtime /usr/share/ /sysroot/arm64/usr/share/
+COPY --from=orin-arm64-runtime /usr/bin/python3.10 /sysroot/arm64/usr/bin/python3.10
+COPY --from=orin-arm64-runtime /opt/ros/humble/ /sysroot/arm64/opt/ros/humble/
+COPY --from=orin-arm64-runtime /lib/ /sysroot/arm64/lib/
+COPY --from=orin-arm64-runtime /etc/ld.so.conf /sysroot/arm64/etc/ld.so.conf
+COPY --from=orin-arm64-runtime /etc/ld.so.conf.d/ /sysroot/arm64/etc/ld.so.conf.d/
+COPY --from=orin-arm64-openmp /opt/orin-openmp/ /opt/orin-openmp/
+COPY normalize_sysroot.py /usr/local/lib/casbot-cross/normalize_sysroot.py
+RUN python3 /usr/local/lib/casbot-cross/normalize_sysroot.py /sysroot/arm64 \
+    && mkdir -p /opt/ros && ln -s /sysroot/arm64/opt/ros/humble /opt/ros/humble
+RUN /opt/build-python/bin/python -m crossenv \
+    --cc='clang-22 --target=aarch64-linux-gnu --sysroot=/sysroot/arm64 --gcc-toolchain=/sysroot/arm64/usr' \
+    --cxx='clang++-22 --target=aarch64-linux-gnu --sysroot=/sysroot/arm64 --gcc-toolchain=/sysroot/arm64/usr' \
+    --ar=llvm-ar-22 --sysroot=/sysroot/arm64 --env=CPATH= --env=LIBRARY_PATH= --platform-tag=manylinux_2_17_aarch64 --platform-tag=manylinux2014_aarch64 --platform-tag=linux_aarch64 \
+    /sysroot/arm64/usr/bin/python3.10 /opt/crossenv
+RUN /opt/crossenv/bin/build-pip install --no-cache-dir pip==25.2 pybind11==2.13.6 scikit-build-core==0.11.6 wheel==0.45.1 numpy==1.26.4
+RUN /opt/crossenv/bin/cross-pip install --no-cache-dir --only-binary=:all: pip==25.2 pybind11==2.13.6 scikit-build-core==0.11.6 wheel==0.45.1 numpy==1.26.4
+RUN chmod -R a+rX /opt/crossenv
+# urdfdom exports this system dependency as an absolute target path.
+RUN sed -i 's|/usr/lib/aarch64-linux-gnu/libtinyxml.so|/sysroot/arm64/usr/lib/aarch64-linux-gnu/libtinyxml.so|g' \
+    /sysroot/arm64/opt/ros/humble/lib/aarch64-linux-gnu/urdfdom/cmake/urdfdomExport.cmake
+ENV PATH="/usr/lib/llvm-22/bin:/opt/build-python/bin:${PATH}"
+CMD ["bash"]

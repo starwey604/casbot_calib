@@ -1,8 +1,8 @@
 """Frozen 35-slot raw-record decoding metadata and declarative wire35 dtypes."""
-from pathlib import Path
+from .model_sources import model_directory
 
-ROOT = Path(__file__).resolve().parents[2]
-URDF = Path(__file__).resolve().parent / 'assets/models/casbot_hl12p1_dvt2/derived/bare_flange_1105_03_gauge_v2/model.urdf'
+from .project_paths import ROOT
+URDF = model_directory() / 'casbot_hl12p1_dvt2/derived/bare_flange_1105_03_gauge_v2/model.urdf'
 DIRECTION = (1, -1, -1, -1, -1, 1, 1, -1, -1, -1, 1, -1, -1, 1)
 OFFSET = (-.019698, .00643665, .005416, .007078, .026015, -.025037, -.007323,
           -.013976, -.00224065, -.01494833, .007841, -.01723733, -.01549655, .00541233)

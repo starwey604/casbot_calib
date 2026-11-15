@@ -20,11 +20,7 @@ def _bundle_fingerprint(root: Path):
     try:
         meta_path = root / 'model.json'
         st_meta = meta_path.stat()
-        metadata = json.loads(meta_path.read_text(encoding='utf-8'))
         rels = ['model.json', 'model.urdf', 'collision.json', 'collision.npz', 'trical_scene.json']
-        if 'viewer_sha256' in metadata:
-            rels.append('scene.xml')
-        rels.extend(sorted(metadata.get('viewer_files_sha256', {}).keys()))
         stats = []
         for rel in rels:
             p = root / rel
@@ -95,12 +91,6 @@ def load_bundle(folder):
         raise ValueError('Unsupported DVT2 bundle')
     if metadata.get('bundle_sha256') != bundle_identity(root, metadata):
         raise ValueError('Bundle profile, exclusions or scene identity changed')
-    if 'viewer_sha256' in metadata:
-        if sha256(_resource(root / 'scene.xml').read_bytes()).hexdigest() != metadata['viewer_sha256']:
-            raise ValueError('Viewer asset identity changed')
-    for filename,expected in metadata.get('viewer_files_sha256',{}).items():
-        if sha256(_resource(root/filename).read_bytes()).hexdigest()!=expected:
-            raise ValueError('Viewer asset identity changed: '+filename)
     if sha256(_resource(root / 'model.urdf').read_bytes()).hexdigest() != metadata['urdf_sha256']:
         raise ValueError('Derived URDF identity changed')
     engine = _core.ArmDynamics.from_urdf(str(root / 'model.urdf'))
@@ -174,9 +164,21 @@ def trical_scene(folder):
     return read(Path(folder) / 'trical_scene.json')
 
 
+def check_viewer_assets(folder):
+    root = Path(folder)
+    metadata = read(root / "model.json")
+    if 'viewer_sha256' in metadata:
+        if sha256(_resource(root / 'scene.xml').read_bytes()).hexdigest() != metadata['viewer_sha256']:
+            raise ValueError('Viewer asset identity changed')
+    for filename,expected in metadata.get('viewer_files_sha256',{}).items():
+        if sha256(_resource(root/filename).read_bytes()).hexdigest()!=expected:
+            raise ValueError('Viewer asset identity changed: '+filename)
+
+
 def viewer_adapter(folder):
     """Use the same logical state mapping without regenerating the CAD scene."""
     from .telemetry import TelemetryAdapter, JointMapping
+    check_viewer_assets(folder)
     engine, _ = load_bundle(folder)
     return TelemetryAdapter(engine.model.model_id,
                             [JointMapping(j.name, j.name) for j in engine.model.joints])

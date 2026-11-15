@@ -110,6 +110,7 @@ def test_shell_entry_from_elsewhere(tmp_path):
     assert result.returncode == 0 and 'C06' in result.stdout
 
 
+@pytest.mark.slow
 def test_observe_zero_commands_clock_fields_and_note(master, tmp_path):
     name, source = master()
     out = tmp_path/'observe'
@@ -131,6 +132,7 @@ def test_observe_zero_commands_clock_fields_and_note(master, tmp_path):
     assert source.joinpath('commands.bin').stat().st_size == 0
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize('case', ['C01', 'C02'])
 def test_hold_enable_and_disable(master, tmp_path, case):
     completed, result, out, _ = active(master, tmp_path, case)
@@ -141,6 +143,7 @@ def test_hold_enable_and_disable(master, tmp_path, case):
     assert (out/'native/background.bin').stat().st_size == 744
 
 
+@pytest.mark.slow
 def test_c03_jog_and_c04_disabled_opposite_background(master, tmp_path):
     for case in ('C03', 'C04'):
         extra = ['--joint-id', '13', '--amplitude', '.001', '--segment-s', '1']
@@ -156,6 +159,7 @@ def test_c03_jog_and_c04_disabled_opposite_background(master, tmp_path):
                 assert all(struct.unpack_from('<H', data, 8+12+j*18)[0] == 6 for j in range(19,26))
 
 
+@pytest.mark.slow
 def test_limit_skip_and_fault_abort(master, tmp_path):
     skipped, result, _, source = active(master, tmp_path, 'C03', '--joint-id', '15')
     assert skipped.returncode == 4 and result['commands']['count'] == 0
@@ -168,6 +172,7 @@ def test_limit_skip_and_fault_abort(master, tmp_path):
     assert all(struct.unpack_from('<H', r, 8+12+12*18)[0] != 0x80 for r in commands)
 
 
+@pytest.mark.slow
 def test_c05_silence_does_not_replay(master, tmp_path):
     completed, result, out, _ = active(master, tmp_path, 'C05')
     assert completed.returncode == 0, completed.stdout + completed.stderr
@@ -181,6 +186,7 @@ def test_c05_silence_does_not_replay(master, tmp_path):
     assert result['native']['disable_ack'] == '1'
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize('termination', ['sigterm', 'sigkill'])
 def test_c06_own_sender_termination_passive_probe(master, tmp_path, termination):
     completed, result, out, source = active(master, tmp_path, 'C06', '--termination', termination)
@@ -197,6 +203,7 @@ def test_c06_own_sender_termination_passive_probe(master, tmp_path, termination)
         assert result['native']['disable_ack'] == '1'
 
 
+@pytest.mark.slow
 def test_owner_conflict_does_not_steal_channel(master, tmp_path):
     name, source = master()
     out = tmp_path/'first'
@@ -239,6 +246,7 @@ def test_supervisor_timeout_only_terminates_owned_child(tmp_path):
     assert meta['supervisor_timeout'] and meta['returncode']==-signal.SIGTERM
 
 
+@pytest.mark.slow
 def test_hangup_to_wrapper_disables_owned_native_sender(master, tmp_path):
     name, _ = master();out=tmp_path/'hangup'
     with (tmp_path/'wrapper.log').open('wb') as log:
@@ -262,6 +270,7 @@ def test_hangup_to_wrapper_disables_owned_native_sender(master, tmp_path):
                 process.terminate();process.wait(timeout=7)
 
 
+@pytest.mark.slow
 def test_repeated_hangup_still_finalizes_exit_and_report(master, tmp_path):
     """SSH/PTTY can hang up both the shell and its job; cleanup must finish once."""
     name, _ = master();out=tmp_path/'repeated_hangup'
@@ -290,6 +299,7 @@ def test_repeated_hangup_still_finalizes_exit_and_report(master, tmp_path):
 
 
 
+@pytest.mark.slow
 def test_pty_close_preserves_native_exit_and_wrapper_report(master,tmp_path):
     import pty,select,shlex
     name,_=master();out=tmp_path/'pty_hangup'
@@ -320,6 +330,7 @@ def test_pty_close_preserves_native_exit_and_wrapper_report(master,tmp_path):
             os.kill(pid,signal.SIGTERM);os.waitpid(pid,0)
 
 
+@pytest.mark.slow
 def test_hangup_during_offline_report_keeps_completed_metadata(master,tmp_path):
     name,_=master();out=tmp_path/'report_hangup'
     code='''import sys,time

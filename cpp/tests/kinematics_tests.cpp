@@ -6,7 +6,7 @@
 #include <stdexcept>
 using namespace casbot;
 namespace { void check(bool condition,const char* message) {if(!condition)throw std::runtime_error(message);} }
-int main() {
+int test_kinematics_tests() {
   ArmModel model;model.model_id="analytic_2r_frames";
   for(int j=0;j<2;++j) {
     ArmJoint joint;joint.name="j"+std::to_string(j);joint.link_name="link"+std::to_string(j);
@@ -41,4 +41,5 @@ int main() {
   bool rejected=false;try {engine.frame_pose(q,"missing");}catch(const std::invalid_argument&){rejected=true;}
   check(rejected,"unknown frames fail closed");
   std::cout<<"K1 analytic named frames, Jacobian and TriCal geometry passed\n";
+  return 0;
 }

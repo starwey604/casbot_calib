@@ -29,7 +29,8 @@ from ...staged_motion import (
     derivative_bounds,
     gate_motion,
 )
-from ...static_field import _move, _select_arm, candidate_pool, information, paired_motions, screen_candidates
+from ...staged_motion import _move
+from .h1_selection import _select_arm, candidate_pool, information, paired_motions, screen_candidates
 
 DEFAULT_H1_CONFIG = ROOT / 'configs/dynamics/h1.yaml'
 

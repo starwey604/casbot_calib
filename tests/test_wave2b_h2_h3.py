@@ -47,13 +47,13 @@ def _reconstruct_bpoly_from_reference(ref_bundle):
     return BPoly.from_derivatives(knots_s, states)
 
 
-def _write_synthetic_binary_capture(capture_dir: Path, ref_bundle: dict, q_fn, dq_fn, effort_nm_fn, robot_config: dict):
-    """Write a realistic 1kHz binary SHM capture (feedback.bin + commands.bin + clock_pairs.csv + events.csv + result.txt)."""
+def _write_synthetic_binary_capture(capture_dir: Path, ref_bundle: dict, q_fn, dq_fn, effort_nm_fn, robot_config: dict, *, sample_ns=1_000_000):
+    """Write a binary SHM capture (feedback.bin + commands.bin + clock_pairs.csv + events.csv + result.txt)."""
     native_dir = capture_dir / 'native'
     native_dir.mkdir(parents=True, exist_ok=True)
 
     duration_ns = int(ref_bundle['knots_ns'][-1])
-    dt_ns = 1_000_000  # 1 kHz
+    dt_ns = sample_ns
     rel_ns = np.arange(0, duration_ns + dt_ns, dt_ns, dtype=np.int64)
     t_s = rel_ns * 1e-9
     n_Formal = len(rel_ns)
@@ -78,7 +78,7 @@ def _write_synthetic_binary_capture(capture_dir: Path, ref_bundle: dict, q_fn, d
     k_idx = np.arange(-n_pre, n_Formal + n_post, dtype=np.int64)
     tick_mono = origin_mono_ns + k_idx * dt_ns
     recv_mono = tick_mono + 5_000
-    stamp_ms = wall_base_ms + k_idx
+    stamp_ms = wall_base_ms + k_idx * (dt_ns // 1_000_000)
 
     q_full = np.vstack([
         np.repeat(q_arr[:1], n_pre, axis=0),
@@ -143,7 +143,8 @@ def _write_synthetic_binary_capture(capture_dir: Path, ref_bundle: dict, q_fn, d
         f'execution_completed=1\n'
         f'recording_stopped=0\n'
         f'disable_ack=1\n'
-        f'first_command_mono_ns={origin_mono_ns}\n',
+        f'first_command_mono_ns={origin_mono_ns}\n'
+        f'first_shm_write_mono_ns={cmd_send[0]}\n',
         encoding='utf-8',
     )
 
@@ -251,7 +252,7 @@ def test_common_feedforward_modes_prior_acceptance_and_binary_capture(tmp_path):
     assert native['execution_completed'] == '1'
 
 
-def test_h2_small_and_full_offline_planning_and_duration_gate(tmp_path):
+def test_h2_small_offline_planning_gate(tmp_path):
     robot_cfg = load_robot_config()
     q_start = np.zeros(14)
 
@@ -260,6 +261,12 @@ def test_h2_small_and_full_offline_planning_and_duration_gate(tmp_path):
     assert meta_small['collision_certificate']['passed']
     assert all('brake_ns' in pw for sw in meta_small['sweeps'] for pw in sw['passes'])
 
+
+
+@pytest.mark.slow
+def test_h2_full_offline_planning_and_duration_gate(tmp_path):
+    robot_cfg = load_robot_config()
+    q_start = np.zeros(14)
     rec_full = load_h2_recipe(mode='full')
     t0 = perf_counter()
     meta_full = plan_h2(q_start, robot_cfg, rec_full, tmp_path / 'h2_full')
@@ -287,12 +294,33 @@ def test_h2_small_and_full_offline_planning_and_duration_gate(tmp_path):
     assert len(ref['effort']) > 10
 
 
+def test_h2_synthetic_stribeck_fit_gate():
+    from casbot_calib.stages.dynamics.h2_friction import _fit_axis_stribeck
+    # Independent analytic positive/negative torque observations.
+    expected = np.array([0.60, 0.35, 0.30, 0.025])  # b, fc, fs-fc, vs
+    def pairs(velocity):
+        v = np.asarray(velocity)
+        torque = (0.60 * v + (0.35 + 0.30 * np.exp(-(v / 0.025)**2)) * np.tanh(v / 0.001))
+        return v, -v, torque
+    training = pairs([0.025, 0.08, 0.20, 0.35])
+    transitions = pairs(np.geomspace(0.003, 0.06, 16))
+    validation = pairs([0.05, 0.14, 0.28])
+    parameters, prediction, report = _fit_axis_stribeck(
+        training, transitions, validation, n_train_speeds=4, min_train_speed=0.025)
+    assert report['success'] and report['stribeck_nonlinear_used']
+    assert report['rank'] == 2 and report['transition_pairs'] == 16
+    np.testing.assert_allclose(parameters, expected, rtol=0.005, atol=1e-4)
+    np.testing.assert_allclose(prediction, validation[2], atol=1e-4)
+    assert report['validation_rmse_nm'] < report['linear_validation_rmse_nm']
+
+
+@pytest.mark.slow
 def test_h2_stribeck_identification_and_offset_diagnostic_synthetic(tmp_path):
     robot_cfg = load_robot_config()
     nom_eng, _ = model_for(robot_cfg)
     q_ready = ready_position()
 
-    # Use full-mode logarithmic Stribeck speed sweep on bilateral shoulder pitch joints for fast 1kHz synthesis.
+    # Use full-mode logarithmic Stribeck speed sweep on bilateral shoulder pitch joints with disjoint train/validation postures for the end-to-end analysis.
     recipe = load_h2_recipe({
         'mode': 'small',
         'ready_pose': False,
@@ -408,11 +436,13 @@ def test_h2_stribeck_identification_and_offset_diagnostic_synthetic(tmp_path):
     assert (tmp_path / 'h2_synth/report.md').is_file()
 
 
-def test_h3_small_and_full_cma_stratified_planning_gates(tmp_path):
+def test_h3_small_cma_planning_gate(tmp_path):
     robot_cfg = load_robot_config()
     q_start = np.zeros(14)
 
     rec_small = load_h3_recipe(mode='small')
+    rec_small['cma'] = dict(max_generations=1, popsize=4, sample_points=16)
+    rec_small['small'].update(train_seeds=[401], pose_offsets_deg=dict(train=[0.], validation=[0.]))
     assert rec_small['feedforward_mode'] == 'gravity_friction'
     assert rec_small['cma_optimize'] is True
     assert rec_small['identify_rotor_inertia'] is True
@@ -424,6 +454,12 @@ def test_h3_small_and_full_cma_stratified_planning_gates(tmp_path):
     for blk in meta_small['blocks']:
         assert blk['optimized_condition_number'] <= blk['initial_condition_number']
 
+
+
+@pytest.mark.slow
+def test_h3_full_cma_stratified_planning_gates(tmp_path):
+    robot_cfg = load_robot_config()
+    q_start = np.zeros(14)
     rec_full = load_h3_recipe(mode='full')
     t1 = perf_counter()
     meta_full = plan_h3(q_start, robot_cfg, rec_full, tmp_path / 'h3_full')
@@ -433,7 +469,7 @@ def test_h3_small_and_full_cma_stratified_planning_gates(tmp_path):
     init_conds = [b['initial_condition_number'] for b in meta_full['blocks']]
     opt_conds = [b['optimized_condition_number'] for b in meta_full['blocks']]
     print(
-        f'\n[BENCH H3 full] wall_s={full_wall_s:.3f}s (small={small_wall_s:.3f}s), duration_s={full_dur_s:.2f}s, '
+        f'\n[BENCH H3 full] wall_s={full_wall_s:.3f}s, duration_s={full_dur_s:.2f}s, '
         f'cond_init_mean={np.mean(init_conds):.2f} -> cond_opt_mean={np.mean(opt_conds):.2f}, '
         f'kinematics={meta_full["kinematics_summary"]}'
     )
@@ -453,6 +489,7 @@ def test_h3_small_and_full_cma_stratified_planning_gates(tmp_path):
     assert b_val['harmonics'][4] == [2, 5, 7, 10]
 
 
+@pytest.mark.slow
 def test_h3_joint_rigid_and_rotor_inertia_identification_synthetic(tmp_path):
     robot_cfg = load_robot_config()
     nom_eng, _ = model_for(robot_cfg)
@@ -633,3 +670,28 @@ def test_h3_joint_rigid_and_rotor_inertia_identification_synthetic(tmp_path):
     assert reload_rep['passed']
     assert (ana_dir / 'inertia_axes.csv').is_file()
     assert (sess.root / 'h3/report.md').is_file()
+
+
+def test_h3_harmonic_analysis_matches_synthetic_dynamics_and_rejects_clock_jump():
+    from casbot_calib.stages.dynamics.h3_inertia import _extract_block_harmonic_data, _build_rotor_regressor
+    engine, _ = model_for(load_robot_config())
+    ns = np.arange(256, dtype=np.int64) * 7_812_500
+    t = ns * 1e-9
+    q = np.broadcast_to(ready_position(), (len(t), 14)).copy()
+    q[:, 0] += .02 * np.sin(2*np.pi*t)
+    v = np.zeros_like(q); v[:, 0] = .02*2*np.pi*np.cos(2*np.pi*t)
+    a = np.zeros_like(q); a[:, 0] = -.02*(2*np.pi)**2*np.sin(2*np.pi*t)
+    obs = dict(relative_ns=ns, phase=np.full(len(t),3), clock_segment=np.zeros(len(t),int),
+               time_ambiguous=np.zeros(len(t),bool), q=q, dq=v,
+               effort_nm=engine.evaluate_batch(q,v,a)['total'])
+    block = dict(id='analytic', split='train', seed=1, steady_ns=[0,2_000_000_000],
+                 periodic_ns=[0,2_000_000_000], period_ns=1_000_000_000)
+    reg, ddq, target, diagnostic = _extract_block_harmonic_data(obs, engine, block, 4, 64)
+    np.testing.assert_allclose(reg @ engine.rigid_parameters(), target, atol=1e-8)
+    expected = -.02*(2*np.pi)**2*np.sin(2*np.pi*np.arange(64)/64)
+    np.testing.assert_allclose(ddq[:,0], expected, atol=1e-10)
+    rotor = _build_rotor_regressor(ddq[:,[0]], [0])
+    np.testing.assert_allclose(rotor[:,0,0], expected, atol=1e-10)
+    assert diagnostic['velocity_consistency_rmse_rad_s'] < 1e-10
+    obs['clock_segment'][128:] = 1
+    with pytest.raises(ValueError, match='时钟'): _extract_block_harmonic_data(obs, engine, block, 4, 64)

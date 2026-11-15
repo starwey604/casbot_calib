@@ -52,6 +52,7 @@ def test_h1_recipe_defaults_and_programmatic_inheritance():
     assert prog_legacy['small']['direct_pose_chain'] is False
 
 
+@pytest.mark.slow
 def test_h1_full_offline_planning_benchmark(tmp_path):
     robot_cfg = load_robot_config()
     recipe = load_h1_recipe(mode='full')
@@ -109,7 +110,7 @@ def test_h1_full_offline_planning_benchmark(tmp_path):
     assert wall_s < ceiling_s, f'H1 full planning took {wall_s:.3f}s (>= {ceiling_s:.1f}s)'
 
 
-def test_h1_small_and_smoke_offline_planning_benchmarks(tmp_path):
+def test_h1_small_offline_planning_gate(tmp_path):
     robot_cfg = load_robot_config()
     q0 = ready_position()
 
@@ -131,8 +132,22 @@ def test_h1_small_and_smoke_offline_planning_benchmarks(tmp_path):
     assert meta_small['minimum_reference_distance_m'] >= 0.01
     assert 90.0 <= dur_small <= 135.0, f'H1 small duration {dur_small:.2f}s outside [90, 135]s'
     assert len(meta_small['trials']) == 4  # 1 paired train + 1 paired val * 2 approaches
+    assert rec_small['small']['target_offset_deg'] == 15.0 and rec_small['small']['approach_offset_deg'] == 5.0
+    for row in meta_small['static_motions']:
+        assert row['labels'].count('static_measure') == 1
+        states = np.array(row['states'])
+        np.testing.assert_allclose(states[:, 0, 1], np.deg2rad(20.0), atol=1e-15)
+        np.testing.assert_allclose(states[:, 0, 8], -np.deg2rad(20.0), atol=1e-15)
+        assert np.max(np.abs(states[:, 0, [0, 7]])) <= np.deg2rad(20.0) * (1 + 1e-12)
+        assert set(np.flatnonzero(np.ptp(states[:, 0, :], axis=0) > 1e-10).tolist()) == {0, 7}
 
-    # 2. Single-joint small mode (unpaired fallback when only left arm has joints)
+
+
+@pytest.mark.slow
+def test_h1_single_joint_and_smoke_planning_modes(tmp_path):
+    robot_cfg = load_robot_config()
+    q0 = ready_position()
+    # Single-joint fallback when only the left arm has joints.
     rec_1j = load_h1_recipe(
         dict(mode='small', small=dict(joints=['left_shoulder_pitch_joint']))
     )
@@ -251,8 +266,8 @@ def test_vectorized_analyse_h1_on_binary_capture(tmp_path):
         ready_pose=False,
         small=dict(
             joints=['left_shoulder_pitch_joint', 'right_shoulder_pitch_joint'],
-            target_offset_deg=5.0,
-            approach_offset_deg=2.0,
+            target_offset_deg=0.5,
+            approach_offset_deg=0.5,
             timing=dict(
                 initial_hold_s=0.05,
                 minimum_transition_s=0.2,
@@ -274,11 +289,12 @@ def test_vectorized_analyse_h1_on_binary_capture(tmp_path):
     engine, _ = model_for(robot_cfg)
 
     duration_ns = int(plan_meta['duration_ns'])
-    n_samples = duration_ns // 1_000_000 + 1
+    sample_ns = 5_000_000
+    n_samples = duration_ns // sample_ns + 1
     origin_mono = 1_000_000_000
     offset_ns = 500_000_000  # source_ms * 1e6 - offset_ns == obs_ns
 
-    t_s = np.arange(n_samples, dtype=np.float64) * 1e-3
+    t_s = np.arange(n_samples, dtype=np.float64) * (sample_ns * 1e-9)
     q_traj = np.asarray(curve(np.minimum(t_s, motion_meta['knots_s'][-1])), dtype=np.float64)
     dq_traj = np.asarray(curve(np.minimum(t_s, motion_meta['knots_s'][-1]), nu=1), dtype=np.float64)
     tau_traj = engine.gravity_batch(q_traj)
@@ -310,7 +326,7 @@ def test_vectorized_analyse_h1_on_binary_capture(tmp_path):
     direction = np.asarray(DIRECTION, dtype=np.float64)[None, :]
     offset = np.asarray(OFFSET, dtype=np.float64)[None, :]
     recs = np.zeros(n_samples, dtype=FEEDBACK_RECORD_DTYPE)
-    obs_ns = origin_mono + np.arange(n_samples, dtype=np.int64) * 1_000_000
+    obs_ns = origin_mono + np.arange(n_samples, dtype=np.int64) * sample_ns
     recs['receive_mono_ns'] = obs_ns + 100_000
     recs['frame']['timestamp'] = (obs_ns + offset_ns) // 1_000_000
     recs['frame']['frame_counter'] = np.arange(1, n_samples + 1, dtype=np.uint32)
@@ -322,12 +338,14 @@ def test_vectorized_analyse_h1_on_binary_capture(tmp_path):
     analysis_dir = tmp_path / 'analysis'
     report = analyse_h1(plan_dir, tmp_path / 'capture', analysis_dir)
     assert report['passed'] and report['fit_succeeded'] and report['analysis_available']
+    assert report['validation_pairs_per_joint'][0] == report['validation_pairs_per_joint'][7] == 1
     assert report['feedback_rows'] == n_samples
     windows = json.loads((analysis_dir / 'static_windows.json').read_text(encoding='utf-8'))
     assert len(windows) == len(plan_meta['trials'])
     assert all(w['available'] and w['paired_approach']['available'] for w in windows)
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize('undithered', [False, True])
 def test_paired_hysteresis_separation_beats_naive_averaging_and_handles_deadband(tmp_path, undithered):
     robot_cfg = load_robot_config()
@@ -571,3 +589,26 @@ def test_validation_pairs_require_both_opposite_observed_approaches(tmp_path, mo
     assert result['validation_pairs_per_joint'] == [0] + [1] * 13
     assert result['validation_rmse_nm'][0] is None
     assert np.isfinite(result['overall_validation_rmse_nm'])
+
+def test_explicit_full_arm_approach_keeps_target_axes_and_other_arm_unchanged():
+    from casbot_calib.stages.dynamics.h1_selection import candidate_pool, paired_motions
+    engine, _ = nominal_dual_arm()
+    full = load_h1_recipe(mode='full')['full']
+    config = dict(
+        home_rad=np.deg2rad(full['home_deg']).tolist(),
+        approach_offset_rad=np.deg2rad(full['approach_offset_deg']),
+        single_axis_offsets_deg=[-75],
+        combination_offsets_deg=[],
+        arms=dict(left=dict(single_axis_joints=[NAMES[0]], combination_joints=[])),
+        timing=full['timing'], planning_envelope=full['planning_envelope'])
+    rows, _ = candidate_pool(config, engine)
+    row = next(r for r in rows if r['family'] == 'single_axis' and r['offsets_deg'] == [-75])
+    row['approach_joints'] = list(range(7))
+    assert len(row['active_joints']) == 1
+    for motion, sign in zip(paired_motions(row, config, split='train'), (-1, 1)):
+        assert motion.conditions['approach_joints'] == list(range(7))
+        k = motion.labels.index('paired_approach')
+        displacement = motion.states[k + 1][0] - motion.states[k][0]
+        np.testing.assert_allclose(displacement[:7], -sign * config['approach_offset_rad'])
+        np.testing.assert_array_equal(displacement[7:], 0.0)
+        np.testing.assert_allclose(motion.states[k + 1][0], row['q_rad'])

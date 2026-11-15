@@ -70,6 +70,7 @@ def owner(master,tmp_path):
     for obj in objects:obj.close()
 
 
+@pytest.mark.slow
 def test_protocol_and_readonly_zero_commands(owner):
     o,source,_=owner();o.wait(lambda:o.latest and o.latest['seq']>10)
     assert SIZE == 1712
@@ -80,6 +81,7 @@ def test_protocol_and_readonly_zero_commands(owner):
     o.close();assert o.root.joinpath('result.json').exists()
 
 
+@pytest.mark.slow
 def test_repeated_controls_fields_quantization_and_stop(owner):
     o,_,_=owner();o.start();first=o.control
     fields={key:list(value) for key,value in o.latest['command'].items()}
@@ -97,6 +99,7 @@ def test_repeated_controls_fields_quantization_and_stop(owner):
     assert o.latest['revision']==0
 
 
+@pytest.mark.slow
 def test_lease_expires_without_more_gui_ticks(owner):
     o,_,_=owner();o.start()
     o.wait(lambda:o.latest['phase']==-1,duration=2)
@@ -105,6 +108,7 @@ def test_lease_expires_without_more_gui_ticks(owner):
     writes=o.latest['writes'];time.sleep(.03);assert o.latest['writes']==writes
 
 
+@pytest.mark.slow
 def test_eof_and_signal_disable_and_preserve_results(owner):
     o,_,_=owner();o.start();o.p.stdin.close();o.p.wait(timeout=3)
     result=json.loads((o.root/'result.json').read_text())
@@ -112,6 +116,7 @@ def test_eof_and_signal_disable_and_preserve_results(owner):
     rows=list(csv.DictReader((o.root/'feedback.csv').open()));assert int(rows[-1]['status12'])&0x6f==0x21
 
 
+@pytest.mark.slow
 def test_invalid_target_keeps_last_revision_and_missing_background(owner):
     o,_,_=owner();o.start();fields={k:list(v) for k,v in o.latest['command'].items()}
     fields['position'][0]=999;o.send('fields',control=o.control,revision=1,**fields)
@@ -120,12 +125,14 @@ def test_invalid_target_keeps_last_revision_and_missing_background(owner):
     assert o2.latest['writes']==0
 
 
+@pytest.mark.slow
 def test_budget_stops_recording_not_control(owner):
     o,_,_=owner(budget=.02);o.start();o.wait(lambda:o.latest['recording_stopped'],renew=True)
     assert o.latest['phase']==3
     o.send('stop');o.wait(lambda:o.latest['phase']==-1);assert o.latest['disable_ack']
 
 
+@pytest.mark.slow
 def test_exclusive_owner_refuses_second_reader(owner,tmp_path):
     o,_,name=owner();o.wait(lambda:o.latest is not None)
     p=subprocess.run([str(NATIVE/'shm_gui_owner'),'--shm',name,'--output',str(tmp_path/'second'),'--urdf',str(URDF)],capture_output=True,timeout=3)
@@ -133,6 +140,7 @@ def test_exclusive_owner_refuses_second_reader(owner,tmp_path):
     assert not (tmp_path/'second').exists()
 
 
+@pytest.mark.slow
 def test_old_challenge_cannot_keep_control_alive(owner):
     o,_,_=owner();o.start();old=dict(control=o.control,challenge=o.latest['challenge'],seq=o.latest['seq'])
     o.send('renew',**old);time.sleep(.03)
@@ -143,6 +151,7 @@ def test_old_challenge_cannot_keep_control_alive(owner):
     assert o.latest['disable_ack']
 
 
+@pytest.mark.slow
 def test_drive_error_ends_control_without_reenable(master,tmp_path):
     name,_=master(fault=15);o=Owner(name,tmp_path/'fault')
     try:
@@ -154,6 +163,7 @@ def test_drive_error_ends_control_without_reenable(master,tmp_path):
     finally:o.close()
 
 
+@pytest.mark.slow
 def test_online_axis_observation_and_next_control_input_policy(owner):
     o,_,_=owner();o.start()
     settings=dict(velocity_limit=1.5,input_velocity_limit=1.5,effort_limit=10,kp_max=100,kd_max=10,lease_ms=1000,end_velocity=False,
@@ -169,6 +179,7 @@ def test_online_axis_observation_and_next_control_input_policy(owner):
     assert o.latest['revision']==0 # next control uses the new ID12 cap
 
 
+@pytest.mark.slow
 def test_stop_tombstones_late_start(owner):
     o,_,_=owner();o.wait(lambda:o.latest is not None)
     stopped=o.send('stop')

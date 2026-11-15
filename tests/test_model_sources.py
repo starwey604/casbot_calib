@@ -7,6 +7,7 @@ from casbot_calib import _core
 from casbot_calib.model_sources import MODEL_ID,source_catalog,dvt2_source,inspect_source,model_directory
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize('variant,count',[('a2',51),('a2_ff',29),('b1',40),('b2',51),('b3',29)])
 def test_all_sources_and_meshes_load_without_changing_the_default(variant,count):
     report=inspect_source(variant);source=dvt2_source(variant)

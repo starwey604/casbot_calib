@@ -46,7 +46,8 @@ def command_origin(root):
             first = None
         else:
             n_rec = cmd_bin.stat().st_size // COMMAND_RECORD_DTYPE.itemsize
-            sends = np.fromfile(cmd_bin, dtype=COMMAND_RECORD_DTYPE, count=n_rec)['send_mono_ns']
+            sends = (np.memmap(cmd_bin, dtype=COMMAND_RECORD_DTYPE, mode='r', shape=(n_rec,))['send_mono_ns']
+                     if n_rec else np.empty(0, dtype=np.int64))
             idx = int(np.searchsorted(sends, t3, side='left'))
             first = int(sends[idx]) if idx < len(sends) else None
     else:
@@ -73,7 +74,7 @@ def _reconstruct_phases(receive_ns, events_path, commands_bin_path):
     if commands_bin_path.is_file() and COMMAND_RECORD_DTYPE is not None:
         cmd_count = commands_bin_path.stat().st_size // COMMAND_RECORD_DTYPE.itemsize
         if cmd_count > 0:
-            send_ns = np.fromfile(commands_bin_path, dtype=COMMAND_RECORD_DTYPE, count=cmd_count)['send_mono_ns'].astype(np.int64)
+            send_ns = np.memmap(commands_bin_path, dtype=COMMAND_RECORD_DTYPE, mode='r', shape=(cmd_count,))['send_mono_ns'].astype(np.int64)
 
     init_phase = int(ev_rows[0]['phase'])
     phases = np.full(n, init_phase, dtype=np.int64)
@@ -142,7 +143,7 @@ class ObservationReader:
                 effort_raw=np.empty((0, 14), dtype=np.float64),
             )
 
-        recs = np.fromfile(fb_bin, dtype=FEEDBACK_RECORD_DTYPE, count=count)
+        recs = np.asarray(np.memmap(fb_bin, dtype=FEEDBACK_RECORD_DTYPE, mode='r', shape=(count,)))
         receive_ns = recs['receive_mono_ns'].astype(np.int64)
         if count > 1 and np.any(np.diff(receive_ns) <= 0):
             raise ValueError('SHM接收时刻倒退或重复')
@@ -175,9 +176,16 @@ class ObservationReader:
         arm_joints = recs['frame']['joints'][:, 12:26]
         direction = np.asarray(DIRECTION, dtype=np.float64)[None, :]
         offset = np.asarray(OFFSET, dtype=np.float64)[None, :]
-        q = (direction * arm_joints['position'].astype(np.float64)) * 1e-6 + offset
-        dq = (direction * arm_joints['velocity'].astype(np.float64)) * 1e-6
-        effort_raw = (direction * arm_joints['torque'].astype(np.float64)) * 0.01
+        q = arm_joints['position'].astype(np.float64)
+        q *= direction
+        q *= 1e-6
+        q += offset
+        dq = arm_joints['velocity'].astype(np.float64)
+        dq *= direction
+        dq *= 1e-6
+        effort_raw = arm_joints['torque'].astype(np.float64)
+        effort_raw *= direction
+        effort_raw *= 0.01
         if not (np.isfinite(q).all() and np.isfinite(dq).all() and np.isfinite(effort_raw).all()):
             raise ValueError('SHM反馈含非有限q/velocity/effort')
 

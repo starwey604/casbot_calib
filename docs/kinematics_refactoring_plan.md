@@ -338,14 +338,11 @@ flowchart TD
 
 ### 终局验收命令清单（全部通过方可交付）
 ```bash
-# 1. C++ 核心、Python 绑定与 SHM 执行器构建 + 全量 CTest
-bash scripts/humble/container.sh bash -c 'cmake --build --preset humble && ctest --preset humble --output-on-failure' < /dev/null
+# 1. 原生完整验收（重装 _core、CTest、全量 pytest、consumer 与 wheel）
+bash scripts/humble/container.sh bash scripts/humble/validate.sh < /dev/null
 bash scripts/shm/build.sh --with-mock
 
-# 2. 全量 Python 单元与 3Hz 进程级 SHM Mock 端到端回归
-bash scripts/humble/container.sh env PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest -q < /dev/null
-
-# 3. 运动学 CLI 烟雾与全流程抽检（离线规划 + 3Hz Mock 全链路 + 免动重算）
+# 2. 运动学 CLI 烟雾与全流程抽检（离线规划 + 3Hz Mock 全链路 + 免动重算）
 bash scripts/humble/container.sh bash calib/kinematics.sh --plan-only < /dev/null
 bash scripts/humble/container.sh bash calib/dev.sh kinematics-mock --mode small < /dev/null
 bash scripts/humble/container.sh bash calib/kinematics.sh --reanalyse < /dev/null

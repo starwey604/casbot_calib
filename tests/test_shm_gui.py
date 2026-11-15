@@ -36,6 +36,7 @@ def test_preview_widgets_without_graphics_or_control(tmp_path):
     finally:desk.close();imgui.destroy_context(context)
 
 
+@pytest.mark.slow
 @pytest.mark.skipif(not (NATIVE/'shm_gui_owner').exists(),reason='build GUI owner')
 def test_desk_control_remote_mock_and_settings(tmp_path):
     from imgui_bundle import imgui

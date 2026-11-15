@@ -2,6 +2,7 @@
 from copy import deepcopy
 import numpy as np
 import yaml
+import pytest
 from casbot_calib.staged_motion import Motion,build_recipes,derivative_bounds
 
 
@@ -21,8 +22,9 @@ def test_bernstein_motion_has_consistent_derivatives_and_valid_segment_bounds():
         assert np.max(tightened)<=np.max(abs(c.derivative(order).c))*(1+1e-8)
 
 
+@pytest.mark.slow
 def test_staged_recipes_cover_return_braking_and_exact_constant_velocity():
-    with open('configs/staged_dual_arm.yaml') as stream:config=yaml.safe_load(stream)
+    with open('tests/fixtures/staged_recipe.yaml') as stream:config=yaml.safe_load(stream)
     trials=build_recipes(config)
     assert set(m.stage for m in trials)=={'direction','timing','gravity','friction','breakaway','inertia_probe','inertia','control_tuning','control_validation'}
     assert config['control_period_ns']==2000000

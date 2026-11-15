@@ -12,6 +12,7 @@ from casbot_calib.dynamic_export import check_reload, write_inertial_urdf
 from casbot_calib.model_runtime import model_for, urdf_for
 from casbot_calib.pipeline.robot import load_robot_config
 from casbot_calib.pipeline.runner import run_pipeline
+from casbot_calib.pipeline.session import Session
 from casbot_calib.shm_data import ROOT
 from casbot_calib.shm_ready import ready_position
 from casbot_calib.stages.dynamics.common import resolve_stage_prior
@@ -22,6 +23,7 @@ if not NATIVE.exists():
     NATIVE = ROOT / 'build/humble/cpp/src/shm/shm_executor'
 
 
+@pytest.mark.slow
 def test_dynamics_small_and_full_offline_plan_gates(tmp_path):
     expected_kp = [65.0, 65.0, 30.0, 30.0, 30.0, 20.0, 20.0] * 2
     expected_kd = [5.0, 5.0, 4.0, 2.0, 2.0, 2.0, 2.0] * 2
@@ -79,7 +81,7 @@ def test_cross_session_prior_auto_discovery(tmp_path):
 
     # Create a completed session S1 with H1 and H2 calibration artifacts.
     out_root = tmp_path / 'calib'
-    s1 = run_pipeline(stages='h1', plan_only=True, robot_id='BOT_CHAIN', output_root=out_root)['session']
+    s1 = Session.create(stages_requested=['h1', 'h2'], model_context=robot_cfg['model_context'], robot_id='BOT_CHAIN', output_root=out_root)
     # Promote s1 to a non-plan-only session with completed h1 & h2 records.
     s1.metadata['plan_only'] = False
     for st, b_val in (('h1', 0.0), ('h2', 0.42)):
@@ -100,7 +102,7 @@ def test_cross_session_prior_auto_discovery(tmp_path):
         s1.mark_stage(st, 'completed', fit_succeeded=True, calibration_json=f'{st}/analysis/calibration.json')
 
     # A brand new session S2 for the same robot_id automatically discovers S1's H1 (for H2) and H2 (for H3)!
-    s2 = run_pipeline(stages='h3', plan_only=True, robot_id='BOT_CHAIN', output_root=out_root)['session']
+    s2 = Session.create(stages_requested=['h3'], model_context=robot_cfg['model_context'], robot_id='BOT_CHAIN', output_root=out_root)
     p_h2 = resolve_stage_prior(s2, 'h2', robot_cfg)
     p_h3 = resolve_stage_prior(s2, 'h3', robot_cfg)
     assert p_h2['source'] == 'latest_h1'
@@ -109,6 +111,7 @@ def test_cross_session_prior_auto_discovery(tmp_path):
     assert np.allclose(p_h3['coulomb'], 0.11)
 
 
+@pytest.mark.slow
 @pytest.mark.skipif(not NATIVE.exists(), reason='Build SHM physics executables')
 def test_three_stage_closed_loop_with_physical_shm_mock(tmp_path):
     robot_cfg_base = load_robot_config()
@@ -352,7 +355,7 @@ def test_non_regression_gate_rejects_degraded_stage_and_falls_back(tmp_path):
     h1_params[0] += 0.25  # Perturbed mass on link 0
 
     out_root = tmp_path / 'nonreg'
-    sess = run_pipeline(stages='h1', plan_only=True, robot_id='BOT_GATE', output_root=out_root)['session']
+    sess = Session.create(stages_requested=['h1'], model_context=robot_cfg['model_context'], robot_id='BOT_GATE', output_root=out_root)
     sess.metadata['plan_only'] = False
 
     # H1 accepted, H2 accepted, H3 rejected (accepted=False).

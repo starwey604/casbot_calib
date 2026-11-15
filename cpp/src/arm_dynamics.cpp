@@ -136,7 +136,7 @@ ArmDynamics ArmDynamics::from_urdf(const std::string& path) {
   ArmModel converted;converted.model_id=source.name;converted.model_version="tree_rigid_v1";
   converted.gravity_world=source.gravity.linear();
   pinocchio::Data data(source);const Eigen::VectorXd neutral=pinocchio::neutral(source);
-  for(pinocchio::JointIndex id=1;id<source.njoints;++id) {
+  for(pinocchio::JointIndex id=1;id<static_cast<pinocchio::JointIndex>(source.njoints);++id) {
     require(source.joints[id].nq()==1 && source.joints[id].nv()==1,"URDF supports scalar revolute joints only");
     source.joints[id].calc(data.joints[id],neutral);
     const Eigen::MatrixXd motion=data.joints[id].S().matrix();

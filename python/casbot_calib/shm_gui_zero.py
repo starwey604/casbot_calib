@@ -8,7 +8,7 @@ def plan_zero(start, target, kp, kd, duration_s=5.0):
     from .pipeline.robot import load_robot_config
     from .shm_reference import export_motion
     from .staged_motion import Motion, derivative_bounds, gate_motion
-    from .static_field import _move
+    from .staged_motion import _move
 
     start = np.asarray(start, float)
     target = np.asarray(target, float)

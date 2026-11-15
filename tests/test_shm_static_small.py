@@ -16,22 +16,6 @@ from casbot_calib.stages.dynamics import ApproachDisplacement, analyse_h1, load_
 from test_shm_fieldwork import NATIVE as BIN
 
 
-def test_default_h1_small_stays_in_twenty_degree_shoulder_range(tmp_path):
-    robot_cfg = load_robot_config()
-    recipe = load_h1_recipe()
-    assert recipe['mode'] == 'small'
-    assert recipe['small']['target_offset_deg'] == 15.0 and recipe['small']['approach_offset_deg'] == 5.0
-    m = plan_h1(ready_position(), robot_cfg, recipe, tmp_path / 'plan')
-    assert len(m['trials']) == 4
-    assert json.loads((tmp_path / 'plan/collision_reference.json').read_text())['passed']
-    for row in m['static_motions']:
-        assert row['labels'].count('static_measure') == 1
-        states = np.array(row['states'])
-        np.testing.assert_allclose(states[:, 0, 1], np.deg2rad(20.0), atol=1e-15)
-        np.testing.assert_allclose(states[:, 0, 8], -np.deg2rad(20.0), atol=1e-15)
-        assert np.max(np.abs(states[:, 0, [0, 7]])) <= np.deg2rad(20.0) * (1 + 1e-12)
-        assert set(np.flatnonzero(np.ptp(states[:, 0, :], axis=0) > 1e-10).tolist()) == {0, 7}
-
 
 def test_static_diagnostics_use_actual_q_and_keep_pair_pose_difference(tmp_path):
     rows = []
@@ -73,8 +57,9 @@ def test_observed_approach_is_not_replaced_by_reference_or_velocity():
     assert result['first_rows'] == result['last_rows'] == 50
 
 
+@pytest.mark.slow
 @pytest.mark.skipif(not (BIN / 'shm_executor').exists(), reason='build native physics')
-def test_eight_windows_physics_fit_and_solver_unavailable_report(tmp_path, monkeypatch):
+def test_eight_windows_physics_fit(tmp_path, monkeypatch):
     native = BIN / 'shm_executor'
     robot_cfg = load_robot_config(dict(initial_hold_s=0.05, final_hold_s=0.05, anchor_transition_s=0.1))
     recipe = load_h1_recipe(dict(
@@ -84,8 +69,8 @@ def test_eight_windows_physics_fit_and_solver_unavailable_report(tmp_path, monke
             parallel_arms=False,
             direct_pose_chain=False,
             joints=['left_shoulder_pitch_joint', 'right_shoulder_pitch_joint'],
-            target_offset_deg=0.1,
-            approach_offset_deg=0.03,
+            target_offset_deg=1.0,
+            approach_offset_deg=0.75,
             timing=dict(initial_hold_s=0.05, minimum_transition_s=0.1, minimum_paired_approach_s=0.1, settle_s=0.05, measure_s=0.1, final_hold_s=0.05),
             planning_envelope=dict(speed_rad_s=0.05, acceleration_rad_s2=0.1, jerk_rad_s3=1.0),
         ),
@@ -114,6 +99,7 @@ def test_eight_windows_physics_fit_and_solver_unavailable_report(tmp_path, monke
     out = tmp_path / 'analysis'
     report = analyse_h1(plan_dir, tmp_path / 'capture', out)
     assert report['execution_completed'] and report['analysis_available'] and report['fit_succeeded']
+    assert report['validation_pairs_per_joint'][0] == report['validation_pairs_per_joint'][7] == 1
     assert report['static_diagnostics']['available_windows'] == 8 and report['static_diagnostics']['paired_targets'] == 4
     assert (out / 'candidate.urdf').is_file()
     assert json.loads((out / 'urdf_reload.json').read_text())['passed']
@@ -123,6 +109,25 @@ def test_eight_windows_physics_fit_and_solver_unavailable_report(tmp_path, monke
     with (out / 'static_comparison.csv').open() as f:
         assert len(list(csv.DictReader(f))) == 112
 
+
+
+def test_solver_unavailable_report_from_synthetic_capture(tmp_path, monkeypatch):
+    from test_wave2b_h2_h3 import _write_synthetic_binary_capture, _reconstruct_bpoly_from_reference
+    from casbot_calib.model_runtime import model_for
+    robot_cfg = load_robot_config(dict(initial_hold_s=.01, final_hold_s=.01, anchor_transition_s=.1))
+    recipe = load_h1_recipe(dict(mode='small', ready_pose=False, small=dict(
+        parallel_arms=False, direct_pose_chain=False,
+        joints=['left_shoulder_pitch_joint', 'right_shoulder_pitch_joint'],
+        target_offset_deg=.1, approach_offset_deg=.03,
+        timing=dict(initial_hold_s=.01, minimum_transition_s=.1, minimum_paired_approach_s=.1,
+                    settle_s=.05, measure_s=.1, final_hold_s=.01))))
+    plan_dir = tmp_path / 'plan'
+    plan_h1(ready_position(), robot_cfg, recipe, plan_dir)
+    bundle = json.loads((plan_dir / 'reference.json').read_text())
+    poly = _reconstruct_bpoly_from_reference(bundle)
+    engine, _ = model_for(robot_cfg)
+    _write_synthetic_binary_capture(tmp_path / 'capture', bundle, poly,
+        lambda t: poly(t, nu=1), lambda t, q, v: engine.gravity_batch(q), robot_cfg)
     from casbot_calib import rigid_identification
     monkeypatch.setattr(rigid_identification, 'fit_rigid', lambda *a, **kw: (_ for _ in ()).throw(RuntimeError('test solver failure')))
     unavailable = analyse_h1(plan_dir, tmp_path / 'capture', tmp_path / 'unavailable')

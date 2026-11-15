@@ -10,7 +10,7 @@ python -m pip install -e . --no-deps --no-build-isolation --config-settings=buil
 cmake --preset humble -DCALIB_BUILD_PYTHON=ON -DCALIB_BUILD_SHM=ON -DCALIB_BUILD_SHM_MOCK=ON
 cmake --build --preset humble
 ctest --preset humble --output-junit "$output_dir/ctest.xml"
-PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 CASBOT_TEST_RENDER=1 python -m pytest -q --junitxml="$output_dir/pytest.xml"
+PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 CASBOT_SHM_TEST_BIN="$PWD/build/humble/cpp/src/shm" CASBOT_SHM_PYTHON="$VIRTUAL_ENV/bin/python" CASBOT_TEST_RENDER=1 python -m pytest -o addopts='' -q --durations=15 --junitxml="$output_dir/pytest.xml"
 python scripts/humble/collect_environment.py --output "$output_dir/environment.json"
 cmake --install build/humble --component Core
 cmake -S tests/installation -B build/humble-consumer -G Ninja \

@@ -60,6 +60,22 @@
         "CALIB_BUILD_SHM_MOCK": "ON",
         "CMAKE_INSTALL_PREFIX": "${sourceDir}/install/shm-physics"
       }
+    },
+    {
+      "name": "orin-cross",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/orin-cross",
+      "toolchainFile": "${sourceDir}/cmake/toolchains/orin-aarch64-llvm.cmake",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "BUILD_TESTING": "ON",
+        "CALIB_BUILD_CORE": "ON",
+        "CALIB_BUILD_PYTHON": "OFF",
+        "CALIB_BUILD_SHM": "ON",
+        "CALIB_BUILD_SHM_MOCK": "ON",
+        "CMAKE_INSTALL_PREFIX": "${sourceDir}/build/orin-cross-dev-install",
+        "CMAKE_CXX_COMPILER_LAUNCHER": "ccache"
+      }
     }
   ],
   "buildPresets": [
@@ -90,6 +106,11 @@
       "name": "shm-physics",
       "configurePreset": "shm-physics",
       "jobs": 1
+    },
+    {
+      "name": "orin-cross",
+      "configurePreset": "orin-cross",
+      "jobs": 2
     }
   ],
   "testPresets": [

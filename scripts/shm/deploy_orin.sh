@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# One-click Orin deployment from host: ensure wired link, sync clock, push committed Git/assets/wheels, and build/preflight on Orin.
+# One-click Orin deployment from host: ensure wired link, sync clock, push committed Git/assets/wheels, and install ARM64 prebuilt packages on Orin.
 set -euo pipefail
 repo=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)
 host=nvidia@172.16.0.10
@@ -8,7 +8,6 @@ branch=main
 interface=''
 run_setup=1
 check_only=0
-jobs=''
 deploy_git_args=()
 
 usage() {
@@ -21,9 +20,8 @@ usage() {
   --committed-only     本地有未提交改动时，仍仅部署指定分支已提交内容
   --no-assets          不自动同步默认 DVT2 模型资产
   --no-wheels          不同步离线 wheelhouse
-  --no-setup           仅同步源码/资产/轮子，不在 Orin 上运行 calib/setup.sh
-  --check-only         同步后仅运行 calib/setup.sh --check 预检，不重编
-  --jobs N             传给远端 calib/setup.sh 的编译并行数
+  --no-setup           仅交叉构建并同步源码/资产/轮子/预编译包
+  --check-only         跳过构建和预编译包同步，仅同步源码/资产/轮子并运行 --check
 EOF
 }
 
@@ -33,14 +31,13 @@ while (($#)); do
       deploy_git_args+=("$1"); shift ;;
     --no-setup) run_setup=0; shift ;;
     --check-only) check_only=1; shift ;;
-    --host|--interface|--destination|--branch|--jobs)
+    --host|--interface|--destination|--branch)
       (($# >= 2)) || { usage >&2; exit 2; }
       case "$1" in
         --host) host=$2 ;;
         --interface) interface=$2 ;;
         --destination) destination=$2 ;;
         --branch) branch=$2 ;;
-        --jobs) jobs=$2 ;;
       esac
       shift 2 ;;
     -h|--help) usage; exit 0 ;;
@@ -65,6 +62,11 @@ host_epoch=$(date -u +%s)
 printf -v sync_clock_cmd 'if (( $(date -u +%%Y) < 2025 )); then sudo -n date -u -s @%q >/dev/null 2>&1 || true; fi' "$host_epoch"
 ssh "${ssh_options[@]}" "$host" "$sync_clock_cmd"
 
+if ((!check_only)); then
+  bash "$repo/scripts/shm/cross_build_orin.sh" --no-verify
+  deploy_git_args+=(--with-prebuilt)
+fi
+
 bash "$repo/scripts/shm/deploy_git.sh" \
   --host "$host" \
   --destination "$destination" \
@@ -72,9 +74,8 @@ bash "$repo/scripts/shm/deploy_git.sh" \
   "${deploy_git_args[@]}"
 
 if ((run_setup)); then
-  setup_args=()
-  ((check_only)) && setup_args+=(--check)
-  [[ -z $jobs ]] || setup_args+=(--jobs "$jobs")
+  setup_args=(--prebuilt)
+  if ((check_only)); then setup_args=(--check); fi
   printf -v remote_setup 'cd %q && bash calib/setup.sh' "$destination"
   for arg in "${setup_args[@]}"; do
     printf -v q_arg '%q' "$arg"

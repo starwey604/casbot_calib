@@ -285,6 +285,7 @@ def test_observation_reader_binary_matches_csv_zero_error(tmp_path, fault_tail):
 
     arr_bin = ObservationReader(bin_only).arrays()
     arr_csv = ObservationReader(csv_only).arrays()
+    assert all(type(value) is np.ndarray for value in arr_bin.values())
 
     for key in ('index', 'receive_ns', 'observation_time_ns', 'source_timestamp_ms', 'clock_segment', 'frame_counter', 'phase', 'time_ambiguous'):
         np.testing.assert_array_equal(arr_bin[key], arr_csv[key], err_msg=f'Mismatch in {key}')
@@ -343,6 +344,7 @@ def test_fieldwork_summaries_match_struct_fallback_bit_for_bit(tmp_path, monkeyp
     assert loaded['cmd']['trailing_bytes'] == 3
 
 
+@pytest.mark.slow
 def test_600k_frame_binary_read_and_summary_benchmark(tmp_path):
     """600,000 frames (~10 minutes at 1 kHz) must read via ObservationReader.arrays() well under 0.25 s."""
     free_bytes = shutil.disk_usage(tmp_path).free
@@ -466,14 +468,13 @@ def test_openmp_batch_equivalence_dynamics_and_collision():
         reps = (tiles, 1, 1) if pg_s[k].ndim == 3 else (tiles, 1)
         assert np.max(np.abs(np.tile(pg_s[k], reps) - pg_b[k])) < 1e-14
 
-    # CollisionChecker: fresh solver row-0 is exact (< 1e-14); stateful GJK warm-start across
-    # distinct preceding poses agrees within Coal's 1e-6 m GJK convergence tolerance (< 5e-6 m).
+    # Fresh GJK solvers keep distances independent of preceding poses and threads.
     fresh_serial = collision_for(cfg, engine)
     fresh_parallel = collision_for(cfg, engine)
     c_s = fresh_serial.check(q_small)
     c_b = fresh_parallel.check(q_big)
     assert np.max(np.abs(c_s['distances'][0] - c_b['distances'][0])) < 1e-14
-    assert np.max(np.abs(np.tile(c_s['distances'], (tiles, 1)) - c_b['distances'])) < 5e-6
+    assert np.max(np.abs(np.tile(c_s['distances'], (tiles, 1)) - c_b['distances'])) < 1e-12
     np.testing.assert_array_equal(np.tile(c_s['worst_pair'], tiles), c_b['worst_pair'])
 
 
@@ -513,6 +514,7 @@ def test_orjson_serialization_nan_guard_and_noncontiguous_numpy(tmp_path):
     assert p1['7'] == mat.tolist() and p1['nan_val'] is None and p1['flag'] is True
 
 
+@pytest.mark.slow
 def test_live_native_executor_binary_vs_csv_exact_match(tmp_path, monkeypatch):
     import os
     import subprocess

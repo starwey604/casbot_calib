@@ -6,8 +6,8 @@
 #include <iostream>
 #include <stdexcept>
 using namespace casbot;
-void check(bool condition,const char* message) {if(!condition)throw std::runtime_error(message);}
-int main() {
+static void check(bool condition,const char* message) {if(!condition)throw std::runtime_error(message);}
+int test_arm_core_tests() {
   // Independent planar Lagrange formula: rods in XY, gravity points -Y.
   ArmModel model;model.model_id="analytic_2r";model.gravity_world={0.,-9.81,0.};
   for(int j=0;j<2;++j) {
@@ -95,4 +95,5 @@ int main() {
   try {model.joints[0].axis*=2.;ArmDynamics invalid(model);}catch(const std::invalid_argument&){rejected=true;}
   check(rejected,"reject non-unit joint axis");
   std::cout<<"Independent planar dynamics, regressor, derivatives, Jacobian and workspace checks passed\n";
+  return 0;
 }

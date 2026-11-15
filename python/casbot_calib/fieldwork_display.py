@@ -44,6 +44,9 @@ def lightweight_scene(context, canonical):
     """
     import xml.etree.ElementTree as ET
     assets=Path(__file__).parent/'assets/fieldwork_display/dvt2_v1'
+    if not assets.is_dir():
+        from .project_paths import ROOT
+        assets=ROOT/'python/casbot_calib/assets/fieldwork_display/dvt2_v1'
     manifest=json.loads((assets/'manifest.json').read_text())
     if any(context.identity.get(key)!=manifest[key] for key in ('model_id','bundle_sha256','urdf_sha256')):
         return Path(canonical)

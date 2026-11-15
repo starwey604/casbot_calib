@@ -94,7 +94,7 @@ def test_mastered_indicator_sign_radius_and_nonorthogonal_axes():
 
 
 def test_profile_provenance_fixed_ball_frame_and_invalid_overrides(tmp_path):
-    config = default_config(Path(__file__).parents[1] / 'configs/kinematics_trical.yaml')
+    config = default_config()
     assert config['control_period_ns'] == 2_000_000
     np.testing.assert_allclose(ball_world(config, 'B'), config['fixture']['balls'][1]['center_m'], atol=1e-15)
     bad = deepcopy(config); bad['fixture']['balls'][3]['center_m'] = bad['fixture']['balls'][0]['center_m'].copy()

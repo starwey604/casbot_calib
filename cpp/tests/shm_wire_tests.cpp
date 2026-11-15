@@ -6,7 +6,7 @@
 #include <vector>
 
 namespace {
-void check(bool condition, const char* message) {
+static void check(bool condition, const char* message) {
   if (!condition) throw std::runtime_error(message);
 }
 std::vector<std::uint8_t> read(const std::filesystem::path& path) {
@@ -15,7 +15,7 @@ std::vector<std::uint8_t> read(const std::filesystem::path& path) {
   return {std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>()};
 }
 }
-int main(int argc, char** argv) {
+int test_shm_wire_tests(int argc, char** argv) {
   if (argc != 2) return 2;
   using namespace casbot::shm;
   const auto command = read(std::filesystem::path(argv[1]) / "command_slot_0.bin");
@@ -50,4 +50,5 @@ int main(int argc, char** argv) {
   try { decode_status(nullptr, status.size()); } catch (const std::invalid_argument&) { ++rejected; }
   check(rejected == 3, "reject invalid buffers before access");
   std::cout << "wire35: installation fixtures, fields, reserved bytes and unaligned input passed\n";
+  return 0;
 }

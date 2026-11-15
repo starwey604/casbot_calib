@@ -97,6 +97,7 @@ def test_native_rejects_bad_schedule_before_opening_any_channel(tmp_path, native
     assert r.returncode != 0 and 'schedule times' in r.stderr
 
 
+@pytest.mark.slow
 def test_one_enable_cycle_ready_then_h1_physical_capture_and_analysis(tmp_path, native):
     robot_cfg = load_robot_config(dict(kp=30.0, kd=3.0))
     recipe = load_h1_recipe(dict(mode='smoke', ready_pose=True, smoke_jog=dict(joint_id=12, amplitude_deg=1.0)))
@@ -188,6 +189,7 @@ def test_ten_degree_jog_retains_collision_and_slow_reference(tmp_path):
         load_h1_recipe(dict(mode='smoke', smoke_jog=dict(joint_id=12, amplitude_deg=10.1)))
 
 
+@pytest.mark.slow
 def test_preparation_fault_disables_without_entering_formal_reference(tmp_path, native):
     robot_cfg = load_robot_config()
     recipe = load_h1_recipe(dict(mode='smoke', ready_pose=True, smoke_jog=dict(joint_id=12, amplitude_deg=1.0)))
