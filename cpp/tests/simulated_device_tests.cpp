@@ -3,9 +3,9 @@
 #include <iostream>
 #include <type_traits>
 
-void check(bool condition){if(!condition)throw std::runtime_error("Shared simulated device check failed");}
+static void check(bool condition){if(!condition)throw std::runtime_error("Shared simulated device check failed");}
 
-int main(int argc,char** argv) {
+int test_simulated_device_tests(int argc,char** argv) {
   if(argc!=2)return 2;
   auto model=casbot::ArmDynamics::from_urdf(argv[1]).model();model.gravity_world.setZero();
   casbot::ArmDynamics dynamics(model);const auto n=model.joints.size();
@@ -75,4 +75,5 @@ int main(int argc,char** argv) {
   falling_half.set_drive_enabled(0,Eigen::VectorXi::Zero(n));falling_half.advance_to(20000000);
   check((falling_half.latest().q-falling.latest().q).norm()<1e-7);
   check(device.latest().q[0]>q[0]);std::cout<<"shared device preserves session dynamics and delayed delivery\n";
+  return 0;
 }

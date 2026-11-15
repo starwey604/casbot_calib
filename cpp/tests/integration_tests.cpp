@@ -5,7 +5,7 @@
 #include <vector>
 using namespace casbot;
 namespace {
-void check(bool condition,const char* message) {if(!condition)throw std::runtime_error(message);}
+static void check(bool condition,const char* message) {if(!condition)throw std::runtime_error(message);}
 double exponential_error(std::int64_t step_ns) {
   Eigen::VectorXd state=Eigen::VectorXd::Ones(1);
   FixedStepIntegrator<Eigen::VectorXd> integrator(state,step_ns);
@@ -14,7 +14,7 @@ double exponential_error(std::int64_t step_ns) {
   return std::abs(state[0]-std::exp(1.));
 }
 }
-int main() {
+int test_integration_tests() {
   const double coarse=exponential_error(100000000),medium=exponential_error(50000000),fine=exponential_error(25000000);
   check(coarse/medium>14. && coarse/medium<18. && medium/fine>14. && medium/fine<18.,"fourth-order global convergence");
   check(fine<1e-8,"independent exponential response");
@@ -49,4 +49,5 @@ int main() {
   check(rejected==7 && stage_times.size()==4,"reject invalid intervals/dimensions before calling RHS");
   check(integration_backend().find("boost.odeint.rk4/")==0,"backend identity");
   std::cout<<integration_backend()<<": analytic solutions, stage times, fourth order and boundaries passed\n";
+  return 0;
 }

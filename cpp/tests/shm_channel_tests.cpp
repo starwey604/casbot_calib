@@ -3,8 +3,8 @@
 #include <iostream>
 #include <unistd.h>
 
-void check(bool value) { if (!value) throw std::runtime_error("SHM channel test failed"); }
-int main() {
+static void check(bool value) { if (!value) throw std::runtime_error("SHM channel test failed"); }
+int test_shm_channel_tests() {
   using namespace casbot::shm;
   const auto name = "/casbot_calib_test_" + std::to_string(getpid());
   {
@@ -38,4 +38,5 @@ int main() {
   try { Channel unsafe("/shm_mc", ChannelRole::fixture_master); } catch (const std::invalid_argument&) { refused = true; }
   check(refused);
   std::cout << "private channel: vendor ring indices, capacity-1, attach, snapshot and cleanup passed\n";
+  return 0;
 }

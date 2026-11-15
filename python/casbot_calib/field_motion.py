@@ -2,7 +2,7 @@
 import json
 import numpy as np
 from .staged_motion import Motion
-from .static_field import _move as add_bounded_move
+from .staged_motion import _move as add_bounded_move
 
 
 def static_motion(config, start, recipe):

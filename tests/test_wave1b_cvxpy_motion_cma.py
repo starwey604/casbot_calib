@@ -15,7 +15,7 @@ from casbot_calib.dual_excitation import (
 from casbot_calib.dual_model import nominal_dual_arm
 from casbot_calib.rigid_identification import fit_rigid, model_from_parameters
 from casbot_calib.staged_motion import Motion, derivative_bounds, gate_motion
-from casbot_calib.static_field import _SEPTIC_ANALYTIC_PEAKS, _SEPTIC_BERNSTEIN8_PEAKS, _move
+from casbot_calib.staged_motion import _SEPTIC_ANALYTIC_PEAKS, _SEPTIC_BERNSTEIN8_PEAKS, _move
 
 
 def _perturbed_dual_arm_engine(nominal, scale_seed=19):

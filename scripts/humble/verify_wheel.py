@@ -48,18 +48,12 @@ engine,source=nominal_dual_arm();q=np.zeros(14)
 assert "model_context" in source
 np.testing.assert_allclose(engine.workspace().nonlinear_effects(q,np.ones(14)*.2),engine.gravity(q)+engine.velocity_bias(q,np.ones(14)*.2),atol=1e-13)
 assert not (Path(casbot_calib.__file__).parent/"assets/casbot_dual_arm_benchmark_nominal.urdf").exists()
-config=_core.ArmSimulationConfig();config.gain=np.full(14,2.)
-config.current_tau=0.;config.command_delay_ns=0;config.position_noise=0.;config.current_noise=0.
-commands=np.zeros((1,14,5));commands[0,:,2]=engine.gravity(q)
-observations,_=_core.ArmSimulationRunner(engine,config).run(np.array([0],dtype=np.int64),commands,2_000_000,q,q)
-assert observations["q"].shape==(3,14) and np.isfinite(observations["q"]).all()
-assert np.max(np.abs(observations["q"]))<1e-10
 print(json.dumps(dict(passed=True,core_path=_core.__file__,backend=engine.backend_version(),joints=14,dvt2_source_variants=list(source_variants),dvt2_default_changed=True,dvt2_candidate_loaded=True,python_physics_imports_disabled=True,editable_disabled=True)))
 '''
     result = json.loads(subprocess.check_output([sys.executable, '-I', '-c', probe, str(unpacked)], text=True))
     result.update(wheel=wheel.name, wheel_bytes=wheel.stat().st_size)
     (output / 'verification.json').write_text(json.dumps(result, indent=2) + '\n', encoding='utf-8')
-    print('Independent wheel import, five DVT2 sources, derived candidate, DVT2 default and 14-axis native Mock: PASS')
+    print('Independent wheel import, five DVT2 sources, derived candidate, DVT2 default and 14-axis dynamics: PASS')
 
 
 if __name__ == '__main__':

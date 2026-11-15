@@ -5,7 +5,7 @@ preparation and calibration. No GUI, device access, or encoder-zero writes.
 """
 import numpy as np
 from .staged_motion import Motion, derivative_bounds
-from .static_field import _move
+from .staged_motion import _move
 
 
 def ready_position():

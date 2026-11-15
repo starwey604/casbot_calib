@@ -1,6 +1,5 @@
 """Record the actual Humble native environment, rather than infer it from a lock."""
 import argparse
-import hashlib
 import importlib.metadata as metadata
 import json
 import os
@@ -33,13 +32,12 @@ def collect():
     versions = {name: metadata.version(name) for name in ('numpy', 'scipy', 'matplotlib', 'pybind11', 'scikit-build-core', 'pytest', 'mujoco', 'Pillow')}
     return dict(passed=True, python=sys.version, executable=sys.executable,
         platform=platform.platform(), ros_distro=os.environ['ROS_DISTRO'],
-        backend=_core.ArmDynamics.backend_version(), integration_backend=_core.SimulationRunner.integration_backend(),
+        backend=_core.ArmDynamics.backend_version(),
         pinocchio=pinocchio.__version__, coal=getattr(coal, '__version__', 'see apt manifest'),
         core_path=_core.__file__, python_versions=versions,
         cmake=output('cmake', '--version').splitlines()[0], compiler=output('c++', '--version').splitlines()[0],
         system_packages=output('dpkg-query', '-W', '-f=${binary:Package}\t${Version}\n'),
         python_packages=output(sys.executable, '-m', 'pip', 'freeze'),
-        core_sha256=hashlib.sha256(Path(_core.__file__).read_bytes()).hexdigest(),
         core_libraries=libraries, conda_paths_absent=True, coal_primitive_distance_m=distance)
 
 

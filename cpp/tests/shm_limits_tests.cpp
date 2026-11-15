@@ -1,7 +1,7 @@
 #include "field_limits.hpp"
 #include "gui_policy.hpp"
 #include <stdexcept>
-int main() {
+int test_shm_limits_tests() {
   using namespace casbot::shm;
   StatusFrame state{};std::array<double,14> lower{},upper{};lower.fill(-10);upper.fill(10);
   for(int j=0;j<14;++j)arm_status(state,j,0,0,0);
@@ -15,4 +15,5 @@ int main() {
   if(policy.start_velocity!=.2)throw std::runtime_error("GUI startup must use shared 0.2 rad/s default");
   Json settings;settings.put("start_velocity_rad_s",.05);policy=gui_policy(settings,lower,upper,velocity);
   if(policy.start_velocity!=.05)throw std::runtime_error("Explicit startup setting must remain effective");
+  return 0;
 }

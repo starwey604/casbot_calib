@@ -1,8 +1,8 @@
 #include <casbot_calib/shm/arm_jog.hpp>
 #include <iostream>
 #include <stdexcept>
-void check(bool v) { if(!v) throw std::runtime_error("Arm jog test failed"); }
-int main() {
+static void check(bool v) { if(!v) throw std::runtime_error("Arm jog test failed"); }
+int test_shm_jog_tests() {
   using namespace casbot::shm;
   for(unsigned word: {0x21,0x31,0x231}) {
     check(drive_state_is(word,0x21));
@@ -54,4 +54,5 @@ int main() {
   try { arm_target(c,0,1e10,0,20,2); } catch(const std::invalid_argument&) { failed=true; }
   check(failed);
   std::cout<<"arm jog: signed offsets, integer scale, both limits and smooth waveform passed\n";
+  return 0;
 }

@@ -1,7 +1,10 @@
 #pragma once
 #include "casbot_calib/arm_dynamics.hpp"
-#include "casbot_calib/simulator.hpp"
+#include <cstdint>
+#include <vector>
 namespace casbot {
+using Nanoseconds = std::int64_t;
+enum SampleStatus : std::uint32_t { saturated = 1, repeated = 2 };
 struct ArmSimulationConfig {
   Nanoseconds integration_ns=50000,sample_period_ns=1000000,command_delay_ns=1350000,feedback_delay_ns=700000;
   double current_tau=.001,torque_limit=100.,position_noise=1e-6,current_noise=.0002;

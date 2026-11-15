@@ -1,8 +1,8 @@
 #include <casbot_calib/shm/clock.hpp>
 #include <iostream>
 #include <stdexcept>
-void check(bool ok){if(!ok)throw std::runtime_error("SHM source clock test failed");}
-int main() {
+static void check(bool ok){if(!ok)throw std::runtime_error("SHM source clock test failed");}
+int test_shm_clock_tests() {
   using namespace casbot::shm;
   SourceClock c;bool rejected=false;
   try{c.observation(1);}catch(const std::logic_error&){rejected=true;}
@@ -24,4 +24,5 @@ int main() {
   try{c.observation(~std::uint64_t(0));}catch(const std::overflow_error&){rejected=true;}
   check(rejected);
   std::cout<<"Source milliseconds, epoch wall clock, bracket, repeats, reversal and clock segmentation passed\n";
+  return 0;
 }
