@@ -12,7 +12,9 @@ MODEL_ID='casbot_hl12p1_dvt2'
 
 def model_directory():
     """Resource root in a normal source checkout or unpacked Python installation."""
-    return Path(str(files('casbot_calib').joinpath('assets/models')))
+    from .project_paths import ROOT
+    packaged = Path(str(files('casbot_calib').joinpath('assets/models')))
+    return packaged if packaged.is_dir() else ROOT / 'python/casbot_calib/assets/models'
 
 
 def _inside(root,path):

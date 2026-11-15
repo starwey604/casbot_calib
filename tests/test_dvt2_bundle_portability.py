@@ -9,7 +9,7 @@ from casbot_calib.model_context import BUNDLE_RELATIVE
 from casbot_calib.model_sources import model_directory
 
 
-@pytest.fixture
+@pytest.fixture(scope="module")
 def frozen():
     root=model_directory()/BUNDLE_RELATIVE
     return _core.ArmDynamics.from_urdf(str(root/'model.urdf')),json.loads((root/'model.json').read_text())['geometry']

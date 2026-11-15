@@ -46,12 +46,6 @@ def test_context_is_explicit_fresh_and_source_bound(context):
     assert transport['joint_names']==list(context.joint_names)
 
 
-
-
-
-
-
-
 def write(path,data):path.write_text(json.dumps(data)+'\n')
 
 
@@ -76,22 +70,27 @@ def synthetic_analysis(context,path):
     seal(path);return candidate
 
 
-
-
-
-
 def test_runtime_context_does_not_import_python_pinocchio_or_coal():
     code="""
 import sys
 sys.modules['pinocchio']=None
 sys.modules['coal']=None
+sys.modules['mujoco']=None
 from casbot_calib.model_context import load_context
 from casbot_calib.kinematics import nominal_kinematics, default_config
 context=load_context()
 engine,_=nominal_kinematics(context.kinematic_config())
 assert len(engine.model.joints)==14
-assert len(context.collision_profile().pairs)>0
+assert context.collision_profile().check(context.home)['distances'].min()>.01
+from casbot_calib.dvt2_bundle import viewer_adapter
+assert len(viewer_adapter(context.bundle).mappings)==14
 """
     subprocess.run([sys.executable,'-c',code],check=True,capture_output=True,text=True)
 
 
+def test_deprecated_assets_are_not_runtime_options():
+    from importlib.resources import files
+    from casbot_calib.model_runtime import model_for
+    assert not files('casbot_calib').joinpath('assets/casbot_dual_arm_benchmark_nominal.urdf').is_file()
+    with pytest.raises(ValueError, match='historical records'):
+        model_for(dict(model='casbot_dual_arm_benchmark_nominal'))

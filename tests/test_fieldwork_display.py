@@ -36,17 +36,15 @@ def test_geometry_ignores_timestamp_but_not_position_or_selection():
     assert display.geometry_changed(dict(pose,selected=1),pose)
 
 
-
-
-
-
 def test_display_assets_keep_source_coordinate_extrema_and_face_inventory():
     from pathlib import Path
     import struct
     import numpy as np
-    root=Path(display.__file__).parent/'assets/fieldwork_display/dvt2_v1'
+    from casbot_calib.project_paths import ROOT
+    from casbot_calib.model_sources import model_directory
+    root=ROOT/'python/casbot_calib/assets/fieldwork_display/dvt2_v1'
     manifest=json.loads((root/'manifest.json').read_text())
-    source=Path(display.__file__).parent/'assets/models/casbot_hl12p1_dvt2/source/assets/visual/CASBOTHL12'
+    source=model_directory()/'casbot_hl12p1_dvt2/source/assets/visual/CASBOTHL12'
     for row in manifest['meshes']:
         vertices=np.asarray([[float(x) for x in line.split()[1:4]]
             for line in (source/row['source']).read_text().splitlines() if line.startswith('v ')])
@@ -93,3 +91,18 @@ def test_visual_deadband_keeps_cumulative_motion_and_does_not_quantize_feedback(
     assert display.geometry_changed(dict(noisy,q=[0.,.10011]),previous)
     assert noisy['q']==[1e-6,.100001] # Never round the delivered/recorded positions.
     assert display.geometry_changed(noisy,None)
+
+
+def test_viewer_checks_missing_or_pointer_meshes(tmp_path):
+    from pathlib import Path
+    from casbot_calib.dvt2_bundle import check_viewer_assets
+    from casbot_calib.model_context import load_context
+    import shutil
+    source = load_context().bundle
+    shutil.copytree(source, tmp_path / 'bundle', ignore=shutil.ignore_patterns('visual_meshes'))
+    bundle = tmp_path / 'bundle'
+    with pytest.raises(FileNotFoundError): check_viewer_assets(bundle)
+    (bundle / 'visual_meshes').mkdir()
+    first = next(iter(json.loads((bundle / 'model.json').read_text())['viewer_files_sha256']))
+    (bundle / first).write_text('version https://git-lfs.github.com/spec/v1\n')
+    with pytest.raises(ValueError, match='git lfs pull'): check_viewer_assets(bundle)

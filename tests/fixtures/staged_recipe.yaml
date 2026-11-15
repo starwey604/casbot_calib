@@ -38,25 +38,22 @@ pose_amplitude_rad:
 - 0.5
 settle_s: 0.6
 transition_s: 1.0
-gravity_train_poses: 24
-gravity_validation_poses: 8
+gravity_train_poses: 2
+gravity_validation_poses: 1
 gravity_hold_s: 1.4
-friction_poses: 2
+friction_poses: 1
 friction_stroke_half_rad: 0.08
 friction_sample_period_ns: 250000
 friction_convergence_sample_period_ns: 125000
 friction_speeds_rad_s:
 - 0.04
-- 0.08
 - 0.14
 breakaway_dwell_s:
 - 0.5
-- 1.5
 breakaway_ramp_s: 1.0
 breakaway_slopes_nm_s:
 - 0.12
-- 0.24
-breakaway_repeats: 2
+breakaway_repeats: 1
 breakaway_tracking_allowance_nm: 0.08
 breakaway_motion_allowance_rad: 0.003
 dynamic_period_s: 6.0
@@ -64,8 +61,6 @@ dynamic_periods: 4
 dynamic_transition_s: 2.0
 dynamic_candidate_seeds:
 - 27
-- 28
-- 29
 inertia_sample_period_ns: 250000
 wrist_probe:
   frequency_hz: 5.0

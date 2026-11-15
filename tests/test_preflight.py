@@ -44,7 +44,7 @@ def test_default_bundle_and_python_runtime_pass():
     assert info['geometries'] > 14
 
 
-@pytest.mark.parametrize('rel_target', ['collision.npz', 'visual_meshes/part_005_0.stl'])
+@pytest.mark.parametrize('rel_target', ['collision.npz', 'model.urdf'])
 def test_unhydrated_lfs_pointer_in_bundle_rejected_clearly(tmp_path, rel_target):
     bundle_copy = tmp_path / 'bundle'
     _clone_bundle_shallow(DEFAULT_BUNDLE, bundle_copy)
@@ -56,9 +56,6 @@ def test_unhydrated_lfs_pointer_in_bundle_rejected_clearly(tmp_path, rel_target)
     with pytest.raises(ValueError, match='Git LFS 指针'):
         check_model_bundle(bundle_copy)
 
-    if rel_target.startswith('visual_meshes/'):
-        with pytest.raises(ValueError, match='git lfs pull'):
-            load_bundle(bundle_copy)
 
 
 def test_native_binaries_check_requires_channel_start_and_mock_server(tmp_path):
@@ -181,3 +178,9 @@ def test_setup_check_and_build_script_defaults(tmp_path):
 
     info = run_preflight(plan_only=True)
     assert info['executor'] is None and info['model']['model_id'].startswith('casbot_hl12p1_dvt2')
+
+
+def test_headless_bundle_loads_without_display_meshes(tmp_path):
+    bundle = tmp_path / 'bundle'
+    shutil.copytree(DEFAULT_BUNDLE, bundle, ignore=shutil.ignore_patterns('visual_meshes', '*.xml'))
+    assert check_model_bundle(bundle)['geometries'] > 14

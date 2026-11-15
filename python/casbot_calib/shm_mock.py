@@ -7,7 +7,7 @@ import subprocess
 import time
 import uuid
 
-ROOT = Path(__file__).resolve().parents[2]
+from .project_paths import ROOT
 
 
 class SHMMock:

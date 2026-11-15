@@ -62,9 +62,6 @@ def check_model_bundle(bundle=None):
         'collision.npz',
         'trical_scene.json',
     ]
-    if 'viewer_sha256' in metadata:
-        required_rel.append('scene.xml')
-    required_rel.extend(metadata.get('viewer_files_sha256', {}).keys())
 
     missing = []
     unhydrated = []

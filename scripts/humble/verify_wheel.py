@@ -1,10 +1,13 @@
-"""Verify a non-editable wheel with source redirects and Python physics libraries disabled."""
+"""Verify the small non-editable wheel against external project model assets."""
 import argparse
 import json
+import os
 from pathlib import Path
 import subprocess
 import sys
 import zipfile
+
+ROOT = Path(__file__).resolve().parents[2]
 
 
 def verify(wheel, output):
@@ -12,8 +15,12 @@ def verify(wheel, output):
     unpacked = (output / 'unpacked').resolve()
     with zipfile.ZipFile(wheel) as archive:
         names = archive.namelist()
+        assert wheel.stat().st_size < 4 * 1024**2
         assert any(name.startswith('casbot_calib/_core.') and name.endswith('.so') for name in names)
-        assert not any(name.startswith(('include/', 'lib/')) for name in names), 'Core development files leaked into Python wheel'
+        assert not any(name.startswith(('include/', 'lib/', 'casbot_calib/assets/models/',
+                                       'casbot_calib/assets/fieldwork_display/')) for name in names)
+        for name in ('trical_measurement_defaults.json', 'trical_1105_release_turn_reference.json'):
+            assert 'casbot_calib/assets/' + name in names
         archive.extractall(unpacked)
     probe = '''
 import json,sys
@@ -24,36 +31,30 @@ for name in ("pinocchio","coal","mujoco"):sys.modules[name]=None
 import numpy as np
 import casbot_calib
 from casbot_calib import _core
-from casbot_calib.dual_model import nominal_dual_arm
-from casbot_calib.model_sources import source_catalog,dvt2_source,inspect_source,model_directory
-from casbot_calib.dvt2_bundle import load_bundle,robot_profile,viewer_adapter
+from casbot_calib.model_context import load_context
+from casbot_calib.dvt2_bundle import robot_profile
+from casbot_calib.trical_assembly import asset_directory,collision_assets
 assert Path(casbot_calib.__file__).is_relative_to(sys.argv[1])
 assert Path(_core.__file__).is_relative_to(sys.argv[1])
-catalog=source_catalog();source_variants=catalog["variants"]
-for variant in source_variants:
-    model_source=dvt2_source(variant)
-    assert model_source.directory.is_relative_to(sys.argv[1])
-    assert inspect_source(variant)["passed"]
-    assert len(_core.ArmDynamics.from_urdf(str(model_source.urdf)).model.joints)==len(source_variants[variant]["active_joint_names"])
-asset_files=[p for p in model_source.asset_root.rglob("*") if p.is_file()]
-assert len(asset_files)==catalog["asset_inventory"]["files"]
-assert sum(p.stat().st_size for p in asset_files)==catalog["asset_inventory"]["bytes"]
-candidate=model_directory()/"casbot_hl12p1_dvt2/derived/a2ff_stock_hands_candidate_v1"
-new,descriptor=load_bundle(candidate)
-assert len(new.model.joints)==14 and not descriptor["assembly_confirmed"]
-assert len(viewer_adapter(candidate).mappings)==14
-assert robot_profile(candidate).check(descriptor["profile"]["home_rad"])["distances"].min()>.01
-assert all((candidate/mesh.get("file")).resolve().is_file() for mesh in __import__("xml.etree.ElementTree",fromlist=["parse"]).parse(candidate/"scene.xml").findall("./asset/mesh") if mesh.get("file"))
-engine,source=nominal_dual_arm();q=np.zeros(14)
-assert "model_context" in source
+context=load_context();engine=context.engine;q=np.zeros(14)
+from casbot_calib.shm_data import URDF
+assert URDF == context.urdf and URDF.is_file()
 np.testing.assert_allclose(engine.workspace().nonlinear_effects(q,np.ones(14)*.2),engine.gravity(q)+engine.velocity_bias(q,np.ones(14)*.2),atol=1e-13)
-assert not (Path(casbot_calib.__file__).parent/"assets/casbot_dual_arm_benchmark_nominal.urdf").exists()
-print(json.dumps(dict(passed=True,core_path=_core.__file__,backend=engine.backend_version(),joints=14,dvt2_source_variants=list(source_variants),dvt2_default_changed=True,dvt2_candidate_loaded=True,python_physics_imports_disabled=True,editable_disabled=True)))
+assert robot_profile(context.bundle).check(context.home)["distances"].min()>.01
+collision_assets(asset_directory(context.bundle))
+cal=_core.TricalCalibration();pose=_core.ArmPose();offset=np.array([.001,-.002,.003])
+np.testing.assert_allclose(_core.trical_offset(_core.trical_readings(pose,offset,cal),cal),offset,atol=1e-14)
+from casbot_calib.kinematics import nominal_kinematics
+kin,_=nominal_kinematics()
+geometry=kin.point_geometry_batch(q[None,:],"left_trical_tcp",np.zeros((1,3)))
+np.testing.assert_allclose(geometry["positions"][0],kin.frame_pose(q,"left_trical_tcp")[:3,3],atol=1e-14)
+print(json.dumps(dict(passed=True,core_path=_core.__file__,backend=engine.backend_version(),joints=14)))
 '''
-    result = json.loads(subprocess.check_output([sys.executable, '-I', '-c', probe, str(unpacked)], text=True))
+    result = json.loads(subprocess.check_output([sys.executable, '-I', '-c', probe, str(unpacked)], text=True,
+                       env=dict(os.environ, CASBOT_PROJECT_ROOT=str(ROOT))))
     result.update(wheel=wheel.name, wheel_bytes=wheel.stat().st_size)
-    (output / 'verification.json').write_text(json.dumps(result, indent=2) + '\n', encoding='utf-8')
-    print('Independent wheel import, five DVT2 sources, derived candidate, DVT2 default and 14-axis dynamics: PASS')
+    (output / 'verification.json').write_text(json.dumps(result, indent=2) + '\n')
+    print('Small installed wheel, external collision assets and TriCal: PASS')
 
 
 if __name__ == '__main__':
