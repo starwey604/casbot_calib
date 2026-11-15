@@ -344,6 +344,7 @@ def test_fieldwork_summaries_match_struct_fallback_bit_for_bit(tmp_path, monkeyp
     assert loaded['cmd']['trailing_bytes'] == 3
 
 
+@pytest.mark.slow
 def test_600k_frame_binary_read_and_summary_benchmark(tmp_path):
     """600,000 frames (~10 minutes at 1 kHz) must read via ObservationReader.arrays() well under 0.25 s."""
     free_bytes = shutil.disk_usage(tmp_path).free
@@ -513,6 +514,7 @@ def test_orjson_serialization_nan_guard_and_noncontiguous_numpy(tmp_path):
     assert p1['7'] == mat.tolist() and p1['nan_val'] is None and p1['flag'] is True
 
 
+@pytest.mark.slow
 def test_live_native_executor_binary_vs_csv_exact_match(tmp_path, monkeypatch):
     import os
     import subprocess

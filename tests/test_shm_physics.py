@@ -56,6 +56,7 @@ def test_direct_fields_do_not_force_velocity_to_position_derivative(native,tmp_p
     np.testing.assert_allclose(actual[:,57],.12,atol=0)
 
 
+@pytest.mark.slow
 def test_relative_reference_physical_loop_is_not_target_echo(native,tmp_path):
     path=save_bundle(tmp_path/'reference',jog_bundle([0.]*14,12,.01,1,relative=True))
     output=tmp_path/'run'
@@ -76,6 +77,7 @@ def test_relative_reference_physical_loop_is_not_target_echo(native,tmp_path):
     assert not Path('/dev/shm/sem.'+name[1:]+'_front').exists()
 
 
+@pytest.mark.slow
 def test_physics_observer_has_no_command_sender(native,tmp_path):
     output=tmp_path/'observe'
     done=cli('observe','--duration','.1','--mock','--executor',native/'shm_executor','--output',output)
@@ -85,6 +87,7 @@ def test_physics_observer_has_no_command_sender(native,tmp_path):
     assert r['feedback']['joints'][13]['raw_position']['max']!=r['feedback']['joints'][13]['raw_position']['min']
 
 
+@pytest.mark.slow
 def test_direct_effort_is_quantized_and_stops_with_disable(native,tmp_path):
     # This is a deliberate zero-gravity fixture, still with the full inertia/PD
     # plant. Default physics profile retains gravity and is tested separately.
@@ -102,6 +105,7 @@ def test_direct_effort_is_quantized_and_stops_with_disable(native,tmp_path):
     assert r['feedback']['joints'][12]['raw_torque']['max']>0
 
 
+@pytest.mark.slow
 def test_physics_drive_fault_ends_no_reset_or_reenable(native,tmp_path):
     cfg=json.loads((ROOT/'configs/shm/mock.json').read_text());cfg['urdf']=str(URDF);cfg['fault_after_commands']=80
     profile=tmp_path/'fault.json';profile.write_text(json.dumps(cfg));out=tmp_path/'run'
@@ -131,6 +135,7 @@ def test_bad_reference_refuses_before_any_motion(native,tmp_path):
     assert r['native']['reason']=='Reference knots must increase strictly'
 
 
+@pytest.mark.slow
 def test_owner_cleans_hard_killed_mock_without_touching_another(native,tmp_path):
     from casbot_calib.shm_mock import SHMMock
     with SHMMock(tmp_path/'second',native/'shm_executor') as second:
@@ -152,6 +157,7 @@ def test_bad_mock_startup_is_recorded_without_hardware_fallback(native,tmp_path)
     assert 'mock_startup_error' in r['process']
 
 
+@pytest.mark.slow
 def test_mock_accepts_shared_inertia_viscous_settings_and_rejects_implicit_dry_friction(native,tmp_path):
     cfg=json.loads((ROOT/'configs/shm/mock.json').read_text());cfg['urdf']=str(URDF)
     cfg['inertia_scales']=[1.5]*14;cfg['friction_viscous']=[.02]*14

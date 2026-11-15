@@ -41,6 +41,7 @@ def test_framing_truncation_and_bad_length():
     with pytest.raises(ValueError):read_frame(io.BytesIO(b'\xff\xff\xff\xff'))
 
 
+@pytest.mark.slow
 def test_physical_remote_round_trip_and_main_loop_lease(client):
     c=client;wait(c,lambda:c.hello and c.ready and c.latest and c.latest['receive_ns'])
     assert c.ready['mock'] and c.ready['endpoint'].startswith('/casbot_calib_test_')
@@ -58,6 +59,7 @@ def test_physical_remote_round_trip_and_main_loop_lease(client):
     assert json.loads((root/'mock/exit.json').read_text())['returncode']==0
 
 
+@pytest.mark.slow
 def test_display_disconnect_causes_control_stop(client):
     c=client;wait(c,lambda:c.hello and c.latest and c.latest['receive_ns']);c.send('start');wait(c,lambda:c.latest['phase']==3)
     c.display.terminate();c.display.wait(timeout=2)

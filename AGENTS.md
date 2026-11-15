@@ -43,7 +43,7 @@ CASBOT双臂（14轴）运动学/动力学标定。唯一硬件路径是Orin本�
 ## 构建与测试
 
 ```bash
-# 本机：Humble容器只提供Pinocchio/Coal工具链。经docker exec运行时需重定向stdin。
+# 本机：默认跑快速集；完整回归加 -o addopts=''。经docker exec运行时需重定向stdin。
 bash scripts/humble/container.sh env PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest -q < /dev/null
 bash scripts/humble/container.sh bash -c 'cmake --build --preset humble && ctest --preset humble' < /dev/null
 # Orin（完整数值环境 + C++ 执行器安装至 install/shm-core + 预检）：

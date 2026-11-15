@@ -36,6 +36,7 @@ def test_geometry_ignores_timestamp_but_not_position_or_selection():
     assert display.geometry_changed(dict(pose,selected=1),pose)
 
 
+@pytest.mark.slow
 def test_display_assets_keep_source_coordinate_extrema_and_face_inventory():
     from pathlib import Path
     import struct

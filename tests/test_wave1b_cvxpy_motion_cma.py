@@ -221,6 +221,7 @@ def test_gate_motion_stationary_short_circuit_and_batched_equivalence():
     assert bad_gate['segments'][1]['reason'] == 'collision_or_clearance'
 
 
+@pytest.mark.slow
 def test_stratified_harmonics_and_cma_es_phase_optimization():
     t = np.linspace(0.0, 4.0, 65)
     center = np.deg2rad([0.0, 45.0, 0.0, -45.0, 0.0, 0.0, 0.0, 0.0, -45.0, 0.0, -45.0, 0.0, 0.0, 0.0])

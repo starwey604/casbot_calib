@@ -159,6 +159,7 @@ def test_preflight_failure_leaves_no_empty_session_dir(tmp_path):
     assert not out_root.exists()
 
 
+@pytest.mark.slow
 def test_setup_check_and_build_script_defaults(tmp_path):
     help_res = subprocess.run(['bash', str(ROOT / 'scripts/shm/build.sh'), '--help'], capture_output=True, text=True, check=True)
     assert '默认 build/shm-core' in help_res.stdout

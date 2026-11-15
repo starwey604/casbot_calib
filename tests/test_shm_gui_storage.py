@@ -15,6 +15,7 @@ from test_shm_gui_owner import owner,Owner
 from test_shm_fieldwork import NATIVE,master
 
 
+@pytest.mark.slow
 def test_active_save_matches_csv_raw_and_recovery_is_readonly(client,tmp_path):
     c=client;wait(c,lambda:c.hello and c.latest and c.latest['receive_ns']);c.send('start');wait(c,lambda:c.latest['phase']==3)
     saved=save_workspace(c,tmp_path/'saved')
@@ -37,6 +38,7 @@ def test_active_save_matches_csv_raw_and_recovery_is_readonly(client,tmp_path):
     assert any(x.get('type')=='start' for x in metadata)
 
 
+@pytest.mark.slow
 def test_snapshot_truncates_incomplete_tail_and_rejects_manifest_changes(client,tmp_path):
     c=client;wait(c,lambda:c.ready and c.latest and c.latest['seq']>15)
     c.close();source=Path(c.ready['workspace']);raw=source/'native/feedback.bin'
@@ -49,6 +51,7 @@ def test_snapshot_truncates_incomplete_tail_and_rejects_manifest_changes(client,
     with pytest.raises(ValueError,match='清单'):load_snapshot(out)
 
 
+@pytest.mark.slow
 def test_mock_zero_is_local_to_its_owned_workspace(client):
     c=client;wait(c,lambda:c.ready and c.latest and c.latest['receive_ns'])
     request=c.send('zero_capture');messages=[]
@@ -62,6 +65,7 @@ def test_mock_zero_is_local_to_its_owned_workspace(client):
     with pytest.raises(ValueError):validate_zero(value,c.ready['model_context'],False)
 
 
+@pytest.mark.slow
 def test_zero_continuous_collision_contract_and_native_execution(owner,tmp_path):
     o,_,_=owner();o.wait(lambda:o.hello and o.latest and o.latest['master_frame']>1)
     q=np.array(o.latest['q']);target=q.copy();target[0]+=.001
@@ -94,6 +98,7 @@ def test_shm_video_reader_uses_native_receive_column(tmp_path):
     assert rows[0][2]==[0.]*14 and rows[-1][2]==[1.]*14
 
 
+@pytest.mark.slow
 def test_zero_bridge_get_and_submit_share_same_private_owner(client,tmp_path):
     c=client;wait(c,lambda:c.ready and c.hello and c.latest and c.latest['receive_ns'])
     c.send('zero_capture');messages=[]
@@ -106,6 +111,7 @@ def test_zero_bridge_get_and_submit_share_same_private_owner(client,tmp_path):
     time.sleep(.05);assert c.latest['writes']==0
 
 
+@pytest.mark.slow
 def test_cancelled_save_keeps_source_and_retryable_prefix(client,tmp_path):
     c=client;wait(c,lambda:c.ready and c.latest and c.latest['seq']>10)
     before=Path(c.ready['workspace'])/'native/feedback.bin'
@@ -114,6 +120,7 @@ def test_cancelled_save_keeps_source_and_retryable_prefix(client,tmp_path):
     assert before.exists() and not (tmp_path/'cancelled').exists()
 
 
+@pytest.mark.slow
 def test_video_failure_does_not_publish_final_file(client,tmp_path,monkeypatch):
     c=client;wait(c,lambda:c.ready and c.latest and c.latest['seq']>20);c.close()
     saved=save_workspace(c,tmp_path/'saved_for_video')['output']
@@ -138,6 +145,7 @@ def test_video_failure_does_not_publish_final_file(client,tmp_path,monkeypatch):
     assert not cancelled.exists() and not cancelled.with_name('cancelled.pending.mp4').exists()
 
 
+@pytest.mark.slow
 def test_bridge_zero_reference_full_protocol_with_explicit_zero_gravity_fixture(tmp_path):
     from casbot_calib.shm_gui_client import RemoteClient
     from test_shm_fieldwork import ROOT,NATIVE

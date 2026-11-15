@@ -73,6 +73,7 @@ def test_time_mean_equalizes_duplicate_groups_and_refuses_jumps():
     assert mean.result() is None
 
 
+@pytest.mark.slow
 def test_only_zero_write_no_fault_start_mismatch_can_replan(tmp_path, fast_robot, smoke_recipe):
     if not NATIVE.exists():
         pytest.skip('Build SHM physics executables')
@@ -121,6 +122,7 @@ def test_only_zero_write_no_fault_start_mismatch_can_replan(tmp_path, fast_robot
     assert report['observation_time_origin_ns'] > report['first_shm_write_mono_ns']
 
 
+@pytest.mark.slow
 def test_fault_during_execution_ends_collection_without_replan(tmp_path, fast_robot, smoke_recipe):
     if not NATIVE.exists():
         pytest.skip('Build SHM physics executables')
@@ -151,6 +153,7 @@ def test_fault_during_execution_ends_collection_without_replan(tmp_path, fast_ro
         analyse_h1(plan_dir, tmp_path / 'fault', tmp_path / 'not_a_success')
 
 
+@pytest.mark.slow
 def test_native_observed_velocity_ends_and_records_trigger(tmp_path):
     if not NATIVE.exists():
         pytest.skip('Build SHM physics executables')

@@ -33,3 +33,5 @@ sdist.exclude = ["references/cad/**/*.stp"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = ["slow: full planning, physical SHM loops, pipeline integration, benchmarks and asset source scans"]
+addopts = "-m 'not slow'"

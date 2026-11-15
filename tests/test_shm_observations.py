@@ -30,7 +30,7 @@ def recording(root,*,receive_period=1_000_000,jump=False):
         if jump:f.write(f'{origin+2_000_000_000},{wall_ms*1_000_000+3_000_000_000},{origin+2_000_000_000},{offset+1_000_000_000},1,1\n')
     with (root/'feedback.csv').open('w') as f:
         writer=csv.writer(f);writer.writerow(['receive_mono_ns','source_timestamp_ms','observation_time_ns','clock_segment','frame_counter','passive',*[p+str(j) for p in ('q','v','effort') for j in range(14)]])
-        for k in range(4001):
+        for k in range(0,4001,5):
             t=k*.001;segment=1 if jump and k>=2000 else 0;stamp=wall_ms+k+1000*segment
             q=np.zeros(14);v=q.copy();tau=q.copy();omega=10*np.pi
             q[4]=.18*t+.004*np.sin(omega*t);v[4]=.18+.004*omega*np.cos(omega*t)

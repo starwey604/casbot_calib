@@ -22,6 +22,7 @@ def test_bernstein_motion_has_consistent_derivatives_and_valid_segment_bounds():
         assert np.max(tightened)<=np.max(abs(c.derivative(order).c))*(1+1e-8)
 
 
+@pytest.mark.slow
 def test_staged_recipes_cover_return_braking_and_exact_constant_velocity():
     with open('tests/fixtures/staged_recipe.yaml') as stream:config=yaml.safe_load(stream)
     trials=build_recipes(config)
