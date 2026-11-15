@@ -75,9 +75,31 @@ def write_static_diagnostics(means, engine, output, names):
     return summary
 
 
+def _approach_observation(row):
+    """Signed measured approach; zero excludes unknown stiction from fitting."""
+    signs = np.zeros(14)
+    stuck = np.zeros(14, dtype=bool)
+    pa = row.get('paired_approach')
+    if pa is None:
+        # Historical window files predate measured approach displacement.
+        conditions = row['conditions']
+        joints = conditions.get('approach_joints', conditions.get('active_joints', range(14)))
+        signs[list(joints)] = -float(np.sign(conditions.get('approach', 0)))
+    elif pa.get('available') and pa.get('observed_displacement_rad') is not None:
+        observed = np.asarray(pa['observed_displacement_rad'], dtype=float)
+        reference = np.asarray(pa['reference_displacement_rad'], dtype=float)
+        threshold = np.deg2rad(0.3)
+        planned = np.abs(reference) >= threshold
+        moved = np.abs(observed) >= threshold
+        valid = planned & moved & (np.sign(observed) == np.sign(reference))
+        signs[valid] = np.sign(observed[valid])
+        stuck = planned & ~moved
+    return signs, stuck
+
+
 def write_gravity_candidate(means, config, output, metadata):
     """Fit PSD rigid-body gravity parameters on paired windows and export candidate URDF."""
-    from .rigid_identification import fit_rigid, model_from_parameters, parameter_scales
+    from .rigid_identification import fit_rigid, model_from_parameters, parameter_scales, weighted_rmse
     from .dynamic_export import write_inertial_urdf, check_reload
 
     output = Path(output)
@@ -104,40 +126,28 @@ def write_gravity_candidate(means, config, output, metadata):
         if split == 'train':
             train_poses.append(pose)
         elif split == 'validation':
-            q_v = np.array([r['q'] for r in rows], dtype=float)
+            minus = next((r for r in rows if r['conditions']['approach'] == -1), None)
+            plus = next((r for r in rows if r['conditions']['approach'] == 1), None)
+            if minus is None or plus is None:
+                continue
+            pair = [minus, plus]
+            signs = [_approach_observation(r)[0] for r in pair]
+            valid = signs[0] * signs[1] < 0
+            q_v = np.array([r['q'] for r in pair], dtype=float)
             z_v = np.zeros_like(q_v)
             y_pose = engine.regressor_batch(q_v, z_v, z_v)['regressor'].mean(axis=0)
-            t_pose = np.mean([r['torque'] for r in rows], axis=0)
-            val_batches.append((y_pose, t_pose, pose))
+            t_pose = np.mean([r['torque'] for r in pair], axis=0)
+            val_batches.append((y_pose, t_pose, pose, valid))
 
     if not train_rows or not val_batches:
         raise ValueError('需要独立的训练与验证静态姿态集')
 
-    w_tr = len(train_rows)
     q_train = np.array([r['q'] for r in train_rows], dtype=float)
     tau_train = np.array([r['torque'] for r in train_rows], dtype=float)
-    s_train = np.zeros((w_tr, 14), dtype=float)
-    w_train = np.ones((w_tr, 14), dtype=float)
-    stuck_train = np.zeros((w_tr, 14), dtype=bool)
-    thresh = float(np.deg2rad(0.3))
-
-    for idx, row in enumerate(train_rows):
-        pa = row.get('paired_approach')
-        if pa and pa.get('available') and pa.get('observed_displacement_rad') is not None:
-            dq_obs = np.asarray(pa['observed_displacement_rad'], dtype=float)
-            dq_ref = np.asarray(pa['reference_displacement_rad'], dtype=float)
-            for j in range(14):
-                if abs(dq_obs[j]) >= thresh:
-                    s_train[idx, j] = float(np.sign(dq_obs[j]))
-                elif abs(dq_ref[j]) >= thresh:
-                    stuck_train[idx, j] = True
-                    s_train[idx, j] = 0.0
-                    w_train[idx, j] = 0.5
-        else:
-            app = float(row['conditions'].get('approach', 0))
-            act = row['conditions'].get('active_joints', range(14))
-            for j in act:
-                s_train[idx, j] = -float(np.sign(app))
+    observations = [_approach_observation(row) for row in train_rows]
+    s_train = np.array([item[0] for item in observations])
+    stuck_train = np.array([item[1] for item in observations])
+    w_train = (s_train != 0).astype(float)
 
     y_win = engine.regressor_batch(q_train, np.zeros_like(q_train), np.zeros_like(q_train))['regressor']
     extra_tr = (np.eye(14)[None, :, :] * s_train[:, :, None]).reshape(-1, 14)
@@ -147,6 +157,7 @@ def write_gravity_candidate(means, config, output, metadata):
 
     vy = np.array([r[0] for r in val_batches], dtype=float)
     vt = np.array([r[1] for r in val_batches], dtype=float)
+    vw = np.array([r[3] for r in val_batches], dtype=float)
 
     try:
         fit = fit_rigid(
@@ -157,8 +168,9 @@ def write_gravity_candidate(means, config, output, metadata):
             fixed_scales=fixed_scales,
             sample_weights=w_train.ravel(),
             robust_scale=0.1,
-            ridge_grid=[1e-5, 1e-4, 1e-3, 1e-2, 1e-1, 5e-1],
+            ridge_grid=[1e-5, 1e-4, 1e-3, 1e-2, 1e-1, 5e-1, 1.0, 10.0, 100.0],
             validation_data=(vy.reshape(-1, 140), vt.ravel()),
+            validation_weights=vw.ravel(),
         )
     except RuntimeError as error:
         raise ValueError('重力数值拟合不可用：' + str(error)) from error
@@ -168,10 +180,10 @@ def write_gravity_candidate(means, config, output, metadata):
     deadband_stuck_count = int(np.sum(stuck_train))
 
     prediction = vy @ np.asarray(fit['parameters'])
-    rmse = np.sqrt(np.mean((prediction - vt) ** 2, axis=0))
-    nominal_rmse = np.sqrt(np.mean((vy @ prior - vt) ** 2, axis=0))
-    overall_val_rmse = float(np.sqrt(np.mean((prediction - vt) ** 2)))
-    overall_nom_rmse = float(np.sqrt(np.mean((vy @ prior - vt) ** 2)))
+    rmse = weighted_rmse(prediction - vt, vw, axis=0)
+    nominal_rmse = weighted_rmse(vy @ prior - vt, vw, axis=0)
+    overall_val_rmse = float(weighted_rmse(prediction - vt, vw))
+    overall_nom_rmse = float(weighted_rmse(vy @ prior - vt, vw))
 
     active_set = set()
     for row in means:
@@ -195,7 +207,7 @@ def write_gravity_candidate(means, config, output, metadata):
         overall_val_rmse,
         axis_rows=[
             (metadata['joint_names'][j], float(nominal_rmse[j]), float(rmse[j]))
-            for j in sorted(active_set)
+            for j in sorted(active_set) if np.isfinite(rmse[j])
         ],
         reload_passed=bool(reload_report['passed']),
     )
@@ -232,8 +244,9 @@ def write_gravity_candidate(means, config, output, metadata):
         candidate_urdf=str(urdf_path.name),
         static_hysteresis_nm=static_hysteresis_nm,
         deadband_stuck_count=deadband_stuck_count,
-        validation_rmse_nm=rmse,
-        nominal_validation_rmse_nm=nominal_rmse,
+        validation_rmse_nm=[float(v) if np.isfinite(v) else None for v in rmse],
+        nominal_validation_rmse_nm=[float(v) if np.isfinite(v) else None for v in nominal_rmse],
+        validation_pairs_per_joint=vw.sum(axis=0).astype(int).tolist(),
         overall_validation_rmse_nm=overall_val_rmse,
         overall_nominal_validation_rmse_nm=overall_nom_rmse,
         paired_approach_half_spread_nm=np.max(spreads, axis=0),

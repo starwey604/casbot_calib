@@ -866,7 +866,7 @@ def _pair_arm_poses(poses, approach_offset_rad, geometry, margin, *, parallel_ar
     for r in poses_copy:
         if r.get('minimum_endpoint_distance_m') is None:
             q = np.asarray(r['q_rad'], dtype=float)
-            act = list(r['active_joints'])
+            act = list(r.get('approach_joints', r['active_joints']))
             nm = q.copy(); nm[act] -= approach_offset_rad
             np_ = q.copy(); np_[act] += approach_offset_rad
             pts3 = np.array([q, nm, np_], dtype=float)
@@ -888,8 +888,10 @@ def _pair_arm_poses(poses, approach_offset_rad, geometry, margin, *, parallel_ar
     def _pair_endpoints(left_row, right_row):
         q_pair = np.r_[np.asarray(left_row['q_rad'], dtype=float)[:7], np.asarray(right_row['q_rad'], dtype=float)[7:]]
         act = sorted(set(left_row['active_joints']) | set(right_row['active_joints']))
-        nm = q_pair.copy(); nm[act] -= approach_offset_rad
-        np_ = q_pair.copy(); np_[act] += approach_offset_rad
+        approach = sorted(set(left_row.get('approach_joints', left_row['active_joints'])) |
+                          set(right_row.get('approach_joints', right_row['active_joints'])))
+        nm = q_pair.copy(); nm[approach] -= approach_offset_rad
+        np_ = q_pair.copy(); np_[approach] += approach_offset_rad
         return q_pair, act, [q_pair, nm, np_]
 
     def _admissible(pair_min, left_row, right_row):
@@ -905,6 +907,8 @@ def _pair_arm_poses(poses, approach_offset_rad, geometry, margin, *, parallel_ar
             q_rad=q_pair.tolist(),
             family='paired_dual_arm',
             active_joints=act,
+            approach_joints=sorted(set(left_row.get('approach_joints', left_row['active_joints'])) |
+                                   set(right_row.get('approach_joints', right_row['active_joints']))),
             left_pose=deepcopy(left_row),
             right_pose=deepcopy(right_row),
             minimum_endpoint_distance_m=pair_min,
@@ -1043,16 +1047,18 @@ def _build_chained_static_motions(ordered_poses, settings, geometry, margin, *, 
         for k, row in enumerate(poses):
             q = np.asarray(row['q_rad'], dtype=float)
             active = list(row['active_joints'])
+            approach = list(row.get('approach_joints', active))
             split = row['split']
             pose_id = row['id']
-            near_minus = q.copy(); near_minus[active] -= approach_offset_rad
-            near_plus = q.copy(); near_plus[active] += approach_offset_rad
+            near_minus = q.copy(); near_minus[approach] -= approach_offset_rad
+            near_plus = q.copy(); near_plus[approach] += approach_offset_rad
             conditions_minus = dict(
                 batch=split,
                 pose=pose_id,
                 approach=-1,
                 active_arm_group=row['arm'],
                 active_joints=active,
+                approach_joints=approach,
                 candidate_id=pose_id,
                 target_q_rad=q.tolist(),
                 planned_measure_s=timing['measure_s'],
@@ -1262,6 +1268,10 @@ def build_full_static_spec(full_cfg, robot_config, engine, geometry):
         ),
     )
     rows, _ = candidate_pool(scan_cfg, engine)
+    # Full H1 measures every joint on the sampled arm, not only the joints
+    # varied to generate this target. Reverse stiction on all seven axes.
+    for row in rows:
+        row['approach_joints'] = list(range(7)) if row['arm'] == 'left' else list(range(7, 14))
     screen_candidates(rows, scan_cfg, geometry, margin)
 
     parallel_arms = bool(full_cfg.get('parallel_arms', True))
@@ -1792,21 +1802,24 @@ class H1GravityStage(Stage):
             gate_str = '通过（自动采纳）' if acc.get('accepted', True) else f'未通过（{acc.get("reason", "degraded")}，自动回退名义先验）'
             lines.extend([
                 f'- PSD 重力拟合：成功（矩阵秩 {report["fit"]["rank"]}/{report["fit"]["columns"]}，URDF 独立重载通过）',
-                f'- 留出集整体力矩 RMSE：名义 **{nom_all:.4f} Nm** → 候选 **{cal_all:.4f} Nm**',
+                f'- 有效正反配对留出集力矩 RMSE：名义 **{nom_all:.4f} Nm** → 候选 **{cal_all:.4f} Nm**',
                 f'- 防退化验收门禁：{gate_str}',
                 f'- 候选模型文件：`{stage_dir / "analysis" / report["candidate_urdf"]}`',
                 '',
                 '## 逐轴留出验证 RMSE（Nm）',
                 '',
-                '| SHM ID | 关节 | 名义模型 | 拟合候选 | 反向半差最大 |',
-                '| ---: | --- | ---: | ---: | ---: |',
+                '| SHM ID | 关节 | 有效配对数 | 名义模型 | 拟合候选 | 反向半差最大 |',
+                '| ---: | --- | ---: | ---: | ---: | ---: |',
             ])
             nom_vec = np.asarray(report['nominal_validation_rmse_nm'], dtype=float)
             cal_vec = np.asarray(report['validation_rmse_nm'], dtype=float)
             spread_vec = np.asarray(report['paired_approach_half_spread_nm'], dtype=float)
             for j in range(14):
                 label = ('左' if j < 7 else '右') + PARTS[j % 7]
-                lines.append(f'| {j + 12} | {label} (`{NAMES[j]}`) | {nom_vec[j]:.4f} | {cal_vec[j]:.4f} | {spread_vec[j]:.4f} |')
+                count = report['validation_pairs_per_joint'][j]
+                nom = f'{nom_vec[j]:.4f}' if count else '—'
+                cal = f'{cal_vec[j]:.4f}' if count else '—'
+                lines.append(f'| {j + 12} | {label} (`{NAMES[j]}`) | {count} | {nom} | {cal} | {spread_vec[j]:.4f} |')
         elif m_stage_has_trials := bool(plan_meta['trials']):
             if m_stage_has_trials:
                 lines.append(f'- PSD 重力拟合：未生成（{report.get("analysis_unavailable_reason", "无")}）')

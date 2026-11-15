@@ -6,7 +6,7 @@ import numpy as np
 import pytest
 
 from casbot_calib.dual_model import nominal_dual_arm
-from casbot_calib.field_gravity import write_gravity_candidate
+from casbot_calib.field_gravity import _approach_observation, write_gravity_candidate
 from casbot_calib.model_runtime import model_for
 from casbot_calib.pipeline.robot import load_robot_config
 from casbot_calib.rigid_identification import fit_rigid, model_from_parameters
@@ -74,7 +74,6 @@ def test_h1_full_offline_planning_benchmark(tmp_path):
         f"trials={len(meta['trials'])}, effort_rows={len(ref_bundle['effort'])}"
     )
 
-    assert wall_s < 8.0, f'H1 full planning took {wall_s:.3f}s (>= 8.0s)'
     assert 350.0 <= duration_s <= 450.0, f'H1 full duration {duration_s:.2f}s outside [350, 450]s'
     assert ref_bytes < int(1.8 * 1024 * 1024), f'reference.json is {ref_mb:.3f} MB (>= 1.8 MB)'
     assert gate['passed'] is True
@@ -94,6 +93,18 @@ def test_h1_full_offline_planning_benchmark(tmp_path):
     for t in meta['trials']:
         pose_id = t['conditions']['pose']
         assert '__' in pose_id or pose_id.startswith(('left_', 'right_'))
+
+    for motion in meta['static_motions']:
+        conditions = motion['conditions']
+        arm = conditions['active_arm_group']
+        expected = list(range(14)) if arm == 'both' else list(range(7)) if arm == 'left' else list(range(7, 14))
+        assert conditions['approach_joints'] == expected
+        k = motion['labels'].index('paired_approach')
+        displacement = np.array(motion['states'][k + 1][0]) - motion['states'][k][0]
+        wanted = np.zeros(14)
+        wanted[expected] = -conditions['approach'] * np.deg2rad(5.0)
+        np.testing.assert_allclose(displacement, wanted, atol=1e-14)
+    assert wall_s < 8.0, f'H1 full planning took {wall_s:.3f}s (>= 8.0s)'
 
 
 def test_h1_small_and_smoke_offline_planning_benchmarks(tmp_path):
@@ -315,7 +326,8 @@ def test_vectorized_analyse_h1_on_binary_capture(tmp_path):
     assert all(w['available'] and w['paired_approach']['available'] for w in windows)
 
 
-def test_paired_hysteresis_separation_beats_naive_averaging_and_handles_deadband(tmp_path):
+@pytest.mark.parametrize('undithered', [False, True])
+def test_paired_hysteresis_separation_beats_naive_averaging_and_handles_deadband(tmp_path, undithered):
     robot_cfg = load_robot_config()
     nominal, source = model_for(robot_cfg)
     model = nominal.model
@@ -377,6 +389,12 @@ def test_paired_hysteresis_separation_beats_naive_averaging_and_handles_deadband
 
                 noise = rng.normal(0.0, 0.004, size=14) if split == 'train' else np.zeros(14)
                 tau_win = true_engine.gravity(q_win) + s_phys * c_true + noise
+                # Reproduce history-dependent pitch bias on unapproached axes,
+                # with opposite biases in train and validation.
+                if undithered and ((split == 'train' and 1 <= p <= 20) or (split == 'validation' and p < 6)):
+                    dq_ref[[0, 7]] = 0.0
+                    dq_obs[[0, 7]] = 0.0
+                    tau_win[[0, 7]] = true_engine.gravity(q_win)[[0, 7]] + (-0.9 if split == 'train' else 0.9)
 
                 means.append(dict(
                     name=f'static_{split}_{p:02d}_{"minus" if sign < 0 else "plus"}',
@@ -456,6 +474,8 @@ def test_paired_hysteresis_separation_beats_naive_averaging_and_handles_deadband
     )
 
     assert res['passed'] is True
+    assert res['validation_pairs_per_joint'][0] == (4 if undithered else 10)
+    assert res['validation_pairs_per_joint'][7] == (4 if undithered else 10)
     assert res['deadband_stuck_count'] == 2
     assert cal_json['deadband_stuck_count'] == 2
     assert len(cal_json['static_hysteresis_nm']) == 14
@@ -463,3 +483,54 @@ def test_paired_hysteresis_separation_beats_naive_averaging_and_handles_deadband
     assert rmse_sep_drop < 0.03, f'Pure gravity holdout RMSE with dropouts {rmse_sep_drop:.5f} Nm >= 0.03 Nm'
     assert rmse_sep_drop < 0.25 * rmse_naive
     np.testing.assert_allclose(hyst_est, c_true, atol=0.04)
+
+
+def test_approach_observation_excludes_unmoved_wrong_direction_and_missing_feedback():
+    row = dict(conditions=dict(approach=-1, active_joints=[0, 1, 2, 3]), paired_approach=dict(
+        available=True,
+        reference_displacement_rad=np.deg2rad([5, 5, 5, 0, 0] + [0] * 9).tolist(),
+        observed_displacement_rad=np.deg2rad([4, 0.05, -4, 0, 1] + [0] * 9).tolist(),
+    ))
+    signs, stuck = _approach_observation(row)
+    np.testing.assert_array_equal(signs, [1] + [0] * 13)
+    assert np.flatnonzero(stuck).tolist() == [1]
+    row['paired_approach']['available'] = False
+    assert not _approach_observation(row)[0].any()
+    # Older records still use their original planned-direction contract.
+    del row['paired_approach']
+    np.testing.assert_array_equal(_approach_observation(row)[0], [1] * 4 + [0] * 10)
+
+
+def test_validation_pairs_require_both_opposite_observed_approaches(tmp_path, monkeypatch):
+    from casbot_calib import rigid_identification
+    robot_cfg = load_robot_config()
+    engine, source = model_for(robot_cfg)
+    q = ready_position()
+    means = []
+    for split in ('train', 'validation'):
+        for pose in range(2):
+            for approach in (-1, 1):
+                row = dict(name=f'{split}_{pose}_{approach}', q=q.tolist(), torque=engine.gravity(q).tolist(),
+                           conditions=dict(batch=split, pose=pose, approach=approach, active_joints=list(range(14))),
+                           paired_approach=dict(available=True,
+                               reference_displacement_rad=np.full(14, -approach * 0.08).tolist(),
+                               observed_displacement_rad=np.full(14, -approach * 0.06).tolist()))
+                if split == 'validation' and pose == 0 and approach == 1:
+                    continue  # A single window must not become a gravity validation pair.
+                if split == 'validation' and pose == 1 and approach == 1:
+                    row['paired_approach']['observed_displacement_rad'][0] = 0.06
+                means.append(row)
+
+    fit_rigid = rigid_identification.fit_rigid
+
+    def check_weights(*args, **kwargs):
+        np.testing.assert_array_equal(kwargs['validation_weights'], [0] + [1] * 13)
+        return fit_rigid(*args, **kwargs)
+
+    monkeypatch.setattr(rigid_identification, 'fit_rigid', check_weights)
+    result = write_gravity_candidate(means, robot_cfg, tmp_path,
+                                     dict(joint_names=list(NAMES), source_model_sha256=source['sha256']))
+    assert result['validation_poses'] == [1]
+    assert result['validation_pairs_per_joint'] == [0] + [1] * 13
+    assert result['validation_rmse_nm'][0] is None
+    assert np.isfinite(result['overall_validation_rmse_nm'])

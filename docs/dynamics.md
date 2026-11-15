@@ -54,7 +54,7 @@ bash calib/dynamics.sh --reanalyse artifacts/calib/DVT2_01/20261115_103000
 
 只改真正需要调的配置文件（单阶段临时换配置可传 `--config path/to/xxx.yaml`）：
 - 机器人公共参数：[dvt2.yaml](../configs/robot/dvt2.yaml)（`kp`、`kd`、`gravity_world`、力矩上限等）。
-- H1 静态重力：[h1.yaml](../configs/dynamics/h1.yaml)（`small` 准备位附近快速验证 / `full` 双臂同步 D 最优 2-opt 直连正反 5° 接近 + 实测角配对滞回分离 / `smoke` 单轴冒烟）。
+- H1 静态重力：[h1.yaml](../configs/dynamics/h1.yaml)（`small` 准备位附近快速验证 / `full` 双臂同步 D 最优 2-opt 直连，每个采集臂七轴均做正反 5° 接近 + 实测角配对滞回分离 / `smoke` 单轴冒烟）。
 - H2 关节摩擦：[h2.yaml](../configs/dynamics/h2.yaml)（双臂镜像分组对数速度连续扫掠 + C++ 同构 Stribeck 拟合与零偏诊断，自动扣除 H1 重力）。
 - H3 惯量激励：[h3.yaml](../configs/dynamics/h3.yaml)（近远端带宽分层多正弦 + CMA-ES 相位寻优 + 平滑重力摩擦前馈 + 冻结 H1 重力子空间的 140 维刚体与 14 轴转子惯量联合锥拟合）。
 
@@ -69,4 +69,5 @@ bash calib/dynamics.sh --reanalyse artifacts/calib/DVT2_01/20261115_103000
   - `calibration_bundle.json`：记录重力、摩擦、连杆惯量与转子惯量各自采纳的阶段来源（若某阶段留出验证未改善或主激励轴显著退化，自动回退至未退化的上游先验参数）。
 - **分阶段详细报告与原始数据**：
   - `h1/report.md`、`h2/report.md`、`h3/report.md`：各阶段独立验收报告（重分析时旧 `analysis/` 自动归档为 `analysis.previous_<ns>`）。
+  - H1 留出 RMSE 按逐轴有效正反配对计算；未逼近、卡住或方向异常的分量自动排除。逐轴表显示有效配对数，无有效配对显示 `—`，原始窗口仍完整保留。
   - `<阶段>/capture/`：完整 1kHz 二进制（`feedback.bin`、`commands.bin`）与事件记录。

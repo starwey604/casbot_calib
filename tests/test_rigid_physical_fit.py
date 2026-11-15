@@ -51,3 +51,36 @@ def test_joint_fit_keeps_auxiliary_parameters_bounded_and_gravity_combination_fr
     np.testing.assert_allclose(result['auxiliary_parameters'],z,atol=1e-7)
     assert len(result['parameters'])==10 and result['columns']==12
     assert abs(result['parameters'][1]-t[1])<1e-9
+
+
+def test_validation_weights_preserve_joint_rmse_and_ignore_excluded_torques():
+    prior, _ = box_parameters(1., [.2, .1, .08], [.03, -.04, .11])
+    truth = prior * 1.15
+    rng = np.random.default_rng(42)
+    train = rng.normal(size=(84, 10))
+    validation = rng.normal(size=(42, 10))
+    target = validation @ truth
+    weights = np.ones((3, 14))
+    weights[:, 0] = 0
+    weights[0, 7] = 0
+    results = []
+    for bias in (0.0, 10.0):
+        measured = target + (1 - weights.ravel()) * bias
+        results.append(fit_rigid(train, train @ truth, prior, robust_scale=None,
+                                 ridge_grid=[0.01, 10.0], validation_data=(validation, measured),
+                                 validation_weights=weights))
+    np.testing.assert_allclose(results[0]['parameters'], results[1]['parameters'])
+    assert results[0]['ridge_scan'] == results[1]['ridge_scan']
+    result = results[1]
+    residual = (validation @ np.array(result['parameters']) - target).reshape(3, 14)
+    expected = np.sqrt(np.sum(residual ** 2 * weights) / weights.sum())
+    assert result['validation_rmse_nm'] == pytest.approx(expected)
+    prior_residual = (validation @ prior - target).reshape(3, 14)
+    covered = weights.sum(axis=0) > 0
+    joint_rmse = np.sqrt(np.sum(residual ** 2 * weights, axis=0)[covered] / weights.sum(axis=0)[covered])
+    prior_rmse = np.sqrt(np.sum(prior_residual ** 2 * weights, axis=0)[covered] / weights.sum(axis=0)[covered])
+    selected = next(r for r in result['ridge_scan'] if r['ridge'] == result['scaled_prior_ridge'])
+    assert selected['max_joint_degradation_nm'] == pytest.approx(np.max(joint_rmse - prior_rmse))
+    with pytest.raises(ValueError, match='validation weights'):
+        fit_rigid(train, train @ truth, prior, validation_data=(validation, target),
+                  validation_weights=np.zeros(42))

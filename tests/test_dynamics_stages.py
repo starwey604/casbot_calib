@@ -100,18 +100,15 @@ def test_three_stage_closed_loop_with_physical_shm_mock(tmp_path):
     nom_eng, _ = model_for(robot_cfg_base)
 
     # Construct a physically valid perturbed ground-truth plant:
-    # - Forearm (joint 3) mass x2.5 -> shifts static gravity on joint 0 (H1).
+    # - Shoulder pitch COM x +8 cm -> near-constant gravity offset observable
+    #   in this single-axis, single-training-pose small H1 fixture.
     # - Shoulder pitch (joint 0) COM inertia +0.12*I_3 kg*m^2 -> shifts rotational inertia without altering gravity (H3).
     # - Joint 0 dry + viscous friction (b=0.8, fc=0.25, fs=0.35) with coupled stiction (H2).
     truth_model = nom_eng.model
     truth_model.gravity_world = np.asarray(robot_cfg_base['gravity_world'], dtype=float)
     joints = truth_model.joints
-    b3 = joints[3].body
-    b3.mass = float(b3.mass * 2.5)
-    b3.inertia_com = np.asarray(b3.inertia_com, dtype=float) * 2.5
-    joints[3].body = b3
-
     b0 = joints[0].body
+    b0.com = np.asarray(b0.com, dtype=float) + [0.08, 0.0, 0.0]
     b0.inertia_com = np.asarray(b0.inertia_com, dtype=float) + np.eye(3) * 0.12
     joints[0].body = b0
     truth_model.joints = joints
@@ -146,7 +143,8 @@ def test_three_stage_closed_loop_with_physical_shm_mock(tmp_path):
         small=dict(
             joints=['left_shoulder_pitch_joint'],
             target_offset_deg=4.5,
-            approach_offset_deg=1.0,
+            # Match the real recipe: 1 degree does not reverse this plant's stiction.
+            approach_offset_deg=5.0,
             timing=dict(
                 initial_hold_s=0.05,
                 minimum_transition_s=0.2,
@@ -245,6 +243,7 @@ def test_three_stage_closed_loop_with_physical_shm_mock(tmp_path):
 
     # 1. H1 static gravity improved overall held-out gravity prediction significantly.
     assert h1_rep['fit_succeeded']
+    assert h1_rep['validation_pairs_per_joint'] == [1] + [0] * 13
     assert h1_rep['overall_validation_rmse_nm'] < 0.35 * h1_rep['overall_nominal_validation_rmse_nm']
 
     # 2. H2 automatically chained session_h1 and recovered viscous & Coulomb friction on joint 0.

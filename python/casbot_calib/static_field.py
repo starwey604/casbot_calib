@@ -103,9 +103,11 @@ def paired_motions(row, config, *, split):
     home = np.asarray(config['home_rad']); q = np.asarray(row['q_rad']); timing = config['timing']
     result = []
     for sign in (-1, 1):
-        near = q.copy(); near[row['active_joints']] += sign * config['approach_offset_rad']
+        near = q.copy(); near[row.get('approach_joints', row['active_joints'])] += sign * config['approach_offset_rad']
         conditions = dict(batch=split, pose=row['id'], approach=sign, active_arm_group=row['arm'],
             candidate_id=row['id'], target_q_rad=q.tolist(), planned_measure_s=timing['measure_s'])
+        if 'approach_joints' in row:
+            conditions['approach_joints'] = list(row['approach_joints'])
         motion = Motion(f"static_{split}_{row['id']}_{'minus' if sign < 0 else 'plus'}", 'gravity', home, conditions)
         motion.add(timing['initial_hold_s'], home, label='initial_hold')
         _move(motion, near, timing['minimum_transition_s'], config['planning_envelope'], 'approach')
@@ -125,7 +127,7 @@ def screen_candidates(rows, config, profile, margin):
     for row in rows:
         q = np.asarray(row['q_rad']); near = []
         for sign in (-1, 1):
-            x = q.copy(); x[row['active_joints']] += sign * config['approach_offset_rad']; near.append(x)
+            x = q.copy(); x[row.get('approach_joints', row['active_joints'])] += sign * config['approach_offset_rad']; near.append(x)
         endpoints = np.array([q, *near])
         if np.array_equal(q, home):
             row.update(status='baseline_only', reason='neutral target not assigned to both data roles')

@@ -70,6 +70,20 @@ def test_paired_trials_hold_other_arm_have_true_measure_windows_and_continuous_b
             for k in (1, 2, 3): np.testing.assert_allclose(curve(point, nu=k), 0., atol=1e-10)
 
 
+def test_explicit_full_arm_approach_keeps_target_axes_and_other_arm_unchanged(config):
+    engine, _ = nominal_dual_arm()
+    rows, _ = candidate_pool(config, engine)
+    row = next(r for r in rows if r['family'] == 'single_axis' and r['offsets_deg'] == [-75])
+    row['approach_joints'] = list(range(7))
+    assert len(row['active_joints']) == 1
+    for motion, sign in zip(paired_motions(row, config, split='train'), (-1, 1)):
+        k = motion.labels.index('paired_approach')
+        displacement = motion.states[k + 1][0] - motion.states[k][0]
+        np.testing.assert_allclose(displacement[:7], -sign * config['approach_offset_rad'])
+        np.testing.assert_array_equal(displacement[7:], 0.0)
+        np.testing.assert_allclose(motion.states[k + 1][0], row['q_rad'])
+
+
 def test_static_information_does_not_claim_full_rigid_observability(config):
     engine, _ = nominal_dual_arm(); rng = np.random.default_rng(91)
     q = np.asarray(config['home_rad']) + rng.uniform(-.1, .1, (16, 14)); zero = np.zeros_like(q)

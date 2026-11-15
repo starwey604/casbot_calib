@@ -108,6 +108,16 @@ def _parse_validation_data(validation_data, rigid_count, full_count):
     return y_val, target_val, use_full
 
 
+def weighted_rmse(residual, weights, axis=None):
+    """RMSE over usable observations; an empty axis has no estimate (NaN)."""
+    squared = np.asarray(residual, dtype=float) ** 2
+    if weights is None:
+        return np.sqrt(np.mean(squared, axis=axis))
+    count = np.sum(weights, axis=axis)
+    total = np.sum(squared * weights, axis=axis)
+    return np.sqrt(np.divide(total, count, out=np.full_like(total, np.nan), where=count > 0))
+
+
 def fit_rigid(
     regressor,
     target,
@@ -121,6 +131,7 @@ def fit_rigid(
     ridge=1e-12,
     ridge_grid=None,
     validation_data=None,
+    validation_weights=None,
     physical_length_scale=1.0,
     lift_residuals=False,
     fixed_scales=None,
@@ -217,6 +228,13 @@ def fit_rigid(
         if validation_data is not None
         else None
     )
+    val_weights = None
+    if validation_weights is not None:
+        val_weights = np.asarray(validation_weights, dtype=float).ravel()
+        if (parsed_val is None or val_weights.shape != parsed_val[1].shape
+                or not np.isfinite(val_weights).all() or np.any(val_weights < 0)
+                or not np.any(val_weights > 0)):
+            raise ValueError('Invalid validation weights')
 
     a = y * scale / torque_scale
     rhs = (target - y @ prior) / torque_scale
@@ -349,7 +367,8 @@ def fit_rigid(
         prior_eff = prior if use_full else prior[:rigid_count]
         res_prior = y_val @ prior_eff - target_val
         prior_joint_rmse = (
-            np.sqrt(np.mean(res_prior.reshape(-1, 14) ** 2, axis=0))
+            weighted_rmse(res_prior.reshape(-1, 14),
+                          None if val_weights is None else val_weights.reshape(-1, 14), axis=0)
             if len(target_val) % 14 == 0
             else None
         )
@@ -370,12 +389,13 @@ def fit_rigid(
                 continue
             theta_eff = theta_cand if use_full else theta_cand[:rigid_count]
             res_val = y_val @ theta_eff - target_val
-            val_rmse = float(np.sqrt(np.mean(res_val ** 2)))
+            val_rmse = float(weighted_rmse(res_val, val_weights))
             max_deg = 0.0
             non_degrading = True
             if prior_joint_rmse is not None:
-                joint_rmse = np.sqrt(np.mean(res_val.reshape(-1, 14) ** 2, axis=0))
-                max_deg = float(np.max(joint_rmse - prior_joint_rmse))
+                joint_rmse = weighted_rmse(res_val.reshape(-1, 14),
+                                          None if val_weights is None else val_weights.reshape(-1, 14), axis=0)
+                max_deg = float(np.nanmax(joint_rmse - prior_joint_rmse))
                 non_degrading = bool(max_deg <= 0.05)
             entry = dict(
                 ridge=r_val,
@@ -426,7 +446,7 @@ def fit_rigid(
     if parsed_val is not None:
         y_val, target_val, use_full = parsed_val
         theta_eff = theta if use_full else theta[:rigid_count]
-        result['validation_rmse_nm'] = float(np.sqrt(np.mean((y_val @ theta_eff - target_val) ** 2)))
+        result['validation_rmse_nm'] = float(weighted_rmse(y_val @ theta_eff - target_val, val_weights))
     if ridge_scan is not None:
         result['ridge_scan'] = ridge_scan
     return result
