@@ -285,6 +285,7 @@ def test_observation_reader_binary_matches_csv_zero_error(tmp_path, fault_tail):
 
     arr_bin = ObservationReader(bin_only).arrays()
     arr_csv = ObservationReader(csv_only).arrays()
+    assert all(type(value) is np.ndarray for value in arr_bin.values())
 
     for key in ('index', 'receive_ns', 'observation_time_ns', 'source_timestamp_ms', 'clock_segment', 'frame_counter', 'phase', 'time_ambiguous'):
         np.testing.assert_array_equal(arr_bin[key], arr_csv[key], err_msg=f'Mismatch in {key}')
