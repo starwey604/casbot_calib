@@ -116,17 +116,10 @@ CHECK_ASSETS
 )
   if [[ $asset_state == sync ]]; then
     echo '同步默认 DVT2 标定模型包资产（collision.npz + visual_meshes）...'
-    printf -v unpack_cmd 'bash -s -- %q %q' "$destination" "$bundle_rel"
+    printf -v unpack_cmd 'export GIT_LFS_SKIP_SMUDGE=1 PATH="$HOME/.local/bin:$PATH" && git -C %q lfs install --local --skip-smudge >/dev/null && tar -C %q -xf - && git -C %q add -- %q' \
+      "$destination" "$destination" "$destination" "$bundle_rel"
     tar -C "$repo" -cf - "$bundle_rel/collision.npz" "$bundle_rel/visual_meshes" \
-      | ssh "${ssh_options[@]}" "$host" "$unpack_cmd" <<'UNPACK_ASSETS'
-set -euo pipefail
-export GIT_LFS_SKIP_SMUDGE=1
-export PATH="$HOME/.local/bin:$PATH"
-dst=$1; rel=$2
-git -C "$dst" lfs install --local --skip-smudge >/dev/null
-tar -C "$dst" -xf -
-git -C "$dst" add -- "$rel"
-UNPACK_ASSETS
+      | ssh "${ssh_options[@]}" "$host" "$unpack_cmd"
   elif [[ $asset_state == no_git_lfs ]]; then
     echo '提示：远端未检测到 git-lfs，默认模型包仍为 LFS 指针；安装 git-lfs 后重跑 deploy_git.sh 即可自动物化。' >&2
   fi
@@ -158,14 +151,10 @@ CHECK_WHEELS
     done
     if ((${#missing_wheels[@]} > 0)); then
       echo "同步离线 wheelhouse（新增 ${#missing_wheels[@]} 个 .whl）至 $destination/$wheelhouse_rel ..."
-      printf -v unpack_wheels_cmd 'bash -s -- %q' "$destination/$wheelhouse_rel"
+      printf -v unpack_wheels_cmd 'mkdir -p %q && tar -C %q -xf -' \
+        "$destination/$wheelhouse_rel" "$destination/$wheelhouse_rel"
       tar -C "$repo/$wheelhouse_rel" -cf - "${missing_wheels[@]}" \
-        | ssh "${ssh_options[@]}" "$host" "$unpack_wheels_cmd" <<'UNPACK_WHEELS'
-set -euo pipefail
-dir=$1
-mkdir -p "$dir"
-tar -C "$dir" -xf -
-UNPACK_WHEELS
+        | ssh "${ssh_options[@]}" "$host" "$unpack_wheels_cmd"
     fi
   fi
 fi

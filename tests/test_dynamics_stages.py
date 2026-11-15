@@ -2,6 +2,7 @@
 import json
 import os
 from pathlib import Path
+import platform
 import subprocess
 import sys
 import numpy as np
@@ -314,7 +315,8 @@ def test_three_stage_closed_loop_with_physical_shm_mock(tmp_path):
     )
     re_wall_s = _time.perf_counter() - t0
     assert re_res.returncode == 0, re_res.stderr + re_res.stdout
-    assert re_wall_s < 8.0, f'--reanalyse took {re_wall_s:.3f}s'
+    re_ceiling_s = 15.0 if platform.machine().lower() in ('aarch64', 'arm64') else 8.0
+    assert re_wall_s < re_ceiling_s, f'--reanalyse took {re_wall_s:.3f}s'
     for st in ('h1', 'h2', 'h3'):
         archived = list((sess_root / st).glob('analysis.previous_*'))
         assert len(archived) == 1

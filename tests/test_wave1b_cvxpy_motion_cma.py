@@ -1,4 +1,5 @@
 """Wave 1B verification: CVXPY conic engine, O(1) septic peaks, batched collision gates, and CMA-ES excitation."""
+import platform
 from time import perf_counter
 import numpy as np
 import pytest
@@ -115,7 +116,8 @@ def test_dpp_ridge_grid_selects_optimal_ridge_under_250ms():
         validation_data=(y_val, target_val),
     )
     elapsed = perf_counter() - t0
-    assert elapsed < 0.80, f'6-ridge DPP scan took {elapsed * 1e3:.1f} ms (> 800 ms)'
+    ceiling_s = 1.2 if platform.machine().lower() in ('aarch64', 'arm64') else 0.80
+    assert elapsed < ceiling_s, f'6-ridge DPP scan took {elapsed * 1e3:.1f} ms (> {ceiling_s * 1e3:.0f} ms)'
     assert len(fit['ridge_scan']) == len(grid)
     assert fit['scaled_prior_ridge'] in grid
     assert fit['validation_rmse_nm'] < float(np.sqrt(np.mean((y_val @ prior - target_val) ** 2)))

@@ -20,14 +20,23 @@ ROOT = Path(__file__).resolve().parents[1]
 def _default_native_dir() -> Path:
     if 'CASBOT_SHM_TEST_BIN' in os.environ:
         return Path(os.environ['CASBOT_SHM_TEST_BIN'])
-    for cand in (
-        ROOT / 'build/shm-core/cpp/src/shm',
-        ROOT / 'install/shm-core/bin',
-        ROOT / 'build/humble/cpp/src/shm',
-    ):
-        if (cand / 'shm_executor').exists():
-            return cand
-    return ROOT / 'build/shm-core/cpp/src/shm'
+    build_cands = [
+        cand for cand in (
+            ROOT / 'build/shm-python/cpp/src/shm',
+            ROOT / 'build/shm-core/cpp/src/shm',
+            ROOT / 'build/humble/cpp/src/shm',
+        )
+        if (cand / 'shm_executor').exists()
+    ]
+    if build_cands:
+        # Prefer directories with test fixtures and the most recently compiled shm_executor.
+        return max(
+            build_cands,
+            key=lambda p: ((p / 'shm_field_fixture').exists(), (p / 'shm_executor').stat().st_mtime_ns),
+        )
+    if (ROOT / 'install/shm-core/bin/shm_executor').exists():
+        return ROOT / 'install/shm-core/bin'
+    return ROOT / 'build/shm-python/cpp/src/shm'
 
 
 NATIVE = _default_native_dir()

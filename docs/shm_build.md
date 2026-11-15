@@ -2,21 +2,26 @@
 
 所有构建产物统一安装到仓库内的 `install/shm-core`（跨架构必须在目标机原生编译，不能把 x86_64 二进制复制到 Orin）。
 
-## 1. 通过 SSH 从本机同步到 Orin
+## 1. 一键部署到 Orin
 
 直连网络配置（本机 `172.16.0.20/24`，Orin `172.16.0.10`）：
 
 ```bash
-bash scripts/jetson_network.sh up <本机有线网卡名>
+# 一键完成：自动探测 USB 网卡并接管 DHCP 配网 -> 同步 Orin 时钟 -> 同步源码/默认模型/离线轮子 -> 远端 calib/setup.sh 编译与预检
+bash scripts/shm/deploy_orin.sh
 ```
 
-在本机仓库根目录将当前已提交分支同步到 Orin（默认 `/home/nvidia/casbot_calib_shm`）：
+如需分步执行：
 
 ```bash
+# 仅配置本机到 Orin 的有线直连（自动探测 USB 网卡，也可显式指定网卡名）
+bash scripts/jetson_network.sh up
+
+# 仅通过 SSH 反向隧道同步已提交源码、默认 DVT2 模型包与离线 wheelhouse
 bash scripts/shm/deploy_git.sh --host nvidia@172.16.0.10
 ```
 
-- 通过 SSH 反向隧道与本机临时只读 `git daemon` 克隆或快进更新，不经过外网或 GitHub。
+- 源码同步通过本机临时只读 `git daemon` 完成，不经过外网或 GitHub。
 - 若远端默认 DVT2 标定模型包（`collision.npz` 与 `visual_meshes/*.stl`）仍为 LFS 指针且远端已装 `git-lfs`，脚本会自动传输并物化这组模型资产，同时保持远端 `git status` 干净（仅传源码可加 `--no-assets`）。
 
 ## 2. Orin 一键环境初始化与编译（`calib/setup.sh`）

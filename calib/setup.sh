@@ -7,7 +7,14 @@ wheelhouse=''
 dependency_prefix=/opt/ros/humble
 check_only=0
 mem_kb=$(awk '/^MemTotal:/ {print $2}' /proc/meminfo 2>/dev/null || echo 0)
-jobs=$(( mem_kb >= 8000000 ? 2 : 1 ))
+cpus=$(nproc 2>/dev/null || echo 1)
+if (( mem_kb >= 16000000 )); then
+  jobs=$(( cpus >= 4 ? 4 : cpus ))
+elif (( mem_kb >= 8000000 )); then
+  jobs=$(( cpus >= 2 ? 2 : 1 ))
+else
+  jobs=1
+fi
 
 usage() {
   cat <<'EOF'
@@ -111,6 +118,8 @@ if ((!deps_satisfied)); then
 fi
 
 cd "$repo"
+# Clean legacy standalone C++ build directory so test runners do not pick stale binaries over build/shm-python.
+rm -rf "$repo/build/shm-core"
 env -u PYTHONPATH -u LD_LIBRARY_PATH "$venv/bin/python" scripts/shm/link_math_bindings.py --dependency-prefix "$dependency_prefix"
 
 env -u PYTHONPATH -u LD_LIBRARY_PATH CMAKE_BUILD_PARALLEL_LEVEL="$jobs" "$venv/bin/python" -m pip install \

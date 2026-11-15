@@ -126,7 +126,7 @@ def test_video_failure_does_not_publish_final_file(client,tmp_path,monkeypatch):
     class FakeEncoder:
         def send(self,*args):pass
         def close(self):pass
-    import imageio_ffmpeg
+    imageio_ffmpeg = pytest.importorskip('imageio_ffmpeg')
     monkeypatch.setattr(view,'open_view',lambda *a,**kw:FakeView())
     monkeypatch.setattr(view,'frame',lambda *a,**kw:None)
     monkeypatch.setattr(imageio_ffmpeg,'write_frames',lambda *a,**kw:FakeEncoder())

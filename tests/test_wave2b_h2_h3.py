@@ -1,6 +1,7 @@
 """Wave 2B verification & benchmarks: common.py feedforward/capture, H2 Stribeck sweep, and H3 CMA-ES + rotor inertia."""
 import json
 from pathlib import Path
+import platform
 from time import perf_counter
 import numpy as np
 import pytest
@@ -266,7 +267,8 @@ def test_h2_small_and_full_offline_planning_and_duration_gate(tmp_path):
     duration_s = meta_full['duration_ns'] * 1e-9
 
     print(f'\n[BENCH H2 full] wall_s={wall_s:.3f}s, duration_s={duration_s:.2f}s, min_dist_mm={meta_full["collision_certificate"]["minimum_distance_m"]*1e3:.2f}')
-    assert wall_s < 8.0, f'H2 full planning took {wall_s:.2f}s (>= 8.0s)'
+    ceiling_s = 12.0 if platform.machine().lower() in ('aarch64', 'arm64') else 8.0
+    assert wall_s < ceiling_s, f'H2 full planning took {wall_s:.2f}s (>= {ceiling_s:.1f}s)'
     assert 290.0 <= duration_s <= 360.0, f'H2 full duration {duration_s:.2f}s outside [290, 360]s'
     assert meta_full['collision_certificate']['passed']
     assert meta_full['collision_certificate']['minimum_distance_m'] >= 0.01

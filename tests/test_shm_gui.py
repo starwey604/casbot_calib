@@ -23,7 +23,7 @@ def test_input_ranges_reject_without_clamping():
 
 
 def test_preview_widgets_without_graphics_or_control(tmp_path):
-    from imgui_bundle import imgui
+    imgui = pytest.importorskip('imgui_bundle').imgui
     from casbot_calib.fieldwork_style import setup_gui
     args=parser().parse_args(['--preview']);root=tmp_path/'ui';root.mkdir()
     context=imgui.create_context();imgui.get_io().set_ini_filename(str(tmp_path/'window.ini'))
