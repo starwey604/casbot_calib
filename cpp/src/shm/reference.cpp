@@ -11,6 +11,20 @@ JointVector casteljau(std::array<JointVector,8> coefficients,int degree,double u
     coefficients[i][j]=(1-u)*coefficients[i][j]+u*coefficients[i+1][j];
   return coefficients[0];
 }
+bool within_bernstein_bounds(const std::array<double,8>& ctrl,int degree,int depth,double low,double high) {
+  bool ok=true;
+  for(int i=0;i<=degree;++i)if(!(ctrl[i]>=low&&ctrl[i]<=high)){ok=false;break;}
+  if(ok)return true;
+  if(depth<=0)return false;
+  std::array<double,8> work=ctrl,left{},right{};
+  left[0]=work[0];right[degree]=work[degree];
+  for(int r=1;r<=degree;++r) {
+    for(int i=0;i<=degree-r;++i)work[i]=0.5*(work[i]+work[i+1]);
+    left[r]=work[0];right[degree-r]=work[degree-r];
+  }
+  return within_bernstein_bounds(left,degree,depth-1,low,high)&&
+         within_bernstein_bounds(right,degree,depth-1,low,high);
+}
 void joint_names(const Json& node) {
   if(node.size()!=14)throw std::invalid_argument("14 canonical joint names required");
   int j=0;for(const auto& n:node)if(!n.first.empty()||n.second.get_value<std::string>()!=arm_names[j++])
@@ -131,11 +145,18 @@ void Reference::validate_limits(const JointVector& lower,const JointVector& uppe
     const auto v=at(0);for(int j=0;j<14;++j)if(v.state[0][j]<lower[j]||v.state[0][j]>upper[j]||std::abs(v.state[1][j])>velocity[j])throw std::invalid_argument("Direct fields outside URDF/reference velocity limits");
     return;
   }
+  constexpr int kSubdivisionDepth=3;  // 8 uniform subintervals, matching Python derivative_bounds.
   for(std::size_t k=0;k<coefficients_.size();++k) {
     const double h=(knots_[k+1]-knots_[k])*1e-9;
-    for(int j=0;j<14;++j)for(int i=0;i<8;++i) {
-      if(coefficients_[k][i][j]<lower[j]-1e-12||coefficients_[k][i][j]>upper[j]+1e-12)throw std::invalid_argument("Reference Bernstein position envelope outside URDF");
-      if(i<7&&7*std::abs(coefficients_[k][i+1][j]-coefficients_[k][i][j])/h>velocity[j]*(1+1e-10))throw std::invalid_argument("Reference Bernstein velocity envelope outside limit");
+    for(int j=0;j<14;++j) {
+      std::array<double,8> pos{},vel{};
+      for(int i=0;i<8;++i)pos[i]=coefficients_[k][i][j];
+      if(!within_bernstein_bounds(pos,7,kSubdivisionDepth,lower[j]-1e-12,upper[j]+1e-12))
+        throw std::invalid_argument("Reference Bernstein position envelope outside URDF");
+      for(int i=0;i<7;++i)vel[i]=7.0*(pos[i+1]-pos[i])/h;
+      const double vlim=velocity[j]*(1+1e-10);
+      if(!within_bernstein_bounds(vel,6,kSubdivisionDepth,-vlim,vlim))
+        throw std::invalid_argument("Reference Bernstein velocity envelope outside limit");
     }
   }
 }
