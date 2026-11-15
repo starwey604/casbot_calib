@@ -1,17 +1,25 @@
 #!/usr/bin/env bash
-# One-command Orin environment bootstrap, native C++/Python build (install/shm-core), and preflight check.
+# Orin numerical environment, native build or prebuilt install, and preflight check.
 set -euo pipefail
 repo=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 venv="$repo/.venv-shm"
 wheelhouse=''
 dependency_prefix=/opt/ros/humble
 check_only=0
+prebuilt=''
+started=$SECONDS
+timed() {
+  local name=$1 begin=$EPOCHREALTIME; shift
+  "$@"
+  awk -v name="$name" -v begin="$begin" -v end="$EPOCHREALTIME" 'BEGIN {printf "SETUP_TIMING %s %.3f\n", name, end-begin}'
+}
 mem_kb=$(awk '/^MemTotal:/ {print $2}' /proc/meminfo 2>/dev/null || echo 0)
 jobs=$(( mem_kb >= 8000000 ? 2 : 1 ))
 
 usage() {
   cat <<'EOF'
 用法：bash calib/setup.sh [选项]
+  --prebuilt [DIR]            安装 ARM64 预编译包；默认 artifacts/prebuilt_aarch64
   --check                     仅运行环境、模型 LFS 资产与执行器预检，不重编安装
   --wheelhouse DIR            离线 Python wheel 目录（未指定时若离线会自动探测 artifacts/*wheels*）
   --venv DIR                  项目 Python 虚拟环境路径；默认 .venv-shm
@@ -23,6 +31,9 @@ EOF
 while (($#)); do
   case "$1" in
     --check) check_only=1; shift ;;
+    --prebuilt)
+      prebuilt="$repo/artifacts/prebuilt_aarch64"; shift
+      if (($#)) && [[ $1 != -* ]]; then prebuilt=$1; shift; fi ;;
     --wheelhouse|--venv|--dependency-prefix|--jobs)
       (($# >= 2)) || { usage >&2; exit 2; }
       case "$1" in
@@ -40,7 +51,6 @@ done
 [[ $jobs =~ ^[1-9][0-9]*$ ]] || { echo 'jobs 必须是正整数' >&2; exit 2; }
 
 if ((check_only)); then
-  export PYTHONPATH="$repo/python${PYTHONPATH:+:$PYTHONPATH}"
   if [[ -n ${CASBOT_SHM_PYTHON:-} ]]; then
     py="$CASBOT_SHM_PYTHON"
   elif [[ -x "$venv/bin/python" ]]; then
@@ -50,10 +60,21 @@ if ((check_only)); then
   else
     py=python3
   fi
+  python="$py"
+  source "$repo/scripts/shm/python_path.sh"
   exec "$py" -m casbot_calib.pipeline.preflight
 fi
 
 [[ -z ${CONDA_PREFIX:-} ]] || { echo '请先退出 conda 环境再运行 calib/setup.sh' >&2; exit 1; }
+
+if [[ -n $prebuilt ]]; then
+  /usr/bin/python3 -c 'import platform, sys; assert platform.machine() == "aarch64" and sys.version_info[:2] == (3, 10), "预编译包需要 ARM64 Python 3.10"'
+  prebuilt=$(realpath "$prebuilt")
+  wheels=("$prebuilt"/casbot_calib-*-cp310-cp310-linux_aarch64.whl)
+  [[ ${#wheels[@]} == 1 && -f ${wheels[0]} && -f "$prebuilt/shm-core-aarch64.tar.gz" ]] || {
+    echo "预编译目录需要一个 ARM64 wheel 和 shm-core-aarch64.tar.gz：$prebuilt" >&2; exit 1;
+  }
+fi
 
 if [[ -z $wheelhouse ]]; then
   for cand in "$repo"/artifacts/wheelhouse_aarch64 "$repo"/artifacts/wheelhouse* "$repo"/artifacts/shm_h1_wheels*; do
@@ -111,7 +132,26 @@ if ((!deps_satisfied)); then
 fi
 
 cd "$repo"
-env -u PYTHONPATH -u LD_LIBRARY_PATH "$venv/bin/python" scripts/shm/link_math_bindings.py --dependency-prefix "$dependency_prefix"
+timed link_math env -u PYTHONPATH -u LD_LIBRARY_PATH "$venv/bin/python" scripts/shm/link_math_bindings.py --dependency-prefix "$dependency_prefix"
+
+if [[ -n $prebuilt ]]; then
+  timed pip env -u PYTHONPATH -u LD_LIBRARY_PATH "$venv/bin/python" -m pip install \
+    --no-deps --no-index --no-compile --disable-pip-version-check --force-reinstall "${wheels[0]}"
+  "$venv/bin/python" - "$repo" <<'PYROOT'
+from pathlib import Path
+import sys, sysconfig
+(Path(sysconfig.get_path('purelib')) / 'casbot_project_root.pth').write_text(
+    'import os; os.environ.setdefault("CASBOT_PROJECT_ROOT", ' + repr(sys.argv[1]) + ')\n')
+PYROOT
+  touch "$venv/casbot-prebuilt"
+  rm -rf -- "$repo/install/shm-core"
+  mkdir -p "$repo/install/shm-core"
+  timed tar tar -xzf "$prebuilt/shm-core-aarch64.tar.gz" -C "$repo/install/shm-core"
+  timed shm_abi_check env -u PYTHONPATH -u LD_LIBRARY_PATH "$repo/install/shm-core/bin/shm_abi_check"
+  timed check env -u PYTHONPATH -u LD_LIBRARY_PATH "$venv/bin/python" scripts/shm/check_prebuilt.py
+  echo "预编译安装与预检完成，耗时 $((SECONDS-started)) 秒。可直接运行：bash calib/dynamics_h1.sh"
+  exit 0
+fi
 
 env -u PYTHONPATH -u LD_LIBRARY_PATH CMAKE_BUILD_PARALLEL_LEVEL="$jobs" "$venv/bin/python" -m pip install \
   -e . --no-deps --no-build-isolation \
@@ -123,6 +163,8 @@ env -u PYTHONPATH -u LD_LIBRARY_PATH CMAKE_BUILD_PARALLEL_LEVEL="$jobs" "$venv/b
   --config-settings=cmake.define.CALIB_BUILD_SHM_MOCK=ON \
   --config-settings=cmake.define.CMAKE_INSTALL_PREFIX="$repo/install/shm-core"
 
+rm -f "$venv/casbot-prebuilt"
+"$venv/bin/python" -c 'from pathlib import Path; import sysconfig; (Path(sysconfig.get_path("purelib"))/"casbot_project_root.pth").unlink(missing_ok=True)'
 ctest --test-dir build/shm-python --output-on-failure
 cmake --install build/shm-python --component Core
 cmake --install build/shm-python --component Shm

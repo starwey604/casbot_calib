@@ -52,7 +52,7 @@ bash calib/setup.sh
 bash scripts/shm/build.sh --with-mock
 ```
 
-改了`cpp/`核心后要重建Python绑定再跑Python测试。x86_64产物不能复制到Orin，Orin用同一份源码原生编译（`scripts/shm/deploy_git.sh`同步）。
+改了`cpp/`核心后要重建Python绑定再跑Python测试。x86_64产物不能复制到Orin。ARM64预编译入口是`bash scripts/shm/cross_build_orin.sh`；`deploy_git.sh --with-prebuilt`同步后，在Orin运行`bash calib/setup.sh --prebuilt`安装。原生路径仍用`deploy_git.sh`同步源码、`bash calib/setup.sh`编译。
 
 ## Git
 
