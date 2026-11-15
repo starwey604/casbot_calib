@@ -13,7 +13,7 @@ from casbot_calib.shm_data import NAMES, ROOT
 from casbot_calib.shm_ready import ready_position
 from casbot_calib.stages.dynamics import ApproachDisplacement, analyse_h1, load_h1_recipe, plan_h1
 
-BIN = Path(os.environ.get('CASBOT_SHM_TEST_BIN', ROOT / 'build/humble/cpp/src/shm'))
+from test_shm_fieldwork import NATIVE as BIN
 
 
 def test_default_h1_small_stays_in_twenty_degree_shoulder_range(tmp_path):

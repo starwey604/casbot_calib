@@ -15,7 +15,22 @@ from casbot_calib import shm_fieldwork as fw
 pytestmark = pytest.mark.skipif(sys.platform != 'linux', reason='POSIX SHM fieldwork requires Linux')
 
 ROOT = Path(__file__).resolve().parents[1]
-NATIVE = Path(os.environ.get('CASBOT_SHM_TEST_BIN', ROOT/'build/humble/cpp/src/shm'))
+
+
+def _default_native_dir() -> Path:
+    if 'CASBOT_SHM_TEST_BIN' in os.environ:
+        return Path(os.environ['CASBOT_SHM_TEST_BIN'])
+    for cand in (
+        ROOT / 'build/shm-core/cpp/src/shm',
+        ROOT / 'install/shm-core/bin',
+        ROOT / 'build/humble/cpp/src/shm',
+    ):
+        if (cand / 'shm_executor').exists():
+            return cand
+    return ROOT / 'build/shm-core/cpp/src/shm'
+
+
+NATIVE = _default_native_dir()
 
 
 def cli(*args, timeout=15):

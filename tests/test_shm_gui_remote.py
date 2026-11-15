@@ -10,7 +10,7 @@ from casbot_calib.shm_gui_client import RemoteClient
 from casbot_calib.shm_gui_protocol import frame, json_frame, read_frame
 from test_shm_fieldwork import NATIVE, ROOT
 
-pytestmark=pytest.mark.skipif(not (NATIVE/'shm_gui_owner').exists(),reason='build native GUI owner')
+pytestmark=pytest.mark.skipif(not ((NATIVE/'shm_gui_owner').exists() and (NATIVE/'shm_mock_server').exists()),reason='build native GUI owner and shm_mock_server')
 
 
 def wait(client,test,timeout=8,tick=True):
@@ -25,6 +25,8 @@ def wait(client,test,timeout=8,tick=True):
 
 @pytest.fixture
 def client(tmp_path):
+    if not ((NATIVE/'shm_gui_owner').exists() and (NATIVE/'shm_mock_server').exists()):
+        pytest.skip('build native GUI owner and shm_mock_server')
     c=RemoteClient(dict(output=str(tmp_path/'remote'),mock=True,executor=str(NATIVE/'shm_executor'),mock_config=str(ROOT/'configs/shm/gui_mock.json')),tmp_path/'local')
     c.connect()
     try:yield c

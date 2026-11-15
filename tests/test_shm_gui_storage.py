@@ -12,7 +12,7 @@ from casbot_calib.shm_gui_zero import plan_zero,validate_zero
 from casbot_calib.shm_gui import Desk,parser
 from test_shm_gui_remote import client,wait
 from test_shm_gui_owner import owner,Owner
-from test_shm_fieldwork import master
+from test_shm_fieldwork import NATIVE,master
 
 
 def test_active_save_matches_csv_raw_and_recovery_is_readonly(client,tmp_path):
@@ -141,6 +141,8 @@ def test_video_failure_does_not_publish_final_file(client,tmp_path,monkeypatch):
 def test_bridge_zero_reference_full_protocol_with_explicit_zero_gravity_fixture(tmp_path):
     from casbot_calib.shm_gui_client import RemoteClient
     from test_shm_fieldwork import ROOT,NATIVE
+    if not ((NATIVE/'shm_gui_owner').exists() and (NATIVE/'shm_mock_server').exists()):
+        pytest.skip('build native GUI owner and shm_mock_server')
     config=json.loads((ROOT/'configs/shm/gui_mock.json').read_text())
     config['urdf']=str((ROOT/'configs/shm'/config['urdf']).resolve());config['gravity_world']=[0,0,0]
     config['initial_fields']['effort']=[0.]*14;config['purpose']='zero_protocol_only_explicit_zero_gravity_fixture'

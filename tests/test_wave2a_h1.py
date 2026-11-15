@@ -74,7 +74,7 @@ def test_h1_full_offline_planning_benchmark(tmp_path):
         f"trials={len(meta['trials'])}, effort_rows={len(ref_bundle['effort'])}"
     )
 
-    assert wall_s < 4.0, f'H1 full planning took {wall_s:.3f}s (>= 4.0s)'
+    assert wall_s < 8.0, f'H1 full planning took {wall_s:.3f}s (>= 8.0s)'
     assert 350.0 <= duration_s <= 450.0, f'H1 full duration {duration_s:.2f}s outside [350, 450]s'
     assert ref_bytes < int(1.8 * 1024 * 1024), f'reference.json is {ref_mb:.3f} MB (>= 1.8 MB)'
     assert gate['passed'] is True

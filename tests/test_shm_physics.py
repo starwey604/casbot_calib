@@ -15,7 +15,7 @@ from casbot_calib.shm_data import NAMES,ROOT,URDF
 from casbot_calib.staged_motion import Motion
 
 pytestmark=pytest.mark.skipif(sys.platform!='linux',reason='Linux POSIX SHM only')
-BIN=Path(os.environ.get('CASBOT_SHM_TEST_BIN',ROOT/'build/humble/cpp/src/shm'))
+from test_shm_fieldwork import NATIVE as BIN
 
 
 @pytest.fixture

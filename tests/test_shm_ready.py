@@ -15,7 +15,7 @@ from casbot_calib.shm_fieldwork import records
 from casbot_calib.shm_ready import handover_fraction, preparation, ready_position
 from casbot_calib.stages.dynamics import analyse_h1, load_h1_recipe, plan_h1
 
-BIN = Path(os.environ.get('CASBOT_SHM_TEST_BIN', ROOT / 'build/humble/cpp/src/shm'))
+from test_shm_fieldwork import NATIVE as BIN
 HANGING = np.array([
     -0.037817, 0.10047065, -0.132868, -0.016, 0.023154, 0.045726, -0.12043,
     -0.014166, -0.11496665, -0.12538533, -0.054911, 0.18399067, 0.03161545, -0.05161767,

@@ -12,8 +12,10 @@ from casbot_calib.pipeline.takeover import CHANNEL_BYTES, QUEUE_MAGIC, STATUS_OF
 from casbot_calib.shm_data import ROOT
 from casbot_calib.shm_takeover import SERVICES
 
+from test_shm_fieldwork import NATIVE as _NATIVE_DIR
+
 pytestmark = pytest.mark.skipif(sys.platform != 'linux', reason='POSIX SHM only')
-NATIVE = Path(os.environ.get('CASBOT_SHM_TEST_BIN', ROOT / 'build/humble/cpp/src/shm')) / 'shm_executor'
+NATIVE = _NATIVE_DIR / 'shm_executor'
 
 
 def test_operator_help_hides_dev_and_mock_flags():

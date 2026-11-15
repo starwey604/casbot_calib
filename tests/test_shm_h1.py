@@ -19,8 +19,10 @@ from casbot_calib.shm_data import ROOT
 from casbot_calib.shm_reference import jog_bundle
 from casbot_calib.stages.dynamics import TimeMean, analyse_h1, load_h1_recipe, plan_h1
 
+from test_shm_fieldwork import NATIVE as _NATIVE_DIR
+
 pytestmark = pytest.mark.skipif(sys.platform != 'linux', reason='POSIX SHM only')
-NATIVE = Path(os.environ.get('CASBOT_SHM_TEST_BIN', ROOT / 'build/humble/cpp/src/shm')) / 'shm_executor'
+NATIVE = _NATIVE_DIR / 'shm_executor'
 
 
 @pytest.fixture
