@@ -47,7 +47,8 @@ def prepare(directory, dist=DIST):
         for name in ('trical_measurement_defaults.json', 'trical_1105_release_turn_reference.json'):
             assert 'casbot_calib/assets/' + name in names
     with tarfile.open(dist / 'shm-core-aarch64.tar.gz') as archive:
-        assert (dist / 'shm-core-aarch64.tar.gz').stat().st_size < 1024**2
+        # Runtime includes the interactive TriCal executor alongside the dynamics tools.
+        assert (dist / 'shm-core-aarch64.tar.gz').stat().st_size < 1.5 * 1024**2
         assert not any(member.name.endswith(('_tests', '.a', '.hpp', '.h', '.cmake', '/openmp_probe')) for member in archive)
     cpp = directory / 'cpp'
     cpp.mkdir()

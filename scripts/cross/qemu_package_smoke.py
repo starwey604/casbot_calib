@@ -79,7 +79,7 @@ def main():
                     reference_error = float(np.max(np.abs(actual['distances'] - baseline['reference_distances'])))
                     assert reference_error < 1e-12, (threads, order, reference_error)
                     comparisons[f'{threads}-{order}-coal-reference'] = reference_error
-        for program in ('shm_executor', 'shm_mock_server'):
+        for program in ('shm_executor', 'shm_trical_executor', 'shm_mock_server'):
             libraries = subprocess.check_output(['ldd', str(cpp / 'bin' / program)], text=True)
             assert 'not found' not in libraries, libraries
             assert str(cpp / 'bin/../lib/libomp.so.5') in libraries, libraries

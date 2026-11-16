@@ -11,6 +11,9 @@ import pytest
 ROOT = Path(__file__).resolve().parents[2]
 
 WALL_CLOCK = {
+    'test_cache_before_settling_is_discarded_and_equal_values_count',
+    'test_entire_window_drift_retries',
+    'test_stopped_response_times_out_and_duplicate_request_fails',
     'test_600k_frame_binary_read_and_summary_benchmark',
     'test_dpp_ridge_grid_selects_optimal_ridge_under_250ms',
     'test_static_move_matches_bernstein_bounds_and_runs_fast',
@@ -19,6 +22,7 @@ WALL_CLOCK = {
     'test_run_logged_does_not_wait_for_inherited_stdout',
 }
 LIVE_SHM = {
+    'test_stiction_bounded_correction_enters_range',
     'test_dynamics_h1_shell_end_to_end_and_resume',
     'test_three_stage_closed_loop_with_physical_shm_mock',
     'test_live_native_executor_binary_vs_csv_exact_match',

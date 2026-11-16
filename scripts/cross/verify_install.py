@@ -90,12 +90,17 @@ context = load_context()
 engine, _ = nominal_kinematics(context.kinematic_config())
 assert len(engine.model.joints) == 14
 assert context.collision_profile().check(context.home)['distances'].min() > .01
+import serial
+from casbot_calib.trical.indicators import bridge_module
+assert bridge_module().decode_notification(b'DAT0:m1.250')['kind'] == 1
+assert (ROOT / 'install/shm-core/bin/shm_trical_executor').is_file()
 '''
     run('installed-path', [str(stage / '.venv-shm/bin/python'), '-c', code])
     run('h1-plan', ['env', 'PYTHONVERBOSE=1', 'bash', 'calib/dynamics_h1.sh', '--plan-only', '--robot', 'QEMU_INSTALL'])
     cli_log = (report / 'h1-plan.log').read_text()
     assert str(stage / '.venv-shm/lib/python3.10/site-packages/casbot_calib/__init__.py') in cli_log
     assert str(stage / '.venv-shm/lib/python3.10/site-packages/casbot_calib/_core.') in cli_log
+    run('kinematics-plan', ['bash', 'calib/kinematics.sh', '--plan-only', '--mode', 'smoke', '--robot', 'QEMU_INSTALL'])
     run('openmp', [str(test_prefix / 'bin/openmp_probe'), '4'])
     print(f'安装验证通过：{report}\n项目：{stage}', flush=True)
 
