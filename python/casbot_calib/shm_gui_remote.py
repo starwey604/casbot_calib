@@ -115,7 +115,7 @@ def serve(config):
                 item=json.loads(body)
                 if item.get('type') in ('zero_capture','zero_get','zero_return'):
                     try:
-                        zero_path=root/'zero.yaml' if mock else Path('fieldwork/zero.yaml')
+                        zero_path=root/'gui_pose.yaml' if mock else Path('fieldwork/gui_pose.yaml')
                         with condition:packet=latest[0]
                         state=telemetry(packet[5:]) if packet else None
                         if not state or not state['receive_ns'] or time.monotonic_ns()-state['receive_ns']>2_000_000_000:raise ValueError('新鲜实际反馈不可用')
@@ -126,7 +126,7 @@ def serve(config):
                                     if request['type']=='zero_capture':
                                         value=dict(schema_version='casbot_shm_zero_v1',units='rad',model_context=identity,joint_names=NAMES,q_rad=state['q'],source_receive_mono_ns=state['receive_ns'],source_boot_id=Path('/proc/sys/kernel/random/boot_id').read_text().strip(),scope='private_mock' if mock else 'hardware_shm')
                                         path.parent.mkdir(exist_ok=True);temporary=path.with_suffix('.pending');temporary.write_text(json.dumps(value,indent=2)+'\n');temporary.replace(path)
-                                        if path!=root/'zero.yaml':(root/'zero.yaml').write_text(json.dumps(value,indent=2)+'\n')
+                                        if path!=root/'gui_pose.yaml':(root/'gui_pose.yaml').write_text(json.dumps(value,indent=2)+'\n')
                                     else:value=json.loads(path.read_text())
                                     emit(dict(type='zero',id=request['id'],value=value,path=str(path.resolve())))
                                 except (OSError,ValueError) as error:emit(dict(type='reply',id=request['id'],ok=False,reason=str(error)))

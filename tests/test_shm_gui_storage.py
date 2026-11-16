@@ -61,7 +61,7 @@ def test_mock_zero_is_local_to_its_owned_workspace(client):
     value=next(m['value'] for m in messages if m.get('type')=='zero')
     target=validate_zero(value,c.ready['model_context'],True)
     assert len(target)==14 and c.latest['writes']==0
-    assert (Path(c.ready['workspace'])/'zero.yaml').exists()
+    assert (Path(c.ready['workspace'])/'gui_pose.yaml').exists()
     with pytest.raises(ValueError):validate_zero(value,c.ready['model_context'],False)
 
 
@@ -105,7 +105,7 @@ def test_zero_bridge_get_and_submit_share_same_private_owner(client,tmp_path):
     def captured():
         messages.extend(c.drain());return any(x.get('type')=='zero' for x in messages)
     wait(c,captured)
-    assert (Path(c.ready['workspace'])/'zero.yaml').exists()
+    assert (Path(c.ready['workspace'])/'gui_pose.yaml').exists()
     # Capture itself is read-only; a malformed certificate must not request control.
     c.send('zero_return',bundle=dict(purpose='wrong'),certificate=dict(passed=False),model_context=c.ready['model_context'])
     time.sleep(.05);assert c.latest['writes']==0

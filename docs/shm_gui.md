@@ -76,7 +76,7 @@ bash fieldwork/shm/run.sh gui --recover /本机/已保存会话
 
 ## 采集零位 / 回到保存零位
 
-“采集零位”保存当次实际位置，不改编码器。实机权威文件为Orin仓库`fieldwork/zero.yaml`；私有Mock写本次私有工作区，避免覆盖实机零位。SDK旧零位格式不会自动转换，迁移后先重新采集。
+“采集零位”保存当次实际位置，不改编码器。保存位文件为 Orin 仓库的 `fieldwork/gui_pose.yaml`；私有 Mock 写本次工作区。已有 `fieldwork/zero.yaml` 在部署时一次性改名为 `fieldwork/gui_pose.yaml`。
 
 “回到保存零位”仅在只读状态启动：读取本次实际起点，使用既有C3七次参考与Coal连续碰撞/URDF校验，前馈0，然后交给同一owner执行。参考速度上限0.3rad/s、在线反馈速度上限1.5rad/s；PD取各轴当前草稿。规划期间可停止取消，实际起点变化超过0.005rad时原生拒绝且零写入，需要重新点击规划。正常末帧后失能，不添加末位误差/等待停稳验收。
 

@@ -59,9 +59,9 @@ def snapshot(source,output,*,cancel=None):
                 if not line.endswith(b'\n') or src.tell()>bound:break
                 json.loads(line);dst.write(line)
     (output/'session.json').write_text(json.dumps(session,indent=2)+'\n')
-    zero=source/'zero.yaml'
+    zero=source/'gui_pose.yaml'
     if zero.exists():
-        value=json.loads(zero.read_text());(output/'zero.yaml').write_text(json.dumps(value,indent=2)+'\n')
+        value=json.loads(zero.read_text());(output/'gui_pose.yaml').write_text(json.dumps(value,indent=2)+'\n')
     for name in ('hand_background_source.bin','result.json','recording_stopped.json'):
         src=source/'native'/name
         if src.exists() and (name!='result.json' or closed_at_start):
