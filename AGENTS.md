@@ -6,7 +6,7 @@
 
 CASBOT双臂（14轴）运动学/动力学标定。唯一硬件路径是Orin本机EtherCAT中间件共享内存（SHM，`/shm_mc`）：C++`shm_executor`跑1kHz执行与完整记录，Python负责规划、碰撞检查、辨识和编排。旧ROS/SDK实现及离线研究代码已从main删除，需要时去`ros`分支查。
 
-目标交付形态：工厂按固定流程运行一个脚本完成标定（`dynamics.sh`全流程，`dynamics_h1.sh`等分阶段）。动力学阶段：**H1静态重力**（含准备位与链路冒烟）→**H2摩擦**→**H3惯量/激励**。运动学（TriCal）暂未在SHM上实现。
+目标交付形态：工厂按固定流程运行一个脚本完成标定（`dynamics.sh`全流程，`dynamics_h1.sh`等分阶段）。动力学阶段：**H1静态重力**（含准备位与链路冒烟）→**H2摩擦**→**H3惯量/激励**。运动学（TriCal）：**K1左臂采集**→失能退出、换装工装→**K2右臂采集**→**K3离线辨识**；入口`kinematics.sh`，换装后`--resume`。smoke/small只做残差诊断，full生成运动学交付。
 
 ## 已实测确认的设备事实
 
@@ -15,7 +15,7 @@ CASBOT双臂（14轴）运动学/动力学标定。唯一硬件路径是Orin本�
 - 状态字按`Statusword & 0x006f`解码：0x21就绪、0x27使能。
 - 准备位：ID13左肩roll +20°、ID20右肩roll −20°，其余0°（自然下垂贴腿时用）。只是目标角，不改编码器零点。
 - 起点停稳速度默认0.2 rad/s（Python`field_defaults.py`、C++`field_defaults.hpp`）。
-- 实机零位在Orin`fieldwork/zero.yaml`（不入Git）。
+- GUI保存位在Orin`fieldwork/gui_pose.yaml`（不入Git）；运动学零偏交付为`joint_offsets.yaml`。
 - 未核实：输出力矩尺度（C08未做）；反馈effort是驱动估算值，无独立扭矩传感器。
 
 ## 现场流程

@@ -15,12 +15,17 @@ bash calib/dynamics_h1.sh
 
 # 全阶段动力学标定（H1 静态重力 -> H2 摩擦 -> H3 惯量）
 bash calib/dynamics.sh
+
+# 运动学：K1 左臂；换装工装后续跑 K2 与 K3
+bash calib/kinematics.sh
+bash calib/kinematics.sh --resume
 ```
 
-结果自动保存在 `artifacts/calib/latest/`（查看 `h1/report.md` 与 `h1/analysis/candidate.urdf`）。
+动力学结果在 `artifacts/calib/latest_dynamics/`（查看 `h1/report.md` 与 `h1/analysis/candidate.urdf`）；运动学结果在 `artifacts/calib/latest_kinematics/`（查看 `k3/report.md`，full 模式另有 `delivery/summary.md`）。
 
 ## 文档
 
+- [运动学标定操作指南](docs/kinematics.md)：三表配置、K1/K2 换装续跑、K3 辨识与交付。
 - [动力学标定操作指南](docs/dynamics.md)：运动前检查、运行命令、配方配置、结果判读。
 - [调参 GUI](docs/shm_gui.md)：本机渲染，经 SSH 连接 Orin（`bash calib/gui.sh --host nvidia@172.16.0.10`）。
 - [构建与部署](docs/shm_build.md)：本机 Humble 容器与 Orin 原生编译说明。
@@ -43,12 +48,13 @@ bash scripts/shm/build.sh --with-mock
 
 ## 目录结构
 
-- `calib/`：交付入口脚本（`setup.sh`、`dynamics.sh`、`dynamics_h1.sh`..`h3.sh`、`gui.sh`、`dev.sh`）。
-- `configs/`：机器人参数（`robot/dvt2.yaml`）与各阶段配方（`dynamics/h1.yaml`..`h3.yaml`）。
+- `calib/`：交付入口脚本（`setup.sh`、`dynamics.sh`、`dynamics_h1.sh`..`h3.sh`、`kinematics.sh`、`gui.sh`、`dev.sh`）。
+- `configs/`：机器人参数（`robot/dvt2.yaml`）与各阶段配方（`dynamics/h1.yaml`..`h3.yaml`、`kinematics/k.yaml`）。
 - `cpp/`：动力学/碰撞核心、SHM 协议与 1kHz 原生执行器。
 - `python/casbot_calib/`：
   - `pipeline/`：会话管理、自动接管、原生执行器封装、统一运行器。
   - `stages/dynamics/`：H1 静态重力、H2 摩擦、H3 惯量阶段实现。
+  - `stages/kinematics/`、`trical/`：K1/K2 采集、K3 辨识及三表、路线与求解核心。
 - `scripts/`：构建、同步与环境脚本。
 
 旧 ROS/SDK 实现及离线研究代码已归档至 `ros` 分支。`artifacts/`、`build/`、`install/` 不入 Git。
