@@ -44,7 +44,7 @@ template<class Frame> void binary(const std::filesystem::path& path,const Frame&
 struct Options {
   std::string mode,name="/shm_mc",output,urdf,background,which="C03",reference;
   int id=12;double amplitude=.5,segment=5,kp=20,kd=2,duration=3,quiet=3;
-  bool other_disabled=false;
+  bool other_disabled=false,bare_flange=false;
 };
 CommandFrame read_background(const std::string& file) {
   std::ifstream f(file,std::ios::binary);
@@ -239,7 +239,7 @@ void snapshot_output(const std::filesystem::path& root,const StatusFrame& state,
 }
 void usage() {
   std::cout<<"shm_executor --inspect|--snapshot|--observe|--passive-observe|--execute --output NEW_DIR\n"
-    <<"  [--shm /shm_mc] [--urdf FILE] [--hand-background FILE]\n"
+    <<"  [--shm /shm_mc] [--urdf FILE] [--hand-background FILE | --bare-flange]\n"
     <<"  [--reference FILE (trajectory or independent five-field bundle)]\n"
     <<"  [--case C01..C06] [--joint-id 12..25] [--duration 3] [--quiet-s 3]\n"
     <<"  [--amplitude .5] [--segment-s 5] [--kp 20] [--kd 2] [--other-arm hold|disabled]\n"
@@ -254,6 +254,7 @@ int field_main(int argc,char** argv) {
     for(int a=1;a<argc;++a) {
       const std::string key=argv[a];
       if(key=="--help"){usage();return 0;}
+      if(key=="--bare-flange"){o.bare_flange=true;continue;}
       if(key=="--inspect"||key=="--snapshot"||key=="--execute"||key=="--observe"||key=="--passive-observe"){
         if(!o.mode.empty())throw std::runtime_error("Choose one mode");o.mode=key;continue;}
       if(a+1>=argc)throw std::runtime_error("Missing option value");const std::string value=argv[++a];
@@ -308,7 +309,8 @@ int field_main(int argc,char** argv) {
     OwnerLease lease(o.name);Channel channel(o.name);auto state=fresh(channel);
     snapshot_output(root,state,model.model(),o.amplitude);
     if(o.mode=="--snapshot"){write_result(root,"snapshot_completed_no_commands",true,false);return 0;}
-    if(o.background.empty())throw std::runtime_error("Explicit hand command background required");
+    if(o.bare_flange&&!o.background.empty())throw std::runtime_error("Choose bare flange or hand background");
+    if(!o.bare_flange&&o.background.empty())throw std::runtime_error("Explicit hand command background required");
     const auto q0=positions(state);const auto joint=model.model().joints[index];
     if(reference&&reference->measured_origin()) {
       JointVector origin{},lower{},upper{},velocity{};
@@ -325,7 +327,7 @@ int field_main(int argc,char** argv) {
     }
     for(int j=0;j<14;++j)if(q0[j]<model.model().joints[j].lower||q0[j]>model.model().joints[j].upper)throw std::runtime_error("Measured start outside URDF limit at joint ID "+std::to_string(j+12));
     state=fresh(channel);if((positions(state)-q0).cwiseAbs().maxCoeff()>.005)throw std::runtime_error("Start changed during preflight; no commands sent");
-    const auto hand=read_background(o.background);binary(root/"hand_background_source.bin",hand);
+    const auto hand=o.bare_flange?CommandFrame{}:read_background(o.background);binary(root/"hand_background_source.bin",hand);
     run(channel,state,hand,q0,o,model.model(),reference.get());return 0;
   }catch(const std::exception& e){
     std::cerr<<"ERROR "<<e.what()<<'\n';
