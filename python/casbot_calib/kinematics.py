@@ -49,8 +49,8 @@ def calibration(config):
 
 
 def validate_config(config):
-    if config['schema_version'] != 1 or config['synthetic_only'] is not True or config['hardware_executable'] is not False:
-        raise ValueError('K1 supports synthetic, non-executable profiles only')
+    if config['schema_version'] != 1:
+        raise ValueError('Unsupported kinematics profile version')
     period = config['control_period_ns']
     if type(period) is not int or period <= 0:
         raise ValueError('control_period_ns must be a positive integer')
@@ -143,7 +143,7 @@ def nominal_kinematics(config=None,context=None):
     if config['root_frame'] not in engine.frame_names():
         raise ValueError('Unknown canonical robot root')
     manifest = geometry_manifest(engine, config['geometry_version'])
-    manifest.update(urdf_sha256=source['sha256'], profile_sha256=digest(config), synthetic_only=True, hardware_executable=False)
+    manifest.update(urdf_sha256=source['sha256'], profile_sha256=digest(config))
     if context is not None:manifest['model_context']=context.identity
     return engine, manifest
 

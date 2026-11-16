@@ -1,21 +1,17 @@
-"""1105_03 physical assembly: one tool, shared artifact, native Coal profiles.
-
-Only the assembly/geometry differs between cases. All planning, motion bounds,
-telemetry and (later) collection use the existing calib interfaces.
-"""
+"""1105_03 assembly: one active tool, four-ball fixture and native Coal profiles."""
 from pathlib import Path
 from copy import copy
 from hashlib import sha256
 import numpy as np
-from . import _core
-from .dvt2_bundle import read,load_bundle,robot_profile
-from .model_sources import model_directory,_resource
-from .kinematics import digest
-from .collision import CollisionProfile
+from .. import _core
+from ..dvt2_bundle import read,load_bundle,robot_profile
+from ..model_sources import model_directory,_resource
+from ..kinematics import digest
+from ..collision import CollisionProfile
 
 
 def asset_directory(bundle=None):
-    name='trical_1105_03' if bundle is None else read(Path(bundle)/'model.json').get('trical_asset_directory','trical_1105_03')
+    name='trical_1105_03_gauge_cover_v2' if bundle is None else read(Path(bundle)/'model.json').get('trical_asset_directory','trical_1105_03')
     if not isinstance(name,str) or name in {'.','..'} or Path(name).name!=name:raise ValueError('A packaged TriCal asset directory name is required')
     return model_directory()/name
 
@@ -89,7 +85,7 @@ def profile(folder,active_arm,ball_id=None,contact=False,*,assets=None,layout=No
 
 def indicator_calibration(side,centered_readings_m):
     """Reuse the existing native model with CAD axes and caller-supplied zero."""
-    from .kinematics import calibration
+    from ..kinematics import calibration
     m=asset_manifest()
     if side not in m['axes_sensor']:raise ValueError('Unknown tool mount')
     return calibration(dict(indicators=dict(axes_sensor=m['axes_sensor'][side],centered_readings_m=centered_readings_m)))

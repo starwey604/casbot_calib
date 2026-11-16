@@ -33,7 +33,7 @@ import casbot_calib
 from casbot_calib import _core
 from casbot_calib.model_context import load_context
 from casbot_calib.dvt2_bundle import robot_profile
-from casbot_calib.trical_assembly import asset_directory,collision_assets
+from casbot_calib.trical.assembly import asset_directory,collision_assets
 assert Path(casbot_calib.__file__).is_relative_to(sys.argv[1])
 assert Path(_core.__file__).is_relative_to(sys.argv[1])
 context=load_context();engine=context.engine;q=np.zeros(14)
@@ -46,6 +46,10 @@ cal=_core.TricalCalibration();pose=_core.ArmPose();offset=np.array([.001,-.002,.
 np.testing.assert_allclose(_core.trical_offset(_core.trical_readings(pose,offset,cal),cal),offset,atol=1e-14)
 from casbot_calib.kinematics import nominal_kinematics
 kin,_=nominal_kinematics()
+from casbot_calib.trical.indicators import bridge_module
+from casbot_calib.trical.solver import KinematicParameters
+assert bridge_module().decode_notification(b"DAT0:m1.250")["kind"] == 1
+assert KinematicParameters(kin).size == 60
 geometry=kin.point_geometry_batch(q[None,:],"left_trical_tcp",np.zeros((1,3)))
 np.testing.assert_allclose(geometry["positions"][0],kin.frame_pose(q,"left_trical_tcp")[:3,3],atol=1e-14)
 print(json.dumps(dict(passed=True,core_path=_core.__file__,backend=engine.backend_version(),joints=14)))

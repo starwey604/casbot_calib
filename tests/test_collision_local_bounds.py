@@ -2,7 +2,7 @@
 import numpy as np
 import pytest
 from casbot_calib.collision import local_motion_profile,certify_chord_box_pruned
-from casbot_calib.trical_assembly import profile,asset_directory
+from casbot_calib.trical.assembly import profile,asset_directory
 from casbot_calib.model_sources import model_directory
 from casbot_calib.dvt2_bundle import read,load_bundle
 

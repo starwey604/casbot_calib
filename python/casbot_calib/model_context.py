@@ -59,7 +59,7 @@ class ModelContext:
 
     def collision_profile(self,*,active_tool=None,ball_id=None,contact=False,engine=None):
         from .dvt2_bundle import robot_profile
-        from .trical_assembly import profile
+        from .trical.assembly import profile
         from .collision import CollisionProfile
         from .kinematics import geometry_manifest
         if active_tool is None:
@@ -77,8 +77,8 @@ class ModelContext:
         return result
 
     def kinematic_config(self):
-        """K1 observation model only, not a K2/K3 collector or a mastered device."""
-        from .trical_assembly import asset_directory,asset_manifest
+        """CAD observation geometry with nominal indicator calibration."""
+        from .trical.assembly import asset_directory,asset_manifest
         from .kinematics import validate_config
         defaults=json.loads(files('casbot_calib').joinpath('assets/trical_measurement_defaults.json').read_text(encoding='utf-8'))
         assembly=asset_manifest(asset_directory(self.bundle));axes=assembly['axes_sensor']
@@ -88,7 +88,7 @@ class ModelContext:
         balls=[dict(id=b['id'],center_m=(waist+np.array(b['center_relative_waist_mm'])/1000).tolist()) for b in assembly['setup']['balls']]
         config=dict(schema_version=1,profile_id='dvt2_trical_k1_context_v1',robot_model_id=self.model_id,
             geometry_version='dvt2_1105_03_working_state_v2',urdf_sha256=self.source['sha256'],control_period_ns=2_000_000,
-            synthetic_only=True,hardware_executable=False,root_frame='calib_world',tools=deepcopy(self._metadata['profile']['tools']),
+            root_frame='calib_world',tools=deepcopy(self._metadata['profile']['tools']),
             fixture=dict(id='trical_1105_03',frame='trical_artifact',world_translation_m=[0.,0.,0.],world_rotation_vector_rad=[0.,0.,0.],
                          ball_radius_m=.0127,balls=balls,provenance='Registered source CAD, not surveyed fixture metrology'),
             indicators=indicators,parameter_policy=deepcopy(defaults['parameter_policy']),model_context=self.identity)
