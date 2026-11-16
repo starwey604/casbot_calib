@@ -117,6 +117,14 @@ def run_pipeline(
     mock=False,
     mock_config=None,
 ):
+    stage_objs = resolve_stages(stages)
+    if stage_objs[0].family == 'kinematics':
+        from .kinematics import run_kinematics
+        return run_kinematics(stages=stage_objs, resume=resume, resume_target=resume_target,
+            reanalyse=reanalyse, reanalyse_target=reanalyse_target, plan_only=plan_only,
+            robot_id=robot_id, stage_config=stage_config, stage_overrides=stage_overrides,
+            robot_config=robot_config, output_root=output_root, endpoint=endpoint,
+            executor=executor, mock=mock, mock_config=mock_config)
     if reanalyse:
         if plan_only or resume or mock:
             raise ValueError('--reanalyse 仅对已有实测/采集会话离线重算，不与 --plan-only / --resume / --mock 同时使用')
@@ -266,16 +274,16 @@ def run_pipeline(
 
 
 def build_parser():
-    p = argparse.ArgumentParser(description='CASBOT 双臂动力学标定流水线（SHM 原生 1kHz）')
-    p.add_argument('--stages', default='h1,h2,h3', help='运行阶段列表，逗号分隔（如 h1 或 h1,h2,h3）')
+    p = argparse.ArgumentParser(description='CASBOT 双臂标定流水线（SHM 原生 1kHz）')
+    p.add_argument('--stages', default='h1,h2,h3', help='运行阶段列表，逗号分隔（h1,h2,h3 或 k1,k2,k3）')
     p.add_argument('--resume', nargs='?', const='latest', default=None, metavar='SESSION_DIR',
                    help='从最近一次（或指定目录）未完成的会话继续执行')
     p.add_argument('--reanalyse', nargs='?', const='latest', default=None, metavar='SESSION_DIR',
                    help='免接管、免动机器人，对最近一次（或指定目录）采集会话重新执行辨识与交付打包')
     p.add_argument('--plan-only', action='store_true', help='只生成轨迹并完成连续碰撞/限位/速度检查，不连接设备')
     p.add_argument('--robot', default=None, metavar='ID', help='机器序列号/标识（首次指定后自动记住）')
-    p.add_argument('--config', type=Path, default=None, help='单阶段自定义配方 YAML')
-    p.add_argument('--mode', choices=('small', 'full', 'smoke'), default=None, help='标定模式覆盖（small/full；smoke 仅限 H1）')
+    p.add_argument('--config', type=Path, default=None, help='自定义配方 YAML（动力学仅单阶段，运动学共用）')
+    p.add_argument('--mode', choices=('small', 'full', 'smoke'), default=None, help='标定模式覆盖（small/full；smoke 适用于 H1 和运动学）')
     p.add_argument('--smoke', action='store_true', help='在 H1 静态采集前加入一次准备位往返冒烟（或单独跑冒烟）')
 
     # Internal dev/test hooks hidden from operator --help.

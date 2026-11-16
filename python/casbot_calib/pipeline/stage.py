@@ -7,6 +7,10 @@ class Stage:
     title = ''
     default_config = Path()
     implemented = True
+    family = 'dynamics'
+    execution_kind = 'reference'
+    requires_hand_background = True
+    stop_after = False
 
     def load_recipe(self, config_path=None, **overrides):
         raise NotImplementedError
@@ -23,7 +27,9 @@ class Stage:
 
 def stage_registry():
     from ..stages.dynamics import H1GravityStage, H2FrictionStage, H3InertiaStage
+    from ..stages.kinematics import K1LeftStage, K2RightStage, K3IdentifyStage
     return {
+        'k1': K1LeftStage(), 'k2': K2RightStage(), 'k3': K3IdentifyStage(),
         'h1': H1GravityStage(),
         'h2': H2FrictionStage(),
         'h3': H3InertiaStage(),
@@ -37,8 +43,11 @@ def resolve_stages(spec='h1,h2,h3'):
     else:
         names = [str(part).strip().lower() for part in spec if str(part).strip()]
     if not names or len(set(names)) != len(names):
-        raise ValueError('请指定非空且不重复的阶段列表（可选：h1, h2, h3）')
+        raise ValueError('请指定非空且不重复的阶段列表（可选：h1, h2, h3, k1, k2, k3）')
     unknown = [name for name in names if name not in registry]
     if unknown:
-        raise ValueError(f'未知标定阶段：{", ".join(unknown)}（可选：h1, h2, h3）')
-    return [registry[name] for name in names]
+        raise ValueError(f'未知标定阶段：{", ".join(unknown)}（可选：h1, h2, h3, k1, k2, k3）')
+    result = [registry[name] for name in names]
+    if len({s.family for s in result}) != 1:
+        raise ValueError('同一命令不能混跑动力学与运动学阶段')
+    return result

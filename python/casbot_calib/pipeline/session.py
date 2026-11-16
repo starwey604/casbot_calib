@@ -30,8 +30,8 @@ def resolve_robot_id(state_root, explicit=None):
     return 'dvt2'
 
 
-def _update_latest_link(output_root, target):
-    link = Path(output_root) / 'latest'
+def _update_latest_link(output_root, target, name="latest"):
+    link = Path(output_root) / name
     tmp = Path(output_root) / f'.latest.{os.getpid()}.tmp'
     try:
         if tmp.is_symlink() or tmp.exists():
@@ -58,7 +58,7 @@ class Session:
         return self.output_root / 'state'
 
     @classmethod
-    def create(cls, *, output_root=DEFAULT_OUTPUT_ROOT, robot_id=None, model_context, stages_requested, plan_only=False):
+    def create(cls, *, output_root=DEFAULT_OUTPUT_ROOT, robot_id=None, model_context, stages_requested, plan_only=False, family="dynamics"):
         output_root = Path(output_root).resolve()
         state_root = output_root / 'state'
         resolved_id = resolve_robot_id(state_root, robot_id)
@@ -73,6 +73,7 @@ class Session:
         candidate.mkdir(parents=True, exist_ok=False)
 
         metadata = dict(
+            family=family,
             robot_id=resolved_id,
             created_at=time.strftime('%Y-%m-%dT%H:%M:%S%z'),
             boot_id=current_boot_id(),
@@ -85,22 +86,33 @@ class Session:
         session = cls(candidate, metadata, output_root=output_root)
         session.save()
         _update_latest_link(output_root, candidate)
+        _update_latest_link(output_root, candidate, "latest_"+family)
         return session
 
     @classmethod
-    def resume(cls, *, output_root=DEFAULT_OUTPUT_ROOT, target=None, model_context=None):
+    def resume(cls, *, output_root=DEFAULT_OUTPUT_ROOT, target=None, model_context=None, family="dynamics"):
         output_root = Path(output_root).resolve()
         if target is None or str(target) == 'latest':
-            latest = output_root / 'latest'
-            if not latest.exists():
-                raise ValueError(f'没有可续跑的最近会话：{latest}')
-            session_dir = latest.resolve()
+            latest = output_root / ('latest_'+family)
+            if latest.exists():
+                session_dir = latest.resolve()
+            else:
+                candidates = []
+                for path in output_root.glob('*/*/session.json'):
+                    record = json.loads(path.read_text(encoding='utf-8'))
+                    if record.get('family', 'dynamics') == family:
+                        candidates.append((record.get('created_at', ''), path.parent.name, path.parent))
+                if not candidates:
+                    raise ValueError(f'没有可续跑的 {family} 会话：{output_root}')
+                session_dir = max(candidates)[2].resolve()
         else:
             session_dir = Path(target).resolve()
         meta_path = session_dir / 'session.json'
         if not meta_path.is_file():
             raise ValueError(f'无效的标定会话目录（缺少 session.json）：{session_dir}')
         metadata = json.loads(meta_path.read_text(encoding='utf-8'))
+        if metadata.get('family', 'dynamics') != family:
+            raise ValueError(f'目标会话不属于 {family}')
         if model_context is not None and metadata.get('model_context') != model_context:
             raise ValueError('待续跑会话的模型版本与当前代码不一致，请新建会话')
         if metadata.get('plan_only'):

@@ -1,0 +1,25 @@
+mode: full
+tool_mass_kg: 0.0
+tool_com_m: [0.0, 0.0, 0.0]
+port: /dev/ttyACM0
+centered_readings_m: [0.0, 0.0, 0.0]
+channels:
+  x: {slot: 0, address: '', address_type: random, sign: 1, unit_tag: 109, unit_scale_m: 0.001}
+  y: {slot: 1, address: '', address_type: random, sign: 1, unit_tag: 109, unit_scale_m: 0.001}
+  z: {slot: 2, address: '', address_type: random, sign: 1, unit_tag: 109, unit_scale_m: 0.001}
+settle_window_s: 0.2
+settle_span_rad: 0.00025
+settle_timeout_s: 3.0
+discard_first: 1
+samples_per_slot: 3
+stable_indicator_span_m: 0.000005
+reply_timeout_s: 1.5
+range_tolerance_m: 0.002
+max_correction_step_m: 0.0015
+max_windup_rad: 0.012
+max_corrections: 3
+condition_limit: 200.0
+mock:
+  indicator_hz: 100.0
+  reply_delay_s: 0.015
+  joint_offsets_rad: [0.0004, -0.0003, 0.0002, -0.0002, 0.0001, -0.0003, 0.0002, -0.0003, 0.0002, 0.0001, -0.0004, 0.0002, -0.0001, 0.0003]

@@ -120,6 +120,7 @@ def ensure_ready_channel(
     *,
     endpoint='/shm_mc',
     explicit_hand_background=None,
+    require_hand_background=True,
     host=None,
     dev_shm=Path('/dev/shm'),
     search_roots=(ROOT / 'artifacts',),
@@ -137,7 +138,7 @@ def ensure_ready_channel(
 
     # Private test endpoints never run systemd takeover.
     if endpoint.startswith('/casbot_calib_test_'):
-        if bg is None:
+        if require_hand_background and bg is None:
             raise ValueError('私有测试端点未提供手部背景帧')
         return dict(endpoint=endpoint, hand_background=bg, boot_id=current_boot_id(), takeover_performed=False)
 
@@ -150,7 +151,7 @@ def ensure_ready_channel(
     if bg is not None:
         if bg != cached_bg:
             shutil.copyfile(bg, cached_bg)
-    elif not valid_hand_background(cached_bg):
+    elif require_hand_background and not valid_hand_background(cached_bg):
         headers = read_queue_headers(endpoint, dev_shm=dev_shm)
         if headers is not None and headers['command']['published_index'] > 0:
             inspect_dir = boot_dir / f'pre_takeover_inspect_{time.monotonic_ns()}'
@@ -200,7 +201,7 @@ def ensure_ready_channel(
         else:
             raise HandoffError('主站握手后 5 秒内未收到状态帧，请检查 EtherCAT 链路与从站供电')
 
-    if not valid_hand_background(cached_bg):
+    if require_hand_background and not valid_hand_background(cached_bg):
         raise ValueError(
             '当前开机窗口未找到停业务前的手部背景帧（744字节 command.bin）。'
             '若此前手动停过厂家服务而未保存 inspect 快照，请重启 Orin 后直接运行标定脚本。'
@@ -210,7 +211,7 @@ def ensure_ready_channel(
         boot_id=boot_id,
         endpoint=endpoint,
         shm_inode=list(headers['inode']),
-        hand_background=str(cached_bg),
+        hand_background=str(cached_bg) if require_hand_background else None,
         takeover_performed=takeover_performed,
         handshake_performed=handshake_performed,
         updated_wall_ns=time.time_ns(),
@@ -218,7 +219,7 @@ def ensure_ready_channel(
     write_json(boot_dir / 'state.json', state)
     return dict(
         endpoint=endpoint,
-        hand_background=cached_bg,
+        hand_background=cached_bg if require_hand_background else None,
         boot_id=boot_id,
         takeover_performed=takeover_performed,
         handshake_performed=handshake_performed,
