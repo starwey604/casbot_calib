@@ -12,6 +12,11 @@ else
   python=python3
 fi
 source "$repo/scripts/shm/python_path.sh"
+if [[ ${1:-} == dynamics-verify-mock ]]; then
+  shift
+  export OMP_WAIT_POLICY=PASSIVE
+  exec "$python" -m casbot_calib.pipeline.verify_dynamics --mock "$@"
+fi
 if [[ ${1:-} == kinematics-mock ]]; then
   shift
   export OMP_WAIT_POLICY=PASSIVE

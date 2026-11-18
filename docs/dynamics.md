@@ -73,3 +73,17 @@ H1/H2/H3 共用机器人配置中的逐轴 `kp`、`kd`，数组顺序为左臂 I
   - `h1/report.md`、`h2/report.md`、`h3/report.md`：各阶段独立验收报告（重分析时旧 `analysis/` 自动归档为 `analysis.previous_<ns>`）。
   - H1 留出 RMSE 按逐轴有效正反配对计算；未逼近、卡住或方向异常的分量自动排除。逐轴表显示有效配对数，无有效配对显示 `—`，原始窗口仍完整保留。
   - `<阶段>/capture/`：完整 1kHz 二进制（`feedback.bin`、`commands.bin`）与事件记录。
+
+## 5. 闭环验收
+
+使用通过 H1、H2、H3 的完整交付会话。实机验收前拆下双手和工具，固定机架，双腿、腰、头部保持失能。移走双臂活动范围内的琴架、鼓架、谱架和线缆，按第 1 节确认现场条件。
+
+```bash
+bash calib/dynamics_verify.sh --robot DVT2_01
+bash calib/dynamics_verify.sh --plan-only
+bash calib/dynamics_verify.sh --reanalyse
+```
+
+默认选择同机器最新符合条件的交付会话，也可直接传入标定会话目录。查看会话内的 `verify/report.md`，其中列出电子琴和架子鼓轨迹的五组法兰跟踪、关节误差、相位和抖动结果。PASS 时在 `verify/analysis/recommended_band_gains.yaml` 取得柔和增益及本次采用的前馈参数。验收退出码为 0 表示通过，1 表示指标未通过或窗口无效，2 表示执行或分析中止。
+
+开发时用 `bash calib/dev.sh dynamics-verify-mock <标定会话目录>` 在私有物理 SHM 上演练，使用本地测试会话。

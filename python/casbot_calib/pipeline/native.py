@@ -106,15 +106,19 @@ def native_execute_once(
     output_dir = Path(output_dir).resolve()
     output_dir.mkdir(parents=True, exist_ok=False)
     urdf = urdf_for(robot_config)
-    bg_copy = output_dir / 'hand_background_source.bin'
-    shutil.copyfile(hand_background, bg_copy)
+    if hand_background is None:
+        hand_args = ['--bare-flange']
+    else:
+        bg_copy = output_dir / 'hand_background_source.bin'
+        shutil.copyfile(hand_background, bg_copy)
+        hand_args = ['--hand-background', str(bg_copy)]
     command = [
         str(Path(executor).resolve()),
         '--execute',
         '--shm', endpoint,
         '--urdf', str(Path(urdf).resolve()),
         '--reference', str(Path(reference_path).resolve()),
-        '--hand-background', str(bg_copy),
+        *hand_args,
         '--output', str(output_dir / 'native'),
     ]
     meta = _run_supervised(command, output_dir, timeout=max(30.0, float(duration_s) + 25.0), peer=peer)
