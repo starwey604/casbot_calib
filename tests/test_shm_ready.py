@@ -83,6 +83,24 @@ def test_ready_prefix_allows_known_hanging_start_but_unprepared_path_refuses(tmp
     assert any(any(row['value']) for row in bundle['effort'] if row['t_ns'] >= p['handover_end_ns'])
 
 
+@pytest.mark.slow
+def test_half_gain_body_hold_unfolds_from_hanging(tmp_path, native):
+    config = hanging_mock_config(tmp_path, load_robot_config(hold_body=True))
+    output = tmp_path / 'smoke'
+    run = subprocess.run(
+        ['bash', str(ROOT / 'calib/dev.sh'), 'hold-body', '--mock', '--mock-config', str(config),
+         '--executor', str(native), '--output', str(output), '--scale', '0.5',
+         '--duration', '1', '--execute'], capture_output=True, text=True, timeout=30,
+    )
+    assert run.returncode == 0, run.stdout + run.stderr
+    reference = json.loads((output / 'plan/reference.json').read_text())
+    begin = next(m['t_ns'] for m in reference['markers'] if m['event'] == 'calibration_begin')
+    assert reference['knots_ns'][-1] - begin == 1_000_000_000
+    np.testing.assert_allclose(reference['states'][0][0], HANGING, atol=1e-4)
+    for state in reference['states'][-2:]:
+        np.testing.assert_array_equal(state[0], ready_position())
+
+
 def test_native_rejects_bad_schedule_before_opening_any_channel(tmp_path, native):
     from casbot_calib.shm_reference import jog_bundle
     b = jog_bundle([0.0] * 14, 12, 0.01, 1)

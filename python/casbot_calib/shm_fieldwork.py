@@ -118,7 +118,7 @@ def parser():
     sub.add_parser('list', help='列用例、当前支持范围和建议顺序')
     sub.add_parser('gui', help='本机GUI及渲染，通过SSH连接Orin或私有Mock')
     sub.add_parser('a-evidence', help='A分析，使用SHM观测时间（需要数值Python环境）')
-    hold = sub.add_parser('hold-body', help='辅助站立原地冒烟')
+    hold = sub.add_parser('hold-body', help='双臂进入准备位后保持，测试辅助站立')
     hold.add_argument('--duration', type=finite, default=10.)
     hold.add_argument('--scale', type=finite, default=.5)
     hold.add_argument('--execute', action='store_true')
@@ -810,6 +810,7 @@ def run_body_hold(a):
     from .pipeline.robot import load_robot_config
     from .pipeline.session import DEFAULT_OUTPUT_ROOT
     from .pipeline.takeover import ensure_ready_channel
+    from .shm_ready import ready_position
     from .shm_reference import save_bundle
     from .staged_motion import Motion
     from .stages.dynamics.common import compose_stage_reference
@@ -821,7 +822,7 @@ def run_body_hold(a):
         fields['kp'] *= a.scale
         fields['kd'] *= a.scale
     if not a.execute:
-        print(f'仅预览：15 个非臂槽原地保持 {a.duration:g} s，增益比例 {a.scale:g}')
+        print(f'仅预览：15 个非臂槽以 {a.scale:g} 倍增益保持，双臂进入准备位后停留 {a.duration:g} s')
         return 0
 
     endpoint = '/shm_mc'
@@ -836,10 +837,11 @@ def run_body_hold(a):
         background = mock.background if mock else channel['hand_background']
         peer = mock.process if mock else None
         q = native_snapshot(binary, endpoint, robot, root / 'snapshot', peer=peer)
-        motion = Motion('hold_body', 'smoke', q)
-        motion.add(a.duration, q, label='hold')
+        ready = ready_position()
+        motion = Motion('hold_body', 'smoke', ready)
+        motion.add(a.duration, ready, label='hold')
         engine, _ = model_for(robot)
-        bundle, *_ = compose_stage_reference(motion, q, engine, robot, ready_pose=False, feedforward_mode='none')
+        bundle, *_ = compose_stage_reference(motion, q, engine, robot, ready_pose=True, feedforward_mode='none')
         reference = save_bundle(root / 'plan', bundle)
         code, result = native_execute_once(binary, endpoint, robot, reference, background,
                                            root / 'capture', duration_s=bundle['knots_ns'][-1]*1e-9, peer=peer)
