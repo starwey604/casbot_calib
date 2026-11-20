@@ -13,12 +13,17 @@
 
 ## 2. 怎么跑
 
-使用辅助站立时，先在外部承重下依次完成半增益和全增益冒烟。腿、腰和头从起点开始保持，双臂按动力学标定的准备段向两侧展开（肩 roll 左 +20°、右 −20°），准备段结束后再保持 `--duration` 指定的时间。核对脚踝和机身平稳、驱动无报错，退出时收到失能应答。脚踝采用电机空间试验增益与命令限幅。保持仅覆盖单次采集，阶段间由外部支撑承重。
+DVT2_01 的辅助站立已完成半增益和全增益实机冒烟，现场选用配置中的全增益做动力学标定。加 `--hold-body` 启用腿、踝、腰和头的保持。单次采集结束后驱动失能，阶段间由外部支撑承重。见[实机记录](records/body_hold_20261120.md)。
+
+```bash
+bash calib/dynamics.sh --mode full --robot DVT2_01 --hold-body
+```
+
+需要复测站立时，在外部承重下先跑半增益，再跑全增益。双臂按准备段向两侧展开（肩 roll 左 +20°、右 −20°），随后保持指定时长。观察脚踝和机身是否平稳，结束时核对失能应答。
 
 ```bash
 bash calib/dev.sh hold-body --scale 0.5 --duration 10 --execute
 bash calib/dev.sh hold-body --scale 1 --duration 10 --execute
-bash calib/dynamics.sh --mode full --robot DVT2_01 --hold-body
 ```
 
 单阶段、续跑和闭环验收需要辅助站立时，在当次命令中同样加 `--hold-body`。
