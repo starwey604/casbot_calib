@@ -3,6 +3,9 @@
 在仓库根目录运行 `bash firmware/build.sh`，构建 Pro Micro nRF52840 的 UF2 固件。
 应用源码在 `firmware/trical_bridge/`；Zephyr、模块、虚拟环境和构建结果均由本机生成，不提交。
 
+**新板首次测试：**先按 [blinky 与 USB CDC 上手步骤](examples/README.md) 构建、烧录两个独立例程，
+确认 LED 和 USB 回显，再运行 TriCal bridge。
+
 ## 首次准备
 
 需要 Python ≥3.12、Git、CMake、Ninja、设备树编译器 `dtc`，以及包含 `arm-zephyr-eabi` 工具链的 Zephyr SDK。
@@ -40,6 +43,10 @@ bash firmware/build.sh
 # 独立 QAS 频率测试 app
 bash firmware/build.sh --rate-test
 
+# 新板基础例程（分别输出到 build/blinky 和 build/usb_cdc）
+bash firmware/build.sh --example blinky
+bash firmware/build.sh --example usb_cdc
+
 # 配置或依赖改变后清洁重建
 bash firmware/build.sh -p always
 ```
@@ -54,7 +61,7 @@ bash firmware/build.sh -p always
 | `zephyr/.config` | 实际生效的 Kconfig 配置 |
 | `zephyr/zephyr.dts` | 实际生效的设备树与分区 |
 
-烧录前需核对实际板子的 UF2 bootloader/分区布局。本轮只交付构建，不执行 `west flash` 或拷贝镜像到开发板。
+烧录前需核对实际板子的 UF2 bootloader/分区布局；新板的识别信息和复制步骤见[上手指南](examples/README.md)。
 USB VID/PID 暂沿用 Zephyr 的开发默认值 `2fe3:0004`，对外发布固件前须换成获授权的 VID/PID。
 
 ## 当前固件行为

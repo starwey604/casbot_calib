@@ -11,11 +11,26 @@ fi
 
 app=trical_bridge
 output=trical_bridge
-if [[ "${1:-}" == "--rate-test" ]]; then
-    app=tests/qas_rate
-    output=qas_rate
-    shift
-fi
+case "${1:-}" in
+    --rate-test)
+        app=tests/qas_rate
+        output=qas_rate
+        shift
+        ;;
+    --example)
+        case "${2:-}" in
+            blinky|usb_cdc)
+                app="examples/$2"
+                output="$2"
+                shift 2
+                ;;
+            *)
+                printf '%s\n' '用法：bash firmware/build.sh --example {blinky|usb_cdc} [west build 参数]' >&2
+                exit 2
+                ;;
+        esac
+        ;;
+esac
 
 # Keep this workspace independent of any globally exported/shared Zephyr tree.
 export ZEPHYR_BASE="$workspace/zephyr"

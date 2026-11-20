@@ -1,0 +1,29 @@
+/* Bring-up only uses the onboard LED and, for usb_cdc, the USB connector. */
+&uart0 {
+	status = "disabled";
+};
+
+&i2c0 {
+	status = "disabled";
+};
+
+&i2c1 {
+	status = "disabled";
+};
+
+&spi2 {
+	status = "disabled";
+};
+
+/* PWM shares P0.15 with led0; GPIO owns the LED in these examples. */
+&pwm0 {
+	status = "disabled";
+};
+
+&adc {
+	status = "disabled";
+};
+
+&ieee802154 {
+	status = "disabled";
+};
