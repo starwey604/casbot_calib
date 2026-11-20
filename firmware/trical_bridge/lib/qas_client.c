@@ -36,6 +36,8 @@ static bool terminal, scanning;
 static uint64_t scan_end_us;
 static const struct bt_uuid_16 service16 = BT_UUID_INIT_16(0xffb0);
 static const struct bt_uuid_16 data16 = BT_UUID_INIT_16(0xffb2);
+/* Discovery retains its UUID filter until the asynchronous callback. */
+static const struct bt_uuid *const ccc_uuid = BT_UUID_GATT_CCC;
 static const struct bt_uuid_128 service128 = BT_UUID_INIT_128(
 	BT_UUID_128_ENCODE(0x0783b03e, 0x8535, 0xb5a0, 0x7140, 0xa304d249ffb0));
 static const struct bt_uuid_128 data128 = BT_UUID_INIT_128(
@@ -326,7 +328,7 @@ void qas_process(const struct qas_event *e)
 			if ((e->properties & BT_GATT_CHRC_NOTIFY) == 0 ||
 			    (e->properties & (BT_GATT_CHRC_WRITE | BT_GATT_CHRC_WRITE_WITHOUT_RESP)) == 0 ||
 			    e->handle >= e->end_handle) { err = -ENOTSUP; }
-			else { err = start_discovery(s, CCC, BT_UUID_GATT_CCC, e->handle + 1, e->end_handle); }
+			else { err = start_discovery(s, CCC, ccc_uuid, e->handle + 1, e->end_handle); }
 		} else if (s->stage == CCC) {
 			s->stage = SUBSCRIBING;
 			s->subscription = (struct bt_gatt_subscribe_params) {

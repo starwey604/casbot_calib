@@ -99,6 +99,7 @@ static void make_ready(unsigned int slot,const char *address,bool variant128)
     attribute(index,11,&ch);
     ch.uuid=&fake_ccc.uuid;ch.value_handle=21;attribute(index,20,&ch);pump();
     assert(discoveries[index]->start_handle==13 && discoveries[index]->end_handle==19);
+    assert(bt_uuid_cmp(discoveries[index]->uuid, &fake_ccc.uuid)==0);
     attribute(index,13,NULL);pump();
     assert(!qas_ready(slot)); /* The subscribe API returning zero is not a CCC acknowledgment. */
     assert(subscriptions[index]->value_handle==12 && subscriptions[index]->ccc_handle==13);

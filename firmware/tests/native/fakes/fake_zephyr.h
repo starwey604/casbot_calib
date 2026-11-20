@@ -49,7 +49,7 @@ struct bt_uuid_128 { struct bt_uuid uuid; uint64_t val; };
 #define BT_UUID_128_ENCODE(a,b,c,d,e) (e)
 #define BT_UUID_INIT_128(v) {.uuid={128},.val=(v)}
 extern const struct bt_uuid_16 fake_ccc;
-#define BT_UUID_GATT_CCC (&fake_ccc.uuid)
+#define BT_UUID_GATT_CCC ((const struct bt_uuid *)((const struct bt_uuid_16[]){BT_UUID_INIT_16(0x2902)}))
 static inline int bt_uuid_cmp(const struct bt_uuid *a,const struct bt_uuid *b)
 {
     if(a->type!=b->type)return 1;

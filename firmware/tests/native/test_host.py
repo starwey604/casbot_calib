@@ -85,6 +85,12 @@ class HostTransport(unittest.TestCase):
         with self.assertRaisesRegex(usb.BridgeError, "GATT"):
             link.send_qas(0, "wreq", "MOD")
 
+    def test_failed_connection_event_reports_controller_result(self):
+        link = usb.Link("fake", io.StringIO(), factory=FakeSerial)
+        link.serial.buffer.extend(json.dumps(event("connected", slot=0, result=2)).encode()+b"\n")
+        with self.assertRaisesRegex(usb.BridgeError, "连接故障"):
+            link.wait(lambda e: False, fail_slot=0)
+
     def test_connection_failure_aborts_without_reconnect(self):
         link = usb.Link("fake", io.StringIO(), factory=FakeSerial)
         link.serial.buffer.extend(json.dumps(event("disconnected", slot=0, result=8)).encode()+b"\n")

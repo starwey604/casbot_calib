@@ -66,7 +66,7 @@ class Link:
                 checked = index
                 if fail_slot is not None and event.get("slot") == fail_slot and (
                     event["type"] in ("disconnected", "error") or
-                    event["type"] == "subscribed" and event.get("result") != 0
+                    event["type"] in ("connected", "subscribed") and event.get("result") != 0
                 ):
                     raise BridgeError(f"仪表连接故障：{event}")
                 if predicate(event):
