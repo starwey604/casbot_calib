@@ -7,6 +7,6 @@
 
 这些文件只供本仓库调试对照，不执行、不自动安装到厂家目录。它们依赖厂家环境、绝对路径和其它脚本，不能直接改个文件名复制运行。
 
-运行入口是仓库自己的`fw prepare` → `scripts/shm/prepare_field.sh` → `casbot_calib.shm_takeover`，实现与现场边界见[接管说明](../../../docs/shm_takeover.md)。继续复用厂家剩余业务停止和主站初始化，避免复制24个模块的生命周期逻辑。
+运行入口是仓库自己的 `calib/dev.sh prepare`，由 `casbot_calib.shm_takeover` 调用厂家脚本停止业务并启动主站。见[接管说明](../../../docs/shm_takeover.md)。
 
 发现：厂家`kill_process`直接SIGKILL，`auto_stop`后台请求systemd停止后仅等待1秒就打印成功。主站二进制的`main`注册SIGINT/SIGTERM/SIGUSR1到`sigint_handler`；本轮只据已找到的SIGTERM退出入口改编排，不修改主站/内核或发SIGUSR1。反汇编证据在本机`artifacts/shm_prepare_hang_20261114/master_signal_path.log`。

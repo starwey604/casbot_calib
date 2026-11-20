@@ -120,11 +120,10 @@ bash fieldwork/shm/run.sh run C01 --duration 3 --hand-background "$hand" --execu
 
 `observe`/`snapshot`只有一个出队owner，不发命令，不要与其它控制/观测owner并开。`inspect`与`probe`仅被动读取，可留故障证据，但不是一致的控制反馈；被动probe不报告真实采样率。
 
-C01使能双臂、在本次实际起点保持3秒，再请求失能。C02同样有有限保持与失能退出，以下两例分别观察保持阶段与退出阶段，不能把“持续保持”误解为程序结束后仍发送：
+C01使能双臂、在本次实际起点保持3秒，再请求失能。运行 C02 时，可在同一次执行中观察保持和失能退出两个阶段。
 
 ```bash
-bash fieldwork/shm/run.sh run C02 --variant hold --duration 5 --hand-background "$hand" --execute
-bash fieldwork/shm/run.sh run C02 --variant disable --duration 3 --hand-background "$hand" --execute
+bash fieldwork/shm/run.sh run C02 --duration 5 --hand-background "$hand" --execute
 ```
 
 所有主动例：腿0–11、头26/27、腰28失能；双臂默认全部使能，未测试轴固定本次实际起点。手部仅冻结显式背景的双手字段，不重放原全身目标。35槽和双手完整记录。模式变化先失能再MIT，应答按`status & 0x006f`判断。

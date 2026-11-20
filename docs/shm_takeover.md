@@ -27,7 +27,7 @@ SIGTERM注册已从当前主站二进制确认；本次重启后prepare/activate
 ## 只读诊断，不停止任何业务
 
 ```bash
-bash scripts/shm/prepare_field.sh --diagnose artifacts/新的诊断目录
+bash calib/dev.sh diagnose artifacts/新的诊断目录
 ```
 
 只读取服务状态、相关进程/全部线程与可用内核栈，写入本次目录，不访问SHM、不发信号、不启动主站。

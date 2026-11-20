@@ -58,18 +58,8 @@ done
 [[ $jobs =~ ^[1-9][0-9]*$ ]] || { echo 'jobs 必须是正整数' >&2; exit 2; }
 
 if ((check_only)); then
-  if [[ -n ${CASBOT_SHM_PYTHON:-} ]]; then
-    py="$CASBOT_SHM_PYTHON"
-  elif [[ -x "$venv/bin/python" ]]; then
-    py="$venv/bin/python"
-  elif [[ -n ${VIRTUAL_ENV:-} && -x "$VIRTUAL_ENV/bin/python" ]]; then
-    py="$VIRTUAL_ENV/bin/python"
-  else
-    py=python3
-  fi
-  python="$py"
-  source "$repo/scripts/shm/python_path.sh"
-  exec "$py" -m casbot_calib.pipeline.preflight
+  source "$repo/scripts/shm/python_path.sh" "$venv"
+  exec "$python" -m casbot_calib.pipeline.preflight
 fi
 
 [[ -z ${CONDA_PREFIX:-} ]] || { echo '请先退出 conda 环境再运行 calib/setup.sh' >&2; exit 1; }

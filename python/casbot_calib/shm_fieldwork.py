@@ -130,11 +130,12 @@ def parser():
         a = sub.add_parser(action)
         a.add_argument('--output', type=Path, help='新目录；省略则自动生成')
         a.add_argument('--endpoint', type=endpoint, default='/shm_mc')
-        a.add_argument('--executor', type=Path, default=ROOT/'install/shm-core/bin/shm_executor')
-        a.add_argument('--urdf', type=Path, default=None)
+        if action != 'prepare':
+            a.add_argument('--executor', type=Path, default=ROOT/'install/shm-core/bin/shm_executor')
         if action in ('prepare', 'activate', 'run', 'execute'):
             a.add_argument('--execute', action='store_true', help='显式实施；不加则只预览')
         if action in ('observe', 'snapshot', 'run', 'execute'):
+            a.add_argument('--urdf', type=Path, default=None)
             a.add_argument('--mock', action='store_true', help='独占私有物理SHM Mock，不接实机')
             a.add_argument('--mock-config', type=Path, default=ROOT/'configs/shm/mock.json')
         if action in ('observe', 'probe', 'run'):
@@ -150,7 +151,6 @@ def parser():
             a.add_argument('--kd', type=finite, default=2)
             a.add_argument('--quiet-s', type=finite, default=3)
             a.add_argument('--other-arm', choices=('hold', 'disabled'), default='hold')
-            a.add_argument('--variant', choices=('hold', 'disable'), default='disable', help='C02观察重点；两者最终均失能退出')
             a.add_argument('--termination', choices=('sigterm', 'sigkill'), default='sigterm', help='C06：受控终止或硬杀本次发送器')
             a.add_argument('--hand-background', type=Path)
             a.add_argument('--snapshot', type=Path, help='可选：用于离线预览的快照文件或记录目录；执行仍重读起点')
@@ -158,7 +158,7 @@ def parser():
             a.add_argument('reference',type=Path)
             a.add_argument('--hand-background',type=Path)
             a.set_defaults(case='REF',joint_id=12,amplitude=.5,segment_s=5,kp=20,kd=2,duration=3,
-                           quiet_s=3,other_arm='hold',variant='disable',termination='sigterm',snapshot=None)
+                           quiet_s=3,other_arm='hold',termination='sigterm',snapshot=None)
     for action in ('plan','fields'):
         a=sub.add_parser(action,help='离线生成参考，不连接SHM')
         a.add_argument('--snapshot',type=Path)
@@ -228,7 +228,7 @@ def preview(a):
     d = dict(case=a.case, title=CASES.get(a.case,('通用参考/五字段','执行显式冻结bundle，不继承SDK插值'))[0], behavior=CASES.get(a.case,('','执行显式冻结bundle'))[1], endpoint=a.endpoint,
              joint_id=a.joint_id, joint_label=('左' if a.joint_id < 19 else '右') + PARTS[(a.joint_id-12) % 7],
              amplitude_rad=a.amplitude, segment_s=a.segment_s, kp=a.kp, kd=a.kd, effort_nm=0,
-             duration_s=a.duration, quiet_s=a.quiet_s, other_arm=a.other_arm, variant=a.variant,
+             duration_s=a.duration, quiet_s=a.quiet_s, other_arm=a.other_arm,
              termination=a.termination, collision_check='disabled_for_arm_field_cases',
              background=policy, raw_gain=dict(kp=math.trunc(a.kp*10), kd=math.trunc(a.kd*10)),
              urdf=str(a.urdf.resolve()), hand_background=str(a.hand_background.resolve()) if a.hand_background else None,
@@ -266,20 +266,17 @@ def preview(a):
                              minus_raw=math.trunc(DIRECTION[j]*(q-a.amplitude-OFFSET[j])*1e6),
                              plus_raw=math.trunc(DIRECTION[j]*(q+a.amplitude-OFFSET[j])*1e6)))
         d['snapshot_arms'] = arms
+        d['non_arm_targets_raw'] = {str(j): struct.unpack_from('<i', raw, 12+j*16+2)[0]
+                                    for j in list(range(12))+[26, 27, 28]}
         d['preview_notice'] = '此快照只供预览；执行重读所有起点并重新检查，不沿用旧起点。'
     else:
         d['preview_notice'] = '未提供--snapshot，起点/原始位置和URDF结果将在执行时读取；当前预览不连接SHM。'
-    if a.snapshot:
-        data = state_path(a.snapshot).read_bytes()
-        d['non_arm_targets_raw'] = {str(j): struct.unpack_from('<i', data, 12+j*16+2)[0]
-                                    for j in list(range(12))+[26, 27, 28]}
     if a.action=='execute':
         d.update(collision_check='native_URDF_only; H1 certificates checked by h1 execute wrapper',
                  reference=str(a.reference.resolve()),reference_schema=a.bundle['schema'],duration_s=a.duration,
                  origin=a.bundle.get('origin','absolute'),joint_id=None,joint_label='双臂14轴',
                  input_notice='直接五字段不隐式平滑' if a.bundle['schema']=='casbot_shm_fields_v1' else '同一条七次Hermite参考的q/v')
-    if a.action=='execute':
-        for key in ('amplitude_rad','segment_s','kp','kd','effort_nm','raw_gain','other_arm','variant','termination'):
+        for key in ('amplitude_rad','segment_s','kp','kd','effort_nm','raw_gain','other_arm','termination'):
             d.pop(key,None)
         d['background']['other_arms']='双臂按bundle逐轴目标；进入阶段先保持新鲜实际起点'
         d['kp']=a.bundle['kp'];d['kd']=a.bundle['kd']
@@ -957,7 +954,7 @@ def _native_action(a,root,peer=None,peer_close=None):
 
 def _native_action_impl(a,root,peer=None,peer_close=None):
     if a.action == 'prepare':
-        command = ['bash', str(ROOT/'scripts/shm/prepare_field.sh')]
+        command = [sys.executable, '-m', 'casbot_calib.shm_takeover']
         command += ['--start-only', str(a.start_only.resolve())] if a.start_only else [str(root/'takeover')]
         # Vendor stop may ask interactively: retain stdin/terminal and log via script.
         meta = prepare_subprocess(command)

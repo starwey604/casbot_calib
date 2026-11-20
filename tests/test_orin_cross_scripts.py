@@ -4,6 +4,7 @@ import json
 import os
 from pathlib import Path
 import subprocess
+import sys
 
 import pytest
 
@@ -237,9 +238,11 @@ sys.exit(subprocess.call(['bash', '-c', args[-1]]))
 def test_python_path_preserves_native_and_selects_installed_mode(tmp_path):
     venv = tmp_path / 'venv with spaces'
     (venv / 'bin').mkdir(parents=True)
-    command = ['bash', '-c', 'repo=$1; python=$2; source "$repo/scripts/shm/python_path.sh"; printf "%s|%s" "${PYTHONPATH:-}" "${CASBOT_PROJECT_ROOT:-}"',
-               '--', str(ROOT), str(venv / 'bin/python')]
+    command = ['bash', '-c', 'repo=$1; source "$repo/scripts/shm/python_path.sh" "$2"; printf "%s|%s" "${PYTHONPATH:-}" "${CASBOT_PROJECT_ROOT:-}"',
+               '--', str(ROOT), str(venv)]
+    (venv / 'bin/python').symlink_to(sys.executable)
     env = dict(os.environ, PYTHONPATH='/extra/path')
+    env.pop('CASBOT_SHM_PYTHON', None)
     env.pop('CASBOT_PROJECT_ROOT', None)
     assert subprocess.check_output(command, env=env, text=True) == f'{ROOT}/python:/extra/path|'
     (venv / 'casbot-prebuilt').touch()
