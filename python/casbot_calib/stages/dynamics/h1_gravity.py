@@ -30,6 +30,7 @@ from ...staged_motion import (
     gate_motion,
 )
 from ...staged_motion import _move
+from .common import ensure_leading_hold
 from .h1_selection import _select_arm, candidate_pool, information, paired_motions, screen_candidates
 
 DEFAULT_H1_CONFIG = ROOT / 'configs/dynamics/h1.yaml'
@@ -1403,8 +1404,11 @@ def plan_h1(q_start, robot_config, recipe, plan_dir):
     ready_cert = None
     prefix = None
     formal_start = q_start.copy()
+    hold = robot_cfg.get('non_arm_hold') or {}
+    ramp = hold['ramp_s'] if hold.get('enabled') else 0.
     if rec['ready_pose']:
-        prefix, ready_cert = preparation(q_start, engine, robot_cfg['maximum_velocity_rad_s'])
+        prefix, ready_cert = preparation(q_start, engine, robot_cfg['maximum_velocity_rad_s'],
+                                         start_hold_s=max(0.5, ramp))
         formal_start = ready_position()
 
     static_spec = None
@@ -1448,9 +1452,12 @@ def plan_h1(q_start, robot_config, recipe, plan_dir):
             motion = stat_motion
 
     motion.knots = [round(t * 1e9) * 1e-9 for t in motion.knots]
+    extra_ns = 0
+    if ramp and ready_cert is None:
+        motion, extra_ns = ensure_leading_hold(motion, ramp)
     for trial in trials:
         for key in ('begin_s', 'end_s', 'measure_begin_s', 'measure_end_s'):
-            trial[key] = round(trial[key] * 1e9) * 1e-9
+            trial[key] = (extra_ns + round(trial[key] * 1e9)) * 1e-9
 
     plan_dir = Path(plan_dir).resolve()
     plan_dir.mkdir(parents=True, exist_ok=False)
@@ -1478,7 +1485,8 @@ def plan_h1(q_start, robot_config, recipe, plan_dir):
     effort_rows = reference_effort(
         motion, engine, robot_cfg, ready_cert, feedforward_mode=rec['gravity_feedforward']
     )
-    bundle = export_motion(motion, kp=robot_cfg['kp'], kd=robot_cfg['kd'], effort=effort_rows)
+    bundle = export_motion(motion, kp=robot_cfg['kp'], kd=robot_cfg['kd'], effort=effort_rows,
+                           non_arm_hold=hold, observed_velocity_limit_rad_s=robot_cfg['maximum_velocity_rad_s'])
     bundle.update(
         purpose='shm_calib_ready_then_collision_checked' if ready_cert else 'shm_calib_collision_checked',
         gravity_feedforward=rec['gravity_feedforward'],

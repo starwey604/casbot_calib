@@ -31,13 +31,14 @@ std::string write_temp_reference(
     const casbot::shm::JointVector& q0,
     const casbot::shm::JointVector& q1,
     const casbot::shm::JointVector& dq0 = {},
-    const casbot::shm::JointVector& dq1 = {}) {
+    const casbot::shm::JointVector& dq1 = {},
+    std::string schema = "casbot_shm_reference_v1", std::string fields = "") {
   const auto path = std::filesystem::temp_directory_path() /
       ("casbot_ref_test_" + std::to_string(getpid()) + ".json");
   std::ofstream out(path);
   out << std::setprecision(17);
   out << "{\n"
-      << "  \"schema\": \"casbot_shm_reference_v1\",\n"
+      << "  \"schema\": \"" << schema << "\",\n" << fields
       << "  \"joint_names\": [";
   for (int i = 0; i < 14; ++i) {
     if (i) out << ',';
@@ -78,6 +79,30 @@ int test_shm_reference_tests() {
   std::filesystem::remove(path_valid);
   ref_valid.validate_limits(lower, upper, velocity);
 
+  const std::string mit=R"({"slot":0,"mode":"mit","kp":400,"kd":20})";
+  const std::string cst=R"({"slot":4,"mode":"cst_pd","kp":120,"kd":3,"torque_limit_nm":30})";
+  const std::string limit=R"("observed_velocity_limit_rad_s":1.5,)";
+  auto block=[](const std::string& slots) {
+    return R"("non_arm_hold":{"ramp_s":1,"cst_comm_timeout_ms":25,"slots":[)"+slots+"]},";
+  };
+  auto load=[&](const std::string& schema,const std::string& fields) {
+    return Reference::load(write_temp_reference(h_valid_ns,q0,q1,{},{},schema,fields));
+  };
+  const std::string v2="casbot_shm_reference_v2";
+  auto mixed=load(v2,limit+block(mit+","+cst));
+  check(mixed.non_arm_hold().slots.size()==2&&mixed.non_arm_hold().has_cst_pd(),"Missing body slots");
+  check(mixed.non_arm_hold().cst_comm_timeout_ns==25000000&&mixed.observed_velocity_limit()==1.5,"Wrong v2 limits");
+  auto rejects=[&](const std::string& schema,const std::string& fields) {
+    try { load(schema,fields); } catch(const std::exception&) { return; }
+    throw std::runtime_error("Accepted invalid hold: "+fields);
+  };
+  rejects("casbot_shm_reference_v1",limit+block(mit));
+  rejects(v2,limit);rejects(v2,block(cst));rejects(v2,limit+block(""));
+  rejects(v2,limit+block(mit+","+mit));
+  for(auto bad:{R"({"slot":12,"kp":1,"kd":1,"mode":"mit"})",R"({"slot":29,"kp":1,"kd":1,"mode":"mit"})",
+                R"({"slot":0,"kp":1,"kd":1,"mode":"other"})",R"({"slot":4,"kp":1,"kd":1,"mode":"cst_pd"})",
+                R"({"slot":0,"kp":1001,"kd":1,"mode":"mit"})"})rejects(v2,limit+block(bad));
+  std::filesystem::remove(path_valid);
   // Genuine peak above 1.5 rad/s (1.55 rad/s) must still be rejected.
   const auto h_fast_ns = static_cast<std::int64_t>(std::llround((2.1875 * dq / 1.55) * 1e9));
   const auto path_fast = write_temp_reference(h_fast_ns, q0, q1);

@@ -118,6 +118,14 @@ def parser():
     sub.add_parser('list', help='列用例、当前支持范围和建议顺序')
     sub.add_parser('gui', help='本机GUI及渲染，通过SSH连接Orin或私有Mock')
     sub.add_parser('a-evidence', help='A分析，使用SHM观测时间（需要数值Python环境）')
+    hold = sub.add_parser('hold-body', help='辅助站立原地冒烟')
+    hold.add_argument('--duration', type=finite, default=10.)
+    hold.add_argument('--scale', type=finite, default=.5)
+    hold.add_argument('--execute', action='store_true')
+    hold.add_argument('--mock', action='store_true')
+    hold.add_argument('--mock-config', type=Path)
+    hold.add_argument('--executor', type=Path)
+    hold.add_argument('--output', type=Path)
     for action in ('inspect', 'snapshot', 'observe', 'probe', 'prepare', 'activate', 'run', 'execute'):
         a = sub.add_parser(action)
         a.add_argument('--output', type=Path, help='新目录；省略则自动生成')
@@ -795,7 +803,54 @@ def report(root):
     return result
 
 
+def run_body_hold(a):
+    from .model_runtime import model_for
+    from .pipeline.native import maybe_mock_context, native_execute_once, native_snapshot
+    from .pipeline.preflight import check_hardware_environment, check_native_binaries
+    from .pipeline.robot import load_robot_config
+    from .pipeline.session import DEFAULT_OUTPUT_ROOT
+    from .pipeline.takeover import ensure_ready_channel
+    from .shm_reference import save_bundle
+    from .staged_motion import Motion
+    from .stages.dynamics.common import compose_stage_reference
+
+    if not 0 < a.duration <= 3600 or not 0 < a.scale <= 1:
+        raise ValueError('站立冒烟需要 0 < duration <= 3600、0 < scale <= 1')
+    robot = load_robot_config(hold_body=True)
+    for fields in robot['non_arm_hold']['slots'].values():
+        fields['kp'] *= a.scale
+        fields['kd'] *= a.scale
+    if not a.execute:
+        print(f'仅预览：15 个非臂槽原地保持 {a.duration:g} s，增益比例 {a.scale:g}')
+        return 0
+
+    endpoint = '/shm_mc'
+    binary = check_native_binaries(executor=a.executor, mock=a.mock, endpoint=endpoint)
+    root = new_run(a)
+    print(f'站立冒烟记录：{root}', flush=True)
+    if not a.mock:
+        check_hardware_environment(endpoint=endpoint)
+        channel = ensure_ready_channel(DEFAULT_OUTPUT_ROOT / 'state', binary, endpoint=endpoint)
+    with maybe_mock_context(a.mock, root, binary, robot, mock_config=a.mock_config) as mock:
+        endpoint = mock.endpoint if mock else channel['endpoint']
+        background = mock.background if mock else channel['hand_background']
+        peer = mock.process if mock else None
+        q = native_snapshot(binary, endpoint, robot, root / 'snapshot', peer=peer)
+        motion = Motion('hold_body', 'smoke', q)
+        motion.add(a.duration, q, label='hold')
+        engine, _ = model_for(robot)
+        bundle, *_ = compose_stage_reference(motion, q, engine, robot, ready_pose=False, feedforward_mode='none')
+        reference = save_bundle(root / 'plan', bundle)
+        code, result = native_execute_once(binary, endpoint, robot, reference, background,
+                                           root / 'capture', duration_s=bundle['knots_ns'][-1]*1e-9, peer=peer)
+    native = result.get('native') or {}
+    print(f"结束原因 {native.get('reason')}，失能应答 {native.get('disable_ack')}")
+    return code
+
+
 def run_action(a):
+    if a.action == 'hold-body':
+        return run_body_hold(a)
     if a.action in ('plan','fields'):
         from .shm_reference import snapshot_positions,jog_bundle,fields_bundle,save_bundle
         if a.action=='plan' and a.relative:
@@ -965,7 +1020,7 @@ def main(argv=None):
     a = parser().parse_args(values)
     try:
         return run_action(a)
-    except (ValueError, OSError, KeyError, ET.ParseError, subprocess.SubprocessError, TypeError, IndexError, OverflowError) as error:
+    except (ValueError, OSError, KeyError, RuntimeError, ET.ParseError, subprocess.SubprocessError, TypeError, IndexError, OverflowError) as error:
         print(f'错误：{error}', file=sys.stderr)
         return 2
 

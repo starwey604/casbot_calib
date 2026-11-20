@@ -26,15 +26,27 @@ def snapshot_positions(path):
     return [DIRECTION[j]*struct.unpack_from('<i',data,12+(j+12)*16+2)[0]*1e-6+OFFSET[j] for j in range(14)]
 
 
-def export_motion(motion, *, kp, kd, effort=None, origin='absolute'):
+def export_motion(motion, *, kp, kd, effort=None, origin='absolute', non_arm_hold=None,
+                  observed_velocity_limit_rad_s=None):
     """Preserve Motion's q/dq/ddq/jerk knots, instead of inventing CSV interpolation."""
     meta=motion.metadata()
     times=[round(t*1e9) for t in meta['knots_s']]
     if any(abs(t*1e9-ns)>.001 for t,ns in zip(meta['knots_s'],times)):
         raise ValueError('Motion knots must lie on integer nanoseconds')
-    return dict(schema='casbot_shm_reference_v1',origin=origin,joint_names=list(NAMES),knots_ns=times,
+    bundle = dict(schema='casbot_shm_reference_v1',origin=origin,joint_names=list(NAMES),knots_ns=times,
                 states=meta['states'],kp=list(kp),kd=list(kd),
                 effort=effort or [dict(t_ns=0,value=[0.]*14)],purpose='shm_fieldwork_urdf_only')
+
+    if non_arm_hold and non_arm_hold['enabled']:
+        if observed_velocity_limit_rad_s is None or not 0 < observed_velocity_limit_rad_s <= 1.5:
+            raise ValueError('身体保持参考需要有效的观测速度上限')
+        bundle.update(schema='casbot_shm_reference_v2',
+                      observed_velocity_limit_rad_s=observed_velocity_limit_rad_s,
+                      non_arm_hold=dict(ramp_s=non_arm_hold['ramp_s'],
+                                        cst_comm_timeout_ms=non_arm_hold['cst_comm_timeout_ms'],
+                                        slots=[dict(slot=int(slot), **fields)
+                                               for slot, fields in non_arm_hold['slots'].items()]))
+    return bundle
 
 
 def jog_bundle(q, joint, amplitude, segment_s, kp=20, kd=2, *, relative=False):

@@ -110,6 +110,7 @@ def run_pipeline(
     stage_config=None,
     stage_overrides=None,
     robot_config=DEFAULT_ROBOT_CONFIG,
+    hold_body=False,
     output_root=DEFAULT_OUTPUT_ROOT,
     endpoint='/shm_mc',
     executor=None,
@@ -119,6 +120,8 @@ def run_pipeline(
 ):
     stage_objs = resolve_stages(stages)
     if stage_objs[0].family == 'kinematics':
+        if hold_body:
+            raise ValueError('--hold-body 仅用于动力学阶段')
         from .kinematics import run_kinematics
         return run_kinematics(stages=stage_objs, resume=resume, resume_target=resume_target,
             reanalyse=reanalyse, reanalyse_target=reanalyse_target, plan_only=plan_only,
@@ -153,7 +156,7 @@ def run_pipeline(
 
     check_python_runtime(require_solver=True)
     check_model_bundle()
-    robot_cfg = load_robot_config(robot_config)
+    robot_cfg = load_robot_config(robot_config, hold_body=hold_body)
     overrides = dict(stage_overrides or {})
     recipes = {
         s.name: s.load_recipe(
@@ -284,6 +287,7 @@ def build_parser():
     p.add_argument('--robot', default=None, metavar='ID', help='机器序列号/标识（首次指定后自动记住）')
     p.add_argument('--config', type=Path, default=None, help='自定义配方 YAML（动力学仅单阶段，运动学共用）')
     p.add_argument('--mode', choices=('small', 'full', 'smoke'), default=None, help='标定模式覆盖（small/full；smoke 适用于 H1 和运动学）')
+    p.add_argument('--hold-body', action='store_true', help='采集期间原地保持腿、头与腰')
     p.add_argument('--smoke', action='store_true', help='在 H1 静态采集前加入一次准备位往返冒烟（或单独跑冒烟）')
 
     # Internal dev/test hooks hidden from operator --help.
@@ -316,6 +320,7 @@ def main(argv=None):
             stage_config=args.config,
             stage_overrides=overrides,
             robot_config=args.robot_config,
+            hold_body=args.hold_body,
             output_root=args.output_root,
             endpoint=args.endpoint,
             executor=args.executor,

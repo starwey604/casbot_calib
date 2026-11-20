@@ -358,3 +358,82 @@ raise SystemExit(fw.main(sys.argv[1:]))
             assert json.loads((out/'result.json').read_text())['execution_completed']
         finally:
             if process.poll() is None:process.terminate();process.wait(timeout=5)
+
+
+@pytest.mark.slow
+@pytest.mark.parametrize(('injection', 'expected', 'ack'), [
+    ({}, 'completed_with_disable_ack', '1'),
+    ({'stop_status_after_commands': 140}, 'cst_feedback_stale', '0'),
+    ({'stop_command_consume_after': 140}, 'cst_command_stale', '0'),
+    ({'fault_after_commands': 140}, 'drive_error_slot_12_42', '0'),
+    ({'non_arm_test_motion': {'4': {'vel_raw': 1600000}}}, 'observed_velocity_limit_slot_4', '1'),
+    ({}, 'operator_interrupt', '1'),
+])
+def test_body_hold_smoke_raw_frames(tmp_path, injection, expected, ack):
+    import csv
+    import numpy as np
+    from casbot_calib.shm_data import COMMAND_RECORD_DTYPE, FEEDBACK_RECORD_DTYPE, URDF
+
+    config = json.loads((ROOT / 'configs/shm/h1_mock.json').read_text())
+    config.update(urdf=str(URDF), non_arm_test_motion={
+        '0': {'pos_raw_offset': 1400},
+        '4': {'pos_raw_offset': 600000, 'vel_raw': 100000},
+        '5': {'pos_raw_offset': -600000},
+        '10': {'vel_raw': -200000},
+    })
+    config.update(injection)
+    path = tmp_path / 'mock.json'
+    path.write_text(json.dumps(config))
+    output = tmp_path / 'run'
+    cmd = ['bash', str(ROOT / 'calib/dev.sh'), 'hold-body', '--mock', '--execute',
+           '--duration', '2', '--scale', '1', '--mock-config', str(path),
+           '--executor', str(NATIVE / 'shm_executor'), '--output', str(output)]
+    native = output / 'capture/native'
+    with subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True) as process:
+        if expected == 'operator_interrupt':
+            deadline = time.monotonic() + 15
+            events = native / 'events.csv'
+            while process.poll() is None and time.monotonic() < deadline:
+                if events.exists() and 'reference_begin' in events.read_text():
+                    process.send_signal(signal.SIGINT)
+                    break
+                time.sleep(.01)
+        log, _ = process.communicate(timeout=25)
+    assert (process.returncode == 0) == (expected == 'completed_with_disable_ack'), log
+    result = fw.text_result(native / 'result.txt')
+    assert (result['reason'], result['disable_ack']) == (expected, ack), log
+    bundle = json.loads((native / 'reference.json').read_text())
+    assert bundle['schema'] == 'casbot_shm_reference_v2'
+    assert len(bundle['non_arm_hold']['slots']) == 15 and bundle['observed_velocity_limit_rad_s'] > 0
+    records = np.fromfile(native / 'commands.bin', dtype=COMMAND_RECORD_DTYPE)
+    joints = records['frame']['joints'][:, :29]
+    if expected != 'cst_command_stale':
+        for field in ('control_word', 'torque', 'kp', 'kd', 'velocity'):
+            assert np.all(joints[-1][field] == (6 if field == 'control_word' else 0))
+    else:
+        assert int(result['send_skipped']) > 0
+    if expected in ('cst_command_stale', 'cst_feedback_stale'):
+        with (native / 'events.csv').open() as stream:
+            failure = next(int(row['mono_ns']) for row in csv.DictReader(stream) if row['event'] == expected)
+        if expected == 'cst_command_stale':
+            last = records['send_mono_ns'][-1]
+        else:
+            status = np.fromfile(native / 'feedback.bin', dtype=FEEDBACK_RECORD_DTYPE)
+            last = status['receive_mono_ns'][-1]
+        assert 19_000_000 <= failure - last < 100_000_000
+    if expected == 'completed_with_disable_ack':
+        active = joints[joints[:, 4]['control_word'] == 15]
+        assert np.all(active['control_word'] == 15)
+        assert np.all(active[:, 0]['position'] == 0)  # injected feedback moves after enabling
+        gains = active[:, 0]['kp']
+        assert gains[0] == 0 and gains[-1] == 4000 and np.all(np.diff(gains) >= 0)
+        for slot in (4, 5, 10, 11):
+            assert np.all(active[:, slot]['mode'] == 10)
+            for field in ('position', 'kp', 'kd', 'velocity'):
+                assert np.all(active[:, slot][field] == 0)
+        assert active[-1, 4]['torque'] == -3000 and active[-1, 5]['torque'] == 3000
+        assert active[-1, 10]['torque'] in (59, 60)
+        first_stream = int(result['first_stream_mono_ns'])
+        middle = np.searchsorted(records['send_mono_ns'], first_stream + 500_000_000)
+        assert 1900 < joints[middle, 0]['kp'] < 2100
+        assert 25 <= joints[middle, 10]['torque'] <= 35

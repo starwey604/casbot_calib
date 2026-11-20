@@ -179,3 +179,78 @@ def test_auto_takeover_captures_background_handshakes_and_skips_same_boot(tmp_pa
     finally:
         st.run_logged = orig_runner
         pt.prepare_takeover = orig_prepare
+
+
+def test_body_hold_complete_slots_and_motion_offsets():
+    import numpy as np
+    from casbot_calib.model_runtime import model_for
+    from casbot_calib.pipeline.robot import load_robot_config
+    from casbot_calib.shm_ready import ready_position
+    from casbot_calib.staged_motion import Motion
+    from casbot_calib.stages.dynamics.common import compose_stage_reference
+
+    cfg = load_robot_config(hold_body=True)
+    engine, _ = model_for(cfg)
+    anchor = ready_position()
+    motion = Motion('test', 'h2', anchor)
+    motion.add(.5, anchor, label='initial_hold')
+    target = anchor.copy()
+    target[0] += .03
+    motion.add(2., target)
+    start = anchor.copy()
+    start[0] -= .02
+    for ready in (False, True):
+        bundle, joined, _, _, offset, _ = compose_stage_reference(
+            motion, start if ready else anchor, engine, cfg, ready_pose=ready,
+            markers=[dict(t_ns=500_000_000, event='sweep')])
+        assert len(bundle['non_arm_hold']['slots']) == 15 and bundle['schema'].endswith('_v2')
+        np.testing.assert_allclose(joined.at([0, .5, 1.])[0], [joined.home]*3, atol=1e-12)
+        if not ready:
+            assert offset == 500_000_000
+        assert dict((m['event'], m['t_ns']) for m in bundle['markers'])['sweep'] == offset + 500_000_000
+    del cfg['non_arm_hold']['slots']['11']
+    with pytest.raises(ValueError, match='15'):
+        load_robot_config(cfg)
+
+
+@pytest.mark.slow
+def test_hold_body_h1_cli_and_offline_reanalysis(tmp_path):
+    output = tmp_path / 'sessions'
+    base = ['bash', str(ROOT / 'calib/dynamics_h1.sh'), '--mode', 'smoke', '--output-root', str(output)]
+    run = subprocess.run([*base, '--mock', '--hold-body', '--executor', str(NATIVE), '--robot', 'BODY_TEST'],
+                         text=True, capture_output=True, timeout=120)
+    assert run.returncode == 0, run.stderr + run.stdout
+    stage = (output / 'latest').resolve() / 'h1'
+    bundle = json.loads((stage / 'plan/reference.json').read_text())
+    assert bundle['schema'].endswith('_v2') and len(bundle['non_arm_hold']['slots']) == 15
+    again = subprocess.run([*base, '--reanalyse'], text=True, capture_output=True, timeout=60)
+    assert again.returncode == 0, again.stderr + again.stdout
+    assert list(stage.glob('analysis.previous_*'))
+
+
+@pytest.mark.slow
+def test_body_hold_stage_windows_without_ready_pose(tmp_path):
+    recipes = {stage: yaml.safe_load((ROOT / f'configs/dynamics/{stage}.yaml').read_text())
+               for stage in ('h2', 'h3')}
+    for recipe in recipes.values():
+        recipe['ready_pose'] = False
+    plans = []
+    for enabled in (False, True):
+        result = run_pipeline(stages='h2,h3', stage_config=recipes, plan_only=True, hold_body=enabled,
+                              output_root=tmp_path / str(enabled))
+        plans.append(result['session'].root)
+    for stage in recipes:
+        plain, body = [root / stage / 'plan' for root in plans]
+        original, shifted = [json.loads((root / 'reference.json').read_text()) for root in (plain, body)]
+        assert original['schema'] == 'casbot_shm_reference_v1' and 'non_arm_hold' not in original
+        assert shifted['schema'] == 'casbot_shm_reference_v2' and len(shifted['non_arm_hold']['slots']) == 15
+        original_meta, shifted_meta = [json.loads((root / 'plan.json').read_text()) for root in (plain, body)]
+        offset = shifted_meta['calibration_begin_ns']
+        assert offset == 500_000_000
+        assert shifted['markers'] == [dict(row, t_ns=row['t_ns'] + offset) for row in original['markers']]
+        def windows(meta):
+            if stage == 'h2':
+                return [t for s in meta['sweeps'] for p in s['passes']
+                        for key in ('ramp_ns', 'plateau_ns', 'brake_ns') for t in p[key]]
+            return [t for b in meta['blocks'] for key in ('periodic_ns', 'steady_ns') for t in b[key]]
+        assert windows(shifted_meta) == [t + offset for t in windows(original_meta)]

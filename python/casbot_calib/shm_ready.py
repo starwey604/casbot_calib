@@ -13,10 +13,10 @@ def ready_position():
     return q
 
 
-def preparation(start,engine,maximum_velocity_rad_s=1.5):
+def preparation(start,engine,maximum_velocity_rad_s=1.5, *, start_hold_s=0.5):
     """Rest-to-rest C3 motion, 20/2 PD, zero FF until explicit handover."""
     q=ready_position();motion=Motion('shm_arm_ready','preparation',start)
-    motion.add(.5,start,label='ready_start_hold')
+    motion.add(start_hold_s,start,label='ready_start_hold')
     envelope=dict(speed_rad_s=min(.15,maximum_velocity_rad_s),acceleration_rad_s2=.3,jerk_rad_s3=1.)
     _move(motion,q,5.,envelope,'to_ready_pose')
     move_end=round(motion.duration*1e9)

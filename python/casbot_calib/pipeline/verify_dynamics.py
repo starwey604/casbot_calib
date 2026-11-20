@@ -597,6 +597,7 @@ def execute_verification(delivery, robot, output_root, *, executor=None, mock=Fa
 def main(argv=None):
     parser = argparse.ArgumentParser(description='双臂动力学标定裸法兰闭环验收')
     parser.add_argument('session', nargs='?', type=Path, help='指定标定会话目录')
+    parser.add_argument('--hold-body', action='store_true', help='验收期间原地保持腿、头与腰')
     parser.add_argument('--robot', metavar='ID', help='机器编号')
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument('--plan-only', action='store_true', help='离线规划并检查完整参考')
@@ -623,7 +624,7 @@ def main(argv=None):
             if args.robot and _read_json(verify_dir.parent / 'session.json')['robot_id'] != args.robot:
                 raise ValueError(f'目标会话与 --robot={args.robot} 不一致')
         else:
-            robot = load_robot_config(args.robot_config)
+            robot = load_robot_config(args.robot_config, hold_body=args.hold_body)
             robot_id = args.robot
             if robot_id is None:
                 robot_id = (_read_json(args.session / 'session.json')['robot_id'] if args.session

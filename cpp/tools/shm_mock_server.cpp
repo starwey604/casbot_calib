@@ -86,25 +86,38 @@ int main(int argc,char** argv) {
     if(initial_on)for(int j=12;j<26;++j){status.joints[j].status_word=0x237;status.joints[j].mode=-1;}
     const auto origin=mono();auto next=origin;std::int64_t received=0,published=0,dropped=0,max_late=0;
     const auto fault_after=config.get<std::int64_t>("fault_after_commands",-1);
+    const auto stop_status=config.get<std::int64_t>("stop_status_after_commands",-1);
+    const auto stop_consume=config.get<std::int64_t>("stop_command_consume_after",-1);
+    std::array<std::int32_t,29> pos_offset{},test_velocity{};
+    if(const auto motion=config.get_child_optional("non_arm_test_motion")) {
+      for(const auto& [key,values]:*motion) {
+        const int id=std::stoi(key);
+        if(id<0||id>=29||(id>=12&&id<=25))throw std::invalid_argument("Invalid non-arm test slot");
+        pos_offset[id]=values.get<std::int32_t>("pos_raw_offset",0);
+        test_velocity[id]=values.get<std::int32_t>("vel_raw",0);
+      }
+    }
     while(!stopped) {
       const auto now=mono(),virtual_time=now-origin;
       device.advance_to(virtual_time);
-      if(channel.fixture_receive(held)) {
+      if((stop_consume<0||received<stop_consume)&&channel.fixture_receive(held)) {
         ++received;
         casbot::ArmCommand command;command.send_ns=device.time_ns();command.q.resize(14);command.dq.resize(14);command.torque.resize(14);command.kp.resize(14);command.kd.resize(14);
         for(int j=0;j<29;++j) {
           auto& a=status.joints[j];const auto& c=held.joints[j];
-          if(j>=12&&j<26) {
-            if(a.mode!=c.mode&&(a.status_word&4)){a.error_code=0x1001;}
-            if(c.control_word!=6&&c.control_word!=15)a.error_code=0x1002;
-            if(fault_after>=0&&received>fault_after&&j==12)a.error_code=42;
-            if(!(a.status_word&4))a.mode=c.mode;
-            const bool on=!a.error_code&&c.control_word==15&&a.mode==-1;
-            a.status_word=a.error_code?0x238:on?0x237:0x231;enabled[j-12]=on;
+          const bool arm=j>=12&&j<26;
+          if(a.mode!=c.mode&&(a.status_word&4))a.error_code=0x1001;
+          if(c.control_word!=6&&c.control_word!=15)a.error_code=0x1002;
+          if(fault_after>=0&&received>fault_after&&j==12)a.error_code=42;
+          if(!(a.status_word&4))a.mode=c.mode;
+          const bool valid_mode=a.mode==-1||(!arm&&a.mode==10);
+          const bool on=!a.error_code&&c.control_word==15&&valid_mode;
+          a.status_word=a.error_code?0x238:on?0x237:0x231;
+          if(arm) {
+            enabled[j-12]=on;
             const auto value=arm_command(held,j-12);command.q[j-12]=value.position;command.dq[j-12]=value.velocity;command.torque[j-12]=value.effort;command.kp[j-12]=value.kp;command.kd[j-12]=value.kd;
-          }else {
-            // Protocol fixture only: no leg/waist/head mechanics or invented SI.
-            a.mode=c.mode;a.status_word=c.control_word==15?0x237:0x231;
+          }else if(on) {
+            a.position=pos_offset[j];a.velocity=test_velocity[j];
           }
         }
         device.set_drive_enabled(device.time_ns(),enabled);device.submit(command);
@@ -113,7 +126,9 @@ int main(int argc,char** argv) {
       for(int j=0;j<14;++j)arm_status(status,j,feedback.q[j],feedback.dq[j],feedback.current[j]*physical.gain[j]);
       ++status.frame_counter;
       status.timestamp=std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
-      if(channel.fixture_send(status))++published;else ++dropped;
+      if(stop_status<0||received<stop_status) {
+        if(channel.fixture_send(status))++published;else ++dropped;
+      }
       next+=1000000;max_late=std::max(max_late,mono()-next);
       timespec deadline{next/1000000000LL,next%1000000000LL};
       while(clock_nanosleep(CLOCK_MONOTONIC,TIMER_ABSTIME,&deadline,nullptr)==EINTR&&!stopped){}

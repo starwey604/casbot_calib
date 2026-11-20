@@ -51,6 +51,25 @@ inline int drive_phase_next(int phase,const StatusFrame& s,const ArmMask& select
   if(phase==4&&drive_ack(s,0x21,selected))return -1;
   return phase;
 }
+using JointMask=std::array<bool,29>;
+using JointModes=std::array<std::int16_t,29>;
+inline bool drive_ack(const StatusFrame& s,unsigned word,const JointMask& selected,
+                      const JointModes& modes,bool check_mode=false) {
+  for(int i=0;i<29;++i) {
+    const auto& a=s.joints[i];
+    if(selected[i]) {
+      if(!drive_state_is(a.status_word,word)||(check_mode&&a.mode!=modes[i]))return false;
+    }else if(a.status_word&4)return false;
+  }
+  return true;
+}
+inline int drive_phase_next(int phase,const StatusFrame& s,const JointMask& selected,const JointModes& modes) {
+  if(phase==0&&drive_ack(s,0x21,selected,modes))return 1;
+  if(phase==1&&drive_ack(s,0x21,selected,modes,true))return 2;
+  if(phase==2&&drive_ack(s,0x27,selected,modes,true))return 3;
+  if(phase==4&&drive_ack(s,0x21,selected,modes))return -1;
+  return phase;
+}
 inline CommandFrame initial_command(const StatusFrame& s,const CommandFrame& hand,
     const std::array<double,14>& q,double kp,double kd) {
   CommandFrame c{};c.joint_count=29;c.hand_count=hand.hand_count;c.hands=hand.hands;

@@ -36,12 +36,49 @@ def find_executor(explicit=None):
     raise ValueError(f'找不到 shm_executor（默认位置 {DEFAULT_EXECUTOR}），请先编译安装 SHM 组件')
 
 
-def load_robot_config(source=DEFAULT_ROBOT_CONFIG):
+def _body_hold_config(raw, requested):
+    enabled = raw.get('enabled', False)
+    if not isinstance(enabled, bool):
+        raise ValueError('non_arm_hold.enabled 须为布尔值')
+
+    def bounded(value, lower, upper, field):
+        if isinstance(value, bool) or not isinstance(value, (int, float)) or not lower <= value <= upper:
+            raise ValueError(f'non_arm_hold.{field} 须在 [{lower}, {upper}] 范围内')
+        return float(value)
+
+    ramp = bounded(raw['ramp_s'], 0, 10, 'ramp_s')
+    timeout = bounded(raw.get('cst_comm_timeout_ms', 20), 2, 200, 'cst_comm_timeout_ms')
+    required = {str(i) for i in (*range(12), 26, 27, 28)}
+    slots = {}
+    for key, params in raw.get('slots', {}).items():
+        # JSON plan files have string keys, YAML configurations may use integers.
+        if str(key) not in required or str(key) in slots:
+            raise ValueError(f'non_arm_hold 槽位无效或重复：{key}')
+        mode = params['mode']
+        if mode not in ('mit', 'cst_pd'):
+            raise ValueError(f'non_arm_hold 槽位 {key} 模式无效：{mode}')
+        row = dict(mode=mode, kp=bounded(params['kp'], 0, 1000, 'kp'),
+                   kd=bounded(params['kd'], 0, 50, 'kd'))
+        if mode == 'cst_pd':
+            row['torque_limit_nm'] = bounded(params['torque_limit_nm'], 0, 100, 'torque_limit_nm')
+            if row['torque_limit_nm'] == 0:
+                raise ValueError('CST 力矩限幅必须大于零')
+        slots[str(key)] = row
+    if (enabled or requested) and slots.keys() != required:
+        raise ValueError('身体保持需要全部 15 个非臂槽（0–11、26–28）')
+    return dict(enabled=enabled or requested, ramp_s=ramp, cst_comm_timeout_ms=timeout, slots=slots)
+
+
+def load_robot_config(source=DEFAULT_ROBOT_CONFIG, *, hold_body=False):
     if isinstance(source, dict):
         c = deepcopy(source)
     else:
         path = Path(source).resolve()
         c = yaml.safe_load(path.read_text(encoding='utf-8')) or {}
+    if 'non_arm_hold' in c:
+        c['non_arm_hold'] = _body_hold_config(c['non_arm_hold'], hold_body)
+    elif hold_body:
+        raise ValueError('身体保持需要 non_arm_hold 配置')
     c.setdefault('transport', 'shm_mc')
     c.setdefault('command_period_ns', COMMAND_PERIOD_NS)
     c.setdefault('start_tolerance_rad', START_TOLERANCE_RAD)

@@ -9,3 +9,27 @@ gravity_world: [0.0, 0.0, -9.81]
 initial_hold_s: 0.5
 final_hold_s: 0.5
 anchor_transition_s: 4.0
+
+non_arm_hold:
+  enabled: false
+  ramp_s: 1.0
+  cst_comm_timeout_ms: 20
+  slots:
+    # 左腿髋/膝（MIT，参考厂家 ready_mode）与并联脚踝（CST 电机空间试验参数）
+    0:  {mode: mit,    kp: 400.0, kd: 20.0}
+    1:  {mode: mit,    kp: 500.0, kd: 19.0}
+    2:  {mode: mit,    kp: 380.0, kd: 5.0}
+    3:  {mode: mit,    kp: 440.0, kd: 17.0}
+    4:  {mode: cst_pd, kp: 120.0, kd: 3.0, torque_limit_nm: 30.0}
+    5:  {mode: cst_pd, kp: 120.0, kd: 3.0, torque_limit_nm: 30.0}
+    # 右腿髋/膝（MIT）与并联脚踝（CST 电机空间试验参数）
+    6:  {mode: mit,    kp: 400.0, kd: 20.0}
+    7:  {mode: mit,    kp: 500.0, kd: 19.0}
+    8:  {mode: mit,    kp: 380.0, kd: 5.0}
+    9:  {mode: mit,    kp: 440.0, kd: 17.0}
+    10: {mode: cst_pd, kp: 120.0, kd: 3.0, torque_limit_nm: 30.0}
+    11: {mode: cst_pd, kp: 120.0, kd: 3.0, torque_limit_nm: 30.0}
+    # 头 pitch/yaw 与腰 yaw（MIT）
+    26: {mode: mit,    kp: 30.0,  kd: 2.0}
+    27: {mode: mit,    kp: 30.0,  kd: 2.0}
+    28: {mode: mit,    kp: 500.0, kd: 5.0}

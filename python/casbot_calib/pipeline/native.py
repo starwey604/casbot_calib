@@ -48,6 +48,11 @@ def read_start_state(snapshot_root, robot_config):
         DIRECTION[j] * struct.unpack_from('<i', raw, 12 + (j + 12) * 16 + 6)[0] * 1e-6
         for j in range(14)
     ])
+    hold = robot_config.get('non_arm_hold') or {}
+    if hold.get('enabled'):
+        body_velocity = [struct.unpack_from('<i', raw, 12 + int(slot) * 16 + 6)[0] * 1e-6
+                         for slot in hold['slots']]
+        velocity = np.r_[velocity, body_velocity]
     threshold = start_velocity_limit(robot_config)
     if not np.isfinite(q).all() or np.max(np.abs(velocity)) >= threshold:
         raise ValueError(f'需要完整且当前停稳的起点（|v|<{threshold:g}rad/s，实测最大 {float(np.max(np.abs(velocity))):.4f}rad/s）')

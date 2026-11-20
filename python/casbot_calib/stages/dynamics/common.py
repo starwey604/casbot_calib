@@ -13,7 +13,7 @@ from ...shm_fieldwork import text_result
 from ...shm_observations import ObservationReader
 from ...shm_ready import handover_fraction, pd_schedule, preparation, prepend
 from ...shm_reference import export_motion
-from ...staged_motion import derivative_bounds, gate_motion
+from ...staged_motion import Motion, derivative_bounds, gate_motion
 
 
 def _load_valid_calibration(cal_path, robot_config):
@@ -214,6 +214,20 @@ def build_gravity_effort_rows(motion, engine, robot_config, preparation_cert=Non
     )
 
 
+def ensure_leading_hold(motion, min_hold_s):
+    end = 0
+    for stamp, state in zip(motion.knots[1:], motion.states[1:]):
+        if not np.array_equal(state, motion.states[0]):
+            break
+        end = round(stamp * 1e9)
+    extra_ns = max(0, round(min_hold_s * 1e9) - end)
+    if not extra_ns:
+        return motion, 0
+    prefix = Motion(motion.name, motion.stage, motion.home)
+    prefix.add(extra_ns * 1e-9, motion.home, label='body_start_hold')
+    return prepend(prefix, motion), extra_ns
+
+
 def compose_stage_reference(
     formal_motion,
     q_start,
@@ -230,6 +244,11 @@ def compose_stage_reference(
 ):
     geometry = collision_for(robot_config)
     formal_motion.knots = [round(t * 1e9) * 1e-9 for t in formal_motion.knots]
+    hold = robot_config.get('non_arm_hold') or {}
+    ramp = hold['ramp_s'] if hold.get('enabled') else 0.
+    offset_ns = 0
+    if ramp and not ready_pose:
+        formal_motion, offset_ns = ensure_leading_hold(formal_motion, ramp)
     proof = gate_motion(geometry, formal_motion, robot_config['scene']['clearance_m'])
     if not proof['passed']:
         raise ValueError(f'轨迹连续碰撞或 URDF 限位检查未通过：{proof.get("reason", "collision_or_limits")}')
@@ -252,9 +271,9 @@ def compose_stage_reference(
         raise ValueError(f'参考轨迹连续加加速度包络 {max_jerk:.3f} 超出上限 {max_jerk_cap:.3f} rad/s³')
 
     prep_cert = None
-    offset_ns = 0
     if ready_pose:
-        prep, prep_cert = preparation(q_start, prior_engine, robot_config['maximum_velocity_rad_s'])
+        prep, prep_cert = preparation(q_start, prior_engine, robot_config['maximum_velocity_rad_s'],
+                                      start_hold_s=max(0.5, ramp))
         offset_ns = prep_cert['calibration_begin_ns']
         motion = prepend(prep, formal_motion)
     else:
@@ -272,7 +291,8 @@ def compose_stage_reference(
         motion,
         kp=robot_config['kp'],
         kd=robot_config['kd'],
-        effort=effort,
+        effort=effort, non_arm_hold=hold,
+        observed_velocity_limit_rad_s=robot_config['maximum_velocity_rad_s'],
     )
     bundle['purpose'] = 'shm_calib_ready_then_collision_checked' if prep_cert else 'shm_calib_collision_checked'
     bundle['observed_velocity_limit_rad_s'] = robot_config['maximum_velocity_rad_s']

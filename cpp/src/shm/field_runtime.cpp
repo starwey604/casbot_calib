@@ -3,6 +3,8 @@
 #include <casbot_calib/shm/channel.hpp>
 #include <casbot_calib/shm/clock.hpp>
 #include "reference.hpp"
+#include <casbot_calib/field_defaults.hpp>
+#include <algorithm>
 #include "field_limits.hpp"
 #include "field_recorder.hpp"
 #include "native_clock.hpp"
@@ -85,8 +87,22 @@ CommandFrame baseline(const StatusFrame& s,const CommandFrame& hand,const Eigen:
   return initial_command(s,hand,values,o.kp,o.kd);
 }
 ArmMask selection(const Options& o){ArmMask mask{};for(int j=0;j<14;++j)mask[j]=selected(j,o);return mask;}
-bool arm_ack(const StatusFrame& s,unsigned word,const Options& o,bool mit=false) {
-  return drive_ack(s,word,selection(o),mit);
+void body_targets(CommandFrame& cmd,const StatusFrame& state,const NonArmHoldConfig& config,
+                  const std::array<std::int32_t,29>& origin,double elapsed) {
+  const double u=config.ramp_s>0?std::clamp(elapsed/config.ramp_s,0.,1.):1.;
+  const double scale=u*u*u*(10.+u*(-15.+6.*u));
+  for(const auto& slot:config.slots) {
+    auto& c=cmd.joints[slot.slot];
+    if(slot.mode==HoldMode::mit) {
+      c.kp=checked_truncate<std::int16_t>(slot.kp*scale*10);
+      c.kd=checked_truncate<std::int16_t>(slot.kd*scale*10);
+    }else {
+      const auto& a=state.joints[slot.slot];
+      const double error=(double(origin[slot.slot])-a.position)*1e-6;
+      const double torque=scale*(slot.kp*error-slot.kd*(double(a.velocity)*1e-6));
+      c.torque=checked_truncate<std::int16_t>(std::clamp(torque,-slot.torque_limit_nm,slot.torque_limit_nm)*100);
+    }
+  }
 }
 
 void write_result(const std::filesystem::path& root,const std::string& reason,bool completed,
@@ -130,6 +146,29 @@ void run(Channel& channel,StatusFrame state,const CommandFrame& hand,const Eigen
   const auto root=std::filesystem::path(o.output);Recorder recorder(root);ClockMap clock;
   auto command=baseline(state,hand,q0,o);
   if(reference){auto initial=reference->at(0);for(int j=0;j<14;++j)arm_target(command,j,q0[j],0,initial.kp[j],initial.kd[j]);}
+  const NonArmHoldConfig empty_hold{};
+  const auto& hold=reference?reference->non_arm_hold():empty_hold;
+  const auto arms=selection(o);
+  JointMask selected_axes{};
+  JointModes modes{};
+  std::array<std::int32_t,29> origin{};
+  for(int j=0;j<14;++j){selected_axes[j+12]=arms[j];modes[j+12]=-1;}
+  for(const auto& slot:hold.slots) {
+    selected_axes[slot.slot]=true;
+    modes[slot.slot]=static_cast<std::int16_t>(slot.mode);
+    origin[slot.slot]=state.joints[slot.slot].position;
+  }
+  const auto ack=[&](unsigned word,bool mode=false){
+    return hold.enabled()?drive_ack(state,word,selected_axes,modes,mode):drive_ack(state,word,arms,mode);
+  };
+  const auto disable=[&](){
+    for(int i=0;i<29;++i) {
+      auto& c=command.joints[i];
+      c.control_word=6;c.velocity=0;c.torque=0;
+      if(hold.enabled()){c.kp=0;c.kd=0;}
+    }
+  };
+  const bool cst=hold.has_cst_pd();
   binary(root/"background.bin",command);
   const auto t0=mono();std::int64_t next=t0,phase_begin=t0,last_receive=t0,last_send=t0,first_stream=0,max_gap=0,first_write=0,last_pair=t0-1000000000LL,writes=0,skips=0;
   int phase=0;bool phase_sent=false,done=false,disable_ack=false;std::string failure;
@@ -147,8 +186,21 @@ void run(Channel& channel,StatusFrame state,const CommandFrame& hand,const Eigen
       Record r;r.at=now;
       if(now-last_pair>=1000000000LL){r.clock=clock.pair();r.has_pair=true;last_pair=now;r.queues=channel.diagnostics();r.has_queues=true;}
       r.received=channel.receive(state);r.receive_at=r.received?mono():0;
+      if(cst&&phase==3) {
+        if(now-last_receive>hold.cst_comm_timeout_ns)throw std::runtime_error("cst_feedback_stale");
+        if(now-last_send>hold.cst_comm_timeout_ns)throw std::runtime_error("cst_command_stale");
+      }
       if(r.received)last_receive=r.receive_at;
       if(r.received&&reference&&reference->observed_velocity_limit()>0) {
+        for(const auto& slot:hold.slots) {
+          const double speed=std::abs(double(state.joints[slot.slot].velocity))*1e-6;
+          if(speed>reference->observed_velocity_limit()) {
+            recorder.limit(r.receive_at,phase,slot.slot,"velocity",speed,reference->observed_velocity_limit(),"rad/s","end_control");
+            r.phase=phase;r.state=state;r.segment=clock.segment();r.observation=clock.observation(state.timestamp);
+            recorder.push(std::move(r));
+            throw std::runtime_error("observed_velocity_limit_slot_"+std::to_string(slot.slot));
+          }
+        }
         const auto limits=field_limits(state,lower,upper,reference->observed_velocity_limit());
         std::string key;int end_joint=-1;
         for(const auto& limit:limits){key+=std::to_string(limit.joint)+limit.field;if(limit.end_control)end_joint=limit.joint;}
@@ -167,22 +219,22 @@ void run(Channel& channel,StatusFrame state,const CommandFrame& hand,const Eigen
       for(int i=0;i<29;++i)if(state.joints[i].error_code)throw std::runtime_error("drive_error_slot_"+std::to_string(i)+"_"+std::to_string(state.joints[i].error_code));
       if(phase!=3&&phase!=6&&now-phase_begin>3000000000LL)throw std::runtime_error("transition_timeout_phase_"+std::to_string(phase));
       if(phase_sent&&now-phase_begin>20000000) {
-        const auto p=drive_phase_next(phase,state,selection(o));
+        const auto p=hold.enabled()?drive_phase_next(phase,state,selected_axes,modes):drive_phase_next(phase,state,arms);
         if(p==-1){done=true;disable_ack=true;recorder.event(4,"disable_ack");}
         else if(p!=phase)change(p,p==1?"switching_mit":p==2?"enabling_at_start":reference?"reference_begin":jogging?"jog_begin":"hold_begin");
       }
-      for(int j=0;j<14;++j) {
-        if(phase>=1&&selected(j,o))command.joints[j+12].mode=-1;
-        command.joints[j+12].control_word=((phase==2||phase==3||phase==7)&&selected(j,o))?15:6;
-      }
+      if(phase>=1)for(int i=0;i<29;++i)if(selected_axes[i])command.joints[i].mode=modes[i];
+      if(phase==2)for(const auto& slot:hold.slots)
+        command.joints[slot.slot].position=slot.mode==HoldMode::mit?origin[slot.slot]:0;
       if(phase==2&&reference&&!reference->direct_fields()) {
         const auto initial=reference->at(0);
         for(int j=0;j<14;++j)arm_target(command,j,q0[j],0,initial.kp[j],initial.kd[j],initial.effort[j]);
       }
       if(phase==3||phase==7) {
-        if(!arm_ack(state,0x27,o,true))throw std::runtime_error("enabled_mode_lost");
+        if(!ack(0x27,true))throw std::runtime_error("enabled_mode_lost");
         const std::int64_t relative_ns=first_stream?now-first_stream:0;
         const double elapsed=relative_ns*1e-9;
+        if(hold.enabled())body_targets(command,state,hold,origin,elapsed);
         if(reference) {
           while(marker_index<reference->markers().size()&&relative_ns>=reference->markers()[marker_index].first)
             recorder.event(3,reference->markers()[marker_index++].second);
@@ -198,8 +250,8 @@ void run(Channel& channel,StatusFrame state,const CommandFrame& hand,const Eigen
       }
       if(phase==6&&now-phase_begin>=static_cast<std::int64_t>(o.quiet*1e9))change(4,"quiet_observation_end_disable");
       // Recompute controlword after a phase change; quiet means NO writes.
-      for(int j=0;j<14;++j)command.joints[j+12].control_word=((phase==2||phase==3||phase==7)&&selected(j,o))?15:6;
-      if(phase==4)for(int j=12;j<26;++j){command.joints[j].velocity=0;command.joints[j].torque=0;}
+      for(int i=0;i<29;++i)command.joints[i].control_word=((phase==2||phase==3||phase==7)&&selected_axes[i])?15:6;
+      if(phase==4)disable();
       if(phase!=6) {
         r.sent=send(now);r.send_at=r.sent?mono():0;
         if(r.sent){max_gap=std::max(max_gap,r.send_at-last_send);last_send=r.send_at;phase_sent=true;++writes;if(!first_write)first_write=r.send_at;if(phase==3&&!first_stream)first_stream=r.send_at;}
@@ -212,15 +264,20 @@ void run(Channel& channel,StatusFrame state,const CommandFrame& hand,const Eigen
     }
   }catch(const std::exception& e) {
     failure=e.what();recorder.event(5,failure);
-    for(int j=12;j<26;++j){command.joints[j].control_word=6;command.joints[j].velocity=0;command.joints[j].torque=0;}
+    disable();
     const auto end=mono()+200000000;
+    bool disable_sent=false;
     while(mono()<end) {
       try {
-        Record r;r.at=mono();r.phase=5;r.received=channel.receive(state);r.receive_at=r.received?mono():0;
-        r.sent=send(r.at);r.send_at=r.sent?mono():0;r.cmd=command;r.state=state;r.segment=clock.segment();
+        Record r;r.at=mono();r.phase=5;
+        r.sent=send(r.at);r.send_at=r.sent?mono():0;r.cmd=command;
+        r.received=channel.receive(state);r.receive_at=r.received?mono():0;
+        r.state=state;r.segment=clock.segment();
+        const bool acknowledged=disable_sent&&r.received&&ack(0x21);
+        disable_sent=disable_sent||r.sent;
         if(r.received)r.observation=clock.observation(state.timestamp);
         if(r.sent)++writes;else ++skips;recorder.push(std::move(r));
-        if(r.received&&arm_ack(state,0x21,o)){disable_ack=true;break;}
+        if(acknowledged){disable_ack=true;break;}
       }catch(const std::exception&){break;}
       std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
@@ -281,11 +338,11 @@ int field_main(int argc,char** argv) {
     if(!std::filesystem::create_directory(root))throw std::runtime_error("Output must be a new directory");created=true;
     std::ofstream settings(root/"settings.txt");
     settings<<"case="<<(o.mode=="--execute"?o.which:"read_only")<<"\nshm="<<o.name<<"\nmode="<<o.mode
-      <<"\nnon_arm="<<(o.mode=="--execute"?"disabled":"not_commanded")
       <<"\nhand_policy="<<(o.mode=="--execute"?"explicit_frozen_command_bytes":"not_commanded")<<"\nurdf="<<o.urdf
       <<"\ncollision_check="<<(o.mode=="--execute"?(o.reference.empty()?"disabled_by_user":"not_performed_by_native_reference_mode"):"not_applicable")<<'\n';
     if(o.reference.empty())settings<<"joint_id="<<o.id<<"\namplitude="<<o.amplitude<<"\nsegment_s="<<o.segment<<"\nkp="<<o.kp<<"\nkd="<<o.kd<<"\nother_arm="<<(o.other_disabled?"disabled":"hold")<<'\n';
     else settings<<"reference="<<o.reference<<"\nreference_targets=all_14_arms\n";
+    if(o.reference.empty())settings<<"non_arm="<<(o.mode=="--execute"?"disabled":"not_commanded")<<'\n';
     settings.close();
     if(o.mode=="--inspect"){
       const auto s=passive_snapshot(o.name);binary(root/"command.bin",s.command);binary(root/"status.bin",s.status);
@@ -302,6 +359,13 @@ int field_main(int argc,char** argv) {
     if(!o.reference.empty()) {
       std::filesystem::copy_file(o.reference,root/"reference.json");
       reference=std::make_unique<Reference>(Reference::load((root/"reference.json").string()));
+      std::ofstream log(root/"settings.txt",std::ios::app);
+      const auto& hold=reference->non_arm_hold();
+      if(hold.enabled()) {
+        log<<"non_arm=hold(";
+        for(std::size_t i=0;i<hold.slots.size();++i)log<<(i?",":"")<<hold.slots[i].slot;
+        log<<")\n";
+      }else log<<"non_arm=disabled\n";
       JointVector lower{},upper{},velocity{};
       for(int j=0;j<14;++j){lower[j]=model.model().joints[j].lower;upper[j]=model.model().joints[j].upper;velocity[j]=std::min(1.5,model.model().joints[j].velocity_limit);}
       if(!reference->measured_origin())reference->validate_limits(lower,upper,velocity);
@@ -326,7 +390,19 @@ int field_main(int argc,char** argv) {
       write_result(root,"SKIP_urdf_limit",false,false);return 4;
     }
     for(int j=0;j<14;++j)if(q0[j]<model.model().joints[j].lower||q0[j]>model.model().joints[j].upper)throw std::runtime_error("Measured start outside URDF limit at joint ID "+std::to_string(j+12));
-    state=fresh(channel);if((positions(state)-q0).cwiseAbs().maxCoeff()>.005)throw std::runtime_error("Start changed during preflight; no commands sent");
+    const auto first_state=state;
+    state=fresh(channel);
+    if(reference&&reference->non_arm_hold().enabled()) {
+      for(const auto& slot:reference->non_arm_hold().slots) {
+        const auto& a=state.joints[slot.slot];
+        if(std::abs(double(a.position)-first_state.joints[slot.slot].position)>5000||
+           std::abs(double(a.velocity))*1e-6>=casbot::field_start_velocity_rad_s)
+          throw std::runtime_error("Non-arm hold start not stationary at slot "+std::to_string(slot.slot)+"; no commands sent");
+      }
+      for(int i=0;i<29;++i)if(state.joints[i].error_code)
+        throw std::runtime_error("drive_error_slot_"+std::to_string(i)+"; no commands sent");
+    }
+    if((positions(state)-q0).cwiseAbs().maxCoeff()>.005)throw std::runtime_error("Start changed during preflight; no commands sent");
     const auto hand=o.bare_flange?CommandFrame{}:read_background(o.background);binary(root/"hand_background_source.bin",hand);
     run(channel,state,hand,q0,o,model.model(),reference.get());return 0;
   }catch(const std::exception& e){

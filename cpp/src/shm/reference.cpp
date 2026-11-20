@@ -25,23 +25,64 @@ bool within_bernstein_bounds(const std::array<double,8>& ctrl,int degree,int dep
   return within_bernstein_bounds(left,degree,depth-1,low,high)&&
          within_bernstein_bounds(right,degree,depth-1,low,high);
 }
+double bounded(const Json& node,const char* field,double upper) {
+  const double value=finite_number(node.get_child(field));
+  if(value<0||value>upper)throw std::invalid_argument(std::string("Invalid non_arm_hold ")+field);
+  return value;
+}
+NonArmHoldConfig parse_hold(const Json& node) {
+  NonArmHoldConfig config;
+  config.ramp_s=bounded(node,"ramp_s",10);
+  if(auto timeout=node.get_child_optional("cst_comm_timeout_ms")) {
+    const double ms=finite_number(*timeout);
+    if(ms<2||ms>200)throw std::invalid_argument("Invalid CST communication timeout");
+    config.cst_comm_timeout_ns=std::llround(ms*1e6);
+  }
+  std::array<bool,29> seen{};
+  for(const auto& [key,fields]:node.get_child("slots")) {
+    const int id=fields.get<int>("slot");
+    if(!key.empty()||id<0||id>=29||(id>=12&&id<=25)||seen[id])
+      throw std::invalid_argument("Invalid or duplicate non_arm_hold slot");
+    seen[id]=true;
+    const auto mode=fields.get<std::string>("mode");
+    NonArmHoldSlot slot{id,HoldMode::mit,bounded(fields,"kp",1000),bounded(fields,"kd",50),0};
+    if(mode=="cst_pd") {
+      slot.mode=HoldMode::cst_pd;
+      slot.torque_limit_nm=bounded(fields,"torque_limit_nm",100);
+      if(slot.torque_limit_nm<=0)throw std::invalid_argument("Positive CST torque limit required");
+      checked_truncate<std::int16_t>(slot.torque_limit_nm*100);
+    }else if(mode=="mit") {
+      checked_truncate<std::int16_t>(slot.kp*10);
+      checked_truncate<std::int16_t>(slot.kd*10);
+    }else throw std::invalid_argument("Unknown non_arm_hold mode");
+    config.slots.push_back(slot);
+  }
+  if(!config.enabled())throw std::invalid_argument("Empty non_arm_hold slots");
+  return config;
+}
 void joint_names(const Json& node) {
   if(node.size()!=14)throw std::invalid_argument("14 canonical joint names required");
   int j=0;for(const auto& n:node)if(!n.first.empty()||n.second.get_value<std::string>()!=arm_names[j++])
     throw std::invalid_argument("Reference joint order mismatch");
 }
 }
+bool NonArmHoldConfig::has_cst_pd() const {
+  return std::any_of(slots.begin(),slots.end(),[](const auto& s){return s.mode==HoldMode::cst_pd;});
+}
 Reference Reference::load(const std::string& file) {
   const auto json=read_json(file);Reference r;
   const auto schema=json.get<std::string>("schema");r.direct_=schema=="casbot_shm_fields_v1";
-  if(!r.direct_&&schema!="casbot_shm_reference_v1")throw std::invalid_argument("Unsupported SHM reference schema");
+  const bool body=schema=="casbot_shm_reference_v2";
+  if(!body&&!r.direct_&&schema!="casbot_shm_reference_v1")throw std::invalid_argument("Unsupported SHM reference schema");
+  if(body)r.hold_=parse_hold(json.get_child("non_arm_hold"));
+  else if(json.get_child_optional("non_arm_hold"))throw std::invalid_argument("non_arm_hold requires v2");
   const auto origin=json.get<std::string>("origin","absolute");
   if(origin!="absolute"&&origin!="measured_start")throw std::invalid_argument("Unknown reference origin");
   r.relative_=origin=="measured_start";
   if(r.relative_&&r.direct_)throw std::invalid_argument("Direct fields use explicit absolute positions");
   const auto purpose_node=json.get_child_optional("purpose");
   const std::string_view purpose=purpose_node?std::string_view(purpose_node->data()):std::string_view{};
-  if(purpose=="shm_calib_collision_checked"||purpose=="shm_calib_ready_then_collision_checked"||
+  if(body||purpose=="shm_calib_collision_checked"||purpose=="shm_calib_ready_then_collision_checked"||
      purpose=="shm_h1_collision_checked"||purpose=="shm_gui_zero_collision_checked"||purpose=="shm_h1_ready_then_collision_checked") {
     if(r.direct_||r.relative_)throw std::invalid_argument("Calibration reference uses frozen absolute trajectories");
     r.observed_velocity_=json.get<double>("observed_velocity_limit_rad_s");
