@@ -118,7 +118,7 @@ flowchart LR
 ```text
 calib/kinematics.sh                    # 唯一运动学入口
 calib/dev.sh                           # + trical-probe、kinematics-mock
-configs/kinematics/k.yaml              # 工装质量、三表槽位映射、窗口与修正参数、K3条件数（增益沿用robot/dvt2.yaml）
+configs/kinematics/k.yaml              # 工装质量、三表地址映射、窗口与修正参数、K3条件数（增益沿用robot/dvt2.yaml）
 configs/shm/k_mock.json                # 裸法兰SHM Mock + 3Hz QAS
 cpp/src/shm/field_runtime.cpp          # + --bare-flange
 cpp/src/shm/trical_runtime.{hpp,cpp}   # 分段保持执行器
@@ -154,7 +154,7 @@ GUI保存位文件由`fieldwork/zero.yaml`改名为`fieldwork/gui_pose.yaml`（O
 
 ### WP2：千分表驱动、Mock与读表窗口
 
-- `UsbBridgeIndicatorDriver`：复用`firmware/tools/trical_usb.py`行解析；显式槽位映射`{axis: {slot, address, address_type, sign}}`；确认`subscribed/state=ready`、`MOD:0`；每槽一问一答；原始JSONL落盘`<stage>/capture/indicators_raw.jsonl`。
+- `UsbBridgeIndicatorDriver`：复用`firmware/tools/trical_usb.py`行解析；按配置的 `{axis: {address, address_type, sign}}` 匹配当前就绪槽位；确认`subscribed/state=ready`、`MOD:0`；每槽一问一答；原始JSONL落盘`<stage>/capture/indicators_raw.jsonl`。
 - `MockQasBridge`：表内值按自身节拍（默认约3 Hz）由隐藏零偏/几何扰动后的真实接触计算并缓存，`MEAS`返回当时缓存值，应答延迟可配；可注入丢包、停更、断连、读数卡死。关节接入静摩擦模型（`|τ| < τ_s`时不动）。
 - `SettledWindowCollector`：实现2.2节1–4。
 - 验证：缓存跨越停稳时刻的旧值被`discard_first`剔除；相同读数正常入窗；停更/断连/无请求通知按故障结束；窗口内关节漂移超包络时重读。
@@ -178,7 +178,7 @@ GUI保存位文件由`fieldwork/zero.yaml`改名为`fieldwork/gui_pose.yaml`（O
 
 - `calib/kinematics.sh`沿用`dynamics.sh`写法；`dev.sh`增加`trical-probe`、`kinematics-mock`。
 - `configs/kinematics/k.yaml`、`configs/shm/k_mock.json`；第4节清理与GUI文件改名。
-- `docs/kinematics.md`：现场确认（台架、拆手装工装、标准球清零、急停在手）→怎么跑（K1、换装、`--resume`、重算）→配置（串口与槽位映射）→结果怎么看（`delivery/summary.md`）。更新`README.md`、`AGENTS.md`中运动学状态。
+- `docs/kinematics.md`：现场确认（台架、拆手装工装、标准球清零、急停在手）→怎么跑（K1、换装、`--resume`、重算）→配置（串口与地址映射）→结果怎么看（`delivery/summary.md`）。更新`README.md`、`AGENTS.md`中运动学状态。
 
 ### 顺序
 
@@ -198,4 +198,4 @@ bash scripts/humble/container.sh bash calib/kinematics.sh --reanalyse < /dev/nul
 
 1. 三表并发一问一答的应答间隔p50/p95→确认`reply_timeout_s`与节拍。
 2. 机械臂在球上走已知0.2 mm微步并停稳，看停稳后第几条应答开始反映新位置→确定`discard_first`。
-3. 逐一轻按测头，核定槽位→工装x/y/z轴向、正负号与标准球清零读数。
+3. 逐一轻按测头，核定仪表地址→工装x/y/z轴向、正负号与标准球清零读数。

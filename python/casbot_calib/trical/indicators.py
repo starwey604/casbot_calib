@@ -35,12 +35,12 @@ def bridge_module():
 class UsbBridgeIndicatorDriver:
     def __init__(self, port, channels, log_path, *, reply_timeout_s=1.5, factory=None):
         self.channels = list(channels)
-        self.slots = [int(c['slot']) for c in self.channels]
-        if len(self.slots) != 3 or len(set(self.slots)) != 3:
-            raise ValueError('三轴须映射到三个不同槽位')
+        peers = [f"{dict(public='P', random='R')[c['address_type']]}:{c['address'].upper()}"
+                 for c in self.channels]
+        if len(peers) != 3 or len(set(peers)) != 3:
+            raise ValueError('请为 X/Y/Z 配置三个不同的仪表地址')
         self.timeout_ns = int(reply_timeout_s * 1e9)
         self.pending = {}
-        self.epochs = {}
         self.cursor = 0
         self.inbox = []
         self.module = bridge_module()
@@ -52,10 +52,13 @@ class UsbBridgeIndicatorDriver:
             self.log.close()
             raise
         try:
-            for channel in self.channels:
-                slot = channel['slot']
-                event = self.link.connect(slot, channel['address'], channel['address_type'])
-                self.epochs[slot] = event['epoch']
+            status = self.link.status()
+            for address in peers:
+                if address not in status['addresses']:
+                    raise IndicatorFault(f'仪表 {address} 尚未就绪，请唤醒后重试')
+            self.slots = [status['addresses'].index(address) for address in peers]
+            for slot in self.slots:
+                self.link.bind(status, slot)
                 self.link.set_param(slot, 'wcmd', 'MOD', 0)
             self.cursor = self.link.received
         except BaseException:
@@ -73,7 +76,7 @@ class UsbBridgeIndicatorDriver:
                 continue
             if raw['type'] in ('disconnected', 'error'):
                 raise IndicatorFault(f'仪表槽 {slot} 断连或报错')
-            if raw.get('epoch', self.epochs[slot]) != self.epochs[slot]:
+            if raw.get('epoch', self.link.epochs[slot]) != self.link.epochs[slot]:
                 raise IndicatorFault(f'仪表槽 {slot} epoch 改变')
             if raw['type'] != 'notify':
                 continue

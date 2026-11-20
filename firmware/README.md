@@ -66,9 +66,9 @@ USB VID/PID 暂沿用 Zephyr 的开发默认值 `2fe3:0004`，对外发布固件
 
 ## 当前固件行为
 
-- 支持显式扫描、按地址/类型连接三槽 QAS 仪表、GATT 发现和 CCC 确认后订阅。
+- 上电自动找表，订阅就绪后按数量闪灯；满三块停扫，有空位时继续扫描。通过 `status` 读取就绪数、地址和当前槽位。
 - 支持 QAS 参数查询/设值和 `MEAS`，两种写入模式明确区分；保留原始通知，不自动清零、恢复出厂或 OTA。
-- USB CDC ACM 使用有界非阻塞队列输出 JSONL；日志走 RTT。断开串口会停止实验并断开 BLE，不自动重连。
+- USB CDC ACM 使用有界非阻塞队列输出 JSONL；日志走 RTT。关闭串口停止测速，不影响 BLE 连接。
 - 普通应用在 `trical_bridge/`，独立频率测试在 `tests/qas_rate/`，共用 `trical_bridge/lib/`。
 - [USB 读写指南](docs/qas_usb.md)提供主机工具和行协议；[频率实验](tests/qas_rate/README.md)提供运行方式、统计含义和旧脚本缺陷分析。
 

@@ -7,6 +7,7 @@
 #include <inttypes.h>
 #include <stdlib.h>
 #include <string.h>
+#include <zephyr/drivers/gpio.h>
 #include <zephyr/logging/log.h>
 
 LOG_MODULE_REGISTER(trical_bridge, LOG_LEVEL_INF);
@@ -21,6 +22,18 @@ static struct {
 } bench;
 static uint32_t generated_id = 0x80000000U;
 
+static const struct gpio_dt_spec ready_led = GPIO_DT_SPEC_GET(DT_ALIAS(led0), gpios);
+
+static void update_ready_led(uint32_t now_ms)
+{
+	static bool lit;
+	unsigned int ready = qas_ready_count();
+	/* Each second starts with N short pulses, then a long dark gap. */
+	uint32_t phase = now_ms % 1000U;
+	bool on = phase < ready * 200U && phase % 200U < 100U;
+	if (on != lit && gpio_pin_set_dt(&ready_led, on) == 0) { lit = on; }
+}
+
 static void hex_encode(const uint8_t *data, size_t length, char *hex)
 {
 	static const char digits[] = "0123456789abcdef";
@@ -34,10 +47,12 @@ static void status(uint32_t id)
 {
 	bridge_usb_json("{\"schema\":1,\"type\":\"status\",\"id\":%u,\"app\":\"%s\","
 		"\"clock\":\"bridge_uptime_us\",\"ticks_per_second\":%u,\"now_us\":%" PRIu64 ","
+		"\"ready_count\":%u,\"addresses\":[\"%s\",\"%s\",\"%s\"],"
 		"\"states\":[\"%s\",\"%s\",\"%s\"],\"epochs\":[%u,%u,%u],"
 		"\"event_drops\":%u,\"usb_tx_drops\":%u,\"usb_rx_drops\":%u,\"terminal\":%s}",
 		id, bench.enabled ? "qas_rate" : "trical_bridge", CONFIG_SYS_CLOCK_TICKS_PER_SEC,
-		bridge_now_us(), qas_state(0), qas_state(1), qas_state(2),
+		bridge_now_us(), qas_ready_count(), qas_address(0), qas_address(1), qas_address(2),
+		qas_state(0), qas_state(1), qas_state(2),
 		qas_epoch(0), qas_epoch(1), qas_epoch(2), qas_event_drops(),
 		bridge_usb_tx_drops(), bridge_usb_rx_drops(), qas_terminal() ? "true" : "false");
 }
@@ -80,7 +95,7 @@ static void stop_bench(const char *reason)
 static void event_output(const struct qas_event *e)
 {
 	static const char *const types[] = {"connected", "disconnected", "discovered", "subscribed",
-		"notify", "write", "write_done", "advertisement", "link_params", "error", "scan_stopped"};
+		"notify", "write", "write_done", "link_params", "error"};
 	char hex[QAS_PAYLOAD_MAX * 2 + 1];
 	hex_encode(e->data, MIN(e->length, sizeof(e->data)), hex);
 	struct qas_frame f = e->type == QAS_NOTIFY ? qas_parse(e->data, e->length) : (struct qas_frame){0};
@@ -164,16 +179,15 @@ static void command(char *line)
 	if (!strcmp(op, "status") && count == 2) { status(id); err = 0; }
 	else if (!strcmp(op, "report") && count == 2) { report(); err = bench.available ? 0 : -ENOENT; }
 	else if (!strcmp(op, "stop") && count == 2) { stop_bench("cancelled"); err = 0; }
-	else if (!strcmp(op, "scan") && count == 3 && number(tokens[2], &a)) {
-		err = bench.active ? -EBUSY : qas_scan(a);
-	} else if (count >= 3 && number(tokens[2], &slot) && slot < QAS_SLOTS) {
-		if (!strcmp(op, "connect") && count == 5) {
-			err = bench.active ? -EBUSY : qas_connect(slot, tokens[3], tokens[4]);
-		} else if (!strcmp(op, "disconnect") && count == 3) {
-			if (bench.active && slot == bench.slot) { stop_bench("cancelled"); }
-			err = qas_disconnect(slot);
-		} else if (!strcmp(op, "cmd") && count == 5 &&
-			   (!strcmp(tokens[3], "wcmd") || !strcmp(tokens[3], "wreq"))) {
+	else if (count >= 3 && number(tokens[2], &slot) && slot < QAS_SLOTS) {
+		/* Host sessions can pin operations to the epoch returned by status. */
+		if ((!strcmp(op, "cmd") && count == 6) || (!strcmp(op, "rate") && count == 8)) {
+			uint32_t epoch;
+			if (!number(tokens[--count], &epoch)) { goto done; }
+			if (!qas_ready(slot) || epoch != qas_epoch(slot)) { err = -ESTALE; goto done; }
+		}
+		if (!strcmp(op, "cmd") && count == 5 &&
+		    (!strcmp(tokens[3], "wcmd") || !strcmp(tokens[3], "wreq"))) {
 			err = bench.active ? -EBUSY : qas_send(slot, id, tokens[4], !strcmp(tokens[3], "wreq"));
 		} else if (!strcmp(op, "rate") && count == 7 && number(tokens[3], &a) &&
 			   number(tokens[4], &b) && number(tokens[5], &c) &&
@@ -191,20 +205,21 @@ int bridge_run(bool rate_test)
 	int err = bridge_usb_init();
 	if (err == 0) { err = qas_client_init(); }
 	if (err != 0) { LOG_ERR("Bridge initialization failed (%d)", err); return err; }
+	bool led_available = gpio_is_ready_dt(&ready_led) &&
+		gpio_pin_configure_dt(&ready_led, GPIO_OUTPUT_INACTIVE) == 0;
+	if (!led_available) { LOG_ERR("Connection LED unavailable"); }
 	bool host = false;
 	uint32_t rx_drops = bridge_usb_rx_drops();
-	LOG_INF("QAS bridge ready; connections require an explicit USB command");
+	LOG_INF("QAS bridge ready; automatic QAS discovery enabled");
 	for (;;) {
 		bool connected = bridge_usb_connected();
 		if (host && !connected) {
 			stop_bench("usb_disconnected");
-			for (unsigned int i = 0; i < QAS_SLOTS; i++) { (void)qas_disconnect(i); }
 			bridge_usb_reset();
 		} else if (!host && connected) { status(0); }
 		host = connected;
 		if (bridge_usb_rx_drops() != rx_drops) {
 			rx_drops = bridge_usb_rx_drops(); stop_bench("usb_input_loss");
-			for (unsigned int i = 0; i < QAS_SLOTS; i++) { (void)qas_disconnect(i); }
 			bridge_usb_reset();
 		}
 		struct qas_event event;
@@ -227,6 +242,7 @@ int bridge_run(bool rate_test)
 				rate_submit(&bench.core, err);
 			} else if (now >= bench.core.end_us && !qas_events_pending()) { stop_bench("finished"); }
 		}
+		if (led_available) { update_ready_led(k_uptime_get_32()); }
 		k_msleep(1);
 	}
 	return 0;

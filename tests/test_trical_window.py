@@ -88,11 +88,12 @@ class Serial:
         identifier, command, *args = wire.decode().strip().split()
         identifier = int(identifier)
         self.add(type='result', id=identifier, result=0)
-        slot = int(args[0])
-        if command == 'connect':
-            self.add(type='subscribed', slot=slot, epoch=7, state='ready', result=0)
+        if command == 'status':
+            self.add(type='status', id=identifier, epochs=[7]*3,
+                     addresses=[f'R:00:00:00:00:00:0{s}' for s in (1, 2, 0)])
         elif command == 'cmd':
-            assert args[1] == 'wcmd'
+            slot = int(args[0])
+            assert args[1] == 'wcmd' and args[3] == '7'
             self.add(type='write_done', slot=slot, epoch=7, id=identifier, result=0)
             text = 'DAT0:m1.250' if args[2] == 'MEAS' else 'MOD:0'
             self.add(type='notify', slot=slot, epoch=7, hex=text.encode().hex())
@@ -105,10 +106,11 @@ class Serial:
 
 
 def test_usb_interleaved_slots_and_parameter_replies(tmp_path):
-    channels = [dict(slot=s, address='00:00:00:00:00:00', address_type='random',
+    channels = [dict(address=f'00:00:00:00:00:0{s}', address_type='random',
                      sign=1, unit_tag=ord('m'), unit_scale_m=.001) for s in range(3)]
     driver = UsbBridgeIndicatorDriver('fake', channels, tmp_path/'raw', factory=Serial)
     try:
+        assert driver.slots == [2, 0, 1]
         for s in driver.slots: driver.request(s)
         events = []
         for _ in range(10): events.extend(driver.poll())
@@ -126,7 +128,7 @@ def test_usb_interleaved_slots_and_parameter_replies(tmp_path):
     ({'hex': b'DAT0:i1.250'.hex()}, '单位'),
 ])
 def test_usb_epoch_status_and_unit_faults(tmp_path, raw_change, match):
-    channels = [dict(slot=s, address='00:00:00:00:00:00', address_type='random',
+    channels = [dict(address=f'00:00:00:00:00:0{s}', address_type='random',
                      sign=1, unit_tag=ord('m'), unit_scale_m=.001) for s in range(3)]
     driver = UsbBridgeIndicatorDriver('fake', channels, tmp_path/'raw', factory=Serial)
     try:

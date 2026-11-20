@@ -28,7 +28,11 @@ int bt_addr_from_str(const char *s,bt_addr_t *out)
     return 0;
 }
 void bt_addr_le_to_str(const bt_addr_le_t *a,char *out,size_t size)
-{ (void)a; snprintf(out,size,"78:CD:55:45:67:AD (public)"); }
+{
+    const uint8_t *v=a->a.val; /* The fake parser above stores bytes in display order. */
+    snprintf(out,size,"%c:%02X:%02X:%02X:%02X:%02X:%02X",
+             a->type==BT_ADDR_LE_PUBLIC?'P':'R',v[0],v[1],v[2],v[3],v[4],v[5]);
+}
 int bt_conn_le_create(const bt_addr_le_t *a,const void *p,const void *q,struct bt_conn **out)
 {
     (void)a;(void)p;(void)q;
@@ -40,9 +44,10 @@ int bt_conn_disconnect(struct bt_conn *c,uint8_t reason)
 void bt_conn_unref(struct bt_conn *c){assert(c->refs==1);c->refs=0;}
 int bt_conn_get_info(struct bt_conn *c,struct bt_conn_info *out)
 { (void)c;out->le.interval_us=30000;out->le.latency=0;out->le.timeout=400;return 0; }
+static void (*scan_cb)(const bt_addr_le_t *,int8_t,uint8_t,struct net_buf_simple *);
 int bt_le_scan_start(const void *p,void (*cb)(const bt_addr_le_t *,int8_t,uint8_t,struct net_buf_simple *))
-{(void)p;(void)cb;return 0;}
-int bt_le_scan_stop(void){return 0;}
+{(void)p;assert(!scan_cb);scan_cb=cb;return 0;}
+int bt_le_scan_stop(void){assert(scan_cb);scan_cb=NULL;return 0;}
 int bt_gatt_discover(struct bt_conn *c,struct bt_gatt_discover_params *p){discoveries[c->index]=p;return 0;}
 int bt_gatt_subscribe(struct bt_conn *c,struct bt_gatt_subscribe_params *p){subscriptions[c->index]=p;return 0;}
 uint16_t bt_gatt_get_mtu(struct bt_conn *c){(void)c;return 23;}
@@ -72,6 +77,20 @@ int bridge_usb_json(const char *format,...)
 }
 #include "../../../trical_bridge/lib/bridge_app.c"
 
+static bool led_lit;
+int gpio_pin_set_dt(const struct gpio_dt_spec *led, int value)
+{
+    assert(led->pin == 15);led_lit=value;return 0;
+}
+static void expect_pulses(unsigned int n)
+{
+    for(unsigned int ms=0;ms<2000;ms+=50){
+        update_ready_led(ms);
+        unsigned int step=(ms%1000)/100;
+        assert(led_lit==(step%2==0 && step/2<n));
+    }
+}
+
 static void pump(void)
 {
     struct qas_event e;
@@ -83,12 +102,26 @@ static void attribute(int index,uint16_t handle,void *user)
     struct bt_gatt_discover_params *d=discoveries[index];
     d->func(&pool[index],handle?&attr:NULL,d);
 }
+static void advertise(const char *address,uint8_t *data,size_t size)
+{
+    bt_addr_le_t peer={.type=BT_ADDR_LE_PUBLIC};
+    assert(bt_addr_from_str(address,&peer.a)==0 && scan_cb);
+    struct net_buf_simple ad={.data=data,.len=size};
+    scan_cb(&peer,-50,BT_GAP_ADV_TYPE_ADV_IND,&ad);
+    qas_tick();
+}
+static uint8_t gauge_ad[]={2,1,6,5,2,0x12,0x18,0xb0,0xff,3,0x19,0xc1,3};
 static void make_ready(unsigned int slot,const char *address,bool variant128)
 {
-    assert(qas_connect(slot,address,"public")==0);
+    fake_clock+=250000;qas_tick();advertise(address,gauge_ad,sizeof(gauge_ad));
+    assert(!scan_cb);
     int index=-1;for(int i=0;i<3;i++)if(pool[i].refs && discoveries[i]==NULL)index=i;
     assert(index>=0);
-    connection_callbacks.connected(&pool[index],0);pump();
+    connection_callbacks.connected(&pool[index],0);
+    struct qas_event linked;
+    assert(qas_next_event(&linked) && linked.type==QAS_CONNECTED);
+    assert(strncmp(linked.address,"P:",2)==0 && strcmp(linked.address+2,address)==0);
+    qas_process(&linked);event_output(&linked);pump();
     assert(!qas_ready(slot));
     if(variant128){attribute(index,0,NULL);pump();assert(discoveries[index]->uuid->type==128);}
     struct bt_gatt_service_val service={30};attribute(index,10,&service);pump();
@@ -101,9 +134,10 @@ static void make_ready(unsigned int slot,const char *address,bool variant128)
     assert(discoveries[index]->start_handle==13 && discoveries[index]->end_handle==19);
     assert(bt_uuid_cmp(discoveries[index]->uuid, &fake_ccc.uuid)==0);
     attribute(index,13,NULL);pump();
+    expect_pulses(slot); /* Only the earlier slots have a confirmed subscription. */
     assert(!qas_ready(slot)); /* The subscribe API returning zero is not a CCC acknowledgment. */
     assert(subscriptions[index]->value_handle==12 && subscriptions[index]->ccc_handle==13);
-    subscriptions[index]->subscribe(&pool[index],0,subscriptions[index]);pump();assert(qas_ready(slot));
+    subscriptions[index]->subscribe(&pool[index],0,subscriptions[index]);pump();assert(qas_ready(slot));expect_pulses(slot+1);
 }
 static void packet(unsigned int index,const char *text)
 {
@@ -113,9 +147,9 @@ static void packet(unsigned int index,const char *text)
 int main(void)
 {
     assert(qas_client_init()==0);
-    assert(qas_connect(0,"78:CD:55:45:67:AD","guess")==-EINVAL);
+    qas_tick();uint8_t other[]={3,3,0x12,0x18};advertise("78:CD:55:45:67:AD",other,sizeof(other));assert(!creates);
     make_ready(0,"78:CD:55:45:67:AD",false);
-    assert(qas_connect(1,"78:CD:55:45:67:AD","public")==-EALREADY);
+    fake_clock+=250000;qas_tick();advertise("78:CD:55:45:67:AD",gauge_ad,sizeof(gauge_ad));assert(creates==1);
     make_ready(1,"78:CD:55:45:67:AE",true);
     make_ready(2,"78:CD:55:45:67:AF",false);
     assert(qas_ready(0)&&qas_ready(1)&&qas_ready(2));
@@ -137,15 +171,17 @@ int main(void)
     stop_bench("cancelled");assert(!bench.active);
     uint32_t frozen=bench.end_tx;tx_drops++;report();assert(bench.end_tx==frozen);
     assert(qas_send(0,5,"MEAS",false)==0);
-    assert(qas_disconnect(0)==0);pump();assert(!qas_ready(0));
+    fake_clock+=250000;qas_tick();assert(!scan_cb);status(100);
+    connection_callbacks.disconnected(&pool[0],0x13);discoveries[0]=NULL;pump();assert(!qas_ready(0));expect_pulses(2);
     assert(qas_send(0,6,"MEAS",false)==-ENOTCONN);
-    assert(creates==3); /* Never auto-reconnect. */
-    assert(qas_scan(100)==0);fake_clock+=100000;qas_tick();pump();
+    assert(creates==3);qas_tick();advertise("78:CD:55:45:67:AD",gauge_ad,sizeof(gauge_ad));
+    assert(creates==4 && qas_epoch(0)==2 && qas_ready_count()==2);
+    char stale[]="12 cmd 0 wcmd MOD:0 1";command(stale);assert(writes==3);
     /* Dropped control events are terminal; a dropped raw packet is counted. */
     for(int i=0;i<100;i++)subscriptions[1]->notify(&pool[1],subscriptions[1],"DAT0:1.0",8);
     connection_callbacks.le_param_updated(&pool[1],24,0,400);
     assert(qas_event_drops()>0);qas_tick();assert(qas_terminal());pump();
-    assert(qas_connect(0,"78:CD:55:45:67:AD","public")==-EIO);
+    qas_tick();assert(!scan_cb);
     assert(json_count>=5&&disconnects>=3);
     fprintf(stderr,"PASS: real QAS client/application with fake GATT: 3 slots, 16/128-bit discovery, CCC ack, writes, faults, queues and JSON bounds\n");
     return 0;

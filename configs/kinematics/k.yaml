@@ -4,9 +4,9 @@ tool_com_m: [0.0, 0.0, 0.0]
 port: /dev/ttyACM0
 centered_readings_m: [0.0, 0.0, 0.0]
 channels:
-  x: {slot: 0, address: '', address_type: random, sign: 1, unit_tag: 109, unit_scale_m: 0.001}
-  y: {slot: 1, address: '', address_type: random, sign: 1, unit_tag: 109, unit_scale_m: 0.001}
-  z: {slot: 2, address: '', address_type: random, sign: 1, unit_tag: 109, unit_scale_m: 0.001}
+  x: {address: '', address_type: public, sign: 1, unit_tag: 109, unit_scale_m: 0.001}
+  y: {address: '', address_type: public, sign: 1, unit_tag: 109, unit_scale_m: 0.001}
+  z: {address: '', address_type: public, sign: 1, unit_tag: 109, unit_scale_m: 0.001}
 settle_window_s: 0.2
 settle_span_rad: 0.00025
 settle_timeout_s: 3.0

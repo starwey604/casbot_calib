@@ -25,12 +25,12 @@
 
 ## 复测
 
-在仓库根目录执行；保持千分表液晶显示数值。先按[频率测试说明](../../firmware/tests/qas_rate/README.md)烧录测速固件；本次新板已刷好，不必重复烧录。
+在仓库根目录执行；保持千分表液晶显示数值。先按[频率测试说明](../../firmware/tests/qas_rate/README.md)烧录测速固件；新版自动连接后，用 `status` 确认地址 `P:78:CD:55:45:64:04` 所在槽位，下例为槽 0。
 
 ```bash
 firmware/.venv/bin/python firmware/tools/trical_usb.py rate \
   --port /dev/serial/by-id/usb-Zephyr_Project_CASBOT_Gauge_Bridge__development__D0682ED4F93F8620-if00 \
-  --address 78:CD:55:45:64:04 --address-type public \
+  --slot 0 \
   --intervals 125 --duration-ms 60000 --drain-ms 2000 --repeats 1 \
   --output "artifacts/qas_8hz_$(date +%Y%m%d_%H%M%S)"
 ```

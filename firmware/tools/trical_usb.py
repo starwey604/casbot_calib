@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Explicit USB QAS access and a recorded, MCU-timed delivery-rate experiment."""
+"""USB QAS access and a recorded, MCU-timed delivery-rate experiment."""
 import argparse
 from collections import deque
 from datetime import datetime, timezone
@@ -27,6 +27,7 @@ class Link:
         self.history = deque(maxlen=4096)
         self.next_id = 0
         self.received = 0
+        self.epochs = {}
 
     def record(self, event):
         self.log.write(json.dumps(event, ensure_ascii=False, separators=(",", ":")) + "\n")
@@ -95,7 +96,7 @@ class Link:
         deadline = time.monotonic() + 5
         while True:
             start = self.received
-            result = self.request(f"cmd {slot} {mode} {command}", allow_error=True)
+            result = self.request(self.bound(slot, f"cmd {slot} {mode} {command}"), allow_error=True)
             if result["result"] != -16:
                 break
             if time.monotonic() > deadline:
@@ -128,11 +129,17 @@ class Link:
         if actual != str(value):
             raise BridgeError(f"{key} 回读不符：要求 {value}，实际 {actual}")
 
-    def connect(self, slot, address, address_type):
-        start = self.received
-        self.request(f"connect {slot} {address} {address_type}")
-        return self.wait(lambda e: e["type"] == "subscribed" and e.get("slot") == slot and e.get("state") == "ready",
-                         timeout=25, after=start, fail_slot=slot)
+    def status(self):
+        reply = self.request("status")
+        return self.wait(lambda e: e["type"] == "status" and e.get("id") == reply["id"])
+
+    def bind(self, status, slot):
+        if not status["addresses"][slot]:
+            raise BridgeError(f"仪表槽 {slot} 尚未就绪")
+        self.epochs[slot] = status["epochs"][slot]
+
+    def bound(self, slot, command):
+        return f"{command} {self.epochs[slot]}"
 
     def close(self):
         self.serial.close()
@@ -269,23 +276,16 @@ def run(args):
         mod_changed = False
         try:
             link = Link(args.port, log)
-            result = link.request("status")
-            status = link.wait(lambda e: e["type"] == "status" and e.get("id") == result["id"])
-            if args.action == "scan":
-                link.request(f"scan {args.scan_ms}")
-                link.wait(lambda e: e["type"] == "scan_stopped", timeout=args.scan_ms / 1000 + 5)
-                seen = set()
-                for item in link.history:
-                    if item["type"] == "advertisement" and item["address"] not in seen:
-                        seen.add(item["address"])
-                        print(f"{item['address']}  RSSI={item['rssi']}dBm  AD={item['hex']}")
-            elif args.action == "command":
-                if args.address:
-                    link.connect(args.slot, args.address, args.address_type)
+            status = link.status()
+            if args.action == "command":
                 for command in args.commands:
                     parts = command.split()
                     if len(parts) == 4 and parts[0] == "cmd":
-                        link.send_qas(int(parts[1]), parts[2], parts[3])
+                        slot = int(parts[1])
+                        if slot not in range(3):
+                            raise BridgeError("槽位应为 0、1 或 2")
+                        link.bind(status, slot)
+                        link.send_qas(slot, parts[2], parts[3])
                     else:
                         link.request(command)
                 deadline = time.monotonic() + args.listen
@@ -301,9 +301,7 @@ def run(args):
             else:
                 if status["app"] != "qas_rate":
                     raise BridgeError("频率实验需要 firmware/tests/qas_rate 镜像")
-                if not args.address:
-                    raise BridgeError("rate 必须显式提供 --address 和 --address-type")
-                link.connect(args.slot, args.address, args.address_type)
+                link.bind(status, args.slot)
                 if link.get_param(args.slot, args.write_mode, "HIDMOD") != "0":
                     raise BridgeError("请先显式将仪表设为软件模式 HIDMOD=0；本测试不自动修改")
                 original_mod = link.get_param(args.slot, args.write_mode, "MOD")
@@ -320,7 +318,7 @@ def run(args):
                     deadline = time.monotonic() + 15
                     while True:
                         before = link.received
-                        reply = link.request(f"rate {args.slot} {interval} {args.duration_ms} {args.drain_ms} {args.write_mode}", allow_error=True)
+                        reply = link.request(link.bound(args.slot, f"rate {args.slot} {interval} {args.duration_ms} {args.drain_ms} {args.write_mode}"), allow_error=True)
                         if reply["result"] == 0:
                             break
                         if reply["result"] not in (-11, -16) or time.monotonic() > deadline:
@@ -343,13 +341,12 @@ def run(args):
         finally:
             if link is not None:
                 try:
-                    link.request("stop")
+                    if args.action == "rate":
+                        link.request("stop")
                     if mod_changed:
                         # Same connection only. Never reconnect silently to restore a device.
                         link.set_param(args.slot, args.write_mode, "MOD", original_mod)
                         link.record(dict(type="restored", key="MOD", value=original_mod))
-                    if args.address:
-                        link.request(f"disconnect {args.slot}", allow_error=True)
                 except (Exception, KeyboardInterrupt) as exc:
                     cleanup = f"清理/恢复失败：{exc}；必要时人工核对 MOD={original_mod}"
                     failure = f"{failure}; {cleanup}" if failure else cleanup
@@ -368,18 +365,15 @@ def run(args):
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(description="TriCal USB QAS 读写与频率实验；显式连接实物")
-    parser.add_argument("action", choices=("scan", "command", "rate", "analyze"))
+    parser = argparse.ArgumentParser(description="TriCal USB QAS 读写与频率实验")
+    parser.add_argument("action", choices=("status", "command", "rate", "analyze"))
     parser.add_argument("--port")
     parser.add_argument("--output")
     parser.add_argument("--input", help="analyze: events.jsonl")
-    parser.add_argument("--address")
-    parser.add_argument("--address-type", choices=("public", "random"))
     parser.add_argument("--slot", type=int, choices=range(3), default=0)
     parser.add_argument("--write-mode", choices=("wcmd", "wreq"), default="wcmd")
     parser.add_argument("--commands", nargs="+", default=["status"])
     parser.add_argument("--listen", type=float, default=5)
-    parser.add_argument("--scan-ms", type=int, default=5000)
     parser.add_argument("--intervals", nargs="+", type=int, default=[1000, 500, 250, 125, 100, 50, 20])
     parser.add_argument("--repeats", type=int, default=3)
     parser.add_argument("--seed", type=int, default=20261113)
@@ -391,10 +385,20 @@ def main(argv=None):
             parser.error("analyze 需要 --input")
         print(json.dumps(analyze(args.input), ensure_ascii=False, indent=2))
         return 0
+    if args.action == "status":
+        if not args.port:
+            parser.error("status 需要 --port")
+        from contextlib import closing
+        import os
+        try:
+            with open(os.devnull, "w") as log, closing(Link(args.port, log)) as link:
+                print(json.dumps(link.status(), ensure_ascii=False))
+        except (BridgeError, OSError) as exc:
+            print(f"失败：{exc}", file=sys.stderr)
+            return 1
+        return 0
     if not args.port or not args.output:
         parser.error("需要 --port 和一个新 --output 目录")
-    if args.address and not args.address_type:
-        parser.error("连接必须显式指定 --address-type")
     if args.repeats < 1 or not 1000 <= args.duration_ms <= 300000 or not 500 <= args.drain_ms <= 30000:
         parser.error("repeats≥1，duration-ms=1000..300000，drain-ms=500..30000")
     if any(not 20 <= n <= 10000 for n in args.intervals):

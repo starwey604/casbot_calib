@@ -6,8 +6,8 @@
 
 - 固定四球台架，确认机器人支撑、周围空旷，急停继电器在手。
 - 拆除双手，把工装装在左腕。三表用标准球清零；换装右腕后保持这次清零值。
-- 在 `configs/kinematics/k.yaml` 填写 USB 串口、三槽 BLE 地址/地址类型、x/y/z 对应关系与符号、清零读数和工装质量/质心。`tool_com_m` 以工装 TCP 为参考，单位 m。
-- 板卡到货后，用 `bash calib/dev.sh trical-probe --help` 查看联调命令，逐表确认单位与槽位，再按实施计划的板卡实验确定丢弃条数。`unit_tag` 是通知里的单位前缀 ASCII 值，`unit_scale_m` 将数值换成 m。
+- 在 `configs/kinematics/k.yaml` 填写 USB 串口、x/y/z 各表的 BLE 地址、地址类型与符号、清零读数和工装质量/质心。`tool_com_m` 以工装 TCP 为参考，单位 m。
+- 唤醒三表后，用 `bash calib/dev.sh trical-probe status --port /dev/ttyACM0` 核对三块表的地址，逐表确认单位与轴向，再按实施计划的板卡实验确定丢弃条数。`unit_tag` 是通知里的单位前缀 ASCII 值，`unit_scale_m` 将数值换成 m。
 
 ## 怎么跑
 
@@ -26,7 +26,7 @@ bash calib/kinematics.sh --reanalyse          # 从 feedback.bin 重算窗口均
 bash calib/kinematics.sh --plan-only
 ```
 
-仪表故障、读数超出捕获范围、修正后仍未入量程或执行故障都会结束采集并请求失能。查看本阶段报告、`capture/executor.log`、`capture/native/result.txt` 和原始仪表日志；排除原因后续跑失败阶段。首点入球读数不随位移变化时，检查表头接触、槽位映射与仪表缓存设置。
+仪表故障、读数超出捕获范围、修正后仍未入量程或执行故障都会结束采集并请求失能。查看本阶段报告、`capture/executor.log`、`capture/native/result.txt` 和原始仪表日志；排除原因后续跑失败阶段。首点入球读数不随位移变化时，检查表头接触、地址与轴向映射与仪表缓存设置。
 
 ## 结果怎么看
 

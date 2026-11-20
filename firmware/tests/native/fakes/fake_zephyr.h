@@ -14,6 +14,7 @@
 #define CONFIG_SYS_CLOCK_TICKS_PER_SEC 1000000
 #define K_NO_WAIT 0
 extern uint64_t fake_clock;
+static inline uint32_t k_uptime_get_32(void) { return (uint32_t)(fake_clock / 1000); }
 static inline uint64_t k_uptime_ticks(void) { return fake_clock; }
 static inline uint64_t k_ticks_to_us_floor64(uint64_t t) { return t; }
 static inline void k_msleep(int ms) { fake_clock += ms * 1000; }
@@ -44,17 +45,17 @@ static inline int k_spin_lock(struct k_spinlock *lock){(void)lock;return 0;}
 static inline void k_spin_unlock(struct k_spinlock *lock,int key){(void)lock;(void)key;}
 struct bt_uuid { unsigned int type; };
 struct bt_uuid_16 { struct bt_uuid uuid; uint16_t val; };
-struct bt_uuid_128 { struct bt_uuid uuid; uint64_t val; };
+struct bt_uuid_128 { struct bt_uuid uuid; uint8_t val[16]; };
 #define BT_UUID_INIT_16(v) {.uuid={16},.val=(v)}
 #define BT_UUID_128_ENCODE(a,b,c,d,e) (e)
-#define BT_UUID_INIT_128(v) {.uuid={128},.val=(v)}
+#define BT_UUID_INIT_128(v) {.uuid={128},.val={(uint8_t)(v),(uint8_t)((v)>>8)}}
 extern const struct bt_uuid_16 fake_ccc;
 #define BT_UUID_GATT_CCC ((const struct bt_uuid *)((const struct bt_uuid_16[]){BT_UUID_INIT_16(0x2902)}))
 static inline int bt_uuid_cmp(const struct bt_uuid *a,const struct bt_uuid *b)
 {
     if(a->type!=b->type)return 1;
     if(a->type==16)return ((const struct bt_uuid_16 *)a)->val!=((const struct bt_uuid_16 *)b)->val;
-    return ((const struct bt_uuid_128 *)a)->val!=((const struct bt_uuid_128 *)b)->val;
+    return memcmp(((const struct bt_uuid_128 *)a)->val,((const struct bt_uuid_128 *)b)->val,16);
 }
 typedef struct { uint8_t val[6]; } bt_addr_t;
 typedef struct { uint8_t type; bt_addr_t a; } bt_addr_le_t;
@@ -80,7 +81,12 @@ int bt_conn_disconnect(struct bt_conn *,uint8_t);
 void bt_conn_unref(struct bt_conn *);
 int bt_conn_get_info(struct bt_conn *,struct bt_conn_info *);
 struct net_buf_simple { uint16_t len; uint8_t *data; };
-#define BT_LE_SCAN_ACTIVE NULL
+#define BT_LE_SCAN_PASSIVE NULL
+#define BT_GAP_ADV_TYPE_ADV_IND 0
+#define BT_DATA_UUID16_SOME 2
+#define BT_DATA_UUID16_ALL 3
+#define BT_DATA_UUID128_SOME 6
+#define BT_DATA_UUID128_ALL 7
 int bt_le_scan_start(const void *,void (*)(const bt_addr_le_t *,int8_t,uint8_t,struct net_buf_simple *));
 int bt_le_scan_stop(void);
 struct bt_gatt_attr { uint16_t handle; void *user_data; };

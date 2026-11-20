@@ -31,7 +31,7 @@ class FakeSerial:
         identifier = int(identifier)
         events = []
         if command == "status":
-            events.append(event("status", id=identifier, app="qas_rate"))
+            events.append(event("status", id=identifier, app="qas_rate", epochs=[7,0,0], addresses=["P:78:CD:55:45:67:AD","",""]))
         elif command.startswith("cmd"):
             # Notifications can precede BOTH local completion and the USB result.
             events += [event("notify", slot=0, hex=b"MOD:0\r\n".hex()),
@@ -54,8 +54,7 @@ class HostTransport(unittest.TestCase):
     def test_fragmented_lines_and_early_param_answer(self):
         log = io.StringIO()
         link = usb.Link("fake", log, factory=FakeSerial)
-        reply = link.request("status")
-        self.assertEqual(reply["result"], 0)
+        link.bind(link.status(), 0)
         self.assertEqual(link.get_param(0, "wcmd", "MOD"), "0")
         self.assertTrue(link.serial.dtr)
         link.close()
@@ -81,6 +80,7 @@ class HostTransport(unittest.TestCase):
 
     def test_att_error_is_not_success(self):
         link = usb.Link("fake", io.StringIO(), factory=FakeSerial)
+        link.bind(link.status(), 0)
         link.serial.error = 3
         with self.assertRaisesRegex(usb.BridgeError, "GATT"):
             link.send_qas(0, "wreq", "MOD")
@@ -185,6 +185,10 @@ class Analysis(unittest.TestCase):
     def test_actual_c_json_fixture_is_parseable(self):
         path = FIRMWARE/"build/native-tests/usb-fixture.jsonl"
         rows = [json.loads(line) for line in path.read_text().splitlines()]
+        status = next(r for r in rows if r["type"] == "status")
+        self.assertEqual(status["ready_count"], 3)
+        self.assertEqual(status["addresses"], ["P:78:CD:55:45:67:"+suffix for suffix in ("AD","AE","AF")])
+        self.assertLess(next(r for r in rows if r.get("id")==12 and r["type"]=="result")["result"], 0)
         largest = max((r for r in rows if r["type"] == "notify"), key=lambda r: r["length"])
         self.assertEqual(len(bytes.fromhex(largest["hex"])), 244)
         self.assertFalse(largest["truncated"])
@@ -206,13 +210,14 @@ class ExperimentCleanup(unittest.TestCase):
             def __init__(self, port, log):
                 self.log = log
                 self.received = 0
+                self.epochs = {}
 
             def request(self, command, **kwargs):
                 actions.append(command)
                 return dict(id=1, result=0)
 
             def wait(self, predicate, **kwargs):
-                if "rate 0 250 1000 500 wcmd" in actions:
+                if "rate 0 250 1000 500 wcmd 7" in actions:
                     # The phase starts, then collection fails.
                     if not hasattr(self, "started"):
                         self.started = True
@@ -220,8 +225,11 @@ class ExperimentCleanup(unittest.TestCase):
                     raise usb.BridgeError("injected collection failure")
                 return dict(app="qas_rate")
 
-            def connect(self, *args):
-                actions.append("connect")
+            def status(self):
+                return dict(app="qas_rate", addresses=["P:78:CD:55:45:67:AD","",""], epochs=[7,0,0])
+
+            bind = usb.Link.bind
+            bound = usb.Link.bound
 
             def get_param(self, slot, mode, key):
                 return "0" if key == "HIDMOD" else "1"
@@ -237,14 +245,13 @@ class ExperimentCleanup(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as folder:
             args = SimpleNamespace(output=str(Path(folder)/"run"), port="fake", action="rate",
-                                   address="78:CD:55:45:67:AD", address_type="public", slot=0,
+                                   slot=0,
                                    write_mode="wcmd", intervals=[250], repeats=1, seed=1,
                                    duration_ms=1000, drain_ms=500)
             with patch.object(usb, "Link", Runner):
                 with self.assertRaisesRegex(usb.BridgeError, "injected"):
                     usb.run(args)
             self.assertEqual([a for a in actions if isinstance(a, tuple)], [("MOD", "0"), ("MOD", "1")])
-            self.assertEqual(actions.count("connect"), 1)
             self.assertEqual(actions[-1], "close")
             result = json.loads((Path(args.output)/"analysis.json").read_text())
             self.assertIn("injected", result["failure"])

@@ -9,8 +9,8 @@
 
 enum qas_event_type {
 	QAS_CONNECTED, QAS_DISCONNECTED, QAS_DISCOVERED, QAS_SUBSCRIBED,
-	QAS_NOTIFY, QAS_WRITE, QAS_WRITE_DONE, QAS_ADVERTISEMENT, QAS_LINK_PARAMS,
-	QAS_ERROR, QAS_SCAN_STOPPED
+	QAS_NOTIFY, QAS_WRITE, QAS_WRITE_DONE, QAS_LINK_PARAMS,
+	QAS_ERROR
 };
 
 struct qas_event {
@@ -28,9 +28,8 @@ struct qas_event {
 
 uint64_t bridge_now_us(void);
 int qas_client_init(void);
-int qas_connect(unsigned int slot, const char *address, const char *type);
-int qas_disconnect(unsigned int slot);
-int qas_scan(uint32_t duration_ms);
+const char *qas_address(unsigned int slot);
+unsigned int qas_ready_count(void);
 int qas_send(unsigned int slot, uint32_t id, const char *command, bool request);
 bool qas_next_event(struct qas_event *event);
 /* Call from the single application owner for each event, then emit it to USB. */

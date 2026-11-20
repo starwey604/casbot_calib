@@ -15,6 +15,7 @@ enum stage { OFF, CONNECTING, SERVICE16, SERVICE128, CHARACTERISTIC, CCC,
 struct client_slot {
 	struct bt_conn *conn;
 	bt_addr_le_t address;
+	char address_text[QAS_ADDRESS_MAX];
 	enum stage stage;
 	uint32_t epoch;
 	uint64_t deadline_us, quiet_since_us;
@@ -33,7 +34,10 @@ static struct client_slot slots[QAS_SLOTS];
 K_MSGQ_DEFINE(events, sizeof(struct qas_event), 96, 8);
 static atomic_t sequence, drops, critical_loss;
 static bool terminal, scanning;
-static uint64_t scan_end_us;
+/* RX only offers peers; the main loop owns scanning, slots and GATT setup. */
+K_MSGQ_DEFINE(candidates, sizeof(bt_addr_le_t), QAS_SLOTS, 1);
+static uint64_t retry_scan_us;
+static int disconnect_slot(unsigned int slot);
 static const struct bt_uuid_16 service16 = BT_UUID_INIT_16(0xffb0);
 static const struct bt_uuid_16 data16 = BT_UUID_INIT_16(0xffb2);
 /* Discovery retains its UUID filter until the asynchronous callback. */
@@ -45,13 +49,17 @@ static const struct bt_uuid_128 data128 = BT_UUID_INIT_128(
 
 uint64_t bridge_now_us(void) { return k_ticks_to_us_floor64(k_uptime_ticks()); }
 
-static struct qas_event event_for(struct client_slot *s, enum qas_event_type type)
+/* Fill the caller's event in place: BLE callbacks have a small stack. */
+static void init_event(struct qas_event *e, struct client_slot *s, enum qas_event_type type)
 {
-	struct qas_event e = { .type = type, .time_us = bridge_now_us(), .slot = 255 };
+	memset(e, 0, sizeof(*e));
+	e->type = type; e->time_us = bridge_now_us(); e->slot = 255;
 	if (s != NULL) {
-		e.slot = (uint8_t)(s - slots); e.epoch = s->epoch;
+		e->slot = (uint8_t)(s - slots); e->epoch = s->epoch;
+		if (type == QAS_CONNECTED || type == QAS_SUBSCRIBED || type == QAS_DISCONNECTED) {
+			memcpy(e->address, s->address_text, sizeof(e->address));
+		}
 	}
-	return e;
 }
 
 static void emit(struct qas_event *event)
@@ -59,7 +67,7 @@ static void emit(struct qas_event *event)
 	event->sequence = (uint32_t)atomic_inc(&sequence);
 	if (k_msgq_put(&events, event, K_NO_WAIT) != 0) {
 		atomic_inc(&drops);
-		if (event->type != QAS_NOTIFY && event->type != QAS_ADVERTISEMENT) {
+		if (event->type != QAS_NOTIFY) {
 			atomic_set(&critical_loss, 1);
 		}
 	}
@@ -75,16 +83,18 @@ static struct client_slot *find_slot(struct bt_conn *conn)
 
 static void fail(struct client_slot *s, int error)
 {
-	struct qas_event e = event_for(s, QAS_ERROR);
+	struct qas_event e;
+	init_event(&e, s, QAS_ERROR);
 	e.result = error; emit(&e);
-	(void)qas_disconnect((unsigned int)(s - slots));
+	(void)disconnect_slot((unsigned int)(s - slots));
 }
 
 static uint8_t discovered(struct bt_conn *conn, const struct bt_gatt_attr *attr,
 			  struct bt_gatt_discover_params *params)
 {
 	struct client_slot *s = CONTAINER_OF(params, struct client_slot, discovery);
-	struct qas_event e = event_for(s, QAS_DISCOVERED);
+	struct qas_event e;
+	init_event(&e, s, QAS_DISCOVERED);
 	ARG_UNUSED(conn);
 	if (s->stage == CHARACTERISTIC) {
 		if (attr != NULL) {
@@ -112,7 +122,8 @@ static void subscribed(struct bt_conn *conn, uint8_t err,
 		       struct bt_gatt_subscribe_params *params)
 {
 	struct client_slot *s = CONTAINER_OF(params, struct client_slot, subscription);
-	struct qas_event e = event_for(s, QAS_SUBSCRIBED);
+	struct qas_event e;
+	init_event(&e, s, QAS_SUBSCRIBED);
 	ARG_UNUSED(conn);
 	e.result = err;
 	e.handle = params->value_handle;
@@ -124,7 +135,8 @@ static uint8_t notified(struct bt_conn *conn, struct bt_gatt_subscribe_params *p
 			const void *data, uint16_t length)
 {
 	struct client_slot *s = CONTAINER_OF(params, struct client_slot, subscription);
-	struct qas_event e = event_for(s, data == NULL ? QAS_ERROR : QAS_NOTIFY);
+	struct qas_event e;
+	init_event(&e, s, data == NULL ? QAS_ERROR : QAS_NOTIFY);
 	ARG_UNUSED(conn);
 	if (data == NULL) {
 		e.result = -ENOTCONN; emit(&e); return BT_GATT_ITER_STOP;
@@ -138,7 +150,8 @@ static uint8_t notified(struct bt_conn *conn, struct bt_gatt_subscribe_params *p
 
 static void write_complete(struct client_slot *s, int err)
 {
-	struct qas_event e = event_for(s, QAS_WRITE_DONE);
+	struct qas_event e;
+	init_event(&e, s, QAS_WRITE_DONE);
 	e.command_id = s->command_id; e.result = err; e.request = s->request;
 	emit(&e);
 }
@@ -158,7 +171,8 @@ static void connected(struct bt_conn *conn, uint8_t err)
 {
 	struct client_slot *s = find_slot(conn);
 	if (s == NULL) { return; }
-	struct qas_event e = event_for(s, QAS_CONNECTED);
+	struct qas_event e;
+	init_event(&e, s, QAS_CONNECTED);
 	e.result = err; emit(&e);
 }
 
@@ -166,7 +180,8 @@ static void disconnected(struct bt_conn *conn, uint8_t reason)
 {
 	struct client_slot *s = find_slot(conn);
 	if (s == NULL) { return; }
-	struct qas_event e = event_for(s, QAS_DISCONNECTED);
+	struct qas_event e;
+	init_event(&e, s, QAS_DISCONNECTED);
 	e.result = reason; emit(&e);
 }
 
@@ -174,7 +189,8 @@ static void parameters(struct bt_conn *conn, uint16_t interval, uint16_t latency
 {
 	struct client_slot *s = find_slot(conn);
 	if (s == NULL) { return; }
-	struct qas_event e = event_for(s, QAS_LINK_PARAMS);
+	struct qas_event e;
+	init_event(&e, s, QAS_LINK_PARAMS);
 	e.interval = interval; e.latency = latency; e.timeout = timeout;
 	emit(&e);
 }
@@ -186,27 +202,30 @@ BT_CONN_CB_DEFINE(connection_callbacks) = {
 static void advertisement(const bt_addr_le_t *address, int8_t rssi, uint8_t type,
 			  struct net_buf_simple *ad)
 {
-	struct qas_event e = event_for(NULL, QAS_ADVERTISEMENT);
-	bt_addr_le_to_str(address, e.address, sizeof(e.address));
-	e.rssi = rssi; e.properties = type; e.length = ad->len;
-	memcpy(e.data, ad->data, MIN(ad->len, sizeof(e.data)));
-	emit(&e);
+	ARG_UNUSED(rssi);
+	if (type != BT_GAP_ADV_TYPE_ADV_IND) { return; }
+	for (size_t i = 0; i < ad->len;) {
+		size_t len = ad->data[i++];
+		if (!len || len > ad->len - i) { break; }
+		uint8_t kind = ad->data[i];
+		size_t width = (kind == BT_DATA_UUID16_SOME || kind == BT_DATA_UUID16_ALL) ? 2 :
+			(kind == BT_DATA_UUID128_SOME || kind == BT_DATA_UUID128_ALL) ? 16 : 0;
+		for (size_t j = 1; width && j + width <= len; j += width) {
+			const uint8_t *uuid = &ad->data[i + j];
+			if ((width == 2 && uuid[0] == 0xb0 && uuid[1] == 0xff) ||
+			    (width == 16 && !memcmp(uuid, service128.val, 16))) {
+				(void)k_msgq_put(&candidates, address, K_NO_WAIT);
+				return;
+			}
+		}
+		i += len;
+	}
 }
 
 int qas_client_init(void)
 {
 	for (size_t i = 0; i < QAS_SLOTS; i++) { slots[i].mod = -1; }
 	return bt_enable(NULL);
-}
-
-int qas_scan(uint32_t duration_ms)
-{
-	if (terminal) { return -EIO; }
-	if (scanning) { return -EBUSY; }
-	if (duration_ms < 100 || duration_ms > 30000) { return -EINVAL; }
-	int err = bt_le_scan_start(BT_LE_SCAN_ACTIVE, advertisement);
-	if (err == 0) { scanning = true; scan_end_us = bridge_now_us() + duration_ms * 1000ULL; }
-	return err;
 }
 
 static int start_discovery(struct client_slot *s, enum stage stage,
@@ -222,32 +241,18 @@ static int start_discovery(struct client_slot *s, enum stage stage,
 	return bt_gatt_discover(s->conn, &s->discovery);
 }
 
-int qas_connect(unsigned int slot, const char *address, const char *type)
+static void connect_peer(struct client_slot *s, const bt_addr_le_t *peer)
 {
-	if (terminal) { return -EIO; }
-	if (slot >= QAS_SLOTS) { return -EINVAL; }
-	struct client_slot *s = &slots[slot];
-	if (s->conn != NULL || scanning) { return -EBUSY; }
-	bt_addr_le_t peer;
-	if (strcmp(type, "public") != 0 && strcmp(type, "random") != 0) { return -EINVAL; }
-	peer.type = strcmp(type, "public") == 0 ? BT_ADDR_LE_PUBLIC : BT_ADDR_LE_RANDOM;
-	int err = bt_addr_from_str(address, &peer.a);
-	if (err != 0) { return err; }
-	for (size_t i = 0; i < QAS_SLOTS; i++) {
-		if (slots[i].conn != NULL && bt_addr_le_cmp(&slots[i].address, &peer) == 0) {
-			return -EALREADY;
-		}
-	}
 	uint32_t epoch = s->epoch + 1;
 	memset(s, 0, sizeof(*s));
-	s->epoch = epoch; s->mod = -1; s->address = peer; s->stage = CONNECTING;
+	s->epoch = epoch; s->mod = -1; s->address = *peer; s->stage = CONNECTING;
+	bt_addr_le_to_str(peer, s->address_text, sizeof(s->address_text));
 	s->deadline_us = bridge_now_us() + 10000000;
-	err = bt_conn_le_create(&peer, BT_CONN_LE_CREATE_CONN, BT_LE_CONN_PARAM_DEFAULT, &s->conn);
+	int err = bt_conn_le_create(peer, BT_CONN_LE_CREATE_CONN, BT_LE_CONN_PARAM_DEFAULT, &s->conn);
 	if (err != 0) { s->stage = OFF; }
-	return err;
 }
 
-int qas_disconnect(unsigned int slot)
+static int disconnect_slot(unsigned int slot)
 {
 	if (slot >= QAS_SLOTS) { return -EINVAL; }
 	struct client_slot *s = &slots[slot];
@@ -270,7 +275,8 @@ int qas_send(unsigned int slot, uint32_t id, const char *command, bool request)
 	strcpy(s->command, command);
 	s->busy = true; s->command_id = id; s->request = request;
 	if (strncmp(command, "MOD:", 4) == 0) { s->mod = -1; }
-	struct qas_event e = event_for(s, QAS_WRITE);
+	struct qas_event e;
+	init_event(&e, s, QAS_WRITE);
 	e.command_id = id; e.request = request; e.length = length;
 	if (length > sizeof(e.data)) { atomic_inc(&drops); }
 	memcpy(e.data, command, length);
@@ -311,7 +317,7 @@ void qas_process(const struct qas_event *e)
 		else if (qas_parameter_is(e->data, e->length, "MOD", "1")) { s->mod = 1; }
 		return;
 	}
-	if (e->type == QAS_ERROR) { (void)qas_disconnect(e->slot); return; }
+	if (e->type == QAS_ERROR) { (void)disconnect_slot(e->slot); return; }
 	if (s->stage == CLOSING || s->stage == OFF) { return; }
 	if (e->type == QAS_CONNECTED) {
 		err = start_discovery(s, SERVICE16, &service16.uuid, 1, 0xffff);
@@ -355,13 +361,10 @@ void qas_process(const struct qas_event *e)
 void qas_tick(void)
 {
 	uint64_t now = bridge_now_us();
-	if (scanning && (now >= scan_end_us || terminal)) {
-		int err = bt_le_scan_stop(); scanning = false;
-		struct qas_event e = event_for(NULL, QAS_SCAN_STOPPED); e.result = err; emit(&e);
-	}
 	if (!terminal && atomic_get(&critical_loss)) {
 		terminal = true;
-		for (size_t i = 0; i < QAS_SLOTS; i++) { (void)qas_disconnect(i); }
+		if (scanning) { (void)bt_le_scan_stop(); scanning = false; }
+		for (size_t i = 0; i < QAS_SLOTS; i++) { (void)disconnect_slot(i); }
 	}
 	for (size_t i = 0; i < QAS_SLOTS; i++) {
 		struct client_slot *s = &slots[i];
@@ -369,9 +372,42 @@ void qas_tick(void)
 			fail(s, -ETIMEDOUT);
 		}
 	}
+	if (terminal || now < retry_scan_us) { return; }
+	struct client_slot *free_slot = NULL;
+	for (size_t i = 0; i < QAS_SLOTS; i++) {
+		if (slots[i].stage == OFF) {
+			if (!free_slot) { free_slot = &slots[i]; }
+		} else if (slots[i].stage != READY) {
+			return; /* Finish one subscription before finding the next peer. */
+		}
+	}
+	if (!free_slot) { return; }
+	if (!scanning) {
+		k_msgq_purge(&candidates);
+		if (bt_le_scan_start(BT_LE_SCAN_PASSIVE, advertisement) == 0) { scanning = true; }
+		else { retry_scan_us = now + 250000; }
+		return;
+	}
+	bt_addr_le_t peer;
+	if (k_msgq_get(&candidates, &peer, K_NO_WAIT) != 0) { return; }
+	for (size_t i = 0; i < QAS_SLOTS; i++) {
+		if (slots[i].conn && bt_addr_le_cmp(&slots[i].address, &peer) == 0) { return; }
+	}
+	if (bt_le_scan_stop() == 0) {
+		scanning = false;
+		connect_peer(free_slot, &peer);
+	}
+	retry_scan_us = now + 250000;
 }
 
 bool qas_ready(unsigned int slot) { return slot < QAS_SLOTS && slots[slot].stage == READY; }
+const char *qas_address(unsigned int slot) { return qas_ready(slot) ? slots[slot].address_text : ""; }
+unsigned int qas_ready_count(void)
+{
+	unsigned int n = 0;
+	for (size_t i = 0; i < QAS_SLOTS; i++) { n += qas_ready(i); }
+	return n;
+}
 int qas_mod(unsigned int slot) { return slot < QAS_SLOTS ? slots[slot].mod : -1; }
 uint32_t qas_epoch(unsigned int slot) { return slot < QAS_SLOTS ? slots[slot].epoch : 0; }
 const char *qas_state(unsigned int slot)

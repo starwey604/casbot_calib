@@ -10,11 +10,11 @@
 bash firmware/build.sh --rate-test
 ```
 
-实际烧录和串口枚举完成后，使用下面的命令；地址、类型、串口需替换为现场值。输出目录必须是新目录。
+实际烧录和串口枚举完成后，使用下面的命令；先用 `status` 查出目标表所在槽位，替换示例中的串口和槽号。输出目录必须是新目录。
 
 ```bash
 firmware/.venv/bin/python firmware/tools/trical_usb.py rate \
-  --port /dev/ttyACM0 --address 78:CD:55:45:67:AD --address-type public \
+  --port /dev/ttyACM0 --slot 0 \
   --intervals 1000 500 250 125 100 50 20 --repeats 3 \
   --duration-ms 30000 --drain-ms 2000 --seed 20261113 \
   --output artifacts/trical_rate_01
@@ -26,21 +26,21 @@ firmware/.venv/bin/python firmware/tools/trical_usb.py rate \
 测试会先确认 `HIDMOD=0`，读取 MOD 原值；若原值为 1，临时写 `MOD:0` 并回读确认。
 每档开始前要求没有未完成写入，且至少 1 秒没有 DAT 通知；未满足时继续读流等待，最多 15 秒。
 测试后恢复原 MOD 并回读。**INT、HID、休眠和零点不会被测试改动。**
-连接故障不会自动重连；恢复失败记录在结果中，需要人工核对 MOD 原值。硬杀进程/拔线也可能留下 MOD=0。
+掉线会终止实验；板子自动补连，但实验不续跑。恢复失败记录在结果中，需要人工核对 MOD 原值。硬杀进程/拔线也可能留下 MOD=0。
 
 仅监听已有自动通知、不写 MEAS 时，可以在测试 app 串口中输入：
 
 ```text
-1 connect 0 78:CD:55:45:67:AD public
+1 status
 2 rate 0 0 30000 2000 wcmd
 ```
 
-需先等到 `subscribed/state=ready` 再发第二行。`interval_ms=0` 是只监听模式，不要求 MOD=0。
-普通固件拒绝 `rate`；查询、扫描、连接和参数读写的完整操作见 [USB 指南](../../docs/qas_usb.md)。
+确认目标表在槽 0 就绪后再发第二行。`interval_ms=0` 是只监听模式，不要求 MOD=0。
+普通固件拒绝 `rate`；查询在线表和参数读写的完整操作见 [USB 指南](../../docs/qas_usb.md)。
 
 ## 看哪些结果
 
-- `request.json`：显式端口、地址、参数、随机种子与运行时间。
+- `request.json`：端口、目标槽位、参数、随机种子与运行时间。
 - `events.jsonl`：主机指令及板端原始事件，含独立的桥端接收/提交/完成时刻、通知 hex、连接轮次与真实连接间隔。
 - `analysis.json`：主机用独立的 Python 字节解析器重解原始通知，核对固件解析值，再重新计算并核对板端计数。
 
