@@ -160,7 +160,7 @@ ArmDynamics ArmDynamics::from_urdf(const std::string& path) {
   }
   return ArmDynamics(std::move(converted));
 }
-void ArmDynamics::check_vector(const Eigen::VectorXd& x,const char* label) const {
+void ArmDynamics::check_vector(const Eigen::Ref<const Eigen::VectorXd>& x,const char* label) const {
   if(x.size()!=static_cast<Eigen::Index>(model_->joints.size()) || !x.allFinite())
     throw std::invalid_argument(std::string("Invalid arm vector: ")+label);
 }
@@ -223,8 +223,14 @@ Eigen::MatrixXd ArmWorkspace::mass_matrix(const Eigen::VectorXd& q) {
   return data.M.selfadjointView<Eigen::Upper>();
 }
 Eigen::VectorXd ArmWorkspace::gravity(const Eigen::VectorXd& q) {
-  engine_.check_vector(q,"q");auto& data=impl_->data;
-  return pinocchio::computeGeneralizedGravity(engine_.backend_->model,data,q);
+  Eigen::VectorXd result(q.size());
+  gravity_into(q,result);
+  return result;
+}
+void ArmWorkspace::gravity_into(const Eigen::Ref<const Eigen::VectorXd>& q,Eigen::Ref<Eigen::VectorXd> result) {
+  engine_.check_vector(q,"q");
+  if(result.size()!=q.size())throw std::invalid_argument("Gravity output size mismatch");
+  result=pinocchio::computeGeneralizedGravity(engine_.backend_->model,impl_->data,q);
 }
 Eigen::VectorXd ArmWorkspace::nonlinear_effects(const Eigen::VectorXd& q,const Eigen::VectorXd& dq) {
   engine_.check_vector(q,"q");engine_.check_vector(dq,"dq");

@@ -27,7 +27,7 @@ from ..staged_motion import Motion, _move
 from ..stages.dynamics.common import (
     compose_stage_reference, read_verified_stage_capture, resolve_effective_plan_and_capture,
 )
-from .native import execute_with_start_replan, maybe_mock_context, native_snapshot
+from .native import execute_with_start_replan, maybe_mock_context, native_snapshot, soft_stop_status
 from .preflight import check_hardware_environment, check_model_bundle, check_native_binaries
 from .robot import DEFAULT_ROBOT_CONFIG, load_robot_config
 from .session import DEFAULT_OUTPUT_ROOT, SAFE_ID, _update_latest_link, resolve_robot_id
@@ -582,13 +582,15 @@ def execute_verification(delivery, robot, output_root, *, executor=None, mock=Fa
         plan_dir = verify_dir / 'plan'
         initial = plan(q_start, plan_dir)
         print(f'五组参考通过预检，执行时长 {initial["duration_ns"] * 1e-9:.2f} s，采集目录 {verify_dir}', flush=True)
-        code, summary, _, _, _ = execute_with_start_replan(
+        code, summary, _, _, capture_dir = execute_with_start_replan(
             initial_plan_dir=plan_dir, initial_plan_meta=initial, replan_fn=plan,
             capture_root=verify_dir / 'capture', executor=binary, endpoint=active_endpoint,
-            robot_config=robot, hand_background=None, peer=peer,
+            robot_config=robot, hand_background=None, peer=peer, soft_stop=True,
         )
     if code != 0 or not summary['execution_completed']:
         reason = summary.get('replan_error') or summary['attempts'][-1]['reason'] or f'returncode={code}'
+        if reason == 'operator_soft_stop':
+            raise RuntimeError(f'{soft_stop_status(capture_dir)}，采集记录：{verify_dir}。本次未生成验收报告。')
         raise RuntimeError(f'验收执行中止（{reason}），记录见 {verify_dir}')
     _update_latest_link(output_root, verify_dir, 'latest_verify')
     return verify_dir
@@ -644,6 +646,9 @@ def main(argv=None):
         report = analyse_verification(verify_dir)
         print(f'验收 {report["verdict"]}，报告 {verify_dir / "report.md"}')
         return 0 if report['accepted'] else 1
+    except KeyboardInterrupt:
+        print('验收已中止。', file=sys.stderr, flush=True)
+        return 130
     except (HandoffError, KeyError, OSError, RuntimeError, ValueError) as error:
         print(f'验收中止：{error}', file=sys.stderr)
         return 2

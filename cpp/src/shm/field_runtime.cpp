@@ -3,6 +3,7 @@
 #include <casbot_calib/shm/channel.hpp>
 #include <casbot_calib/shm/clock.hpp>
 #include "reference.hpp"
+#include "soft_return.hpp"
 #include <casbot_calib/field_defaults.hpp>
 #include <algorithm>
 #include "field_limits.hpp"
@@ -33,11 +34,12 @@
 
 namespace casbot::shm {
 namespace {
-volatile std::sig_atomic_t interrupted=0;
-void signal_stop(int) { interrupted=1; }
+volatile std::sig_atomic_t hard_stop=0,soft_stop=0;
+void signal_hard_stop(int) { hard_stop=1; }
+void signal_soft_stop(int) { soft_stop=1; }
 void sleep_to(std::int64_t deadline) {
   timespec t{deadline/1000000000LL,deadline%1000000000LL};
-  while(clock_nanosleep(CLOCK_MONOTONIC,TIMER_ABSTIME,&t,nullptr)==EINTR && !interrupted) {}
+  while(clock_nanosleep(CLOCK_MONOTONIC,TIMER_ABSTIME,&t,nullptr)==EINTR && !hard_stop) {}
 }
 template<class Frame> void binary(const std::filesystem::path& path,const Frame& frame) {
   std::ofstream f(path,std::ios::binary); f.exceptions(std::ios::badbit|std::ios::failbit);
@@ -75,11 +77,11 @@ void print_status(const StatusFrame& s) {
 }
 StatusFrame fresh(Channel& channel) {
   StatusFrame s{};const auto end=mono()+2000000000LL;bool have=false;std::uint64_t first=0;
-  while(mono()<end&&!interrupted) {
+  while(mono()<end&&!hard_stop&&!soft_stop) {
     if(channel.receive(s)){if(have&&s.frame_counter!=first)return s;first=s.frame_counter;have=true;}
     std::this_thread::sleep_for(std::chrono::microseconds(200));
   }
-  throw std::runtime_error(interrupted?"operator_interrupt":"No fresh changing master frame counter within 2 seconds");
+  throw std::runtime_error(hard_stop?"operator_interrupt":soft_stop?"operator_soft_stop":"No fresh changing master frame counter within 2 seconds");
 }
 bool selected(int j,const Options& o){return !o.other_disabled||((j<7)==(o.id<19));}
 CommandFrame baseline(const StatusFrame& s,const CommandFrame& hand,const Eigen::VectorXd& q,const Options& o) {
@@ -123,7 +125,7 @@ void observe(const Options& o) {
   std::string failure;bool ready=false;
   recorder.event(-1,passive?"passive_observe_begin":"observe_begin");
   try {
-    while(mono()-begin<static_cast<std::int64_t>(o.duration*1e9)&&!interrupted) {
+    while(mono()-begin<static_cast<std::int64_t>(o.duration*1e9)&&!hard_stop&&!soft_stop) {
       Record r;r.at=mono();r.phase=-1;r.passive=passive;
       if(r.at-last_pair>=1000000000LL){r.clock=clock.pair();r.has_pair=true;last_pair=r.at;}
       if(passive){auto snap=passive_snapshot(o.name);r.state=snap.status;r.cmd=snap.command;r.queues={snap.command_queue,snap.status_queue};r.has_queues=true;r.received=true;}
@@ -139,10 +141,12 @@ void observe(const Options& o) {
     if(!ready)throw std::runtime_error("No feedback recorded");
   }catch(const std::exception& e){failure=e.what();}
   recorder.event(-1,failure.empty()?"observe_end":failure);recorder.finish();
-  write_result(root,failure.empty()?(interrupted?"operator_interrupt":"observe_completed"):failure,failure.empty(),recorder.stopped);
+  write_result(root,failure.empty()?(hard_stop?"operator_interrupt":soft_stop?"operator_soft_stop":"observe_completed"):failure,failure.empty(),recorder.stopped);
   if(!failure.empty())throw std::runtime_error(failure);
 }
-void run(Channel& channel,StatusFrame state,const CommandFrame& hand,const Eigen::VectorXd& q0,const Options& o,const casbot::ArmModel& model,const Reference* reference=nullptr) {
+void run(Channel& channel,StatusFrame state,const CommandFrame& hand,const Eigen::VectorXd& q0,const Options& o,const casbot::ArmDynamics& dynamics,const Reference* reference=nullptr) {
+  const auto& model=dynamics.model();
+  auto workspace=dynamics.workspace();
   const auto root=std::filesystem::path(o.output);Recorder recorder(root);ClockMap clock;
   auto command=baseline(state,hand,q0,o);
   if(reference){auto initial=reference->at(0);for(int j=0;j<14;++j)arm_target(command,j,q0[j],0,initial.kp[j],initial.kd[j]);}
@@ -172,17 +176,28 @@ void run(Channel& channel,StatusFrame state,const CommandFrame& hand,const Eigen
   binary(root/"background.bin",command);
   const auto t0=mono();std::int64_t next=t0,phase_begin=t0,last_receive=t0,last_send=t0,first_stream=0,max_gap=0,first_write=0,last_pair=t0-1000000000LL,writes=0,skips=0;
   int phase=0;bool phase_sent=false,done=false,disable_ack=false;std::string failure;
+  bool soft_stop_handled=false,soft_stop_active=false,return_has_ff=false;
+  std::int64_t return_begin_ns=0;
+  std::optional<SoftReturn> returning;
+  JointVector return_kp{},return_kd{};
+  using ArmTorque=Eigen::Matrix<double,14,1>;
+  ArmTorque return_tau_offset=ArmTorque::Zero();
   std::size_t marker_index=0;
   const bool jogging=o.which=="C03"||o.which=="C04";
   auto send=[&](std::int64_t now){command.frame_counter++;command.timestamp=now/1000000;return channel.send(command);};
   auto change=[&](int p,const char* event){phase=p;phase_begin=mono();phase_sent=false;recorder.event(p,event);};
-  std::array<double,14> lower{},upper{};std::string previous_limits;std::int64_t last_limit=0;
-  for(int j=0;j<14;++j){lower[j]=model.joints[j].lower;upper[j]=model.joints[j].upper;}
+  JointVector lower{},upper{},return_speed{},start{};std::string previous_limits;std::int64_t last_limit=0;
+  for(int j=0;j<14;++j) {
+    lower[j]=model.joints[j].lower;upper[j]=model.joints[j].upper;start[j]=q0[j];
+    return_speed[j]=std::min(1.5,model.joints[j].velocity_limit);
+    if(reference&&reference->observed_velocity_limit()>0)
+      return_speed[j]=std::min(return_speed[j],reference->observed_velocity_limit());
+  }
   recorder.event(0,"disabling");
   try {
     while(!done) {
       const auto now=mono();
-      if(interrupted)throw std::runtime_error("operator_interrupt");
+      if(hard_stop)throw std::runtime_error("operator_interrupt");
       Record r;r.at=now;
       if(now-last_pair>=1000000000LL){r.clock=clock.pair();r.has_pair=true;last_pair=now;r.queues=channel.diagnostics();r.has_queues=true;}
       r.received=channel.receive(state);r.receive_at=r.received?mono():0;
@@ -218,6 +233,37 @@ void run(Channel& channel,StatusFrame state,const CommandFrame& hand,const Eigen
       if(phase!=6&&now-last_send>2000000000LL)throw std::runtime_error("command_queue_timeout");
       for(int i=0;i<29;++i)if(state.joints[i].error_code)throw std::runtime_error("drive_error_slot_"+std::to_string(i)+"_"+std::to_string(state.joints[i].error_code));
       if(phase!=3&&phase!=6&&now-phase_begin>3000000000LL)throw std::runtime_error("transition_timeout_phase_"+std::to_string(phase));
+      if(soft_stop&&!soft_stop_handled) {
+        soft_stop_handled=true;
+        if(phase!=4) {
+          soft_stop_active=true;
+          if(phase<3||(phase==3&&!first_stream))change(4,"soft_stop_disable");
+          else if(phase!=3||!reference||reference->direct_fields())throw std::runtime_error("operator_soft_stop");
+          else {
+            const auto relative_ns=now-first_stream;
+            const auto current=reference->at(relative_ns);
+            if(std::all_of(current.kp.begin(),current.kp.end(),[](double kp){return kp==0.;})) {
+              change(4,"soft_stop_disable");
+            }else {
+              std::optional<JointVector> via;
+              const auto ready_ns=reference->ready_move_end_ns();
+              if(reference->has_ready_pose()&&ready_ns>0&&relative_ns>ready_ns)
+                via=reference->at(ready_ns).state[0];
+              returning=SoftReturn::plan(current.state[0],current.state[1],current.state[2],
+                                         start,via,lower,upper,return_speed);
+              return_kp=current.kp;return_kd=current.kd;
+              const Eigen::Map<const ArmTorque> current_tau(current.effort.data());
+              return_has_ff=current_tau.cwiseAbs().maxCoeff()>1e-6;
+              if(return_has_ff) {
+                workspace.gravity_into(Eigen::Map<const ArmTorque>(current.state[0].data()),return_tau_offset);
+                return_tau_offset=current_tau-return_tau_offset;
+              }
+              return_begin_ns=now;
+              recorder.event(3,"soft_stop_return_begin");
+            }
+          }
+        }
+      }
       if(phase_sent&&now-phase_begin>20000000) {
         const auto p=hold.enabled()?drive_phase_next(phase,state,selected_axes,modes):drive_phase_next(phase,state,arms);
         if(p==-1){done=true;disable_ack=true;recorder.event(4,"disable_ack");}
@@ -235,14 +281,28 @@ void run(Channel& channel,StatusFrame state,const CommandFrame& hand,const Eigen
         const std::int64_t relative_ns=first_stream?now-first_stream:0;
         const double elapsed=relative_ns*1e-9;
         if(hold.enabled())body_targets(command,state,hold,origin,elapsed);
-        if(reference) {
+        if(returning) {
+          const double t=(now-return_begin_ns)*1e-9;
+          const auto sample=returning->at(t);
+          ArmTorque tau=ArmTorque::Zero();
+          if(return_has_ff) {
+            const double u=std::clamp(t/.5,0.,1.);
+            const double blend=u*u*u*(10.+u*(-15.+6.*u));
+            workspace.gravity_into(Eigen::Map<const ArmTorque>(sample.position.data()),tau);
+            tau+=(1.-blend)*return_tau_offset;
+            if(!tau.allFinite()||tau.cwiseAbs().maxCoeff()>100.)throw std::runtime_error("soft_stop_feedforward_limit");
+          }
+          for(int j=0;j<14;++j)
+            arm_target(command,j,sample.position[j],sample.velocity[j],return_kp[j],return_kd[j],tau[j]);
+          if(t>=returning->total_duration_s())change(4,"soft_stop_disable");
+        }else if(reference) {
           while(marker_index<reference->markers().size()&&relative_ns>=reference->markers()[marker_index].first)
             recorder.event(3,reference->markers()[marker_index++].second);
           const auto value=reference->at(relative_ns);
           for(int j=0;j<14;++j)arm_target(command,j,value.state[0][j],value.state[1][j],value.kp[j],value.kd[j],value.effort[j]);
         }
         if(jogging){const auto value=jog_at(elapsed,o.segment,o.amplitude);arm_target(command,arm_index(o.id),q0[arm_index(o.id)]+value.position,value.velocity,o.kp,o.kd);}
-        if(phase==3&&elapsed>=(reference?reference->duration_ns()*1e-9+(reference->direct_fields()?0.:.5):jogging?3*o.segment+.5:o.duration)) {
+        if(!returning&&phase==3&&elapsed>=(reference?reference->duration_ns()*1e-9+(reference->direct_fields()?0.:.5):jogging?3*o.segment+.5:o.duration)) {
           if(o.which=="C05")change(6,"command_writes_stopped");
           else if(o.which=="C06")change(7,"kill_ready");
           else change(4,"exiting_disable");
@@ -282,6 +342,7 @@ void run(Channel& channel,StatusFrame state,const CommandFrame& hand,const Eigen
       std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
   }
+  if(soft_stop_active&&failure.empty())failure="operator_soft_stop";
   recorder.finish();
   write_result(root,failure.empty()?"completed_with_disable_ack":failure,failure.empty(),recorder.stopped,first_stream,max_gap,writes,skips,first_write,disable_ack);
   if(reference)std::ofstream(root/"result.txt",std::ios::app)<<"reference_kind="<<(reference->direct_fields()?"direct_fields":"septic_hermite")<<"\nreference_duration_ns="<<reference->duration_ns()<<'\n';
@@ -305,8 +366,9 @@ void usage() {
 }
 }
 int field_main(int argc,char** argv) {
-  interrupted=0;Options o;bool created=false;
-  std::cout<<std::setprecision(9);std::signal(SIGINT,signal_stop);std::signal(SIGTERM,signal_stop);std::signal(SIGHUP,signal_stop);std::signal(SIGPIPE,SIG_IGN);
+  hard_stop=0;soft_stop=0;Options o;bool created=false;
+  std::cout<<std::setprecision(9);std::signal(SIGINT,signal_hard_stop);std::signal(SIGTERM,signal_hard_stop);std::signal(SIGHUP,signal_hard_stop);
+  std::signal(SIGUSR1,signal_soft_stop);std::signal(SIGPIPE,SIG_IGN);
   try {
     for(int a=1;a<argc;++a) {
       const std::string key=argv[a];
@@ -404,7 +466,7 @@ int field_main(int argc,char** argv) {
     }
     if((positions(state)-q0).cwiseAbs().maxCoeff()>.005)throw std::runtime_error("Start changed during preflight; no commands sent");
     const auto hand=o.bare_flange?CommandFrame{}:read_background(o.background);binary(root/"hand_background_source.bin",hand);
-    run(channel,state,hand,q0,o,model.model(),reference.get());return 0;
+    run(channel,state,hand,q0,o,model,reference.get());return 0;
   }catch(const std::exception& e){
     std::cerr<<"ERROR "<<e.what()<<'\n';
     if(created&&!std::filesystem::exists(std::filesystem::path(o.output)/"result.txt"))write_result(o.output,e.what(),false,false);

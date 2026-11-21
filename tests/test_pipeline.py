@@ -1,10 +1,13 @@
 """End-to-end tests for calib/dynamics*.sh, Session/--resume, and automatic boot takeover."""
+import csv
 import json
 import os
 from pathlib import Path
+import signal
 import struct
 import subprocess
 import sys
+import time
 import pytest
 import yaml
 from casbot_calib.pipeline.runner import build_parser, run_pipeline
@@ -226,6 +229,107 @@ def test_hold_body_h1_cli_and_offline_reanalysis(tmp_path):
     again = subprocess.run([*base, '--reanalyse'], text=True, capture_output=True, timeout=60)
     assert again.returncode == 0, again.stderr + again.stdout
     assert list(stage.glob('analysis.previous_*'))
+
+
+@pytest.mark.slow
+@pytest.mark.parametrize(('signals', 'hold_body'), [
+    ((signal.SIGINT,), True),
+    ((signal.SIGUSR1,), False),
+    ((signal.SIGINT, signal.SIGINT), False),
+    ((signal.SIGQUIT,), False),
+    ((signal.SIGTERM,), False),
+])
+def test_h1_operator_stop(tmp_path, signals, hold_body):
+    import numpy as np
+    from casbot_calib.model_runtime import model_for
+    from casbot_calib.shm_data import COMMAND_RECORD_DTYPE, DIRECTION, FEEDBACK_RECORD_DTYPE, OFFSET, URDF
+    from casbot_calib.shm_fieldwork import text_result
+    from casbot_calib.shm_ready import ready_position
+
+    config = json.loads((ROOT / 'configs/shm/h1_mock.json').read_text())
+    q_start = ready_position()
+    q_start[0] = -.05
+    engine, _ = model_for({})
+    config.update(urdf=str(URDF), initial_q=q_start.tolist())
+    config['initial_fields'].update(position=q_start.tolist(), effort=engine.gravity(q_start).tolist())
+    mock_config = tmp_path / 'mock.json'
+    mock_config.write_text(json.dumps(config))
+    output = tmp_path / 'sessions'
+    command = ['bash', str(ROOT / 'calib/dynamics.sh'), '--mode', 'small', '--smoke', '--mock',
+               '--mock-config', str(mock_config), '--output-root', str(output), '--executor', str(NATIVE)]
+    if hold_body:
+        command.append('--hold-body')
+    stage = output / 'latest/h1'
+    capture = stage / 'capture/attempts/0000/capture'
+    native = capture / 'native'
+    events = native / 'events.csv'
+
+    def await_event(process, event):
+        deadline = time.monotonic() + 25
+        while time.monotonic() < deadline and process.poll() is None:
+            if events.exists() and f',{event}\n' in events.read_text():
+                return
+            time.sleep(.01)
+        log, _ = process.communicate(timeout=2)
+        pytest.fail(f'Did not reach {event}: {log}')
+
+    with subprocess.Popen(command, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT) as process:
+        try:
+            await_event(process, 'h1_calibration_begin')
+            child_pid = json.loads((capture / 'process.json').read_text())['pid']
+            assert os.getsid(child_pid) == child_pid
+            time.sleep(3.)
+            stop_ns = time.monotonic_ns()
+            process.send_signal(signals[0])
+            if len(signals) == 2:
+                await_event(process, 'soft_stop_return_begin')
+                stop_ns = time.monotonic_ns()
+                process.send_signal(signals[1])
+            log, _ = process.communicate(timeout=25)
+        finally:
+            if process.poll() is None:
+                process.terminate()
+                process.wait(timeout=8)
+
+    assert process.returncode == 2, log
+    result = text_result(native / 'result.txt')
+    assert (result['execution_completed'], result['disable_ack']) == ('0', '1'), log
+    with events.open() as stream:
+        event_times = {row['event']: int(row['mono_ns']) for row in csv.DictReader(stream)}
+    session = json.loads((output / 'latest/session.json').read_text())
+    assert session['stages']['h1']['status'] == 'failed'
+    assert not (stage / 'analysis').exists() and not (output / 'latest/h2').exists()
+    if len(signals) == 2 or signals[0] in (signal.SIGQUIT, signal.SIGTERM):
+        assert result['reason'] == 'operator_interrupt'
+        assert 'soft_stop_disable' not in event_times
+        assert event_times['operator_interrupt'] - stop_ns < 200_000_000
+        assert (capture / 'result.json').is_file()
+        return
+
+    assert result['reason'] == 'operator_soft_stop' and '已复位并收到失能应答' in log
+    assert event_times['soft_stop_return_begin'] < event_times['soft_stop_disable'] < event_times['disable_ack']
+    frames = np.fromfile(native / 'commands.bin', dtype=COMMAND_RECORD_DTYPE)
+    joints = frames['frame']['joints']
+    q = joints['position'][:, 12:26] * 1e-6 * DIRECTION + OFFSET
+    begin, end = np.searchsorted(frames['send_mono_ns'],
+                                [event_times['soft_stop_return_begin'], event_times['soft_stop_disable']])
+    measured_start = q[0]
+    q_return = q[begin:end]
+    assert q_return[0, 0] > .02 and measured_start[0] < -.03
+    assert np.min(np.max(np.abs(q_return - ready_position()), axis=1)) < 5e-6
+    np.testing.assert_allclose(q_return[-1], measured_start, atol=2e-6)
+    arm = joints[begin - 1:begin + 2, 12:26]
+    for field, tolerance in (('position', 2500), ('velocity', 10000), ('torque', 10)):
+        assert np.max(np.abs(np.diff(arm[field].astype(int), axis=0))) < tolerance
+    feedback = np.fromfile(native / 'feedback.bin', dtype=FEEDBACK_RECORD_DTYPE)
+    last_enabled = np.searchsorted(feedback['receive_mono_ns'], event_times['soft_stop_disable']) - 1
+    q_measured = feedback['frame']['joints']['position'][last_enabled, 12:26] * 1e-6 * DIRECTION + OFFSET
+    np.testing.assert_allclose(q_measured, measured_start, atol=.025)
+    if hold_body:
+        assert np.all(joints['control_word'][begin:end, :29] == 15)
+        assert np.all(joints['control_word'][end:, :29] == 6)
+        for field in ('kp', 'kd', 'torque', 'velocity'):
+            assert np.all(joints[field][end:, :29] == 0)
 
 
 @pytest.mark.slow

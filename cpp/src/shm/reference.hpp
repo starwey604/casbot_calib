@@ -31,6 +31,8 @@ class Reference {
   void validate_limits(const JointVector& lower,const JointVector& upper,const JointVector& velocity) const;
   std::int64_t duration_ns() const{return knots_.back();}
   bool direct_fields() const{return direct_;}
+  bool has_ready_pose() const{return has_ready_pose_;}
+  std::int64_t ready_move_end_ns() const{return ready_move_end_ns_;}
   double observed_velocity_limit() const{return observed_velocity_;}
   const NonArmHoldConfig& non_arm_hold() const{return hold_;}
   bool measured_origin() const{return relative_;}
@@ -38,6 +40,8 @@ class Reference {
   void resolve_origin(const JointVector& measured);
  private:
   bool direct_=false,relative_=false;
+  bool has_ready_pose_=false;
+  std::int64_t ready_move_end_ns_=0;
   NonArmHoldConfig hold_;
   double observed_velocity_=0.;
   std::vector<std::int64_t> knots_;

@@ -8,7 +8,7 @@ from ..shm_ready import ready_position
 from ..shm_takeover import HandoffError
 from ..stages.dynamics.common import resolve_effective_plan_and_capture
 from .delivery import build_session_delivery
-from .native import execute_with_start_replan, maybe_mock_context, native_snapshot
+from .native import execute_with_start_replan, maybe_mock_context, native_snapshot, soft_stop_status
 from .preflight import check_hardware_environment, check_model_bundle, check_native_binaries, check_python_runtime
 from .robot import DEFAULT_ROBOT_CONFIG, load_robot_config
 from .session import DEFAULT_OUTPUT_ROOT, Session
@@ -255,11 +255,15 @@ def run_pipeline(
                 robot_config=robot_cfg,
                 hand_background=active_bg,
                 peer=peer,
+                soft_stop=True,
             )
 
         if code != 0 or not capture_summary.get('execution_completed'):
             reason = capture_summary['attempts'][-1].get('reason') or f'returncode={code}'
             session.mark_stage(stage.name, 'failed', dir=stage.name, returncode=code, reason=reason)
+            if reason == 'operator_soft_stop':
+                raise RuntimeError(f'{stage.title} {soft_stop_status(eff_capture_dir)}，采集记录：{stage_dir}。'
+                                   '本阶段未进入辨识，已完成的阶段可用 --resume 保留。')
             raise RuntimeError(f'{stage.title} 执行中止（{reason}），已请求失能并结束会话：{stage_dir}')
 
         analysis_dir = stage_dir / 'analysis'
@@ -330,6 +334,9 @@ def main(argv=None):
         )
         print(f'会话目录：{result["session"].root}', flush=True)
         return 0
+    except KeyboardInterrupt:
+        print('标定已中止。', file=sys.stderr, flush=True)
+        return 130
     except (ValueError, OSError, KeyError, NotImplementedError, HandoffError, RuntimeError) as error:
         print(f'标定中止：{error}', file=sys.stderr, flush=True)
         return 2

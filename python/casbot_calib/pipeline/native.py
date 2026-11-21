@@ -67,12 +67,12 @@ def read_start_state(snapshot_root, robot_config):
     return q
 
 
-def _run_supervised(command, output_dir, *, timeout=60.0, peer=None):
+def _run_supervised(command, output_dir, *, timeout=60.0, peer=None, soft_stop=False):
     output_dir = Path(output_dir).resolve()
     output_dir.mkdir(parents=True, exist_ok=True)
     previous_hup = signal.getsignal(signal.SIGHUP)
     try:
-        return supervise(command, output_dir, timeout=timeout, peer=peer, defer_hup_restore=True)
+        return supervise(command, output_dir, timeout=timeout, peer=peer, defer_hup_restore=True, soft_stop=soft_stop)
     finally:
         signal.signal(signal.SIGHUP, previous_hup)
 
@@ -107,6 +107,7 @@ def native_execute_once(
     *,
     duration_s,
     peer=None,
+    soft_stop=False,
 ):
     output_dir = Path(output_dir).resolve()
     output_dir.mkdir(parents=True, exist_ok=False)
@@ -126,7 +127,7 @@ def native_execute_once(
         *hand_args,
         '--output', str(output_dir / 'native'),
     ]
-    meta = _run_supervised(command, output_dir, timeout=max(30.0, float(duration_s) + 25.0), peer=peer)
+    meta = _run_supervised(command, output_dir, timeout=max(30.0, float(duration_s) + 25.0), peer=peer, soft_stop=soft_stop)
     native_dir = output_dir / 'native'
     native = text_result(native_dir / 'result.txt')
     codec = dict(direction=DIRECTION, offset_rad=OFFSET, arm_names=NAMES)
@@ -154,6 +155,17 @@ def native_execute_once(
     return code, result
 
 
+def soft_stop_status(capture_dir):
+    native = capture_dir / 'native'
+    result = text_result(native / 'result.txt') or {}
+    if result.get('disable_ack') != '1':
+        return '已中止，未收到失能应答'
+    events = native / 'events.csv'
+    if events.is_file() and ',soft_stop_return_begin\n' in events.read_text():
+        return '已复位并收到失能应答'
+    return '已中止并收到失能应答'
+
+
 def open_mock_context(stage_dir, executor, robot_config, mock_config=None):
     from ..shm_mock import SHMMock
     if mock_config is not None:
@@ -173,6 +185,7 @@ def execute_with_start_replan(
     hand_background,
     peer=None,
     max_replans=3,
+    soft_stop=False,
     execute_once_fn=native_execute_once,
     snapshot_fn=native_snapshot,
 ):
@@ -198,6 +211,7 @@ def execute_with_start_replan(
             capture_dir,
             duration_s=duration_s,
             peer=peer,
+            **({'soft_stop': True} if soft_stop else {}),
         )
         native = run_result.get('native') or {}
         reason = native.get('reason', '')

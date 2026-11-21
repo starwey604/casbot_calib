@@ -304,21 +304,30 @@ def new_run(a):
     return root
 
 
-def supervise(command, root, *, disappear=False, termination='sigterm', quiet=3, timeout=60, peer=None, defer_hup_restore=False):
+def supervise(command, root, *, disappear=False, termination='sigterm', quiet=3, timeout=60,
+              peer=None, defer_hup_restore=False, soft_stop=False, soft_stop_timeout=60.0):
     """Only signals Popen handles owned by this invocation, never a discovered PID."""
     root = Path(root)
     with (root/'terminal.log').open('wb') as log:
-        child = subprocess.Popen(command, stdout=log, stderr=subprocess.STDOUT)
+        child = subprocess.Popen(command, stdout=log, stderr=subprocess.STDOUT, start_new_session=soft_stop)
         probe = None
         previous = {}
         stopping = False
+        soft_requested = False
+        soft_sent = False
         meta = dict(command=command, pid=child.pid, started_mono_ns=time.monotonic_ns(), termination_sent=None)
         def handler(signum, _frame):
-            nonlocal stopping
+            nonlocal stopping, soft_requested
             if signum == signal.SIGHUP:meta['hangup_received'] = True
             # One terminal hangup can reach the shell and its job more than once.
             # Do not interrupt the bounded cleanup/metadata commit a second time.
             if stopping:return
+            if soft_stop and (signum == signal.SIGUSR1 or (signum == signal.SIGINT and not soft_requested)):
+                if not soft_requested:
+                    soft_requested = True
+                    meta['soft_stop_requested'] = True
+                    meta['soft_stop_signal'] = signal.Signals(signum).name
+                return
             stopping = True
             meta['interrupt_signal'] = signal.Signals(signum).name
             if child.poll() is None:
@@ -326,7 +335,10 @@ def supervise(command, root, *, disappear=False, termination='sigterm', quiet=3,
             if probe is not None and probe.poll() is None:
                 probe.send_signal(signal.SIGTERM)
             raise KeyboardInterrupt
-        for sig in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP):
+        signals = (signal.SIGINT, signal.SIGTERM, signal.SIGHUP)
+        if soft_stop:
+            signals += (signal.SIGUSR1, signal.SIGQUIT)
+        for sig in signals:
             previous[sig] = signal.signal(sig, handler)
         dump(root/'process.json', meta)
         limit = time.monotonic()+timeout
@@ -388,6 +400,13 @@ def supervise(command, root, *, disappear=False, termination='sigterm', quiet=3,
                         child.wait(timeout=5)
                         probe.wait(timeout=quiet+5)
             while child.poll() is None:
+                # Native creates settings.txt after installing its signal handlers.
+                if soft_requested and not soft_sent and (root/'native/settings.txt').is_file():
+                    child.send_signal(signal.SIGUSR1)
+                    soft_sent = True
+                    limit = time.monotonic() + soft_stop_timeout
+                    dump(root/'process.json', meta)
+                    print('收到软停请求，正在复位后失能（再按一次 Ctrl-C 或 Ctrl-\\ 立即失能）', flush=True)
                 if peer is not None and peer.poll() is not None:
                     meta['mock_process_failed']=peer.returncode;stop_owned(child);break
                 if time.monotonic()>limit:

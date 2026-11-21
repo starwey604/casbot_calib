@@ -103,7 +103,7 @@ class ArmDynamics {
   std::shared_ptr<const ArmModel> model_;
   struct Backend;
   std::shared_ptr<const Backend> backend_;
-  void check_vector(const Eigen::VectorXd& x,const char* label) const;
+  void check_vector(const Eigen::Ref<const Eigen::VectorXd>& x,const char* label) const;
 
 };
 
@@ -118,6 +118,7 @@ class ArmWorkspace {
   ArmWorkspace& operator=(const ArmWorkspace&) = delete;
   Eigen::MatrixXd mass_matrix(const Eigen::VectorXd& q);
   Eigen::VectorXd gravity(const Eigen::VectorXd& q);
+  void gravity_into(const Eigen::Ref<const Eigen::VectorXd>& q,Eigen::Ref<Eigen::VectorXd> result);
   Eigen::VectorXd nonlinear_effects(const Eigen::VectorXd& q,const Eigen::VectorXd& dq);
   Eigen::VectorXd velocity_bias(const Eigen::VectorXd& q,const Eigen::VectorXd& dq);
   Eigen::VectorXd friction(const Eigen::VectorXd& dq);

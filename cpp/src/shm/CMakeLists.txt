@@ -81,7 +81,10 @@ if(BUILD_TESTING)
   target_include_directories(shm_unit_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
   target_link_libraries(shm_unit_tests PRIVATE calib_shm)
   if(CALIB_BUILD_CORE)
-    target_sources(shm_unit_tests PRIVATE ${PROJECT_SOURCE_DIR}/cpp/tests/shm_reference_tests.cpp ${PROJECT_SOURCE_DIR}/cpp/tests/shm_trical_tests.cpp)
+    target_sources(shm_unit_tests PRIVATE
+      ${PROJECT_SOURCE_DIR}/cpp/tests/shm_reference_tests.cpp
+      ${PROJECT_SOURCE_DIR}/cpp/tests/shm_soft_return_tests.cpp
+      ${PROJECT_SOURCE_DIR}/cpp/tests/shm_trical_tests.cpp)
     target_link_libraries(shm_unit_tests PRIVATE calib_shm_field)
     target_compile_definitions(shm_unit_tests PRIVATE CALIB_TEST_REFERENCE)
   endif()

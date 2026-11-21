@@ -88,6 +88,15 @@ int test_shm_reference_tests() {
   auto load=[&](const std::string& schema,const std::string& fields) {
     return Reference::load(write_temp_reference(h_valid_ns,q0,q1,{},{},schema,fields));
   };
+  check(!load("casbot_shm_reference_v1",limit+R"("purpose":"shm_calib_collision_checked",)").has_ready_pose(),
+        "Plain reference includes a preparation pose");
+  const std::string pd_vector=json_vec(q0);
+  const std::string pd_rows="\"pd_schedule\":[{\"t_ns\":0,\"kp\":"+pd_vector+",\"kd\":"+pd_vector+
+      "},{\"t_ns\":1000000000,\"kp\":"+pd_vector+",\"kd\":"+pd_vector+"}],";
+  for(const auto* purpose:{"shm_calib_ready_then_collision_checked","shm_h1_ready_then_collision_checked"}) {
+    const auto ready=load("casbot_shm_reference_v1",limit+pd_rows+"\"purpose\":\""+purpose+"\",");
+    check(ready.has_ready_pose()&&ready.ready_move_end_ns()==1000000000,"Wrong preparation boundary");
+  }
   const std::string v2="casbot_shm_reference_v2";
   auto mixed=load(v2,limit+block(mit+","+cst));
   check(mixed.non_arm_hold().slots.size()==2&&mixed.non_arm_hold().has_cst_pd(),"Missing body slots");

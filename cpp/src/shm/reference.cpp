@@ -82,8 +82,9 @@ Reference Reference::load(const std::string& file) {
   if(r.relative_&&r.direct_)throw std::invalid_argument("Direct fields use explicit absolute positions");
   const auto purpose_node=json.get_child_optional("purpose");
   const std::string_view purpose=purpose_node?std::string_view(purpose_node->data()):std::string_view{};
-  if(body||purpose=="shm_calib_collision_checked"||purpose=="shm_calib_ready_then_collision_checked"||
-     purpose=="shm_h1_collision_checked"||purpose=="shm_gui_zero_collision_checked"||purpose=="shm_h1_ready_then_collision_checked") {
+  r.has_ready_pose_=purpose=="shm_calib_ready_then_collision_checked"||purpose=="shm_h1_ready_then_collision_checked";
+  if(body||r.has_ready_pose_||purpose=="shm_calib_collision_checked"||
+     purpose=="shm_h1_collision_checked"||purpose=="shm_gui_zero_collision_checked") {
     if(r.direct_||r.relative_)throw std::invalid_argument("Calibration reference uses frozen absolute trajectories");
     r.observed_velocity_=json.get<double>("observed_velocity_limit_rad_s");
     if(!std::isfinite(r.observed_velocity_)||r.observed_velocity_<=0||r.observed_velocity_>1.5)throw std::invalid_argument("Invalid observed velocity limit");
@@ -120,6 +121,7 @@ Reference Reference::load(const std::string& file) {
     }
     if(r.gains_.empty())throw std::invalid_argument("Empty PD schedule");
   }
+  if(r.has_ready_pose_&&r.gains_.size()>=2)r.ready_move_end_ns_=r.gains_[1].at;
   if(const auto markers=json.get_child_optional("markers"))for(const auto& row:*markers) {
     auto t=row.second.get<std::int64_t>("t_ns");auto event=row.second.get<std::string>("event");
     if(t<0||t>r.duration_ns()||(!r.markers_.empty()&&t<=r.markers_.back().first)||event.empty()||
