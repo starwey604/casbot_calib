@@ -32,4 +32,4 @@ non_arm_hold:
     # 头 pitch/yaw 与腰 yaw（MIT）
     26: {mode: mit,    kp: 30.0,  kd: 2.0}
     27: {mode: mit,    kp: 30.0,  kd: 2.0}
-    28: {mode: mit,    kp: 500.0, kd: 5.0}
+    28: {mode: mit,    kp: 800.0, kd: 6.5}
