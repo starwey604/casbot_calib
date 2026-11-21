@@ -11,6 +11,7 @@ from ..field_defaults import start_velocity_limit
 from ..model_runtime import urdf_for
 from ..shm_data import DIRECTION, NAMES, OFFSET, ROOT
 from ..shm_fieldwork import (
+    _command_recording,
     summarize_commands,
     summarize_feedback,
     summarize_limits,
@@ -132,8 +133,9 @@ def native_execute_once(
     native = text_result(native_dir / 'result.txt')
     codec = dict(direction=DIRECTION, offset_rad=OFFSET, arm_names=NAMES)
     feedback = summarize_feedback(native_dir, codec)
-    commands = summarize_commands(native_dir, codec)
-    timing = timing_summary(native_dir)
+    command_records = _command_recording(native_dir)
+    commands = summarize_commands(native_dir, codec, records=command_records)
+    timing = timing_summary(native_dir, records=command_records)
     limits = summarize_limits(native_dir)
     completed = (
         bool(native and native.get('execution_completed') == '1' and meta.get('returncode', 0) == 0)

@@ -6,7 +6,7 @@ RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-ins
     ros-humble-pinocchio ros-humble-coal libeigen3-dev \
     libboost-dev libboost-filesystem-dev libboost-serialization-dev libboost-python-dev \
     python3-dev python3-venv python3-numpy libgomp1 libgcc-11-dev libstdc++-11-dev \
-    ca-certificates curl gnupg file binutils zstd patchelf \
+    ca-certificates curl gnupg file binutils libzstd-dev zstd patchelf \
     && rm -rf /var/lib/apt/lists/*
 ENTRYPOINT []
 CMD ["bash"]

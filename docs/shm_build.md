@@ -21,7 +21,7 @@ bash scripts/shm/deploy_git.sh --host nvidia@172.16.0.10
 
 ## 2. Orin 一键环境初始化与编译（`calib/setup.sh`）
 
-登录 Orin 后在 `/home/nvidia/casbot_calib_shm` 执行：
+Orin 源码编译需要系统包 `libzstd-dev`。安装 ARM64 预编译包的运行环境需要 `libzstd1`。登录 Orin 后在 `/home/nvidia/casbot_calib_shm` 执行：
 
 ```bash
 cd /home/nvidia/casbot_calib_shm
@@ -33,6 +33,8 @@ bash calib/setup.sh
 2. 将 `/opt/ros/humble` 中的 `pinocchio`、`eigenpy`、`coal` 链接进 `.venv-shm`（不 `source` ROS，不污染 `LD_LIBRARY_PATH`）。
 3. 编译 Python `_core` 扩展、动力学/碰撞核心、`shm_executor`、`shm_channel_start`、`shm_mock_server`、`shm_gui_owner`，运行 CTest 并安装到 `install/shm-core`。
 4. 执行模型 LFS 资产与二进制完整性预检。
+
+执行器采集生成 `native/commands.csv.zst` 和 `native/feedback.csv.zst`，可用 `zstdcat` 查看。`--inspect` 和 `--snapshot` 生成单帧 `command.bin`、`status.bin`。
 
 随时单独运行预检（不重编）：
 
@@ -48,8 +50,8 @@ bash calib/setup.sh --check
 # 默认使用 build/shm-core -> install/shm-core，存在 /opt/ros/humble 时自动选用
 bash scripts/shm/build.sh --with-mock
 
-# 安装后双进程物理闭环验收（私有 SHM 端点，不连接 /shm_mc）
-python3 scripts/shm/verify_physics.py --bin-dir install/shm-core/bin
+# 使用已安装 _core 的 Python 环境验收私有 SHM 物理闭环
+.venv-shm/bin/python scripts/shm/verify_physics.py --bin-dir install/shm-core/bin
 ```
 
 只构建纯 SHM 协议组件（不含 Pinocchio/Coal 核心）可不带 `--with-core` / `--with-mock` 运行 `bash scripts/shm/build.sh`。

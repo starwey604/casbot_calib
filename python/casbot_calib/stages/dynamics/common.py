@@ -339,7 +339,8 @@ def resolve_effective_plan_and_capture(plan_dir, capture_dir):
     return plan_dir, capture_dir
 
 
-def read_verified_stage_capture(plan_meta, capture_dir, robot_config, *, collision_profile=None):
+def read_verified_stage_capture(plan_meta, capture_dir, robot_config, *,
+                                collision_profile=None, minimum_feedback_rows=10):
     reader = ObservationReader(capture_dir)
     native = text_result(reader.root / 'result.txt') or {}
     if (
@@ -351,7 +352,7 @@ def read_verified_stage_capture(plan_meta, capture_dir, robot_config, *, collisi
 
     arr = reader.arrays()
     n_rows = int(len(arr['receive_ns']))
-    if n_rows < 10:
+    if n_rows < minimum_feedback_rows:
         raise ValueError('SHM 有效反馈帧数过少')
 
     calib_begin_ns = int(plan_meta.get('calibration_begin_ns', 0))

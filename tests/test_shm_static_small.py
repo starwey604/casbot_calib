@@ -112,7 +112,7 @@ def test_eight_windows_physics_fit(tmp_path, monkeypatch):
 
 
 def test_solver_unavailable_report_from_synthetic_capture(tmp_path, monkeypatch):
-    from test_wave2b_h2_h3 import _write_synthetic_binary_capture, _reconstruct_bpoly_from_reference
+    from test_wave2b_h2_h3 import _write_synthetic_capture, _reconstruct_bpoly_from_reference
     from casbot_calib.model_runtime import model_for
     robot_cfg = load_robot_config(dict(initial_hold_s=.01, final_hold_s=.01, anchor_transition_s=.1))
     recipe = load_h1_recipe(dict(mode='small', ready_pose=False, small=dict(
@@ -126,7 +126,7 @@ def test_solver_unavailable_report_from_synthetic_capture(tmp_path, monkeypatch)
     bundle = json.loads((plan_dir / 'reference.json').read_text())
     poly = _reconstruct_bpoly_from_reference(bundle)
     engine, _ = model_for(robot_cfg)
-    _write_synthetic_binary_capture(tmp_path / 'capture', bundle, poly,
+    _write_synthetic_capture(tmp_path / 'capture', bundle, poly,
         lambda t: poly(t, nu=1), lambda t, q, v: engine.gravity_batch(q), robot_cfg)
     from casbot_calib import rigid_identification
     monkeypatch.setattr(rigid_identification, 'fit_rigid', lambda *a, **kw: (_ for _ in ()).throw(RuntimeError('test solver failure')))

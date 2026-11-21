@@ -5,6 +5,7 @@ import platform
 from time import perf_counter
 import numpy as np
 import pytest
+from recording_fixtures import feedback_rows, write_recording
 
 from casbot_calib.dual_model import nominal_dual_arm
 from casbot_calib.field_gravity import _approach_observation, write_gravity_candidate
@@ -12,9 +13,7 @@ from casbot_calib.model_runtime import model_for
 from casbot_calib.pipeline.robot import load_robot_config
 from casbot_calib.rigid_identification import fit_rigid, model_from_parameters
 from casbot_calib.shm_data import (
-    COMMAND_RECORD_DTYPE,
     DIRECTION,
-    FEEDBACK_RECORD_DTYPE,
     NAMES,
     OFFSET,
 )
@@ -324,7 +323,7 @@ def test_vectorized_analyse_h1_on_binary_capture(tmp_path):
     cap_dir = tmp_path / 'capture' / 'native'
     cap_dir.mkdir(parents=True)
 
-    # Write result.txt, clock_pairs.csv, events.csv, commands.bin, feedback.bin
+    # Write result.txt, clock_pairs.csv, events and the compressed recording tables
     (cap_dir / 'result.txt').write_text(
         f'execution_completed=1\nrecording_stopped=0\n'
         f'first_shm_write_mono_ns={origin_mono - 2_000_000}\n'
@@ -341,21 +340,19 @@ def test_vectorized_analyse_h1_on_binary_capture(tmp_path):
         encoding='utf-8',
     )
 
-    cmds = np.zeros(1, dtype=COMMAND_RECORD_DTYPE)
-    cmds['send_mono_ns'][0] = origin_mono
-    cmds.tofile(cap_dir / 'commands.bin')
+    write_recording(cap_dir/'commands.csv.zst', [dict(send_mono_ns=origin_mono, phase=3)], feedback=False)
 
     direction = np.asarray(DIRECTION, dtype=np.float64)[None, :]
     offset = np.asarray(OFFSET, dtype=np.float64)[None, :]
-    recs = np.zeros(n_samples, dtype=FEEDBACK_RECORD_DTYPE)
     obs_ns = origin_mono + np.arange(n_samples, dtype=np.int64) * sample_ns
-    recs['receive_mono_ns'] = obs_ns + 100_000
-    recs['frame']['timestamp'] = (obs_ns + offset_ns) // 1_000_000
-    recs['frame']['frame_counter'] = np.arange(1, n_samples + 1, dtype=np.uint32)
-    recs['frame']['joints'][:, 12:26]['position'] = np.trunc(direction * (q_traj - offset) * 1e6).astype(np.int32)
-    recs['frame']['joints'][:, 12:26]['velocity'] = np.trunc(direction * dq_traj * 1e6).astype(np.int32)
-    recs['frame']['joints'][:, 12:26]['torque'] = np.trunc(direction * tau_traj * 100.0).astype(np.int16)
-    recs.tofile(cap_dir / 'feedback.bin')
+    stamps = (obs_ns + offset_ns) // 1_000_000
+    write_recording(cap_dir/'feedback.csv.zst', feedback_rows(
+        obs_ns + 100_000, stamps=stamps, observations=stamps*1_000_000-offset_ns,
+        phase=np.full(n_samples, 3),
+        position=np.trunc(direction * (q_traj - offset) * 1e6).astype(np.int32),
+        velocity=np.trunc(direction * dq_traj * 1e6).astype(np.int32),
+        torque=np.trunc(direction * tau_traj * 100.0).astype(np.int16),
+    ))
 
     analysis_dir = tmp_path / 'analysis'
     report = analyse_h1(plan_dir, tmp_path / 'capture', analysis_dir)

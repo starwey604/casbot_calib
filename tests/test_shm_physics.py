@@ -1,14 +1,13 @@
 """Real independent processes and the physical plant; all endpoints are private."""
-import csv
 import json
 import os
 from pathlib import Path
-import struct
 import subprocess
 import sys
 
 import numpy as np
 import pytest
+from casbot_calib import _core
 from casbot_calib import shm_fieldwork as fw
 from casbot_calib.shm_reference import jog_bundle,export_motion,fields_bundle,save_bundle
 from casbot_calib.shm_data import NAMES,ROOT,URDF
@@ -98,10 +97,10 @@ def test_direct_effort_is_quantized_and_stops_with_disable(native,tmp_path):
     done=cli('execute',path,'--mock','--mock-config',profile,'--execute','--executor',native/'shm_executor','--output',out)
     assert done.returncode==0,done.stdout+done.stderr
     r=json.loads((out/'result.json').read_text());assert r['native']['disable_ack']=='1'
-    rows=list(csv.DictReader((out/'native/commands.csv').open()))
-    stream=[row for row in rows if row['phase']=='3']
-    assert stream and all(abs(float(row['effort0'])-.12)<1e-12 for row in stream)
-    assert all(abs(float(row['v0'])-.05)<1.1e-6 for row in stream)
+    commands = _core.read_commands_csv_zst(out/'native/commands.csv.zst')
+    stream = commands['phase'] == 3
+    assert stream.any() and (abs(commands['effort'][stream, 0]-.12) < 1e-12).all()
+    assert (abs(commands['v'][stream, 0]-.05) < 1.1e-6).all()
     assert r['feedback']['joints'][12]['raw_torque']['max']>0
 
 
@@ -114,9 +113,9 @@ def test_physics_drive_fault_ends_no_reset_or_reenable(native,tmp_path):
     assert done.returncode!=0,done.stdout
     r=json.loads((out/'result.json').read_text())
     assert not r['execution_completed'] and r['native']['reason']=='drive_error_slot_12_42'
-    records=list(fw.records(out/'native/commands.bin',752))
-    assert struct.unpack_from('<H',records[-1],8+12+12*18)[0]==6
-    assert all(struct.unpack_from('<H',d,8+12+12*18)[0]!=0x80 for d in records)
+    control = _core.read_commands_csv_zst(out/'native/commands.csv.zst')['cmd_cw'][:, 12]
+    assert control[-1] == 6
+    assert (control != 0x80).all()
 
 
 def test_mock_name_guard_refuses_real_shm_before_creation(native,tmp_path):

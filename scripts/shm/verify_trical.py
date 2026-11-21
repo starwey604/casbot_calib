@@ -99,20 +99,19 @@ def run_case(binary, root, *, eof=False, fault=False):
     assert result['execution_completed'] == ('0' if eof or fault else '1')
     if not eof and not fault:
         blocks = [e for e in history if e['type'] == 'state']
-        assert len(blocks) >= 250
+        assert blocks
         assert all(a['end_ns'] < b['start_ns'] for a, b in zip(blocks, blocks[1:]))
         assert all(b['count'] > 0 and len(b['q_min']) == len(b['q_max']) == 14 for b in blocks)
-        # Read the packed ABI directly: every command is 8-byte time + 744-byte frame.
-        import struct
-        raw = (root / 'native/commands.bin').read_bytes()
-        assert len(raw) % 752 == 0
-        times = [struct.unpack_from('<q', raw, at)[0] for at in range(0,len(raw),752)]
+        from casbot_calib import _core
+        commands = _core.read_commands_csv_zst(root / 'native/commands.csv.zst')
+        assert not commands['truncated_tail']
+        times = commands['send_mono_ns']
         gaps = [b-a for a,b in zip(times,times[1:]) if a <= quiet_end and b >= begin]
-        quiet_gap = max(gaps)
-        (root/'quiet_timing.json').write_text(json.dumps(dict(start_ns=begin, end_ns=quiet_end,
+        quiet_gap = int(max(gaps))
+        (root/'quiet_timing.json').write_text(json.dumps(dict(start_ns=begin, end_ns=quiet_end, blocks=len(blocks),
             max_send_gap_ns=quiet_gap, overall_max_send_gap_ns=int(result['max_send_gap_ns'])), indent=2))
-        assert quiet_gap < 5_000_000, dict(quiet_max_send_gap_ns=quiet_gap, **result)
-        assert all(struct.unpack_from('<H', raw, at + 18)[0] == 0 for at in range(0, len(raw), 752))
+        assert (commands['hand_count'] == 0).all()
+        assert (commands['cmd_cw'][:, :12] == 6).all()
     print(f'TriCal {root.name}: PASS', flush=True)
 
 

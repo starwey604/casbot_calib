@@ -1,11 +1,12 @@
 """Snapshot consistency, read-only recovery and zero planning without rendering."""
-import csv
 import json
 from pathlib import Path
 import time
 
 import numpy as np
 import pytest
+from casbot_calib import _core
+from recording_fixtures import write_recording, arm_columns
 from casbot_calib.shm_gui_storage import snapshot,load_snapshot,last_feedback
 from casbot_calib.shm_gui_archive import save_workspace
 from casbot_calib.shm_gui_zero import plan_zero,validate_zero
@@ -16,15 +17,18 @@ from test_shm_fieldwork import NATIVE,master
 
 
 @pytest.mark.slow
-def test_active_save_matches_csv_raw_and_recovery_is_readonly(client,tmp_path):
+def test_active_save_has_complete_frames_and_recovery_is_readonly(client,tmp_path):
     c=client;wait(c,lambda:c.hello and c.latest and c.latest['receive_ns']);c.send('start');wait(c,lambda:c.latest['phase']==3)
     saved=save_workspace(c,tmp_path/'saved')
     assert c.latest['phase']==3
     manifest=load_snapshot(saved['output']);root=Path(saved['output'])
-    for name,width in (('feedback',704),('commands',752)):
-        rows=list(csv.DictReader((root/'native'/f'{name}.csv').open()))
-        assert len(rows)==manifest['rows'][name]
-        assert (root/'native'/f'{name}.bin').stat().st_size==len(rows)*width
+    for name, key, read in (
+        ('feedback', 'receive_mono_ns', _core.read_feedback_csv_zst),
+        ('commands', 'send_mono_ns', _core.read_commands_csv_zst),
+    ):
+        rows = read(root/'native'/f'{name}.csv.zst')
+        assert len(rows[key]) == manifest['rows'][name]
+        assert not rows['truncated_tail']
     assert not manifest['complete_session']
     local=tmp_path/'recover';local.mkdir()
     args=parser().parse_args(['--recover',str(root)])
@@ -41,12 +45,11 @@ def test_active_save_matches_csv_raw_and_recovery_is_readonly(client,tmp_path):
 @pytest.mark.slow
 def test_snapshot_truncates_incomplete_tail_and_rejects_manifest_changes(client,tmp_path):
     c=client;wait(c,lambda:c.ready and c.latest and c.latest['seq']>15)
-    c.close();source=Path(c.ready['workspace']);raw=source/'native/feedback.bin'
-    with raw.open('ab') as stream:stream.write(b'partial')
-    table=source/'native/feedback.csv'
+    c.close();source=Path(c.ready['workspace'])
+    table=source/'native/feedback.csv.zst'
     with table.open('ab') as stream:stream.write(b'partial')
     out=tmp_path/'prefix';snapshot(source,out);load_snapshot(out)
-    last_feedback(out/'native/feedback.csv')
+    assert last_feedback(out/'native/feedback.csv.zst') == last_feedback(table)
     (out/'extra').write_text('not inventoried')
     with pytest.raises(ValueError,match='清单'):load_snapshot(out)
 
@@ -90,10 +93,9 @@ def test_zero_rejects_urdf_invalid_target_before_sending():
 
 def test_shm_video_reader_uses_native_receive_column(tmp_path):
     from casbot_calib.fieldwork_streaming import VideoFeedback
-    path=tmp_path/'feedback.csv'
-    path.write_text('receive_mono_ns,'+','.join('q'+str(j) for j in range(14))+'\n'+
-                    '100000000000,'+','.join(['0']*14)+'\n'+
-                    '100050000000,'+','.join(['1']*14)+'\n')
+    path=tmp_path/'feedback.csv.zst'
+    write_recording(path, [dict(receive_mono_ns=at, **arm_columns('q', [position]*14))
+                           for at, position in ((100000000000, 0), (100050000000, 1))], frame_rows=1)
     rows=list(VideoFeedback(path,receive_column='receive_mono_ns').frames())
     assert rows[0][2]==[0.]*14 and rows[-1][2]==[1.]*14
 
@@ -114,7 +116,7 @@ def test_zero_bridge_get_and_submit_share_same_private_owner(client,tmp_path):
 @pytest.mark.slow
 def test_cancelled_save_keeps_source_and_retryable_prefix(client,tmp_path):
     c=client;wait(c,lambda:c.ready and c.latest and c.latest['seq']>10)
-    before=Path(c.ready['workspace'])/'native/feedback.bin'
+    before=Path(c.ready['workspace'])/'native/feedback.csv.zst'
     assert before.exists()
     with pytest.raises(ValueError,match='取消'):save_workspace(c,tmp_path/'cancelled',cancel=lambda:True)
     assert before.exists() and not (tmp_path/'cancelled').exists()

@@ -1,4 +1,4 @@
-"""Orin-native SHM field cases. Standard library only; never runs a control loop."""
+"""Orin-native SHM field cases. Execution runs in the native worker."""
 import argparse
 import csv
 import json
@@ -14,9 +14,7 @@ import uuid
 import xml.etree.ElementTree as ET
 
 from .shm_data import (
-    COMMAND_RECORD_DTYPE,
     DIRECTION,
-    FEEDBACK_RECORD_DTYPE,
     NAMES,
     OFFSET,
     PARTS,
@@ -436,25 +434,6 @@ def supervise(command, root, *, disappear=False, termination='sigterm', quiet=3,
     return meta
 
 
-def records(path, size):
-    """Yield complete binary records; caller reports trailing bytes separately."""
-    if not path.exists():
-        return
-    with path.open('rb') as stream:
-        while True:
-            data = stream.read(size)
-            if len(data) < size:
-                break
-            yield data
-
-
-def span_update(s, value):
-    if not s:
-        s.update(first=value, last=value, min=value, max=value)
-    else:
-        s['last']=value;s['min']=min(s['min'], value);s['max']=max(s['max'], value)
-
-
 def _span_from_array(arr):
     if len(arr) == 0:
         return {}
@@ -492,148 +471,97 @@ def summarize_feedback(folder, codec=None):
     folder = Path(folder)
     direction = (codec or {}).get('direction', DIRECTION)
     offset_rad = (codec or {}).get('offset_rad', OFFSET)
-    path = folder/'feedback.bin'
-    size = path.stat().st_size if path.exists() else 0
-    result = dict(count=0, trailing_bytes=size % 704 if path.exists() else 0,
+    path = folder/'feedback.csv.zst'
+    result = dict(count=0, truncated_tail=False,
                   receive_gap_ns={}, source_step_ms={}, repeated_stamp=0, backward_stamp=0,
                   repeated_counter=0, counter_gap=0, backward_counter=0,
                   joints=[dict(id=j, raw_position={}, q_rad={} if 12 <= j <= 25 else None,
                                raw_velocity={}, raw_torque={}, statuses=[], modes=[], errors=[]) for j in range(35)],
-                  hands=[dict(hand=h, errors=[], global_statuses=[], items=[dict(position={}, velocity={}, current={}, statuses=[]) for _ in range(6)]) for h in range(2)])
-    count = size // 704
-    if count == 0:
+                  hands=[dict(hand=h, errors=[], global_statuses=[],
+                              items=[dict(position={}, velocity={}, current={}, statuses=[]) for _ in range(6)])
+                         for h in range(2)])
+    if not path.is_file():
         return result
-    if _np is not None and FEEDBACK_RECORD_DTYPE is not None:
-        recs = _np.fromfile(path, dtype=FEEDBACK_RECORD_DTYPE, count=count)
-        result['count'] = int(count)
-        if count > 1:
-            recv = recs['receive_mono_ns'].astype(_np.int64)
-            result['receive_gap_ns'] = _span_from_array(_np.diff(recv))
-            stamps = recs['frame']['timestamp']
-            if int(stamps.max()) <= _np.iinfo(_np.int64).max:
-                result['source_step_ms'] = _span_from_array(_np.diff(stamps.astype(_np.int64)))
-            else:
-                steps = [int(b) - int(a) for a, b in zip(stamps[:-1], stamps[1:])]
-                result['source_step_ms'] = dict(first=steps[0], last=steps[-1], min=min(steps), max=max(steps))
-            result['repeated_stamp'] = int(_np.sum(stamps[1:] == stamps[:-1]))
-            result['backward_stamp'] = int(_np.sum(stamps[1:] < stamps[:-1]))
-            counters = recs['frame']['frame_counter']
-            result['repeated_counter'] = int(_np.sum(counters[1:] == counters[:-1]))
-            result['backward_counter'] = int(_np.sum(counters[1:] < counters[:-1]))
-            inc = counters[1:] > counters[:-1]
-            if _np.any(inc):
-                result['counter_gap'] = int(_np.sum(counters[1:][inc] - counters[:-1][inc] - _np.uint64(1)))
-        joints = recs['frame']['joints']
-        pos_all = joints['position']
-        vel_all = joints['velocity']
-        trq_all = joints['torque']
-        sw_all = joints['status_word']
-        md_all = joints['mode']
-        err_all = joints['error_code']
-        pos_min, pos_max = pos_all.min(axis=0), pos_all.max(axis=0)
-        vel_min, vel_max = vel_all.min(axis=0), vel_all.max(axis=0)
-        trq_min, trq_max = trq_all.min(axis=0), trq_all.max(axis=0)
-        has_joint_err = bool(_np.any(err_all))
-        for j, s in enumerate(result['joints']):
-            raw_pos = dict(first=pos_all[0, j].item(), last=pos_all[-1, j].item(), min=pos_min[j].item(), max=pos_max[j].item())
-            s['raw_position'] = raw_pos
-            s['raw_velocity'] = dict(first=vel_all[0, j].item(), last=vel_all[-1, j].item(), min=vel_min[j].item(), max=vel_max[j].item())
-            s['raw_torque'] = dict(first=trq_all[0, j].item(), last=trq_all[-1, j].item(), min=trq_min[j].item(), max=trq_max[j].item())
-            if 12 <= j <= 25:
-                s['q_rad'] = _affine_span(raw_pos, direction[j - 12], offset_rad[j - 12])
-            s['statuses'] = _unique_sorted_int(sw_all[:, j])
-            s['modes'] = _unique_sorted_int(md_all[:, j])
-            s['errors'] = _unique_sorted_int(err_all[:, j], exclude_zero=True) if has_joint_err else []
-        hands = recs['frame']['hands']
-        hj_all = hands['joints']
-        hp_min, hp_max = hj_all['position'].min(axis=0), hj_all['position'].max(axis=0)
-        hv_min, hv_max = hj_all['velocity'].min(axis=0), hj_all['velocity'].max(axis=0)
-        hc_min, hc_max = hj_all['current'].min(axis=0), hj_all['current'].max(axis=0)
-        for h, s in enumerate(result['hands']):
-            s['global_statuses'] = _unique_sorted_int(hands['global_status'][:, h])
-            s['errors'] = _unique_sorted_int(hands['error_code'][:, h], exclude_zero=True)
-            hj = hj_all[:, h, :]
-            for item_idx, item in enumerate(s['items']):
-                item['position'] = dict(first=hj['position'][0, item_idx].item(), last=hj['position'][-1, item_idx].item(), min=hp_min[h, item_idx].item(), max=hp_max[h, item_idx].item())
-                item['velocity'] = dict(first=hj['velocity'][0, item_idx].item(), last=hj['velocity'][-1, item_idx].item(), min=hv_min[h, item_idx].item(), max=hv_max[h, item_idx].item())
-                item['current'] = dict(first=hj['current'][0, item_idx].item(), last=hj['current'][-1, item_idx].item(), min=hc_min[h, item_idx].item(), max=hc_max[h, item_idx].item())
-                item['statuses'] = _unique_sorted_int(hj['status'][:, item_idx])
+    from . import _core
+    records = _core.read_feedback_csv_zst(path)
+    count = len(records['receive_mono_ns'])
+    result.update(count=count, truncated_tail=records['truncated_tail'])
+    if not count:
         return result
-    last = None
-    status_sets = [set() for _ in range(35)];mode_sets=[set() for _ in range(35)];errors=[set() for _ in range(35)]
-    hands = [[set(), set(), [set() for _ in range(6)]] for _ in range(2)]
-    for data in records(path, 704):
-        received, counter = struct.unpack_from('<qQ', data)
-        stamp = struct.unpack_from('<Q', data, 8+680)[0]
-        result['count'] += 1
-        if last:
-            span_update(result['receive_gap_ns'], received-last[0]);span_update(result['source_step_ms'], stamp-last[2])
-            result['repeated_stamp'] += stamp == last[2];result['backward_stamp'] += stamp < last[2]
-            result['repeated_counter'] += counter == last[1];result['backward_counter'] += counter < last[1]
-            if counter > last[1]+1:
-                result['counter_gap'] += counter-last[1]-1
-        last = (received, counter, stamp)
-        for j, s in enumerate(result['joints']):
-            status, q, v, torque, mode, error = struct.unpack_from('<HiihhH', data, 8+12+j*16)
-            span_update(s['raw_position'], q);span_update(s['raw_velocity'], v);span_update(s['raw_torque'], torque)
-            if 12 <= j <= 25:
-                span_update(s['q_rad'], direction[j-12]*q*1e-6+offset_rad[j-12])
-            status_sets[j].add(status);mode_sets[j].add(mode)
-            if error:
-                errors[j].add(error)
-        for h in range(2):
-            offset = 8+572+h*52
-            global_status, error = struct.unpack_from('<HH', data, offset)
-            hands[h][0].add(global_status)
-            if error:
-                hands[h][1].add(error)
-            for j, item in enumerate(result['hands'][h]['items']):
-                q, v, current, status = struct.unpack_from('<hhhH', data, offset+4+j*8)
-                span_update(item['position'], q);span_update(item['velocity'], v);span_update(item['current'], current);hands[h][2][j].add(status)
-    for j, s in enumerate(result['joints']):
-        s.update(statuses=sorted(status_sets[j]), modes=sorted(mode_sets[j]), errors=sorted(errors[j]))
-    for h, s in enumerate(result['hands']):
-        s.update(global_statuses=sorted(hands[h][0]), errors=sorted(hands[h][1]))
-        for j, item in enumerate(s['items']):
-            item['statuses'] = sorted(hands[h][2][j])
+    if count > 1:
+        result['receive_gap_ns'] = _span_from_array(_np.diff(records['receive_mono_ns']))
+        stamps = records['source_timestamp_ms']
+        if int(stamps.max()) <= _np.iinfo(_np.int64).max:
+            result['source_step_ms'] = _span_from_array(_np.diff(stamps.astype(_np.int64)))
+        else:
+            steps = [int(b) - int(a) for a, b in zip(stamps[:-1], stamps[1:])]
+            result['source_step_ms'] = dict(first=steps[0], last=steps[-1], min=min(steps), max=max(steps))
+        result['repeated_stamp'] = int(_np.sum(stamps[1:] == stamps[:-1]))
+        result['backward_stamp'] = int(_np.sum(stamps[1:] < stamps[:-1]))
+        counters = records['frame_counter']
+        result['repeated_counter'] = int(_np.sum(counters[1:] == counters[:-1]))
+        result['backward_counter'] = int(_np.sum(counters[1:] < counters[:-1]))
+        increasing = counters[1:] > counters[:-1]
+        result['counter_gap'] = int(_np.sum(counters[1:][increasing] - counters[:-1][increasing] - 1))
+
+    def spans(values):
+        return zip(values[0].tolist(), values[-1].tolist(),
+                   values.min(axis=0).tolist(), values.max(axis=0).tolist())
+
+    def summarize_columns(items, report_name, record_name, *, hand=None):
+        columns = records[record_name]
+        if hand is not None:
+            columns = columns[:, hand, :]
+        for item, values in zip(items, spans(columns)):
+            item[report_name] = dict(zip(('first', 'last', 'min', 'max'), values))
+
+    joints = result['joints']
+    for field, key in (('raw_position', 'pos_raw'), ('raw_velocity', 'vel_raw'), ('raw_torque', 'trq_raw')):
+        summarize_columns(joints, field, key)
+    for j, joint in enumerate(joints):
+        if 12 <= j <= 25:
+            joint['q_rad'] = _affine_span(joint['raw_position'], direction[j - 12], offset_rad[j - 12])
+        joint['statuses'] = _unique_sorted_int(records['status'][:, j])
+        joint['modes'] = _unique_sorted_int(records['mode'][:, j])
+        joint['errors'] = _unique_sorted_int(records['error'][:, j], exclude_zero=True)
+
+    for h, hand in enumerate(result['hands']):
+        hand['global_statuses'] = _unique_sorted_int(records['hand_global_status'][:, h])
+        hand['errors'] = _unique_sorted_int(records['hand_error'][:, h], exclude_zero=True)
+        for field, key in (('position', 'hand_pos'), ('velocity', 'hand_vel'), ('current', 'hand_cur')):
+            summarize_columns(hand['items'], field, key, hand=h)
+        for j, item in enumerate(hand['items']):
+            item['statuses'] = _unique_sorted_int(records['hand_status'][:, h, j])
     return result
 
 
-def summarize_commands(folder, codec=None):
-    folder = Path(folder)
+def summarize_commands(folder, codec=None, *, records=None):
+    result = dict(count=0, truncated_tail=False, send_gap_ns={},
+                  arms=[dict(id=j+12, q_rad={}) for j in range(14)])
+    if records is None:
+        records = _command_recording(folder)
+    if records is None:
+        return result
     direction = (codec or {}).get('direction', DIRECTION)
     offset_rad = (codec or {}).get('offset_rad', OFFSET)
-    path = folder/'commands.bin'
-    size = path.stat().st_size if path.exists() else 0
-    result = dict(count=0, trailing_bytes=size % 752 if path.exists() else 0,
-                  send_gap_ns={}, arms=[dict(id=j+12, q_rad={}) for j in range(14)])
-    count = size // 752
-    if count == 0:
-        return result
-    if _np is not None and COMMAND_RECORD_DTYPE is not None:
-        recs = _np.fromfile(path, dtype=COMMAND_RECORD_DTYPE, count=count)
-        result['count'] = int(count)
-        if count > 1:
-            result['send_gap_ns'] = _span_from_array(_np.diff(recs['send_mono_ns'].astype(_np.int64)))
-        arm_pos = recs['frame']['joints']['position'][:, 12:26]
-        arm_min, arm_max = arm_pos.min(axis=0), arm_pos.max(axis=0)
-        for j, arm in enumerate(result['arms']):
-            raw_span = dict(first=arm_pos[0, j].item(), last=arm_pos[-1, j].item(), min=arm_min[j].item(), max=arm_max[j].item())
-            arm['q_rad'] = _affine_span(raw_span, direction[j], offset_rad[j])
-        return result
-    last = None
-    for data in records(path, 752):
-        at = struct.unpack_from('<q', data)[0];result['count'] += 1
-        if last is not None:
-            span_update(result['send_gap_ns'], at-last)
-        last = at
-        for j, arm in enumerate(result['arms']):
-            q = struct.unpack_from('<i', data, 8+12+(j+12)*18+2)[0]
-            span_update(arm['q_rad'], direction[j]*q*1e-6+offset_rad[j])
+    send = records['send_mono_ns']
+    result.update(count=len(send), truncated_tail=records['truncated_tail'],
+                  send_gap_ns=_span_from_array(_np.diff(send)))
+    for j, arm in enumerate(result['arms']):
+        span = _span_from_array(records['cmd_pos_raw'][:, j+12])
+        arm['q_rad'] = _affine_span(span, direction[j], offset_rad[j])
     return result
 
 
-def timing_summary(folder):
+def _command_recording(folder, *, timing_only=False):
+    path = Path(folder)/'commands.csv.zst'
+    if not path.is_file():
+        return None
+    from . import _core
+    return _core.read_commands_csv_zst(path, timing_only=timing_only)
+
+
+def timing_summary(folder, *, records=None):
     folder = Path(folder)
     result = dict(events=[], clock_pairs=[], streaming_send_gap_ns={})
     event_path = folder/'events.csv'
@@ -645,42 +573,12 @@ def timing_summary(folder):
         with path.open() as stream:
             result['clock_pairs'] = [r for r in csv.DictReader(stream) if all(r.get(k) for k in
                 ('mono_before_ns', 'wall_ns', 'mono_after_ns', 'offset_ns', 'clock_segment', 'jump_detected'))]
-    cmd_bin = folder/'commands.bin'
-    if _np is not None and COMMAND_RECORD_DTYPE is not None and cmd_bin.is_file() and result['events']:
-        count = cmd_bin.stat().st_size // 752
-        if count > 1:
-            sends = _np.fromfile(cmd_bin, dtype=COMMAND_RECORD_DTYPE, count=count)['send_mono_ns'].astype(_np.int64)
-            intervals = []
-            start_ns = None
-            for ev in result['events']:
-                p = ev.get('phase')
-                t = int(ev['mono_ns'])
-                if p == '3' and start_ns is None:
-                    start_ns = t
-                elif p != '3' and start_ns is not None:
-                    intervals.append((start_ns, t))
-                    start_ns = None
-            if start_ns is not None:
-                intervals.append((start_ns, _np.iinfo(_np.int64).max))
-            gaps = []
-            for lo, hi in intervals:
-                i0 = int(_np.searchsorted(sends, lo, side='left'))
-                i1 = int(_np.searchsorted(sends, hi, side='left'))
-                if i1 - i0 > 1:
-                    gaps.append(_np.diff(sends[i0:i1]))
-            if gaps:
-                result['streaming_send_gap_ns'] = _span_from_array(_np.concatenate(gaps))
-        return result
-    path = folder/'commands.csv';last = None
-    if path.exists():
-        with path.open() as stream:
-            for r in csv.DictReader(stream):
-                if not r.get('send_mono_ns') or r.get('phase') != '3':
-                    last = None;continue
-                at = int(r['send_mono_ns'])
-                if last is not None:
-                    span_update(result['streaming_send_gap_ns'], at-last)
-                last = at
+    if records is None:
+        records = _command_recording(folder, timing_only=True)
+    if records is not None:
+        streaming = records['phase'] == 3
+        gaps = _np.diff(records['send_mono_ns'])
+        result['streaming_send_gap_ns'] = _span_from_array(gaps[streaming[:-1] & streaming[1:]])
     return result
 
 
@@ -720,8 +618,10 @@ def report(root):
     process = json.loads((root/'process.json').read_text()) if (root/'process.json').exists() else {}
     folder = root/'native' if (root/'native').is_dir() else root
     native = text_result(folder/'result.txt')
-    feedback = summarize_feedback(folder, case.get('codec'));commands = summarize_commands(folder, case.get('codec'))
-    timing = timing_summary(folder)
+    feedback = summarize_feedback(folder, case.get('codec'))
+    command_records = _command_recording(folder)
+    commands = summarize_commands(folder, case.get('codec'), records=command_records)
+    timing = timing_summary(folder, records=command_records)
     limits = summarize_limits(folder)
     snapshot = snapshot_summary(folder)
     observations = [json.loads(row) for row in (root/'observations.jsonl').read_text().splitlines()] if (root/'observations.jsonl').exists() else []
@@ -749,8 +649,8 @@ def report(root):
         reasons.append('缺少原生结束结果：未封存，只恢复完整前缀，不允许resume。')
     if native and native.get('recording_stopped') == '1':
         reasons.append('原生记录中途停录，保留前缀；执行结果与记录完整性分开。')
-    if feedback['trailing_bytes'] or commands['trailing_bytes']:
-        reasons.append('二进制尾部存在不完整记录，未作为完整帧分析。')
+    if feedback['truncated_tail'] or commands['truncated_tail']:
+        reasons.append('采集尾部不完整，汇总使用已闭合的完整帧。')
     if setup:
         reasons.append('此例是接管/握手步骤，不含运动或持续反馈；步骤退出成功不作物理停止证明。')
     result = dict(schema='casbot_shm_field_case_v1', case=case, process=process, native=native,

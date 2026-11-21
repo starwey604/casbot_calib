@@ -5,6 +5,7 @@ import platform
 from time import perf_counter
 import numpy as np
 import pytest
+from recording_fixtures import feedback_rows, write_recording
 from scipy.interpolate import BPoly
 
 from casbot_calib.dynamic_export import check_reload
@@ -13,9 +14,7 @@ from casbot_calib.pipeline.robot import load_robot_config
 from casbot_calib.pipeline.session import Session
 from casbot_calib.rigid_identification import model_from_parameters
 from casbot_calib.shm_data import (
-    COMMAND_RECORD_DTYPE,
     DIRECTION,
-    FEEDBACK_RECORD_DTYPE,
     NAMES,
     OFFSET,
 )
@@ -47,8 +46,8 @@ def _reconstruct_bpoly_from_reference(ref_bundle):
     return BPoly.from_derivatives(knots_s, states)
 
 
-def _write_synthetic_binary_capture(capture_dir: Path, ref_bundle: dict, q_fn, dq_fn, effort_nm_fn, robot_config: dict, *, sample_ns=1_000_000):
-    """Write a binary SHM capture (feedback.bin + commands.bin + clock_pairs.csv + events.csv + result.txt)."""
+def _write_synthetic_capture(capture_dir: Path, ref_bundle: dict, q_fn, dq_fn, effort_nm_fn, robot_config: dict, *, sample_ns=1_000_000):
+    """Write a compressed SHM capture with native timing metadata."""
     native_dir = capture_dir / 'native'
     native_dir.mkdir(parents=True, exist_ok=True)
 
@@ -102,28 +101,17 @@ def _write_synthetic_binary_capture(capture_dir: Path, ref_bundle: dict, q_fn, d
     vel_wire = np.round((dq_full / direction) * 1e6).astype(np.int32)
     tau_wire = np.clip(np.round((eff_full / direction) * 100.0), -32767, 32767).astype(np.int16)
 
-    fb = np.zeros(total, dtype=FEEDBACK_RECORD_DTYPE)
-    fb['receive_mono_ns'] = recv_mono
-    fb['frame']['frame_counter'] = np.arange(1, total + 1, dtype=np.uint64)
-    fb['frame']['joint_count'] = 35
-    fb['frame']['hand_count'] = 2
-    fb['frame']['timestamp'] = stamp_ms.astype(np.uint64)
-    fb['frame']['joints'][:, 12:26]['status_word'] = 0x0027
-    fb['frame']['joints'][:, 12:26]['mode'] = 4
-    fb['frame']['joints'][:, 12:26]['position'] = pos_wire
-    fb['frame']['joints'][:, 12:26]['velocity'] = vel_wire
-    fb['frame']['joints'][:, 12:26]['torque'] = tau_wire
-    fb.tofile(native_dir / 'feedback.bin')
-
-    cmds = np.zeros(total, dtype=COMMAND_RECORD_DTYPE)
     cmd_send = tick_mono + 20_000
-    cmd_send[n_pre] = origin_mono_ns  # exact first phase-3 command origin
-    cmds['send_mono_ns'] = cmd_send
-    cmds['frame']['frame_counter'] = np.arange(1, total + 1, dtype=np.uint64)
-    cmds['frame']['joint_count'] = 35
-    cmds['frame']['hand_count'] = 2
-    cmds['frame']['timestamp'] = stamp_ms.astype(np.uint64)
-    cmds.tofile(native_dir / 'commands.bin')
+    cmd_send[n_pre] = origin_mono_ns
+    cmd_phase = np.r_[np.full(n_pre, 2), np.full(n_Formal, 3), np.full(n_post, 4)]
+    write_recording(native_dir/'feedback.csv.zst', feedback_rows(
+        recv_mono, stamps=stamp_ms, observations=stamp_ms*1_000_000-clock_offset_ns,
+        phase=cmd_phase, position=pos_wire, velocity=vel_wire, torque=tau_wire,
+    ))
+    write_recording(native_dir/'commands.csv.zst', (
+        dict(send_mono_ns=at, phase=phase, frame_counter=i+1)
+        for i, (at, phase) in enumerate(zip(cmd_send, cmd_phase))
+    ), feedback=False)
 
     (native_dir / 'clock_pairs.csv').write_text(
         'mono_before_ns,wall_ns,mono_after_ns,offset_ns,clock_segment,jump_detected\n'
@@ -149,7 +137,7 @@ def _write_synthetic_binary_capture(capture_dir: Path, ref_bundle: dict, q_fn, d
     )
 
 
-def test_common_feedforward_modes_prior_acceptance_and_binary_capture(tmp_path):
+def test_common_feedforward_modes_prior_acceptance_and_recorded_capture(tmp_path):
     robot_cfg = load_robot_config()
     nom_eng, _ = model_for(robot_cfg)
     params = np.asarray(nom_eng.rigid_parameters(), dtype=float)
@@ -234,11 +222,11 @@ def test_common_feedforward_modes_prior_acceptance_and_binary_capture(tmp_path):
     np.testing.assert_allclose(prior_h3['rotor_inertia'], ri_vec)
     np.testing.assert_allclose([j.rotor_inertia for j in prior_h3['engine'].model.joints], ri_vec)
 
-    # Binary capture reader test via read_verified_stage_capture.
-    cap_dir = tmp_path / 'bin_cap'
+    # Compressed capture reader test via read_verified_stage_capture.
+    cap_dir = tmp_path / 'recorded_capture'
     short_motion = Motion('short', 'friction', q_ready).add(0.25, q_ready, label='hold')
     short_bundle = dict(knots_ns=[0, 250_000_000], states=short_motion.metadata()['states'])
-    _write_synthetic_binary_capture(
+    _write_synthetic_capture(
         cap_dir,
         short_bundle,
         lambda t: np.broadcast_to(q_ready, (len(t), 14)),
@@ -404,7 +392,7 @@ def test_h2_stribeck_identification_and_offset_diagnostic_synthetic(tmp_path):
         return tot + offset_bias[None, :] + noise
 
     cap_dir = tmp_path / 'h2_synth/capture'
-    _write_synthetic_binary_capture(
+    _write_synthetic_capture(
         cap_dir,
         ref_bundle,
         lambda t_s: poly(t_s),
@@ -622,7 +610,7 @@ def test_h3_joint_rigid_and_rotor_inertia_identification_synthetic(tmp_path):
         return tot + rng.normal(0.0, 0.004, size=tot.shape)
 
     cap_dir = sess.root / 'h3/capture'
-    _write_synthetic_binary_capture(
+    _write_synthetic_capture(
         cap_dir,
         ref_bundle,
         lambda t_s: poly(t_s),

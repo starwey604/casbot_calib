@@ -9,6 +9,7 @@ import sys
 import time
 
 import pytest
+from casbot_calib import _core
 
 from casbot_calib import shm_fieldwork as fw
 
@@ -123,10 +124,10 @@ def test_observe_zero_commands_clock_fields_and_note(master, tmp_path):
     assert report['feedback']['hands'][0]['items'][0]['position']['first'] == 123
     import csv
     pairs = list(csv.DictReader((out/'native/clock_pairs.csv').open()))
-    rows = list(csv.DictReader((out/'native/feedback.csv').open()))
-    assert pairs
-    for row in rows:
-        assert int(row['observation_time_ns']) == int(row['source_timestamp_ms'])*1_000_000-int(pairs[0]['offset_ns'])
+    feedback = _core.read_feedback_csv_zst(out/'native/feedback.csv.zst')
+    assert pairs and not feedback['truncated_tail']
+    assert (feedback['observation_time_ns'] ==
+            feedback['source_timestamp_ms'].astype('int64')*1_000_000-int(pairs[0]['offset_ns'])).all()
     assert cli('note', out, '--text', '固定支撑下未见异常', '--phase', 'observe').returncode == 0
     assert json.loads((out/'result.json').read_text())['observations'][0]['text'] == '固定支撑下未见异常'
     assert source.joinpath('commands.bin').stat().st_size == 0
@@ -152,11 +153,11 @@ def test_c03_jog_and_c04_disabled_opposite_background(master, tmp_path):
         completed, result, out, _ = active(master, tmp_path, case, *extra)
         assert completed.returncode == 0, completed.stdout + completed.stderr
         assert result['commands']['arms'][1]['q_rad']['max']-result['commands']['arms'][1]['q_rad']['min'] > .0019
-        for data in fw.records(out/'native/commands.bin', 752):
-            for j in list(range(12))+[26, 27, 28]:
-                assert struct.unpack_from('<H', data, 8+12+j*18)[0] == 6
-            if case == 'C04':
-                assert all(struct.unpack_from('<H', data, 8+12+j*18)[0] == 6 for j in range(19,26))
+        control = _core.read_commands_csv_zst(out/'native/commands.csv.zst')['cmd_cw']
+        assert (control[:, [*range(12), 26, 27, 28]] == 6).all()
+        if case == 'C04':
+            assert (control[:, 19:26] == 6).all()
+
 
 
 @pytest.mark.slow
@@ -167,9 +168,9 @@ def test_limit_skip_and_fault_abort(master, tmp_path):
     failed, result, out, _ = active(master, tmp_path, 'C01', fault=2)
     assert failed.returncode != 0 and not result['execution_completed']
     assert 'drive_error_slot_12_42' == result['native']['reason']
-    commands = list(fw.records(out/'native/commands.bin', 752))
-    assert struct.unpack_from('<H', commands[-1], 8+12+12*18)[0] == 6
-    assert all(struct.unpack_from('<H', r, 8+12+12*18)[0] != 0x80 for r in commands)
+    control = _core.read_commands_csv_zst(out/'native/commands.csv.zst')['cmd_cw'][:, 12]
+    assert control[-1] == 6
+    assert (control != 0x80).all()
 
 
 @pytest.mark.slow
@@ -180,7 +181,7 @@ def test_c05_silence_does_not_replay(master, tmp_path):
     events = list(csv.DictReader((out/'native/events.csv').open()))
     begin = int(next(e['mono_ns'] for e in events if e['event'] == 'command_writes_stopped'))
     end = int(next(e['mono_ns'] for e in events if e['event'] == 'quiet_observation_end_disable'))
-    stamps = [struct.unpack_from('<q', d)[0] for d in fw.records(out/'native/commands.bin', 752)]
+    stamps = _core.read_commands_csv_zst(out/'native/commands.csv.zst')['send_mono_ns']
     assert not any(begin <= stamp < end for stamp in stamps)
     assert end-begin >= 95_000_000
     assert result['native']['disable_ack'] == '1'
@@ -197,8 +198,8 @@ def test_c06_own_sender_termination_passive_probe(master, tmp_path, termination)
         assert result['native'] is None
         assert result['process']['returncode'] == -signal.SIGKILL
         assert struct.unpack_from('<H', source.joinpath('commands.bin').read_bytes()[-744:], 12+12*18)[0] == 15
-        assert not (out/'probe/commands.bin').stat().st_size
-        assert (out/'probe/passive_commands.bin').stat().st_size > 0
+        assert not len(_core.read_commands_csv_zst(out/'probe/commands.csv.zst')['send_mono_ns'])
+        assert len(_core.read_commands_csv_zst(out/'probe/passive_commands.csv.zst')['send_mono_ns']) > 0
     else:
         assert result['native']['disable_ack'] == '1'
 
@@ -211,7 +212,7 @@ def test_owner_conflict_does_not_steal_channel(master, tmp_path):
                                 '--duration', '2', '--output', str(out)], stdout=subprocess.DEVNULL)
     try:
         deadline = time.monotonic()+3
-        while not (out/'feedback.bin').exists() and process.poll() is None and time.monotonic()<deadline:
+        while not (out/'feedback.csv.zst').exists() and process.poll() is None and time.monotonic()<deadline:
             time.sleep(.01)
         assert process.poll() is None
         conflict = cli('observe', '--duration', '.05', *flags(name, tmp_path/'conflict'))
@@ -223,10 +224,13 @@ def test_owner_conflict_does_not_steal_channel(master, tmp_path):
 
 def test_partial_records_reported_and_not_resumed(tmp_path):
     folder = tmp_path/'native';folder.mkdir()
-    state = bytearray(696);struct.pack_into('<Q', state, 680, 123)
-    (folder/'feedback.bin').write_bytes(struct.pack('<q', 1000)+state+b'partial')
+    from recording_fixtures import write_recording
+    path = folder/'feedback.csv.zst'
+    write_recording(path, [dict(receive_mono_ns=1000, source_timestamp_ms=123)])
+    with path.open('ab') as stream:
+        stream.write(b'partial')
     result = fw.report(tmp_path)
-    assert result['feedback']['count'] == 1 and result['feedback']['trailing_bytes'] == 7
+    assert result['feedback']['count'] == 1 and result['feedback']['truncated_tail']
     assert not result['execution_completed']
 
 
@@ -372,7 +376,7 @@ raise SystemExit(fw.main(sys.argv[1:]))
 def test_body_hold_smoke_raw_frames(tmp_path, injection, expected, ack):
     import csv
     import numpy as np
-    from casbot_calib.shm_data import COMMAND_RECORD_DTYPE, FEEDBACK_RECORD_DTYPE, URDF
+    from casbot_calib.shm_data import URDF
 
     config = json.loads((ROOT / 'configs/shm/h1_mock.json').read_text())
     config.update(urdf=str(URDF), non_arm_test_motion={
@@ -405,11 +409,14 @@ def test_body_hold_smoke_raw_frames(tmp_path, injection, expected, ack):
     bundle = json.loads((native / 'reference.json').read_text())
     assert bundle['schema'] == 'casbot_shm_reference_v2'
     assert len(bundle['non_arm_hold']['slots']) == 15 and bundle['observed_velocity_limit_rad_s'] > 0
-    records = np.fromfile(native / 'commands.bin', dtype=COMMAND_RECORD_DTYPE)
-    joints = records['frame']['joints'][:, :29]
+    records = _core.read_commands_csv_zst(native / 'commands.csv.zst')
+    joints = {field: records[column] for field, column in (
+        ('control_word', 'cmd_cw'), ('position', 'cmd_pos_raw'), ('velocity', 'cmd_vel_raw'),
+        ('torque', 'cmd_trq_raw'), ('mode', 'cmd_mode'), ('kp', 'cmd_kp_raw'), ('kd', 'cmd_kd_raw'),
+    )}
     if expected != 'cst_command_stale':
         for field in ('control_word', 'torque', 'kp', 'kd', 'velocity'):
-            assert np.all(joints[-1][field] == (6 if field == 'control_word' else 0))
+            assert np.all(joints[field][-1] == (6 if field == 'control_word' else 0))
     else:
         assert int(result['send_skipped']) > 0
     if expected in ('cst_command_stale', 'cst_feedback_stale'):
@@ -418,22 +425,23 @@ def test_body_hold_smoke_raw_frames(tmp_path, injection, expected, ack):
         if expected == 'cst_command_stale':
             last = records['send_mono_ns'][-1]
         else:
-            status = np.fromfile(native / 'feedback.bin', dtype=FEEDBACK_RECORD_DTYPE)
+            status = _core.read_feedback_csv_zst(native / 'feedback.csv.zst')
             last = status['receive_mono_ns'][-1]
         assert 19_000_000 <= failure - last < 100_000_000
     if expected == 'completed_with_disable_ack':
-        active = joints[joints[:, 4]['control_word'] == 15]
+        enabled = joints['control_word'][:, 4] == 15
+        active = {field: values[enabled] for field, values in joints.items()}
         assert np.all(active['control_word'] == 15)
-        assert np.all(active[:, 0]['position'] == 0)  # injected feedback moves after enabling
-        gains = active[:, 0]['kp']
+        assert np.all(active['position'][:, 0] == 0)  # injected feedback moves after enabling
+        gains = active['kp'][:, 0]
         assert gains[0] == 0 and gains[-1] == 4000 and np.all(np.diff(gains) >= 0)
         for slot in (4, 5, 10, 11):
-            assert np.all(active[:, slot]['mode'] == 10)
+            assert np.all(active['mode'][:, slot] == 10)
             for field in ('position', 'kp', 'kd', 'velocity'):
-                assert np.all(active[:, slot][field] == 0)
-        assert active[-1, 4]['torque'] == -3000 and active[-1, 5]['torque'] == 3000
-        assert active[-1, 10]['torque'] in (59, 60)
+                assert np.all(active[field][:, slot] == 0)
+        assert active['torque'][-1, 4] == -3000 and active['torque'][-1, 5] == 3000
+        assert active['torque'][-1, 10] in (59, 60)
         first_stream = int(result['first_stream_mono_ns'])
         middle = np.searchsorted(records['send_mono_ns'], first_stream + 500_000_000)
-        assert 1900 < joints[middle, 0]['kp'] < 2100
-        assert 25 <= joints[middle, 10]['torque'] <= 35
+        assert 1900 < joints['kp'][middle, 0] < 2100
+        assert 25 <= joints['torque'][middle, 10] <= 35

@@ -1,8 +1,7 @@
 """Independent time-axis fixtures: coarse stamps, large integer epochs and jumps."""
-import csv
-import json
 import numpy as np
 import pytest
+from recording_fixtures import arm_columns, write_recording
 from casbot_calib.shm_observations import ObservationReader
 from casbot_calib import _core
 from casbot_calib.probe_projection import probe_problem,inertia_balance
@@ -20,22 +19,28 @@ def rotor():
     return _core.ArmDynamics(m)
 
 
-def recording(root,*,receive_period=1_000_000,jump=False):
+def recording(root,*,receive_period=1_000_000,jump=False,corrupt=False):
     root.mkdir();origin=10**18+234567;wall_ms=10**12;offset=wall_ms*1_000_000-origin
     (root/'result.txt').write_text(f'first_command_mono_ns={origin}\nfirst_shm_write_mono_ns={origin-100_000_000}\n')
-    with (root/'commands.csv').open('w') as f:f.write(f'send_mono_ns,phase\n{origin-100_000_000},0\n{origin},3\n')
+    write_recording(root/'commands.csv.zst', [
+        dict(send_mono_ns=origin-100_000_000, phase=0),
+        dict(send_mono_ns=origin, phase=3),
+    ], feedback=False)
     with (root/'clock_pairs.csv').open('w') as f:
         f.write('mono_before_ns,wall_ns,mono_after_ns,offset_ns,clock_segment,jump_detected\n')
         f.write(f'{origin-1_000_000_000},{wall_ms*1_000_000-1_000_000_000},{origin-1_000_000_000},{offset},0,0\n')
         if jump:f.write(f'{origin+2_000_000_000},{wall_ms*1_000_000+3_000_000_000},{origin+2_000_000_000},{offset+1_000_000_000},1,1\n')
-    with (root/'feedback.csv').open('w') as f:
-        writer=csv.writer(f);writer.writerow(['receive_mono_ns','source_timestamp_ms','observation_time_ns','clock_segment','frame_counter','passive',*[p+str(j) for p in ('q','v','effort') for j in range(14)]])
+    def rows():
         for k in range(0,4001,5):
             t=k*.001;segment=1 if jump and k>=2000 else 0;stamp=wall_ms+k+1000*segment
             q=np.zeros(14);v=q.copy();tau=q.copy();omega=10*np.pi
             q[4]=.18*t+.004*np.sin(omega*t);v[4]=.18+.004*omega*np.cos(omega*t)
             tau[4]=5e-5*(-.004*omega**2*np.sin(omega*t))+.035*v[4]+.04
-            writer.writerow([origin+k*receive_period,stamp,origin+k*1_000_000,segment,k,0,*q,*v,*tau])
+            yield dict(receive_mono_ns=origin+k*receive_period, source_timestamp_ms=stamp,
+                       observation_time_ns=origin+k*1_000_000+(corrupt and k==5), clock_segment=segment,
+                       frame_counter=k, phase=3,
+                       **arm_columns('q', q), **arm_columns('v', v), **arm_columns('effort', tau))
+    write_recording(root/'feedback.csv.zst', rows())
     return origin
 
 
@@ -79,10 +84,8 @@ def test_clock_jump_does_not_get_sorted_or_glued_into_a_window(tmp_path):
 
 
 def test_source_formula_corruption_and_partial_tail_are_errors(tmp_path):
-    recording(tmp_path/'bad');path=tmp_path/'bad/feedback.csv'
-    lines=path.read_text().splitlines();values=lines[2].split(',');values[2]=str(int(values[2])+1);lines[2]=','.join(values)
-    path.write_text('\n'.join(lines)+'\n')
+    recording(tmp_path/'bad', corrupt=True)
     with pytest.raises(ValueError,match='不一致'):list(ObservationReader(tmp_path/'bad').rows())
-    recording(tmp_path/'tail');path=tmp_path/'tail/feedback.csv'
-    with path.open('a') as f:f.write('123,partial\n')
+    recording(tmp_path/'tail');path=tmp_path/'tail/feedback.csv.zst'
+    _core._write_csv_zst(path, '123,partial\n', append=True)
     with pytest.raises(ValueError,match='不完整'):list(ObservationReader(tmp_path/'tail').rows())

@@ -87,7 +87,9 @@ H1/H2/H3 共用机器人配置中的逐轴 `kp`、`kd`，数组顺序为左臂 I
 - **分阶段详细报告与原始数据**：
   - `h1/report.md`、`h2/report.md`、`h3/report.md`：各阶段独立验收报告（重分析时旧 `analysis/` 自动归档为 `analysis.previous_<ns>`）。
   - H1 留出 RMSE 按逐轴有效正反配对计算；未逼近、卡住或方向异常的分量自动排除。逐轴表显示有效配对数，无有效配对显示 `—`，原始窗口仍完整保留。
-  - `<阶段>/capture/`：完整 1kHz 二进制（`feedback.bin`、`commands.bin`）与事件记录。
+  - `<阶段>/capture/`：1 kHz 的 `native/feedback.csv.zst`、`native/commands.csv.zst` 与事件记录。用 `zstdcat` 查看 CSV，或用 `zstd -d` 解压到文件。
+
+旧格式会话的 `--reanalyse` 使用切换前的版本。
 
 ## 5. 闭环验收
 

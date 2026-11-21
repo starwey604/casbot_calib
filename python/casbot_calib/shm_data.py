@@ -1,4 +1,4 @@
-"""Frozen 35-slot raw-record decoding metadata and declarative wire35 dtypes."""
+"""Arm encoding constants and wire35 single-frame layouts."""
 from .model_sources import model_directory
 
 from .project_paths import ROOT
@@ -21,8 +21,6 @@ except ImportError:  # Bare system python3 before venv bootstrap
     HAND_STATUS_DTYPE = None
     COMMAND_FRAME_DTYPE = None
     STATUS_FRAME_DTYPE = None
-    FEEDBACK_RECORD_DTYPE = None
-    COMMAND_RECORD_DTYPE = None
 else:
     JOINT_COMMAND_DTYPE = _np.dtype([
         ('control_word', '<u2'),
@@ -96,16 +94,6 @@ else:
         ('reserved2', 'u1', (4,)),
     ], align=False)
 
-    FEEDBACK_RECORD_DTYPE = _np.dtype([
-        ('receive_mono_ns', '<i8'),
-        ('frame', STATUS_FRAME_DTYPE),
-    ], align=False)
-
-    COMMAND_RECORD_DTYPE = _np.dtype([
-        ('send_mono_ns', '<i8'),
-        ('frame', COMMAND_FRAME_DTYPE),
-    ], align=False)
-
     assert JOINT_COMMAND_DTYPE.itemsize == 18
     assert JOINT_STATUS_DTYPE.itemsize == 16
     assert HAND_JOINT_COMMAND_DTYPE.itemsize == 6
@@ -114,5 +102,3 @@ else:
     assert HAND_STATUS_DTYPE.itemsize == 52
     assert COMMAND_FRAME_DTYPE.itemsize == 744
     assert STATUS_FRAME_DTYPE.itemsize == 696
-    assert FEEDBACK_RECORD_DTYPE.itemsize == 704
-    assert COMMAND_RECORD_DTYPE.itemsize == 752

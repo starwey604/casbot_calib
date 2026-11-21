@@ -7,7 +7,8 @@ from casbot_calib.pipeline.session import Session
 from casbot_calib.pipeline.stage import resolve_stages
 from casbot_calib.pipeline.takeover import ensure_ready_channel
 from casbot_calib.trical.controller import feedback_means, correction
-from casbot_calib.shm_data import FEEDBACK_RECORD_DTYPE, DIRECTION, OFFSET
+from casbot_calib.shm_data import DIRECTION, OFFSET
+from recording_fixtures import feedback_rows, write_recording
 from casbot_calib.model_context import load_context
 
 
@@ -33,12 +34,10 @@ def test_private_bare_flange_takeover_without_hand_snapshot(tmp_path):
     assert not value['takeover_performed']
 
 
-def test_feedback_bin_window_mean_is_unique_frame_weighted(tmp_path):
-    records = np.zeros(5, dtype=FEEDBACK_RECORD_DTYPE)
-    records['receive_mono_ns'] = [10,20,30,40,50]
-    records['frame']['frame_counter'] = [1,2,2,3,4]
-    records['frame']['joints']['position'][:,12:26] = np.array([0,1000,1000,3000,4000])[:,None]
-    path = tmp_path/'feedback.bin'; records.tofile(path)
+def test_feedback_window_mean_is_unique_frame_weighted(tmp_path):
+    positions = np.repeat(np.array([0, 1000, 1000, 3000, 4000])[:, None], 14, axis=1)
+    path = tmp_path/'feedback.csv.zst'
+    write_recording(path, feedback_rows([10, 20, 30, 40, 50], counters=[1, 2, 2, 3, 4], position=positions))
     actual = feedback_means(path, [dict(t_start_ns=10,t_end_ns=40)])[0]
     np.testing.assert_allclose(actual, np.array(OFFSET)+.002*np.array(DIRECTION))
 
@@ -106,13 +105,10 @@ def test_first_ball_insertion_is_two_2_5mm_steps_for_both_grids():
         routes.check_local('A', contact[1], contact[2])
 
 
-def test_capture_analysis_recomputes_q_from_binary_not_target(tmp_path):
+def test_capture_analysis_recomputes_q_from_recorded_feedback(tmp_path):
     from casbot_calib.trical.controller import analyse_capture
     native = tmp_path/'native'; native.mkdir()
-    records = np.zeros(2,dtype=FEEDBACK_RECORD_DTYPE)
-    records['receive_mono_ns'] = [10,20]
-    records['frame']['frame_counter'] = [1,2]
-    records.tofile(native/'feedback.bin')
+    write_recording(native/'feedback.csv.zst', feedback_rows([10, 20], position=np.zeros((2, 14))))
     (tmp_path/'windows.json').write_text(json.dumps([dict(target_q_rad=[99.]*14,t_start_ns=0,t_end_ns=20)]))
     actual = analyse_capture(tmp_path)[0]
     np.testing.assert_array_equal(actual['q_rad'],OFFSET)

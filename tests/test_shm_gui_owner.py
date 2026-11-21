@@ -1,5 +1,4 @@
 """Native GUI sessions exercise private SHM only, including independent leases."""
-import csv
 import json
 import os
 from pathlib import Path
@@ -10,6 +9,7 @@ import threading
 import time
 
 import pytest
+from casbot_calib import _core
 from casbot_calib.shm_data import URDF
 from casbot_calib.shm_gui_protocol import read_frame, telemetry, SIZE
 from test_shm_fieldwork import master, NATIVE, ROOT
@@ -113,7 +113,8 @@ def test_eof_and_signal_disable_and_preserve_results(owner):
     o,_,_=owner();o.start();o.p.stdin.close();o.p.wait(timeout=3)
     result=json.loads((o.root/'result.json').read_text())
     assert result['disable_ack'] and result['reason']=='bridge_eof'
-    rows=list(csv.DictReader((o.root/'feedback.csv').open()));assert int(rows[-1]['status12'])&0x6f==0x21
+    rows = _core.read_feedback_csv_zst(o.root/'feedback.csv.zst')
+    assert rows['status'][-1, 12] & 0x6f == 0x21
 
 
 @pytest.mark.slow
@@ -130,6 +131,11 @@ def test_budget_stops_recording_not_control(owner):
     o,_,_=owner(budget=.02);o.start();o.wait(lambda:o.latest['recording_stopped'],renew=True)
     assert o.latest['phase']==3
     o.send('stop');o.wait(lambda:o.latest['phase']==-1);assert o.latest['disable_ack']
+    capacity = json.loads((o.root/'recording_stopped.json').read_text())
+    streams = ('commands.csv.zst', 'feedback.csv.zst', 'events.csv', 'clock_pairs.csv',
+               'queues.csv', 'observed_limits.csv', 'controls.jsonl')
+    assert capacity['bytes'] == sum((o.root/name).stat().st_size for name in streams)
+    assert capacity['bytes'] >= capacity['budget_bytes']
 
 
 @pytest.mark.slow

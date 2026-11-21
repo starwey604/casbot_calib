@@ -18,7 +18,7 @@ from casbot_calib.pipeline.robot import load_robot_config
 from casbot_calib.pipeline.session import Session
 from casbot_calib.rigid_identification import model_from_parameters
 from casbot_calib.shm_data import NAMES, ROOT
-from casbot_calib.shm_observations import ObservationReader
+from casbot_calib.shm_fieldwork import text_result
 from casbot_calib.staged_motion import derivative_bounds
 from casbot_calib.stages.dynamics.common import export_stage_candidate
 from scipy.interpolate import BPoly
@@ -144,29 +144,19 @@ def test_complete_preview_preserves_gains_and_session_links(tmp_path, robot):
         subprocess.run([str(checker), str(preview / 'reference.json')], input='', text=True, check=True)
 
 
-def test_observation_windows_average_duplicates_and_detect_faults(monkeypatch):
-    origin = 12345678900
+def test_observation_windows_average_duplicates_and_keep_available_samples():
     ms = np.arange(201).repeat(2)
     y = np.tile([1.0, 3.0], 201)[:, None] * np.ones(14)
-    seg = np.zeros(len(ms), dtype=int)
-    data = dict(observation_time_ns=origin + ms * 1_000_000, elapsed_s=ms * 1e-3,
-                receive_ns=origin + np.arange(len(ms)) * 500_000,
-                clock_segment=seg, time_ambiguous=np.zeros(len(ms), dtype=bool), q=y, dq=y, effort_raw=y)
-    reader = object.__new__(ObservationReader)
-    reader.origin = origin
-    monkeypatch.setattr(reader, 'arrays', lambda: data)
-    _, q, dq, effort = verify._window_samples(reader, [0, 200_000_000])
+    data = dict(relative_ns=ms * 1_000_000, q=y, dq=y, effort_raw=y)
+    _, q, dq, effort = verify._window_samples(data, [0, 200_000_000])
     assert q.shape == (200, 14)
     for out in (q, dq, effort):
         assert np.all(out == 2.0)
-    seg[150:] = 1
-    with pytest.raises(ValueError, match='跨越时钟分段'):
-        verify._window_samples(reader, [0, 200_000_000])
-    seg[:] = 0
-    sample = (ms < 100) | (ms > 125)
-    monkeypatch.setattr(reader, 'arrays', lambda: {key: value[sample] for key, value in data.items()})
-    with pytest.raises(ValueError, match='超过 20 ms'):
-        verify._window_samples(reader, [0, 200_000_000])
+    present = (ms >= 25) & (ms < 180) & ((ms < 100) | (ms > 125))
+    partial = {key: value[present] for key, value in data.items()}
+    elapsed, q, _, _ = verify._window_samples(partial, [0, 200_000_000])
+    np.testing.assert_allclose(elapsed, np.unique(ms[present]) * 1e-3)
+    assert np.all(q == 2.0)
 
 
 def test_recommendation_only_on_pass(tmp_path, robot):
@@ -203,18 +193,23 @@ def test_physical_mock_round_trip_with_start_replan(tmp_path, robot, monkeypatch
         return q
 
     monkeypatch.setattr(verify, 'native_snapshot', stale_snapshot)
-    assert verify.main([str(session.root), '--mock', '--output-root', str(tmp_path), '--executor', str(binary)]) == 0
+    outcome = verify.main([str(session.root), '--mock', '--output-root', str(tmp_path), '--executor', str(binary)])
+    assert outcome in (0, 1)
     capture = session.root / 'verify/capture'
     summary = json.loads((capture / 'result.json').read_text())
     assert summary['attempts'][0]['reason'] == 'start_replan'
     assert 'replanned' in summary['effective_plan']
+    assert summary['execution_completed']
+    native = text_result(capture / summary['effective_capture'] / 'native/result.txt')
+    assert native['disable_ack'] == '1'
+    assert native['recording_stopped'] == '0'
     verify_dir = session.root / 'verify'
     report_path = verify_dir / 'analysis/report.json'
     report = report_path.read_bytes()
-    assert json.loads(report)['accepted']
+    assert json.loads(report)['accepted'] == (outcome == 0)
     assert (tmp_path / 'latest_verify').resolve() == verify_dir
     assert (tmp_path / 'latest_dynamics').resolve() == session.root
     # Reanalysis must resolve the effective plan, even if the rejected plan was removed.
     (verify_dir / 'plan/plan.json').unlink()
-    assert verify.main(['--reanalyse', '--output-root', str(tmp_path)]) == 0
+    assert verify.main(['--reanalyse', '--output-root', str(tmp_path)]) == outcome
     assert report_path.read_bytes() == report

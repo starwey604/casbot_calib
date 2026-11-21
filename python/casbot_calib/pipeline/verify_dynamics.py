@@ -20,7 +20,7 @@ from ..data import write_json
 from ..dynamic_export import _restore_runtime
 from ..model_runtime import context_for, model_for
 from ..shm_data import DIRECTION, NAMES, ROOT
-from ..shm_observations import ObservationReader
+from ..shm_observations import native_directory
 from ..shm_ready import ready_position
 from ..shm_reference import save_bundle
 from ..shm_takeover import HandoffError
@@ -318,28 +318,23 @@ def plan_verification(q_start, robot_config, output, *, delivery=None, clips=Non
     return plan
 
 
-def _window_samples(reader, bounds_ns):
-    start, stop = np.asarray(bounds_ns) * 1e-9
-    data, elapsed, _ = reader.window((start, stop))
-    inside = (elapsed >= start) & (elapsed < stop)
-    ns, inverse, count = np.unique(data['observation_time_ns'][inside], return_inverse=True, return_counts=True)
-    elapsed = (ns - reader.origin) * 1e-9
-    if len(ns) < max(50, (bounds_ns[1] - bounds_ns[0]) // 2_000_000):
-        raise ValueError(f'窗口唯一时间戳不足（{len(ns)} 个）')
-    gap = np.diff(ns).max()
-    if gap > 20_000_000:
-        raise ValueError(f'窗口样本间隔 {gap * 1e-6:.1f} ms 超过 20 ms')
-    if ns[0] - reader.origin - bounds_ns[0] > 10_000_000 or bounds_ns[1] - (ns[-1] - reader.origin) > 10_000_000:
-        raise ValueError('窗口首末覆盖缺口超过 10 ms')
-
+def _window_samples(data, bounds_ns):
+    relative = data['relative_ns']
+    start, stop = bounds_ns
+    inside = (relative >= start) & (relative < stop)
+    ns, inverse, count = np.unique(relative[inside], return_inverse=True, return_counts=True)
+    if not len(ns):
+        raise ValueError('窗口没有反馈样本')
     rows = np.column_stack([data[key][inside] for key in ('q', 'dq', 'effort_raw')])
     merged = np.zeros((len(ns), rows.shape[1]))
     np.add.at(merged, inverse, rows)
     q, dq, effort = np.split(merged / count[:, None], 3, axis=1)
-    return elapsed, q, dq, effort
+    return ns * 1e-9, q, dq, effort
 
 
 def _time_weights(t):
+    if not len(t):
+        return np.empty(0)
     dt = np.diff(t) / 2
     return np.r_[dt, 0.] + np.r_[0., dt]
 
@@ -365,8 +360,8 @@ def _scalar_errors(values, weights, *, percentile=False):
 LAG_GRID_MS = np.arange(-80.0, 80.5, 0.5)
 
 
-def _window_metrics(reader, bounds_ns, curve, gains, nominal):
-    elapsed, q, dq, _ = _window_samples(reader, bounds_ns)
+def _window_metrics(observations, bounds_ns, curve, gains, nominal):
+    elapsed, q, dq, _ = _window_samples(observations, bounds_ns)
     q_ref, dq_ref = curve(elapsed), curve(elapsed, nu=1)
     joint_error = q_ref - q
     velocity_error = dq - dq_ref
@@ -382,13 +377,23 @@ def _window_metrics(reader, bounds_ns, curve, gains, nominal):
     grid_ns = np.arange(bounds_ns[0], bounds_ns[1], 1_000_000, dtype=np.int64)
     central = grid_ns[(grid_ns >= bounds_ns[0] + 300_000_000) & (grid_ns < bounds_ns[1] - 300_000_000)]
     t = central * 1e-9
-    q_interp = interp1d(elapsed, q, axis=0, assume_sorted=True)
-    reference = curve(t)
-    lag_cost = np.array([np.sum((q_interp(t + lag * 1e-3) - reference) ** 2) for lag in LAG_GRID_MS])
+    lags_s = LAG_GRID_MS * 1e-3
+    t = t[(t + lags_s[0] >= elapsed[0]) & (t + lags_s[-1] <= elapsed[-1])]
+    lag_cost = None
+    if len(t):
+        q_interp = interp1d(elapsed, q, axis=0, assume_sorted=True)
+        reference = curve(t)
+        lag_cost = np.array([np.sum((q_interp(t + lag) - reference) ** 2) for lag in lags_s])
     grid_s = grid_ns * 1e-9
     grid_s = grid_s[(grid_s >= elapsed[0]) & (grid_s <= elapsed[-1])]
-    uniform = interp1d(elapsed, velocity_error, axis=0, assume_sorted=True)(grid_s)
-    jitter = sosfiltfilt(butter(4, 15.0, btype='high', fs=1000.0, output='sos'), uniform, axis=0)
+    jitter = np.empty((0, q.shape[1]))
+    if len(grid_s) > 1:
+        uniform = interp1d(elapsed, velocity_error, axis=0, assume_sorted=True)(grid_s)
+        sos = butter(4, 15.0, btype='high', fs=1000.0, output='sos')
+        pad = min(3 * (2 * len(sos) + 1), len(grid_s) - 1)
+        jitter = sosfiltfilt(sos, uniform, axis=0, padlen=pad)
+    else:
+        grid_s = grid_s[:0]
 
     return dict(weights=_time_weights(elapsed), jitter_weights=_time_weights(grid_s),
                 flange_pos=np.column_stack(flange_pos), flange_rot=np.column_stack(flange_rot),
@@ -399,16 +404,22 @@ def _window_metrics(reader, bounds_ns, curve, gains, nominal):
 def _summarize(windows):
     data = {key: np.concatenate([window[key] for window in windows]) for key in windows[0] if key != 'lag_cost'}
     weights = data['weights']
+    duration = float(weights.sum())
+    if not duration:
+        weights = np.ones_like(weights)
     flange = _scalar_errors(data['flange_pos'], weights, percentile=True)
     joint = _scalar_errors(data['joint'], weights)
     near = [0, 1, 2, 3, 7, 8, 9, 10]
     far = [4, 5, 6, 11, 12, 13]
-    lag_cost = np.sum([window['lag_cost'] for window in windows], axis=0)
-    lags = LAG_GRID_MS[lag_cost == lag_cost.min()]
-    lag = float(lags[np.argmin(np.abs(lags))])
-    jitter = _rmse(data['jitter'], data['jitter_weights'])
+    costs = [window['lag_cost'] for window in windows if window['lag_cost'] is not None]
+    lag = None
+    if costs:
+        lag_cost = np.sum(costs, axis=0)
+        lags = LAG_GRID_MS[lag_cost == lag_cost.min()]
+        lag = float(lags[np.argmin(np.abs(lags))])
+    jitter = _rmse(data['jitter'], data['jitter_weights']) if len(data['jitter']) else None
     return dict(
-        samples=len(weights), duration_s=float(weights.sum()),
+        samples=len(weights), duration_s=duration,
         flange_pos_rmse_mm=flange['rmse'], flange_pos_p95_mm=flange['p95'], flange_pos_max_mm=flange['max'],
         flange_rot_rmse_deg=_scalar_errors(data['flange_rot'], weights)['rmse'],
         flange_by_arm={
@@ -419,26 +430,24 @@ def _summarize(windows):
         joint_rmse_deg=joint['rmse'], joint_max_deg=joint['max'],
         joint_proximal_deg=_scalar_errors(data['joint'][:, near], weights),
         joint_distal_deg=_scalar_errors(data['joint'][:, far], weights),
-        phase_lag_ms=lag, phase_lag_at_grid_limit=abs(lag) == float(LAG_GRID_MS[-1]),
-        jitter_rms_rad_s=float(np.sqrt(np.mean(jitter ** 2))),
+        phase_lag_ms=lag, phase_lag_at_grid_limit=lag is not None and abs(lag) == float(LAG_GRID_MS[-1]),
+        jitter_rms_rad_s=float(np.sqrt(np.mean(jitter ** 2))) if jitter is not None else None,
         pd_effort_rmse_nm=_scalar_errors(data['pd'], weights)['rmse'],
         per_axis=[
-            dict(id=i + 12, joint=name, joint_rmse_deg=float(rms), joint_max_deg=float(peak), jitter_rms_rad_s=float(jit))
-            for i, (name, rms, peak, jit) in enumerate(zip(
-                NAMES, _rmse(data['joint'], weights), np.max(np.abs(data['joint']), axis=0), jitter,
+            dict(id=i + 12, joint=name, joint_rmse_deg=float(rms), joint_max_deg=float(peak),
+                 jitter_rms_rad_s=float(jitter[i]) if jitter is not None else None)
+            for i, (name, rms, peak) in enumerate(zip(
+                NAMES, _rmse(data['joint'], weights), np.max(np.abs(data['joint']), axis=0),
             ))
         ],
     )
 
 
 def _acceptance(groups):
-    reasons = []
-    for name, entries in groups.items():
-        for instrument in INSTRUMENTS:
-            if not entries[instrument]['valid']:
-                reasons.append(f'{name} / {instrument}：{entries[instrument]["invalid_reason"]}')
+    compared = ('G0_stiff', 'G0_soft', 'G1_soft', 'G3_soft')
+    reasons = [f'{name}：没有可计算的反馈' for name in compared if not groups[name]['overall']['valid']]
     if reasons:
-        return dict(accepted=False, verdict='INVALID', reasons=reasons)
+        return dict(accepted=False, verdict='UNAVAILABLE', reasons=reasons)
 
     target = groups['G3_soft']['overall']
     for name in ('G0_soft', 'G1_soft'):
@@ -449,7 +458,8 @@ def _acceptance(groups):
     stiff = groups['G0_stiff']['overall']
     if target['flange_pos_rmse_mm'] > stiff['flange_pos_rmse_mm']:
         reasons.append('G3_soft 的法兰位置 RMSE 高于 G0_stiff')
-    if target['jitter_rms_rad_s'] >= stiff['jitter_rms_rad_s']:
+    target_jitter, stiff_jitter = target['jitter_rms_rad_s'], stiff['jitter_rms_rad_s']
+    if target_jitter is not None and stiff_jitter is not None and target_jitter >= stiff_jitter:
         reasons.append('G3_soft 的高频速度残差 RMS 未低于 G0_stiff')
     return dict(accepted=not reasons, verdict='FAIL' if reasons else 'PASS', reasons=reasons)
 
@@ -479,11 +489,16 @@ def _write_report(verify_dir, plan, report):
             if not row['valid']:
                 lines.append(f'| {name} | — | — | — | — | — |')
                 continue
-            marker = '*' if row['phase_lag_at_grid_limit'] else ''
+            lag = row['phase_lag_ms']
+            lag_text = f'{lag:+.1f}' if lag is not None else '—'
+            if row['phase_lag_at_grid_limit']:
+                lag_text += '*'
+            jitter = row['jitter_rms_rad_s']
+            jitter_text = f'{jitter:.6f}' if jitter is not None else '—'
             lines.append(
                 f'| {name} | {row["flange_pos_rmse_mm"]:.3f} / {row["flange_pos_p95_mm"]:.3f} / {row["flange_pos_max_mm"]:.3f}'
-                f' | {row["joint_rmse_deg"]:.3f} / {row["joint_max_deg"]:.3f} | {row["phase_lag_ms"]:+.1f}{marker}'
-                f' | {row["jitter_rms_rad_s"]:.6f} | {row["pd_effort_rmse_nm"]:.4f} |'
+                f' | {row["joint_rmse_deg"]:.3f} / {row["joint_max_deg"]:.3f} | {lag_text}'
+                f' | {jitter_text} | {row["pd_effort_rmse_nm"]:.4f} |'
             )
     if any(row.get('phase_lag_at_grid_limit') for entries in report['groups'].values() for row in entries.values()):
         lines.extend(['', '* 相位搜索达到 ±80 ms 网格边界。'])
@@ -493,7 +508,11 @@ def _write_report(verify_dir, plan, report):
                       '|---|' + '---:|' * len(GROUPS)])
         for i in range(14):
             axes = [report['groups'][group]['overall']['per_axis'][i] for group in GROUPS]
-            cells = [f'{row["joint_rmse_deg"]:.3f}° / {row["jitter_rms_rad_s"]:.5f} rad/s' for row in axes]
+            cells = []
+            for row in axes:
+                jitter = row['jitter_rms_rad_s']
+                jitter_text = f'{jitter:.5f} rad/s' if jitter is not None else '—'
+                cells.append(f'{row["joint_rmse_deg"]:.3f}° / {jitter_text}')
             lines.append(f'| {i + 12} | ' + ' | '.join(cells) + ' |')
     if report['accepted']:
         lines.extend(['', '推荐运行配置见 `analysis/recommended_band_gains.yaml`。'])
@@ -508,9 +527,10 @@ def analyse_verification(verify_dir):
     plan = _read_json(plan_dir / 'plan.json')
     robot = load_robot_config(plan['robot_config'])
     fixture = trical_profile(context_for(robot).bundle, None) if 'fixture_assembly_sha256' in plan else None
-    _, _, feedback_proof = read_verified_stage_capture(plan, capture_dir, robot, collision_profile=fixture)
-    reader = ObservationReader(capture_dir)
-    reference = _read_json(reader.root / 'reference.json')
+    observations, _, feedback_proof = read_verified_stage_capture(
+        plan, capture_dir, robot, collision_profile=fixture, minimum_feedback_rows=0,
+    )
+    reference = _read_json(native_directory(capture_dir) / 'reference.json')
     curve = BPoly.from_derivatives(np.asarray(reference['knots_ns']) * 1e-9, reference['states'])
     nominal, _ = model_for(robot)
 
@@ -520,14 +540,14 @@ def analyse_verification(verify_dir):
         windows, entries = [], {}
         for instrument in INSTRUMENTS:
             try:
-                window = _window_metrics(reader, row[instrument], curve, row, nominal)
+                window = _window_metrics(observations, row[instrument], curve, row, nominal)
             except ValueError as error:
                 entries[instrument] = dict(valid=False, invalid_reason=str(error))
                 continue
             windows.append(window)
             entries[instrument] = dict(valid=True, **_summarize([window]))
-        entries['overall'] = (dict(valid=True, **_summarize(windows)) if len(windows) == len(INSTRUMENTS)
-                              else dict(valid=False, invalid_reason='存在无效子窗'))
+        entries['overall'] = (dict(valid=True, **_summarize(windows)) if windows
+                              else dict(valid=False, invalid_reason='没有可计算的反馈'))
         groups[name] = entries
     report = dict(
         **_acceptance(groups), groups=groups,

@@ -75,7 +75,7 @@ def export_video(source,output,*,cancel_check=None):
     manifest=load_snapshot(source)
     if output.exists():raise ValueError('视频目标已存在')
     output.parent.mkdir(parents=True,exist_ok=True);temporary=output.with_name(output.stem+'.pending.mp4')
-    reader=VideoFeedback(source/'native/feedback.csv',cancel_check,receive_column='receive_mono_ns')
+    reader=VideoFeedback(source/'native/feedback.csv.zst',cancel_check,receive_column='receive_mono_ns')
     metadata=json.loads((source/'session.json').read_text());render_root=output.parent/('video_view_'+uuid.uuid4().hex[:8])
     writer=None;samples=reader.frames()
     try:

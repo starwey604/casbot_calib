@@ -3,15 +3,14 @@ import csv
 import json
 import os
 from pathlib import Path
-import struct
 import subprocess
 import numpy as np
 import pytest
+from casbot_calib import _core
 from casbot_calib.model_runtime import model_for, urdf_for
 from casbot_calib.pipeline.native import execute_with_start_replan, native_snapshot, open_mock_context
 from casbot_calib.pipeline.robot import load_robot_config
 from casbot_calib.shm_data import ROOT
-from casbot_calib.shm_fieldwork import records
 from casbot_calib.shm_ready import handover_fraction, preparation, ready_position
 from casbot_calib.stages.dynamics import analyse_h1, load_h1_recipe, plan_h1
 
@@ -143,18 +142,21 @@ def test_one_enable_cycle_ready_then_h1_physical_capture_and_analysis(tmp_path, 
     assert names.count('enabling_at_start') == 1
     assert names.index('ready_begin') < names.index('ready_field_handover_begin') < names.index('h1_calibration_begin') < names.index('exiting_disable')
 
-    with (child / 'native/commands.csv').open() as f:
-        commands = list(csv.DictReader(f))
-    stream = [r for r in commands if r['phase'] == '3']
-    origin = int(stream[0]['send_mono_ns'])
-    assert [int(r['phase']) for r in commands] == sorted(int(r['phase']) for r in commands)
-    early = [r for r in stream if int(r['send_mono_ns']) - origin < m['preparation']['move_end_ns']]
-    assert early and all(float(r['kp0']) == 20 and float(r['kd0']) == 2 and all(float(r['effort' + str(j)]) == 0 for j in range(14)) for r in early)
-    late = [r for r in stream if int(r['send_mono_ns']) - origin >= m['preparation']['handover_end_ns']]
-    assert late and all(float(r['kp0']) == 30 and float(r['kd0']) == 3 for r in late)
+    commands = _core.read_commands_csv_zst(child / 'native/commands.csv.zst')
+    phase = commands['phase']
+    stream = phase == 3
+    sent = commands['send_mono_ns'][stream]
+    elapsed = sent - sent[0]
+    assert (phase[:-1] <= phase[1:]).all()
+    early = elapsed < m['preparation']['move_end_ns']
+    kp, kd = commands['kp'][stream, 0], commands['kd'][stream, 0]
+    assert early.any() and (kp[early] == 20).all() and (kd[early] == 2).all()
+    assert (commands['effort'][stream][early] == 0).all()
+    late = elapsed >= m['preparation']['handover_end_ns']
+    assert late.any() and (kp[late] == 30).all() and (kd[late] == 3).all()
     middle_ns = (m['preparation']['move_end_ns'] + m['preparation']['handover_end_ns']) // 2
-    middle = min(stream, key=lambda r: abs(int(r['send_mono_ns']) - origin - middle_ns))
-    assert abs(float(middle['kp0']) - 25) < 0.2 and abs(float(middle['kd0']) - 2.5) < 0.11
+    middle = abs(elapsed-middle_ns).argmin()
+    assert abs(kp[middle] - 25) < 0.2 and abs(kd[middle] - 2.5) < 0.11
 
     report = analyse_h1(eff_plan, tmp_path / 'capture', tmp_path / 'analysis')
     assert report['execution_completed'] and report['analysis_available']
@@ -231,8 +233,8 @@ def test_preparation_fault_disables_without_entering_formal_reference(tmp_path, 
     assert code != 0 and len(result['attempts']) == 1 and not result['execution_completed']
     native_result = json.loads((child / 'result.json').read_text())['native']
     assert 'drive_error' in native_result['reason'] and native_result['disable_ack'] == '0'
-    raw = list(records(child / 'native/commands.bin', 752))
-    assert raw and all(struct.unpack_from('<H', raw[-1], 8 + 12 + j * 18)[0] == 6 for j in range(12, 26))
-    assert all(struct.unpack_from('<H', row, 8 + 12 + 12 * 18)[0] != 0x80 for row in raw)
+    control = _core.read_commands_csv_zst(child / 'native/commands.csv.zst')['cmd_cw']
+    assert len(control) and (control[-1, 12:26] == 6).all()
+    assert (control[:, 12] != 0x80).all()
     with (child / 'native/events.csv').open() as f:
         assert 'h1_calibration_begin' not in [r['event'] for r in csv.DictReader(f)]

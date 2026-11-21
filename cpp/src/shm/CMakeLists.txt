@@ -55,21 +55,18 @@ install(EXPORT casbot_calibShmTargets FILE casbot_calibShmTargets.cmake NAMESPAC
   DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/casbot_calib COMPONENT Shm)
 
 if(BUILD_TESTING)
-  if(CALIB_BUILD_CORE)
-    find_program(CALIB_SHM_TEST_PYTHON NAMES python3)
-    if(CALIB_SHM_TEST_PYTHON)
-      add_test(NAME shm_fieldwork_cli COMMAND ${CALIB_SHM_TEST_PYTHON}
-        ${PROJECT_SOURCE_DIR}/scripts/shm/verify_fieldwork.py
-        --bin-dir $<TARGET_FILE_DIR:shm_executor>)
-      set_tests_properties(shm_fieldwork_cli PROPERTIES LABELS "shm" TIMEOUT 45)
-      if(CALIB_BUILD_SHM_MOCK)
-        add_test(NAME shm_physics_cli COMMAND ${CALIB_SHM_TEST_PYTHON}
-          ${PROJECT_SOURCE_DIR}/scripts/shm/verify_physics.py --bin-dir $<TARGET_FILE_DIR:shm_executor>)
-        set_tests_properties(shm_physics_cli PROPERTIES LABELS "shm;physics" TIMEOUT 45)
-        add_test(NAME shm_trical_cli COMMAND ${CALIB_SHM_TEST_PYTHON}
-          ${PROJECT_SOURCE_DIR}/scripts/shm/verify_trical.py --bin-dir $<TARGET_FILE_DIR:shm_trical_executor>)
-        set_tests_properties(shm_trical_cli PROPERTIES LABELS "shm;physics" TIMEOUT 45)
-      endif()
+  if(CALIB_BUILD_PYTHON)
+    add_test(NAME shm_fieldwork_cli COMMAND ${Python_EXECUTABLE}
+      ${PROJECT_SOURCE_DIR}/scripts/shm/verify_fieldwork.py
+      --bin-dir $<TARGET_FILE_DIR:shm_executor>)
+    set_tests_properties(shm_fieldwork_cli PROPERTIES LABELS "shm" TIMEOUT 45)
+    if(CALIB_BUILD_SHM_MOCK)
+      add_test(NAME shm_physics_cli COMMAND ${Python_EXECUTABLE}
+        ${PROJECT_SOURCE_DIR}/scripts/shm/verify_physics.py --bin-dir $<TARGET_FILE_DIR:shm_executor>)
+      set_tests_properties(shm_physics_cli PROPERTIES LABELS "shm;physics" TIMEOUT 45)
+      add_test(NAME shm_trical_cli COMMAND ${Python_EXECUTABLE}
+        ${PROJECT_SOURCE_DIR}/scripts/shm/verify_trical.py --bin-dir $<TARGET_FILE_DIR:shm_trical_executor>)
+      set_tests_properties(shm_trical_cli PROPERTIES LABELS "shm;physics" TIMEOUT 45)
     endif()
   endif()
   add_executable(shm_field_fixture ${PROJECT_SOURCE_DIR}/cpp/tests/shm_field_fixture.cpp)

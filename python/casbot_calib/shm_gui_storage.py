@@ -1,12 +1,10 @@
 """Recoverable GUI recording prefixes. No SHM connection or control side effects."""
-import csv
 import json
 import os
 from pathlib import Path
 import shutil
 import time
 
-PAIRS=(('feedback',704),('commands',752))
 
 
 def _csv_prefix(source,target,limit=None,cancel=None):
@@ -41,11 +39,11 @@ def snapshot(source,output,*,cancel=None):
     if output==source or source in output.parents:raise ValueError('快照须位于运行工作区之外')
     output.mkdir(parents=True,exist_ok=False);native=output/'native';native.mkdir()
     rows={};files={};closed_at_start=(source/'native/result.json').is_file()
-    for name,width in PAIRS:
-        raw=source/'native'/f'{name}.bin';table=source/'native'/f'{name}.csv'
-        if not raw.exists() or not table.exists():continue
-        rows[name]=_csv_prefix(table,native/table.name,raw.stat().st_size//width,cancel)
-        _bytes_prefix(raw,native/raw.name,rows[name]*width,cancel)
+    from . import _core
+    for name in ('feedback', 'commands'):
+        table = source/'native'/f'{name}.csv.zst'
+        if table.exists():
+            rows[name] = _core.copy_complete_csv_zst_prefix(table, native/table.name, cancel)
     for name in ('events.csv','clock_pairs.csv','observed_limits.csv','queues.csv'):
         src=source/'native'/name
         if src.exists():_csv_prefix(src,native/name)
@@ -95,13 +93,5 @@ def load_snapshot(path):
 
 
 def last_feedback(path):
-    """Tail read for opening a large archive, not a full-table scan."""
-    with Path(path).open('rb') as stream:
-        header=stream.readline().decode().strip().split(',');stream.seek(0,2);size=stream.tell()
-        offset=max(0,size-65536);stream.seek(offset)
-        if offset:stream.readline()
-        lines=stream.read().decode().splitlines()
-    for line in reversed(lines):
-        row=next(csv.reader([line]))
-        if len(row)==len(header) and row!=header:return dict(zip(header,row))
-    raise ValueError('快照没有完整反馈')
+    from . import _core
+    return _core.last_feedback_csv_zst(path)

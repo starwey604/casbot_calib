@@ -9,6 +9,7 @@ import subprocess
 import sys
 import time
 import pytest
+from casbot_calib import _core
 import yaml
 from casbot_calib.pipeline.runner import build_parser, run_pipeline
 from casbot_calib.pipeline.takeover import CHANNEL_BYTES, QUEUE_MAGIC, STATUS_OFFSET, ensure_ready_channel
@@ -242,7 +243,7 @@ def test_hold_body_h1_cli_and_offline_reanalysis(tmp_path):
 def test_h1_operator_stop(tmp_path, signals, hold_body):
     import numpy as np
     from casbot_calib.model_runtime import model_for
-    from casbot_calib.shm_data import COMMAND_RECORD_DTYPE, DIRECTION, FEEDBACK_RECORD_DTYPE, OFFSET, URDF
+    from casbot_calib.shm_data import URDF
     from casbot_calib.shm_fieldwork import text_result
     from casbot_calib.shm_ready import ready_position
 
@@ -308,9 +309,8 @@ def test_h1_operator_stop(tmp_path, signals, hold_body):
 
     assert result['reason'] == 'operator_soft_stop' and '已复位并收到失能应答' in log
     assert event_times['soft_stop_return_begin'] < event_times['soft_stop_disable'] < event_times['disable_ack']
-    frames = np.fromfile(native / 'commands.bin', dtype=COMMAND_RECORD_DTYPE)
-    joints = frames['frame']['joints']
-    q = joints['position'][:, 12:26] * 1e-6 * DIRECTION + OFFSET
+    frames = _core.read_commands_csv_zst(native / 'commands.csv.zst')
+    q = frames['q']
     begin, end = np.searchsorted(frames['send_mono_ns'],
                                 [event_times['soft_stop_return_begin'], event_times['soft_stop_disable']])
     measured_start = q[0]
@@ -318,18 +318,18 @@ def test_h1_operator_stop(tmp_path, signals, hold_body):
     assert q_return[0, 0] > .02 and measured_start[0] < -.03
     assert np.min(np.max(np.abs(q_return - ready_position()), axis=1)) < 5e-6
     np.testing.assert_allclose(q_return[-1], measured_start, atol=2e-6)
-    arm = joints[begin - 1:begin + 2, 12:26]
-    for field, tolerance in (('position', 2500), ('velocity', 10000), ('torque', 10)):
-        assert np.max(np.abs(np.diff(arm[field].astype(int), axis=0))) < tolerance
-    feedback = np.fromfile(native / 'feedback.bin', dtype=FEEDBACK_RECORD_DTYPE)
+    for field, tolerance in (('cmd_pos_raw', 2500), ('cmd_vel_raw', 10000), ('cmd_trq_raw', 10)):
+        arm = frames[field][begin - 1:begin + 2, 12:26]
+        assert np.max(np.abs(np.diff(arm.astype(int), axis=0))) < tolerance
+    feedback = _core.read_feedback_csv_zst(native / 'feedback.csv.zst')
     last_enabled = np.searchsorted(feedback['receive_mono_ns'], event_times['soft_stop_disable']) - 1
-    q_measured = feedback['frame']['joints']['position'][last_enabled, 12:26] * 1e-6 * DIRECTION + OFFSET
+    q_measured = feedback['q'][last_enabled]
     np.testing.assert_allclose(q_measured, measured_start, atol=.025)
     if hold_body:
-        assert np.all(joints['control_word'][begin:end, :29] == 15)
-        assert np.all(joints['control_word'][end:, :29] == 6)
-        for field in ('kp', 'kd', 'torque', 'velocity'):
-            assert np.all(joints[field][end:, :29] == 0)
+        assert np.all(frames['cmd_cw'][begin:end] == 15)
+        assert np.all(frames['cmd_cw'][end:] == 6)
+        for field in ('cmd_kp_raw', 'cmd_kd_raw', 'cmd_trq_raw', 'cmd_vel_raw'):
+            assert np.all(frames[field][end:] == 0)
 
 
 @pytest.mark.slow

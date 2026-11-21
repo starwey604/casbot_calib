@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
-"""Standard-library SHM physical-loop acceptance. Private endpoints only."""
+"""SHM physical-loop acceptance. Private endpoints only."""
 import argparse
-import csv
 import json
 import os
 from pathlib import Path
@@ -47,11 +46,15 @@ def main():
         events=r['timing']['events']
         begin=int(next(e['mono_ns'] for e in events if e['event']=='command_writes_stopped'))
         end=int(next(e['mono_ns'] for e in events if e['event']=='quiet_observation_end_disable'))
-        with (root/'silence/native/commands.csv').open() as stream:
-            assert not any(begin<=int(row['send_mono_ns'])<end for row in csv.DictReader(stream))
-        with (root/'silence/native/feedback.csv').open() as stream:
-            held=[row for row in csv.DictReader(stream) if begin<int(row['receive_mono_ns'])<end]
-        assert held and all(int(row['status12'])&0x006f==0x27 for row in held),'Mock invented a silence watchdog'
+        from casbot_calib import _core
+        commands = _core.read_commands_csv_zst(root/'silence/native/commands.csv.zst')
+        feedback = _core.read_feedback_csv_zst(root/'silence/native/feedback.csv.zst')
+        assert not commands['truncated_tail'] and not feedback['truncated_tail']
+        sent = commands['send_mono_ns']
+        assert not ((begin <= sent) & (sent < end)).any()
+        received = feedback['receive_mono_ns']
+        held = feedback['status'][(begin < received) & (received < end), 12]
+        assert len(held) and ((held & 0x006f) == 0x27).all(), 'Mock invented a silence watchdog'
         summary=dict(passed=True,scope='private_shared_physics',reference_mismatch_rad=mismatch,
                      feedback_count=result['feedback']['count'],silence_feedback_count=len(held),hardware_tested=False)
         (root/'verification.json').write_text(json.dumps(summary,indent=2)+'\n')

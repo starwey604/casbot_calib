@@ -9,7 +9,6 @@ import time
 import numpy as np
 
 from .. import _core
-from ..shm_data import FEEDBACK_RECORD_DTYPE, DIRECTION, OFFSET
 from ..shm_ready import ready_position
 from .assembly import ball_center, indicator_calibration
 from .indicators import MockQasBridge, UsbBridgeIndicatorDriver
@@ -113,16 +112,19 @@ class Executor:
 
 
 def feedback_means(path, windows):
-    records = np.fromfile(path, dtype=FEEDBACK_RECORD_DTYPE)
-    # A queued status may be returned repeatedly; each physical feedback frame counts once.
-    unique = np.r_[True, np.diff(records['frame']['frame_counter']) != 0]
-    records = records[unique]
-    positions = records['frame']['joints']['position'][:, 12:26] * 1e-6 * np.array(DIRECTION) + np.array(OFFSET)
-    times = records['receive_mono_ns']
+    records = _core.read_feedback_csv_zst(path)
+    if records['truncated_tail']:
+        raise ValueError('SHM反馈记录尾部不完整')
+    # A queued status may be returned repeatedly; retain the first receipt of each run.
+    counters = records['frame_counter']
+    unique = np.ones(len(counters), dtype=bool)
+    unique[1:] = counters[1:] != counters[:-1]
+    positions = records['q'][unique]
+    times = records['receive_mono_ns'][unique]
     means = []
     for row in windows:
         selected = (times > row['t_start_ns']) & (times <= row['t_end_ns'])
-        if not selected.any(): raise ValueError('测量窗口没有 feedback.bin 帧')
+        if not selected.any(): raise ValueError('测量窗口没有 feedback.csv.zst 帧')
         means.append(positions[selected].mean(axis=0).tolist())
     return means
 
@@ -260,5 +262,5 @@ def acquire(binary, endpoint, routes, robot, recipe, points, capture, *, mock=Fa
 def analyse_capture(capture):
     capture = Path(capture)
     windows = json.loads((capture/'windows.json').read_text())
-    q = feedback_means(capture/'native/feedback.bin', windows)
+    q = feedback_means(capture/'native/feedback.csv.zst', windows)
     return [dict(row, q_rad=mean) for row, mean in zip(windows, q)]

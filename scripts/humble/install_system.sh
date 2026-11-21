@@ -12,4 +12,4 @@ if [[ $EUID -ne 0 ]]; then privilege=(sudo); fi
 "${privilege[@]}" apt-get install -y --no-install-recommends \
   build-essential cmake ninja-build python3-venv python3-pip git-lfs \
   ros-humble-pinocchio ros-humble-coal \
-  libegl1 libgl1-mesa-dri fonts-noto-cjk
+  libegl1 libgl1-mesa-dri fonts-noto-cjk libzstd-dev zstd

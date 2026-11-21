@@ -170,20 +170,34 @@ def scan_feedback(path, scratch, origin, window=None):
 
 
 class VideoFeedback:
-    """Receive-time ZOH at 20fps with two live feedback rows, no whole-table load."""
+    """Receive-time ZOH at 20fps over a bounded feedback stream."""
     def __init__(self,path,cancel_check=None,*,receive_column='receive_ns'):
         self.path=Path(path);self.cancel_check=cancel_check;self.receive_column=receive_column;self.duration_s=0.;self.rows=0
+    def _samples(self):
+        if self.path.suffix == '.zst':
+            from . import _core
+            for times, positions in _core.iter_feedback_chunks_zst(self.path):
+                for ns, q in zip(times, positions):
+                    if self.cancel_check:
+                        reason = self.cancel_check()
+                        if reason:
+                            raise ValueError('视频导出已中断：'+reason)
+                    yield int(ns), q.tolist()
+            return
+        for row in csv_rows(self.path, self.cancel_check):
+            if self.receive_column not in row:
+                raise ValueError('视频CSV缺少'+self.receive_column)
+            if any('q'+str(j) not in row for j in range(14)):
+                raise ValueError('视频CSV缺少完整14轴位置')
+            yield int(row[self.receive_column]), [float(row['q'+str(j)]) for j in range(14)]
+
     def frames(self):
-        rows=csv_rows(self.path,self.cancel_check);origin=None;previous=None
+        rows=self._samples();origin=None;previous=None
         def sample():
             nonlocal origin,previous
-            try:row=next(rows)
+            try:ns,q=next(rows)
             except StopIteration:return None
-            if self.receive_column not in row:raise ValueError('视频CSV缺少'+self.receive_column)
-            ns=int(row[self.receive_column])
             if previous is not None and ns<previous:raise ValueError('视频反馈接收时刻倒退，不能按时间回放')
-            if any('q'+str(j) not in row for j in range(14)):raise ValueError('视频CSV缺少完整14轴位置')
-            q=[float(row['q'+str(j)]) for j in range(14)]
             if not np.isfinite(q).all():raise ValueError('视频反馈位置有缺失或非有限值')
             if origin is None:origin=ns
             previous=ns;self.duration_s=(ns-origin)*1e-9;self.rows+=1

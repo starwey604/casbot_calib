@@ -83,7 +83,8 @@ def main():
             libraries = subprocess.check_output(['ldd', str(cpp / 'bin' / program)], text=True)
             assert 'not found' not in libraries, libraries
             assert str(cpp / 'bin/../lib/libomp.so.5') in libraries, libraries
-            assert 'libpinocchio_default.so.4.0.0' in libraries and 'libcoal.so.3.0.3' in libraries, libraries
+            assert f'libpinocchio_default.so.{versions["pinocchio"]}' in libraries, libraries
+            assert f'libcoal.so.{versions["coal"]}' in libraries, libraries
         timings = dict(commands, parent_imports=imports_seconds, cli=cli_seconds,
                        comparisons_and_ldd=round(time.perf_counter() - comparisons_started, 3))
         result = dict(status='passed', extension=_core.__file__, packages=versions,

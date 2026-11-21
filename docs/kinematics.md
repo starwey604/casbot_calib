@@ -15,10 +15,12 @@
 bash calib/kinematics.sh --robot DVT2_01       # K1 左臂
 # 失能后，工装换至右腕
 bash calib/kinematics.sh --resume             # K2 -> K3
-bash calib/kinematics.sh --reanalyse          # 从 feedback.bin 重算窗口均值和 K3
+bash calib/kinematics.sh --reanalyse          # 从 feedback.csv.zst 重算窗口均值和 K3
 ```
 
 首次上机可用 `--mode smoke`（每臂 A 球 1 点）；快速检查用 `--mode small`（每臂四球各 1 点）。续跑继承会话模式。两种快速模式只生成名义残差报告；默认 `full` 使用每球 4 个训练点、2 个留出点并生成交付文件。
+
+采集目录中的 `native/commands.csv.zst` 和 `native/feedback.csv.zst` 可用 `zstdcat` 查看。旧格式会话的 `--reanalyse` 使用切换前的版本。
 
 只检查路线：
 

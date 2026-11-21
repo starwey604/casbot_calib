@@ -7,6 +7,7 @@ import shutil
 import sys
 import numpy as np
 import pytest
+from casbot_calib import _core
 from casbot_calib import shm_fieldwork as fw
 from casbot_calib.pipeline.native import (
     execute_with_start_replan,
@@ -175,9 +176,7 @@ def test_native_observed_velocity_ends_and_records_trigger(tmp_path):
     assert report['observed_limits']['actions']['end_control'] > 0
     with (out / 'native/observed_limits.csv').open() as f:
         limits = list(csv.DictReader(f))
-    with (out / 'native/feedback.csv').open() as f:
-        feedback = list(csv.DictReader(f))
-    assert any(row['receive_mono_ns'] == limits[0]['receive_mono_ns'] for row in feedback)
-    with (out / 'native/commands.csv').open() as f:
-        commands = list(csv.DictReader(f))
-    assert all(int(row['phase']) in (0, 5) for row in commands)
+    feedback = _core.read_feedback_csv_zst(out / 'native/feedback.csv.zst')
+    assert int(limits[0]['receive_mono_ns']) in feedback['receive_mono_ns']
+    commands = _core.read_commands_csv_zst(out / 'native/commands.csv.zst')
+    assert set(commands['phase']) <= {0, 5}

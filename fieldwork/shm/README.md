@@ -189,11 +189,10 @@ bash fieldwork/shm/run.sh status artifacts/shm_fieldwork
 - `process.json`、`terminal.log`：实际命令、自有PID、退出码、计划终止及时间。
 - `native/background.bin`：本次从新鲜实际状态生成的完整F0；`hand_background_source.bin`：显式手部来源。
 - `native/reference.json`：通用执行实际读取的冻结输入；相对参考另存`reference_origin.csv`。`mock/`保留私有配置、背景来源、服务端日志及退出结果。
-- `native/commands.bin`：8字节小端成功入队完成单调时刻＋744字节原始命令。
-- `native/feedback.bin`：8字节小端接收完成单调时刻＋696字节完整状态。
-- `native/commands.csv`、`feedback.csv`：14轴SI五字段指令、q/v/effort反馈，35槽状态/模式/错误码及原始时间。
+- `native/commands.csv.zst`：成功入队时刻、双臂 SI 五字段、前 29 槽原始命令与控制字、命令中的手部数量。
+- `native/feedback.csv.zst`：接收与观测时刻、双臂 SI 反馈、35 槽原始反馈及双手反馈。两份表均可用 `zstdcat` 查看。
 - `native/events.csv`、`clock_pairs.csv`、`queues.csv`：阶段/故障/静默、墙钟配对、诊断队列计数/索引。队列诊断是各字段读取，不是原子一致控制快照。
-- `probe/`：C06独立被动记录，另存`passive_commands.bin`观察命令，绝不计为成功发送。被动快照无一致性/新采样保证。
+- `probe/passive_commands.csv.zst`：C06 被动观察的命令，时间列记录观察时刻。成功发送命令表仅含表头。
 - `observations.jsonl/md`、`result.json`、`report.md`：用户原话、软件结果、双臂与全部背景槽/双手变化。
 
 原始写盘与终端隔离，有界队列满/写盘错误时停录、保留前缀，不阻塞发送。正常约20ms提交，硬杀可能缺少未提交尾段；离线报告保留完整帧并指出残缺字节/缺失封存，不resume。当前单例记录不使用旧GUI磁盘缓存/压缩/额度系统，控制时长有显式上限，现场需预留磁盘空间。

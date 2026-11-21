@@ -56,7 +56,7 @@ class Desk:
             from .shm_gui_storage import load_snapshot,last_feedback
             metadata=load_snapshot(args.recover)
             if metadata['model_context']!=self.context.identity:raise ValueError('恢复记录模型不匹配')
-            recovered_row=last_feedback(Path(args.recover)/'native/feedback.csv')
+            recovered_row=last_feedback(Path(args.recover)/'native/feedback.csv.zst')
         self.root.joinpath('view').mkdir(exist_ok=True)
         metadata=dict(model_context=self.context.identity,joint_names=NAMES)
         (self.root/'view/metadata.json').write_text(json.dumps(metadata))

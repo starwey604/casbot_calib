@@ -1,8 +1,8 @@
-"""Wave 1A tests: wire35 NumPy dtypes, vectorized binary I/O, orjson safety, and OpenMP equivalence."""
+"""Wave 1A tests: wire35 NumPy dtypes, compressed recording I/O, orjson safety, and OpenMP equivalence."""
 import csv
 import json
-import shutil
-import struct
+import subprocess
+import sys
 import time
 from pathlib import Path
 import numpy as np
@@ -15,9 +15,6 @@ from casbot_calib.model_runtime import collision_for, model_for
 from casbot_calib.pipeline.robot import load_robot_config
 from casbot_calib.shm_data import (
     COMMAND_FRAME_DTYPE,
-    COMMAND_RECORD_DTYPE,
-    DIRECTION,
-    FEEDBACK_RECORD_DTYPE,
     HAND_COMMAND_DTYPE,
     HAND_JOINT_COMMAND_DTYPE,
     HAND_JOINT_STATUS_DTYPE,
@@ -30,6 +27,7 @@ from casbot_calib.shm_data import (
 )
 from casbot_calib.shm_observations import ObservationReader
 from casbot_calib.shm_reference import jog_bundle, save_bundle
+from recording_fixtures import write_recording
 
 
 def test_wire35_numpy_dtype_sizes_and_offsets():
@@ -77,342 +75,121 @@ def test_wire35_numpy_dtype_sizes_and_offsets():
     assert STATUS_FRAME_DTYPE.fields['timestamp'][1] == 680
     assert STATUS_FRAME_DTYPE.fields['crc'][1] == 688
 
-    assert FEEDBACK_RECORD_DTYPE.itemsize == 704
-    assert FEEDBACK_RECORD_DTYPE.fields['receive_mono_ns'][1] == 0
-    assert FEEDBACK_RECORD_DTYPE.fields['frame'][1] == 8
 
-    assert COMMAND_RECORD_DTYPE.itemsize == 752
-    assert COMMAND_RECORD_DTYPE.fields['send_mono_ns'][1] == 0
-    assert COMMAND_RECORD_DTYPE.fields['frame'][1] == 8
+def _synthetic_recording(root, ticks, *, rich=False):
+    root.mkdir()
+    origin = 10**18 + 500_000_000
+    wall_ms = 1_700_000_000_000
+    offset = wall_ms*1_000_000-origin
+    commands = (dict(send_mono_ns=origin+k*1_000_000, phase=3 if k < ticks-5 else 4,
+                     frame_counter=k+1) for k in range(ticks))
+    write_recording(root/'commands.csv.zst', commands, feedback=False)
 
+    def feedback():
+        for k in range(ticks):
+            raw = k%10000
+            row = dict(receive_mono_ns=origin+k*1_000_000+5000, phase=3 if k < ticks-5 else 4,
+                       frame_counter=k+1, source_timestamp_ms=wall_ms+k,
+                       observation_time_ns=origin+k*1_000_000, pos_raw12=raw, q0=raw*1e-6+OFFSET[0])
+            if rich:
+                row.update(status12=0x237, mode12=-1, error12=42 if k == ticks-1 else 0,
+                           hand0_global_status=3, hand0_pos0=123+k%7, hand0_status0=1)
+            yield row
 
-def _write_dual_fixture(root: Path, n_ticks: int = 500, *, include_csv: bool = True, fault_tail: bool = False):
-    """Build a synthetic recording matching field_runtime.cpp's exact tick event/send/receive order."""
-    root.mkdir(parents=True, exist_ok=True)
-    t0 = 10**18 + 500_000_000
-    wall_base_ms = 1_700_000_000_000
-    offset0 = wall_base_ms * 1_000_000 - t0
-    offset1 = offset0 + 2_000_000
-
-    # Phase schedule across ticks:
-    # 0..19: phase 0, 20..39: phase 1, 40..59: phase 2 (skip receive on tick 40 to test missing-receive transition!),
-    # 60..(n_ticks-41): phase 3 (with markers at 120, 180), (n_ticks-40)..: phase 4 (or phase 5 fault tail)
-    p3_tick = 60
-    p4_tick = n_ticks - 40
-    jump_tick = n_ticks // 2
-
-    events = [(t0 - 50_000, 0, 'disabling')]
-    clock_pairs = [
-        (t0 - 200_000, wall_base_ms * 1_000_000 - 200_000, t0 - 190_000, offset0, 0, 0),
-    ]
-
-    fb_list = []
-    cmd_list = []
-    csv_fb_rows = []
-    csv_cmd_rows = []
-
-    phase = 0
-    first_stream_ns = 0
-    first_write_ns = 0
-    cur_segment = 0
-    cur_offset = offset0
-
-    for k in range(n_ticks):
-        tick_now = t0 + k * 1_000_000
-        if k == jump_tick:
-            cur_segment = 1
-            cur_offset = offset1
-            clock_pairs.append((
-                tick_now + 1_000,
-                (wall_base_ms + k + 2) * 1_000_000,
-                tick_now + 2_000,
-                offset1,
-                1,
-                1,
-            ))
-
-        # Simulate missed receive on transition tick 40 to test intervening-send disambiguation
-        received = (k != 40)
-        recv_at = tick_now + 5_000 if received else 0
-        stamp_ms = wall_base_ms + k + (2 if cur_segment == 1 else 0)
-        if k == 95:
-            # Backward 1 ms source stamp inside segment 0
-            stamp_ms -= 2
-
-        if k == 20:
-            phase = 1
-            events.append((tick_now + 12_000, 1, 'switching_mit'))
-        elif k == 40:
-            phase = 2
-            events.append((tick_now + 12_000, 2, 'enabling_at_start'))
-        elif k == p3_tick:
-            phase = 3
-            events.append((tick_now + 12_000, 3, 'reference_begin'))
-        elif k == 120 and k < p4_tick:
-            events.append((tick_now + 12_000, 3, 'calibration_begin'))
-        elif k == p4_tick:
-            if fault_tail:
-                # Push pre-throw frame with OLD phase=3, then emit phase=5 event and catch-loop frames
-                if received:
-                    obs_ns = stamp_ms * 1_000_000 - cur_offset
-                    fb_rec = np.zeros(1, dtype=FEEDBACK_RECORD_DTYPE)[0]
-                    fb_rec['receive_mono_ns'] = recv_at
-                    fb_rec['frame']['frame_counter'] = 100 + k
-                    fb_rec['frame']['timestamp'] = stamp_ms
-                    for j in range(14):
-                        fb_rec['frame']['joints'][j + 12]['position'] = (k * 10 + j) * DIRECTION[j]
-                        fb_rec['frame']['joints'][j + 12]['velocity'] = (-k * 3 + j) * DIRECTION[j]
-                        fb_rec['frame']['joints'][j + 12]['torque'] = ((k + j) % 50) * DIRECTION[j]
-                        fb_rec['frame']['joints'][j + 12]['status_word'] = 0x237
-                        fb_rec['frame']['joints'][j + 12]['mode'] = -1
-                    fb_list.append(fb_rec)
-                    if include_csv:
-                        q_vals = [DIRECTION[j] * float(fb_rec['frame']['joints'][j + 12]['position']) * 1e-6 + OFFSET[j] for j in range(14)]
-                        v_vals = [DIRECTION[j] * float(fb_rec['frame']['joints'][j + 12]['velocity']) * 1e-6 for j in range(14)]
-                        e_vals = [DIRECTION[j] * float(fb_rec['frame']['joints'][j + 12]['torque']) * 0.01 for j in range(14)]
-                        csv_fb_rows.append([recv_at, stamp_ms, 100 + k, obs_ns, cur_segment, 0, *q_vals, *v_vals, *e_vals, phase])
-                phase = 5
-                events.append((tick_now + 20_000, 5, 'observed_velocity_limit_slot_12'))
-                continue
-            phase = 4
-            events.append((tick_now + 12_000, 4, 'exiting_disable'))
-
-        send_at = tick_now + 30_000
-        if not first_write_ns:
-            first_write_ns = send_at
-        if phase == 3 and not first_stream_ns:
-            first_stream_ns = send_at
-
-        cmd_rec = np.zeros(1, dtype=COMMAND_RECORD_DTYPE)[0]
-        cmd_rec['send_mono_ns'] = send_at
-        cmd_rec['frame']['frame_counter'] = k + 1
-        cmd_rec['frame']['timestamp'] = tick_now // 1_000_000
-        for j in range(14):
-            cmd_rec['frame']['joints'][j + 12]['control_word'] = 15 if phase in (2, 3) else 6
-            cmd_rec['frame']['joints'][j + 12]['position'] = (k * 12 - j * 5) * DIRECTION[j]
-        cmd_list.append(cmd_rec)
-        if include_csv:
-            csv_cmd_rows.append([send_at, phase, k + 1])
-
-        if received:
-            obs_ns = stamp_ms * 1_000_000 - cur_offset
-            fb_rec = np.zeros(1, dtype=FEEDBACK_RECORD_DTYPE)[0]
-            fb_rec['receive_mono_ns'] = recv_at
-            fb_rec['frame']['frame_counter'] = (100 + k) + (2 if k > 200 else 0)
-            fb_rec['frame']['timestamp'] = stamp_ms
-            for j in range(35):
-                fb_rec['frame']['joints'][j]['status_word'] = 0x237 if (12 <= j <= 25 and phase == 3) else 0x231
-                fb_rec['frame']['joints'][j]['mode'] = -1 if (12 <= j <= 25 and phase >= 1) else 0
-                fb_rec['frame']['joints'][j]['error_code'] = 42 if (fault_tail and phase == 5 and j == 12) else 0
-            for j in range(14):
-                fb_rec['frame']['joints'][j + 12]['position'] = (k * 10 + j) * DIRECTION[j]
-                fb_rec['frame']['joints'][j + 12]['velocity'] = (-k * 3 + j) * DIRECTION[j]
-                fb_rec['frame']['joints'][j + 12]['torque'] = ((k + j) % 50 - 25) * DIRECTION[j]
-            fb_rec['frame']['hands'][0]['global_status'] = 3
-            fb_rec['frame']['hands'][0]['joints'][0]['position'] = 123 + (k % 7)
-            fb_rec['frame']['hands'][0]['joints'][0]['status'] = 1
-            fb_list.append(fb_rec)
-            if include_csv:
-                q_vals = [DIRECTION[j] * float(fb_rec['frame']['joints'][j + 12]['position']) * 1e-6 + OFFSET[j] for j in range(14)]
-                v_vals = [DIRECTION[j] * float(fb_rec['frame']['joints'][j + 12]['velocity']) * 1e-6 for j in range(14)]
-                e_vals = [DIRECTION[j] * float(fb_rec['frame']['joints'][j + 12]['torque']) * 0.01 for j in range(14)]
-                csv_fb_rows.append([recv_at, stamp_ms, int(fb_rec['frame']['frame_counter']), obs_ns, cur_segment, 0, *q_vals, *v_vals, *e_vals, phase])
-
-    if not fault_tail:
-        events.append((t0 + n_ticks * 1_000_000, 4, 'disable_ack'))
-
-    np.array(fb_list, dtype=FEEDBACK_RECORD_DTYPE).tofile(root / 'feedback.bin')
-    np.array(cmd_list, dtype=COMMAND_RECORD_DTYPE).tofile(root / 'commands.bin')
-    (root / 'passive_commands.bin').write_bytes(b'')
-
-    with (root / 'events.csv').open('w', newline='') as f:
-        w = csv.writer(f)
-        w.writerow(['mono_ns', 'phase', 'event'])
-        w.writerows(events)
-
-    with (root / 'clock_pairs.csv').open('w', newline='') as f:
-        w = csv.writer(f)
-        w.writerow(['mono_before_ns', 'wall_ns', 'mono_after_ns', 'offset_ns', 'clock_segment', 'jump_detected'])
-        w.writerows(clock_pairs)
-
-    (root / 'result.txt').write_text(
-        f'execution_completed={0 if fault_tail else 1}\n'
-        f'reason={"fault" if fault_tail else "completed_with_disable_ack"}\n'
-        f'first_stream_mono_ns={first_stream_ns}\n'
-        f'first_command_mono_ns={first_stream_ns}\n'
-        f'first_shm_write_mono_ns={first_write_ns}\n'
-        f'recording_stopped=0\n'
-        f'disable_ack=1\n'
+    write_recording(root/'feedback.csv.zst', feedback())
+    (root/'clock_pairs.csv').write_text(
+        'mono_before_ns,wall_ns,mono_after_ns,offset_ns,clock_segment,jump_detected\n'
+        f'{origin-1000},{wall_ms*1_000_000-1000},{origin-1000},{offset},0,0\n'
     )
-
-    if include_csv:
-        with (root / 'commands.csv').open('w', newline='') as f:
-            w = csv.writer(f)
-            w.writerow(['send_mono_ns', 'phase', 'frame_counter'])
-            w.writerows(csv_cmd_rows)
-        with (root / 'feedback.csv').open('w', newline='') as f:
-            w = csv.writer(f)
-            w.writerow([
-                'receive_mono_ns', 'source_timestamp_ms', 'frame_counter',
-                'observation_time_ns', 'clock_segment', 'passive',
-                *[f'q{j}' for j in range(14)],
-                *[f'v{j}' for j in range(14)],
-                *[f'effort{j}' for j in range(14)],
-                'phase',
-            ])
-            for r in csv_fb_rows:
-                w.writerow([
-                    r[0], r[1], r[2], r[3], r[4], r[5],
-                    *[f'{x:.17g}' for x in r[6:48]],
-                    r[48],
-                ])
+    (root/'result.txt').write_text(
+        f'execution_completed=1\nfirst_command_mono_ns={origin}\nfirst_shm_write_mono_ns={origin}\n'
+        'recording_stopped=0\ndisable_ack=1\n'
+    )
+    return origin
 
 
-@pytest.mark.parametrize('fault_tail', [False, True])
-def test_observation_reader_binary_matches_csv_zero_error(tmp_path, fault_tail):
-    dual = tmp_path / 'dual'
-    csv_only = tmp_path / 'csv_only'
-    _write_dual_fixture(dual, n_ticks=400, include_csv=True, fault_tail=fault_tail)
-    shutil.copytree(dual, csv_only)
-    (csv_only / 'feedback.bin').unlink()
-    (csv_only / 'commands.bin').unlink()
-
-    # Also test binary-only without commands.csv / feedback.csv
-    bin_only = tmp_path / 'bin_only'
-    shutil.copytree(dual, bin_only)
-    (bin_only / 'feedback.csv').unlink()
-    (bin_only / 'commands.csv').unlink()
-
-    arr_bin = ObservationReader(bin_only).arrays()
-    arr_csv = ObservationReader(csv_only).arrays()
-    assert all(type(value) is np.ndarray for value in arr_bin.values())
-
-    for key in ('index', 'receive_ns', 'observation_time_ns', 'source_timestamp_ms', 'clock_segment', 'frame_counter', 'phase', 'time_ambiguous'):
-        np.testing.assert_array_equal(arr_bin[key], arr_csv[key], err_msg=f'Mismatch in {key}')
-    for key in ('elapsed_s', 'q', 'dq', 'effort_raw'):
-        np.testing.assert_allclose(arr_bin[key], arr_csv[key], rtol=0, atol=1e-15, err_msg=f'Mismatch in {key}')
-
-    # Verify window() produces identical slices on segment 1
-    win_bin, t_bin, scope_bin = ObservationReader(bin_only).window((0.16, 0.28), segment=1)
-    win_csv, t_csv, scope_csv = ObservationReader(csv_only).window((0.16, 0.28), segment=1)
-    assert scope_bin == scope_csv
-    np.testing.assert_array_equal(t_bin, t_csv)
-    for k in win_bin:
-        np.testing.assert_allclose(win_bin[k], win_csv[k], rtol=0, atol=1e-15)
+def test_observation_reader_uses_native_time_phase_and_registers(tmp_path):
+    root = tmp_path/'capture'
+    origin = _synthetic_recording(root, 50, rich=True)
+    data = ObservationReader(root).arrays()
+    np.testing.assert_array_equal(data['observation_time_ns'], origin+np.arange(50)*1_000_000)
+    np.testing.assert_array_equal(data['phase'], [3]*45+[4]*5)
+    np.testing.assert_array_equal(data['q'][:, 0], np.arange(50)*1e-6+OFFSET[0])
+    assert data['frame_counter'].dtype == np.uint64
+    assert not data['time_ambiguous'].any()
+    window, elapsed, metadata = ObservationReader(root).window((.01, .04))
+    assert len(window['q']) == 32 and metadata['clock_segment'] == 0
+    assert elapsed[0] == 0 and elapsed[1] == .01
 
 
-def test_observation_reader_binary_corrupt_tail_and_passive_rejected(tmp_path):
-    bad_tail = tmp_path / 'bad_tail'
-    _write_dual_fixture(bad_tail, n_ticks=100, include_csv=False)
-    with (bad_tail / 'feedback.bin').open('ab') as f:
-        f.write(b'trunc')
-    with pytest.raises(ValueError, match='不完整'):
-        ObservationReader(bad_tail).arrays()
-
-    passive = tmp_path / 'passive'
-    _write_dual_fixture(passive, n_ticks=100, include_csv=False)
-    (passive / 'passive_commands.bin').write_bytes(b'\x00' * 752)
+@pytest.mark.parametrize('passive_source', ['feedback', 'commands', 'events'])
+def test_observation_reader_rejects_passive_capture(tmp_path, passive_source):
+    root = tmp_path/'capture'
+    origin = _synthetic_recording(root, 30)
+    if passive_source == 'feedback':
+        write_recording(root/'feedback.csv.zst', [dict(receive_mono_ns=origin, passive=1)])
+    elif passive_source == 'commands':
+        write_recording(root/'passive_commands.csv.zst', [dict(send_mono_ns=origin)], feedback=False)
+    else:
+        (root/'events.csv').write_text(f'mono_ns,phase,event\n{origin},-1,passive_observe_begin\n')
     with pytest.raises(ValueError, match='被动快照'):
-        ObservationReader(passive).arrays()
+        ObservationReader(root).arrays()
 
 
-def test_fieldwork_summaries_match_struct_fallback_bit_for_bit(tmp_path, monkeypatch):
-    folder = tmp_path / 'run'
-    _write_dual_fixture(folder, n_ticks=350, include_csv=True, fault_tail=True)
-    # Add partial trailing bytes to verify tolerant prefix recovery in summarize_*
-    with (folder / 'feedback.bin').open('ab') as f:
-        f.write(b'12345')
-    with (folder / 'commands.bin').open('ab') as f:
-        f.write(b'123')
-
-    vec_fb = fw.summarize_feedback(folder)
-    vec_cmd = fw.summarize_commands(folder)
-    vec_tim = fw.timing_summary(folder)
-
-    monkeypatch.setattr(fw, '_np', None)
-    ref_fb = fw.summarize_feedback(folder)
-    ref_cmd = fw.summarize_commands(folder)
-    ref_tim = fw.timing_summary(folder)
-
-    assert vec_fb == ref_fb
-    assert vec_cmd == ref_cmd
-    assert vec_tim == ref_tim
-    # Verify JSON serializability via fw.dump
-    fw.dump(tmp_path / 'summary.json', dict(fb=vec_fb, cmd=vec_cmd, tim=vec_tim))
-    loaded = json.loads((tmp_path / 'summary.json').read_text())
-    assert loaded['fb']['trailing_bytes'] == 5
-    assert loaded['cmd']['trailing_bytes'] == 3
+def test_fieldwork_summary_preserves_complete_prefix_after_incomplete_zstd_frame(tmp_path):
+    root = tmp_path/'run'
+    _synthetic_recording(root, 50, rich=True)
+    for name in ('feedback', 'commands'):
+        path = root/f'{name}.csv.zst'
+        size = path.stat().st_size
+        _core._write_csv_zst(path, 'interrupted page\n', append=True)
+        with path.open('rb+') as stream:
+            stream.truncate(size+9)
+    fb = fw.summarize_feedback(root)
+    cmd = fw.summarize_commands(root)
+    assert fb['count'] == cmd['count'] == 50
+    assert fb['truncated_tail'] and cmd['truncated_tail']
+    assert fb['joints'][12]['errors'] == [42]
+    assert fb['hands'][0]['items'][0]['position'] == dict(first=123, last=123, min=123, max=129)
+    with pytest.raises(ValueError, match='命令记录尾部不完整'):
+        ObservationReader(root).arrays()
+    fw.dump(tmp_path/'summary.json', dict(fb=fb, cmd=cmd, timing=fw.timing_summary(root)))
 
 
 @pytest.mark.slow
-def test_600k_frame_binary_read_and_summary_benchmark(tmp_path):
-    """600,000 frames (~10 minutes at 1 kHz) must read via ObservationReader.arrays() well under 0.25 s."""
-    free_bytes = shutil.disk_usage(tmp_path).free
-    n_frames = 600_000 if free_bytes >= 2 * 1024**3 else 150_000
-    scale = 600_000 / n_frames
-
-    root = tmp_path / 'bench600k'
-    root.mkdir()
-    try:
-        t0 = 10**18
-        wall_ms = 1_700_000_000_000
-        offset = wall_ms * 1_000_000 - t0
-        first_stream = t0 + 10 * 1_000_000 + 20_000
-
-        fb = np.zeros(n_frames, dtype=FEEDBACK_RECORD_DTYPE)
-        idx = np.arange(n_frames, dtype=np.int64)
-        fb['receive_mono_ns'] = t0 + idx * 1_000_000 + 5_000
-        fb['frame']['frame_counter'] = idx + 1
-        fb['frame']['timestamp'] = (wall_ms + idx).astype(np.uint64)
-        fb['frame']['joints'][:, 12:26]['position'] = (idx[:, None] % 10000).astype(np.int32)
-        fb['frame']['joints'][:, 12:26]['velocity'] = ((idx[:, None] % 200) - 100).astype(np.int32)
-        fb['frame']['joints'][:, 12:26]['torque'] = ((idx[:, None] % 80) - 40).astype(np.int16)
-        fb['frame']['joints'][:, 12:26]['status_word'] = 0x237
-        fb.tofile(root / 'feedback.bin')
-        del fb
-
-        cmd = np.zeros(n_frames, dtype=COMMAND_RECORD_DTYPE)
-        cmd['send_mono_ns'] = t0 + idx * 1_000_000 + 20_000
-        cmd['frame']['frame_counter'] = idx + 1
-        cmd['frame']['joints'][:, 12:26]['position'] = (idx[:, None] % 10000).astype(np.int32)
-        cmd.tofile(root / 'commands.bin')
-        del cmd
-
-        (root / 'events.csv').write_text(
-            f'mono_ns,phase,event\n'
-            f'{t0},0,disabling\n'
-            f'{t0 + 10 * 1_000_000 + 10_000},3,reference_begin\n'
-            f'{t0 + (n_frames - 5) * 1_000_000 + 10_000},4,exiting_disable\n'
-        )
-        (root / 'clock_pairs.csv').write_text(
-            f'mono_before_ns,wall_ns,mono_after_ns,offset_ns,clock_segment,jump_detected\n'
-            f'{t0 - 100_000},{wall_ms * 1_000_000 - 100_000},{t0 - 90_000},{offset},0,0\n'
-        )
-        (root / 'result.txt').write_text(
-            f'execution_completed=1\nreason=completed_with_disable_ack\n'
-            f'first_stream_mono_ns={first_stream}\nfirst_command_mono_ns={first_stream}\n'
-            f'first_shm_write_mono_ns={t0 + 20_000}\nrecording_stopped=0\ndisable_ack=1\n'
-        )
-
-        t_start = time.perf_counter()
-        arrays = ObservationReader(root).arrays()
-        t_obs = (time.perf_counter() - t_start) * scale
-
-        assert len(arrays['receive_ns']) == n_frames
-        assert int(np.sum(arrays['phase'] == 3)) == n_frames - 15
-        # Target < 0.25 s on fast NVMe; allow laptop/Orin/container bind-mount jitter ceiling of 1.2 s
-        assert t_obs < 1.2, f'600k ObservationReader.arrays() took {t_obs:.3f}s'
-
-        t_sum0 = time.perf_counter()
-        s_fb = fw.summarize_feedback(root)
-        s_cmd = fw.summarize_commands(root)
-        s_tim = fw.timing_summary(root)
-        t_sum = (time.perf_counter() - t_sum0) * scale
-        assert s_fb['count'] == n_frames and s_cmd['count'] == n_frames
-        assert s_tim['streaming_send_gap_ns']['max'] == 1_000_000
-        assert t_sum < 2.0, f'600k fieldwork summaries took {t_sum:.3f}s'
-    finally:
-        shutil.rmtree(root, ignore_errors=True)
+@pytest.mark.skipif(sys.platform != 'linux', reason='Linux process peak RSS')
+def test_large_csv_zstd_recording_read_and_summary(tmp_path, record_property):
+    """Measure whole-table and bounded video reads in separate processes."""
+    ticks = 600_000
+    root = tmp_path/'recording'
+    _synthetic_recording(root, ticks)
+    reader = """
+import json, sys, time
+from pathlib import Path
+from casbot_calib import _core
+from casbot_calib.shm_observations import ObservationReader
+root = Path(sys.argv[1])
+start = time.perf_counter()
+if sys.argv[2] == 'video':
+    rows = sum(len(times) for times, _ in _core.iter_feedback_chunks_zst(root/'feedback.csv.zst'))
+else:
+    observations = ObservationReader(root).arrays()
+    rows = len(observations['receive_ns'])
+    assert (observations['phase'] == 3).sum() == rows-5
+seconds = time.perf_counter()-start
+status = Path('/proc/self/status').read_text().splitlines()
+peak_rss_kib = int(next(line.split()[1] for line in status if line.startswith('VmHWM:')))
+print(json.dumps(dict(rows=rows, seconds=seconds, peak_rss_kib=peak_rss_kib)))
+"""
+    for route in ('observations', 'video'):
+        metrics = json.loads(subprocess.check_output([sys.executable, '-c', reader, str(root), route]))
+        assert metrics['rows'] == ticks
+        print(f'Recording {route}: {metrics}')
+        for name in ('seconds', 'peak_rss_kib'):
+            record_property(f'{route}_{name}', metrics[name])
+    assert fw.summarize_feedback(root)['count'] == ticks
+    assert fw.summarize_commands(root)['count'] == ticks
+    assert fw.timing_summary(root)['streaming_send_gap_ns']
 
 
 def test_openmp_batch_equivalence_dynamics_and_collision():
@@ -515,9 +292,8 @@ def test_orjson_serialization_nan_guard_and_noncontiguous_numpy(tmp_path):
 
 
 @pytest.mark.slow
-def test_live_native_executor_binary_vs_csv_exact_match(tmp_path, monkeypatch):
+def test_live_native_executor_zstdcat_matches_arrays(tmp_path):
     import os
-    import subprocess
     root_dir = Path(__file__).resolve().parents[1]
     from test_shm_fieldwork import NATIVE as native
     fixture_bin = native / 'shm_field_fixture'
@@ -544,21 +320,38 @@ def test_live_native_executor_binary_vs_csv_exact_match(tmp_path, monkeypatch):
         ], capture_output=True, text=True, timeout=10)
         assert r.returncode == 0, r.stderr + r.stdout
 
-        arr_bin = ObservationReader(out).arrays()
-        csv_copy = tmp_path / 'c01_csv_only'
-        shutil.copytree(out, csv_copy)
-        (csv_copy / 'feedback.bin').unlink()
-        arr_csv = ObservationReader(csv_copy).arrays()
+        path = out/'feedback.csv.zst'
+        subprocess.run(['zstd', '-t', path], check=True, capture_output=True)
+        table = subprocess.check_output(['zstdcat', path], text=True)
+        rows = list(csv.DictReader(table.splitlines()))
+        data = ObservationReader(out).arrays()
+        records = _core.read_feedback_csv_zst(path)
+        assert len(rows) == len(data['receive_ns']) and not records['truncated_tail']
+        for column in ('observation_time_ns', 'source_timestamp_ms', 'clock_segment', 'frame_counter', 'phase'):
+            np.testing.assert_array_equal(data[column], [int(row[column]) for row in rows])
+        for column, array in (('q', 'q'), ('v', 'dq'), ('effort', 'effort_raw')):
+            expected = [[float(row[f'{column}{j}']) for j in range(14)] for row in rows]
+            np.testing.assert_array_equal(data[array], expected)
+        for column, array in (('pos_raw', 'pos_raw'), ('vel_raw', 'vel_raw'), ('trq_raw', 'trq_raw'),
+                              ('status', 'status'), ('mode', 'mode'), ('error', 'error')):
+            expected = [[int(row[f'{column}{j}']) for j in range(35)] for row in rows]
+            np.testing.assert_array_equal(records[array], expected)
+        assert not (out/'feedback.bin').exists() and not (out/'commands.bin').exists()
+        assert not (out/'feedback.csv').exists() and not (out/'commands.csv').exists()
+        assert _core.last_feedback_csv_zst(path) == rows[-1]
 
-        for key in ('index', 'receive_ns', 'observation_time_ns', 'source_timestamp_ms', 'clock_segment', 'frame_counter', 'phase', 'time_ambiguous'):
-            np.testing.assert_array_equal(arr_bin[key], arr_csv[key], err_msg=f'Live C++ mismatch in {key}')
-        for key in ('elapsed_s', 'q', 'dq', 'effort_raw'):
-            np.testing.assert_allclose(arr_bin[key], arr_csv[key], rtol=0, atol=1e-15, err_msg=f'Live C++ mismatch in {key}')
-
-        s_vec = (fw.summarize_feedback(out), fw.summarize_commands(out), fw.timing_summary(out))
-        monkeypatch.setattr(fw, '_np', None)
-        s_ref = (fw.summarize_feedback(out), fw.summarize_commands(out), fw.timing_summary(out))
-        assert s_vec == s_ref
+        # The native writer closes pages as the run progresses. An archive can
+        # truncate a partial last frame and preserve the preceding pages verbatim.
+        truncated = tmp_path/'live.csv.zst'
+        with path.open('rb') as stream:
+            truncated.write_bytes(stream.read(path.stat().st_size-3))
+        snapshot = tmp_path/'snapshot.csv.zst'
+        copied = _core.copy_complete_csv_zst_prefix(truncated, snapshot)
+        assert 0 < copied < len(rows)
+        assert _core.read_feedback_csv_zst(truncated)['truncated_tail']
+        prefix = subprocess.check_output(['zstdcat', snapshot], text=True)
+        assert list(csv.DictReader(prefix.splitlines())) == rows[:copied]
+        assert _core.last_feedback_csv_zst(truncated) == rows[copied-1]
     finally:
         if proc.poll() is None:
             proc.terminate()
