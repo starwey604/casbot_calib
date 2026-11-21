@@ -73,13 +73,13 @@ def test_physical_cross_and_backup(session):
         ctl = loop.controller
         loop.start()
         goal = ctl.poses.copy()
-        goal[:, :3, 3] = [[.42,-.15,1.28],[.42,.15,1.28]]
+        goal[:, :3, 3] = [[.193,-.05,.96],[.193,.05,.96]]
         _, gaps = track(loop, goal, 5.)
-        parents = np.array([g['parent'] for g in ctl.spec['geometries']])
-        arms = parents[np.array([p['indices'] for p in ctl.spec['pairs']])]//7
-        inter_arm = (arms.min(axis=1) == 0) & (arms.max(axis=1) == 1)
+        names = [g['name'] for g in ctl.spec['geometries']]
+        fixture = [i for i, pair in enumerate(ctl.spec['pairs'])
+                   if any(names[j].startswith(('fixed:', 'ball:', 'stem:')) for j in pair['indices'])]
         assert gaps.min() > 0
-        assert gaps[-1,inter_arm].min() < .04
+        assert gaps[:,fixture].min() < .04
         for _ in range(len(ctl.backup)):
             start = monotonic()
             loop.step(goal, stop=True)
@@ -148,7 +148,8 @@ def test_hardware_geometry_policy_offline():
         pytest.skip('Build the local NMPC environment')
     ctl = Controller(mode='hardware', physical=True)
     try:
-        profile = load_context().collision_profile()
+        from casbot_calib.nmpc.model import fixture_profile
+        profile = fixture_profile(load_context())
         actual = profile.check(ctl.x[:14])['distances'][0]
         rows = [p['modes']['hardware'] for p in ctl.spec['pairs']]
         convex = np.array([p['geometry'] == 'convex' for p in rows])
@@ -158,3 +159,87 @@ def test_hardware_geometry_policy_offline():
         assert np.all(ctl.gaps > ctl.planning_margin)
     finally:
         ctl.close()
+
+
+def test_ready_motion_from_lowered_arms(session, tmp_path, capsys):
+    from casbot_calib.model_context import load_context
+    from casbot_calib.project_paths import ROOT
+    from casbot_calib.shm_ready import ready_position
+
+    loop = session('unfold')
+    config = json.loads((ROOT/'configs/shm/gui_mock.json').read_text())
+    q = np.array([.074, .092, .032, -.124, .009, -.003, -.002,
+                  .058, -.099, -.009, -.179, -.027, 0., -.003])
+    config['initial_q'] = config['initial_fields']['position'] = q.tolist()
+    config['initial_fields']['effort'] = load_context().engine.gravity(q).tolist()
+    path = tmp_path/'lowered.json'
+    path.write_text(json.dumps(config))
+    loop.client.config['mock_config'] = str(path)
+    with loop:
+        assert loop.needs_ready
+        loop.cfg['tracking_error_rad'] = 1e-6
+        loop.start()
+        assert '准备段跟踪报警 ID' in capsys.readouterr().err
+        proof = json.loads((loop.client.root/'preparation.json').read_text())
+        assert proof['fixture']['passed']
+        assert loop.last_applied > 0 and loop.client.control
+        assert np.max(abs(loop.measured_q-ready_position())) < .05
+        assert np.all(loop.measured_gaps > loop.controller.margin)
+        loop.next_tracking_warning = 0.
+        revision = loop.client.revision
+        loop.step(loop.controller.poses.copy())
+        assert 'NMPC跟踪报警 ID' in capsys.readouterr().err
+        assert loop.client.revision == revision + 1
+    assert loop.disable_ack and result(loop)['disable_ack']
+
+
+def test_ready_return_while_tracking(session):
+    with session('return-to-ready') as loop:
+        loop.start()
+        ctl = loop.controller
+        goal = ctl.poses.copy()
+        goal[:, 0, 3] += .055
+        track(loop, goal, .8)
+        assert np.max(abs(ctl.x[14:])) > 1e-4
+        modes = []
+        for _ in range(250):
+            begin = monotonic()
+            loop.step(goal, return_ready=True)
+            modes.append(ctl.mode)
+            if ctl.mode == 'home_done':
+                break
+            assert ctl.mode != 'home_blocked'
+            sleep(max(0., ctl.dt - (monotonic()-begin)))
+        assert modes[0] == 'stopping' and 'homing' in modes and modes[-1] == 'home_done'
+        np.testing.assert_allclose(ctl.x, np.r_[ctl.spec['q0'], np.zeros(28)], atol=1e-9)
+        assert np.max(abs(loop.measured_q-ctl.x[:14])) < .05
+    assert loop.disable_ack
+
+
+def test_measured_deflection_warns_without_abort(session, capsys):
+    with session('deflection') as loop:
+        loop.start()
+        ctl = loop.controller
+        s = loop.poll()
+        # Simulate external tug past URDF soft limit and inside virtual clearance bubble.
+        tugged_limit = np.asarray(s['q'], dtype=float)
+        tugged_limit[5] = ctl.upper[5] + 0.05
+        loop.feedback(dict(s, q=tugged_limit.tolist()), ctl.x[:14])
+        err_limit = capsys.readouterr().err
+        assert 'NMPC实测越软限位 ID17' in err_limit
+
+        tugged_margin = np.asarray(s['q'], dtype=float)
+        tugged_margin[1] = 0.0  # inward shoulder_roll below ready clearance margin
+        loop.feedback(dict(s, q=tugged_margin.tolist()), ctl.x[:14])
+        err_margin = capsys.readouterr().err
+        assert 'NMPC实测碰撞间距' in err_margin
+
+        # Loop remains alive and keeps accepting commands; non-finite feedback still aborts.
+        rev = loop.client.revision
+        loop.step(ctl.poses.copy())
+        assert loop.client.revision == rev + 1
+        bad = np.asarray(s['q'], dtype=float)
+        bad[0] = np.nan
+        with pytest.raises(RuntimeError, match='非有限值'):
+            loop.feedback(dict(s, q=bad.tolist()), ctl.x[:14])
+    assert loop.disable_ack and result(loop)['disable_ack']

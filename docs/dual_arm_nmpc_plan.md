@@ -55,7 +55,7 @@ casbot_calib/
 
 ### 3.1 碰撞对复用与结构性近邻处理（最优先）
 已离线实测确认：DVT2 原始 CAD 凸包在准备位最小间距为 **11.811 mm**，`home_rad` 为 **11.206 mm**（最近对均为 `waist_yaw_link` ↔ `left_shoulder_roll_link`）。因此**不能用全局统一的 15 mm / 25 mm 阈值**，也不可通过扩充排除表绕过：
-1. **唯一碰撞对来源**：直接复用 `dvt2_bundle.robot_profile()` 的 `CollisionProfile.pairs`（保留全部现有排除规则，不增删排除对）。
+1. **碰撞对来源**：DVT2_01 遥操作现场仅安装 1105_03 工装中的竖直铝方管（CAD 件 `fixed:10010002000`）。双裸法兰场景有 518 对，其中 16 对检查手臂与方管的间距。导入、求解、停车认证和反馈检查共用该场景。
 2. **按碰撞对设定阈值（`pair_clearance_m`）**：
    - 普通碰撞对（双臂互碰、前臂/腕部对躯干/头部/双腿等）使用目标默认裕度（仿真 `0.015 m`，真机初测 `0.025 m`）；
    - 结构性近邻对（在准备位或 `home_rad` 下原始凸包间距低于默认裕度者，如 `waist_yaw_link` ↔ 左/右 `shoulder_roll_link`）在导入阶段基于原始凸包实测间距单独核定可行阈值（例如准备位实测值的保守下限，确保从准备位和 `home_rad` 均可合法启动，同时绝不放任穿透）。
@@ -78,8 +78,8 @@ casbot_calib/
 
 ### 3.4 MuJoCo 双向 Mocap 交互（`mocap_viewer.py`）
 - 用 `context.write_view_scene()` + `lightweight_scene()` 构建场景，注入两个 `mocap="true"` 手柄 `left_goal / right_goal`（半径 `0.035 m` 半透明球 + `0.10 m` RGB 轴，`group="0"`、`contype="0" conaffinity="0"`）及可选碰撞胶囊显示层。
-- 独立子进程运行 `mujoco.viewer.launch_passive`：双击选中手柄后 `Ctrl + 右键` 平移、`Ctrl + 左键` 旋转；快捷键支持 `R`（对齐当前法兰）、`Space`（暂停/恢复）、`C`（切换胶囊显示）、`Esc`（停止）。
-- **防抢鼠标与防跳变**：仅在初始化、暂停或按 `R` 时写 `data.mocap_pos / data.mocap_quat`；跟踪态在 `with viewer.lock():` 内只读 mocap 传回控制侧、只更新机器人 `data.qpos`；对原始 mocap 位姿做 SE(3) 线速度/角速度限幅滤波（默认 `0.35 m/s`、`1.2 rad/s`）。
+- 独立子进程运行 `mujoco.viewer.launch_passive`：双击选中手柄后 `Ctrl + 右键` 平移、`Ctrl + 左键` 旋转；快捷键支持 `O`（3D 位置 / 6D 位姿）、`H`（双臂回准备位）、`R`（对齐当前法兰）、`Space`（暂停/恢复）、`C`（切换胶囊显示）、`Esc`（停止）。
+- **拖动与吸附**：按手柄分别识别鼠标释放。拖动期间把位置目标限制在当前法兰周围 10 cm，沿用 SE(3) 速率滤波。松手且该法兰稳定约 0.4 秒后，手柄的位置和朝向吸附到反馈；再次拖动会取消待执行的吸附。
 
 ### 3.5 SHM 桥接、入队确认与故障安全（`bridge.py`）
 - 直接复用现有 `RemoteClient` + `shm_gui_owner`（零改动 Orin 二进制），通过 `settings` 显式配置限位、`effort_limit`、`kp_max`、`kd_max`。
@@ -138,7 +138,7 @@ scripts/nmpc/run.sh import
 **验收标准**：
 - `scripts/nmpc/run.sh sim` 打开本机 MuJoCo 窗口，拖动 `left_goal / right_goal` 双臂丝滑跟随、肘部不乱漂；
 - 将双手拖至交叉重合或拖入躯干/头部区域时，机械臂沿安全边界平滑避让/停稳，连续碰撞认证始终通过；
-- `R` 复位、`Space` 暂停/恢复、`C` 切换胶囊显示、关窗或 `Ctrl+C` 干净退出。
+- `H` 回准备位、`R` 对齐手柄、`Space` 暂停/恢复、`C` 切换胶囊显示、关窗或 `Ctrl+C` 干净退出。
 
 本机运行 Phase 1–2：
 
@@ -147,7 +147,11 @@ scripts/nmpc/run.sh build
 scripts/nmpc/run.sh sim
 ```
 
-启动后处于 `ready`。双击蓝色左手柄或橙色右手柄，按住 Ctrl 并拖动右键平移，拖动左键旋转。可先试单手小幅移动，再让双手交叉或向胸前靠近。终端的“间距”是所有碰撞对中的最小几何间距，各对有各自的准入裕度。`damped` 表示候选已缩步，`backup` 表示正在沿上次认证的路径减速。显示的周期计算耗时包括目标滤波、求解、连续认证及仿真状态更新。
+在仿真、Mock 和真机窗口中，按 `H` 会先减速停车，再沿经过全碰撞检查的关节路径返回双肩外展准备位（左 +20°、右 −20°，其余轴 0°）。回程中可按空格暂停；到位或路径受阻后保持暂停，按空格恢复手柄跟踪。
+
+默认 **3D position** 只跟踪位置，手腕朝向自由；按 `O` 切换为 **6D pose**，从当前法兰朝向开始跟踪旋转，再按一次回到 3D。黄色手柄表示该侧有轴进入关节行程首尾 5%，红色表示碰撞对接近规划间距。窗口左上角显示相应的关节名或零件对。
+
+纯运动学仿真启动后处于 `ready`。双击蓝色左手柄或橙色右手柄，按住 Ctrl 并拖动右键平移，6D 模式下拖动左键旋转。可先试单手小幅移动，再让双手交叉或向胸前靠近。终端的“间距”是所有碰撞对中的最小几何间距，各对有各自的准入裕度。`damped` 表示候选已缩步，`backup` 表示正在沿上次认证的路径减速。显示的周期计算耗时包括目标滤波、求解、连续认证及仿真状态更新。
 
 在本机保留仿真窗口，用以下命令复测控制耗时。三组目标各运行约 4.5 s，输出各自的 P95、最大耗时、超过控制周期的次数及最小间距裕量。
 
@@ -157,7 +161,7 @@ OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 ~/.conda/envs/casbot_calib/bin/python -
 
 ### Phase 3：标定动力学前馈 + SHM 物理 Mock 交互仿真（带动力学可拖 mocap）
 1. 实现 `python/casbot_calib/nmpc/dynamics_ff.py` 与 `tests/nmpc/test_dynamics_ff.py`。
-2. 在 `bridge.py` 接入 `RemoteClient`，实现基于 `revision / applied_ns` 的推进闸门、追踪偏差保护与故障立即失能；`cli.py` 提供 `mock`（默认指向 `build/nmpc/shm-host/bin/shm_executor`）与 `teleop` 子命令及 `--no-ff` 开关。
+2. 在 `bridge.py` 接入 `RemoteClient`，实现基于 `revision / applied_ns` 的推进闸门、跟踪偏差报警、驱动或通信故障立即失能；`cli.py` 提供 `mock`（默认指向 `build/nmpc/shm-host/bin/shm_executor`）与 `teleop` 子命令及 `--no-ff` 开关。
 3. 编写 `tests/nmpc/test_shm_mock_loop.py`，覆盖：
    - 自动化目标轨迹 + 碰撞逼近全链路连续认证闭环；
    - 低刚度 PD 下开启前馈 vs `--no-ff` 的跟踪误差对比；
@@ -181,5 +185,7 @@ scripts/nmpc/run.sh mock
 本机缺少默认动力学交付时使用名义模型。可用 `mock --delivery <交付目录>` 载入标定模型，用 `mock --no-ff` 对照相同手势。每次会话在 `artifacts/nmpc/` 新建目录，`owner/native/result.json` 记录退出原因和失能应答。物理闭环的参考速度、关节限位预留及碰撞间距预留见 `configs/nmpc/dvt2_teleop.yaml` 的 `shm` 段。持续驱动故障时，记录中会保留未收到就绪应答的状态。
 
 ### Phase 4：真机联调（仅在用户明确要求上机后执行）
-- 先直接复用现有 Orin `shm_gui_owner` 运行 `scripts/nmpc/run.sh teleop --host nvidia@172.16.0.10 --delivery <标定交付目录>`（低速、按碰撞对核定后的真机 `pair_clearance_m`、低刚度 PD），按现场安全规范确认外部支撑/继电器后，先单臂小幅拖动再双臂联动。
+- DVT2_01 使用固定工装承托整机。操作员确认支撑和继电器后，在本机运行 `scripts/nmpc/run.sh teleop --host nvidia@172.16.0.10 --delivery docs/records/dynamics/DVT2_01/20261121`。
+- 从当次实测姿态沿动力学标定的准备轨迹进入双肩外展位（ID13 +20°、ID20 −20°，其余为零）。准备段连续检查 URDF 限位、速度与工装间距，在起点静止期间平滑加入重力补偿。已在准备位附近时直接检查实测起点。
+- 准备段完成后，从实测关节位置重新认证全部碰撞对及停车尾段。关节跟踪误差超过 0.12 rad 时终端报告轴号、参考角与实测角，控制继续；工装间距、关节限位和反馈时效各自独立检查。窗口提示到位后按空格开始跟踪，先单臂小幅移动、返回，再做双臂联动。退出后核对 Orin 会话目录的 `native/result.json` 中 `disable_ack`。
 - 不预设额外 Orin 协议开发：仅在真机实测确认存在可感知阶梯感或需要无工装站立保持时，再单独立项评估 Orin 端插值或 `non_arm_hold` 扩展。

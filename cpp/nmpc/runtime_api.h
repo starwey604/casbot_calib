@@ -1,8 +1,10 @@
 #pragma once
 extern "C" {
-void* nmpc_create_mode(int hardware);
+int nmpc_pair_count();
+void* nmpc_create_at(int hardware, const double* initial_q, int* geometry_modes);
 void nmpc_physical_limits(void* handle, double* lower, double* upper, const double* margins);
 void nmpc_destroy(void* handle);
+void nmpc_orientation_weight(void* handle, double weight);
 // Arrays are contiguous row-major doubles. q is 14, targets are 24 pose outputs.
 int nmpc_query(void* handle, const double* q, double* distances, double* gradients,
                double* flange_matrices);

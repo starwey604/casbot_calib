@@ -26,7 +26,8 @@ def test_native_fk_and_distance_gradients(controller):
     from casbot_calib.model_context import load_context
 
     ctl = controller
-    profile = load_context().collision_profile()
+    from casbot_calib.nmpc.model import fixture_profile
+    profile = fixture_profile(load_context())
     q = ctl.x[:14] + np.random.default_rng(8).uniform(-.12, .12, 14)
     gaps, gradients, poses = ctl.native.query(q, gradient=True, flange=True)
     np.testing.assert_allclose(poses, forward(ctl.spec, q)[1], atol=1e-12)
@@ -90,26 +91,32 @@ def test_candidate_rejection_keeps_committed_stop(controller, monkeypatch):
     assert np.max(abs(ctl.x[14:])) < 1e-8
 
 
-@pytest.mark.parametrize('probe', ['reach', 'cross', 'chest'])
+@pytest.mark.parametrize('probe', ['reach', 'cross', 'chest', 'fixture'])
 def test_tracking_and_stopping_probes(controller, probe):
     from casbot_calib.nmpc.bridge import filtered_target
     from casbot_calib.model_context import load_context
 
     ctl = controller
-    profile = load_context().collision_profile()
+    from casbot_calib.nmpc.model import fixture_profile
+    profile = fixture_profile(load_context())
     goal = ctl.poses.copy()
     initial = goal.copy()
     if probe == 'reach':
         goal[:, 0, 3] += .075
     elif probe == 'cross':
         goal[:, 1, 3] = [-.15, .15]
-        goal[:, 0, 3] = .42
-        goal[:, 2, 3] = 1.28
+        goal[:, 0, 3] = -.12
+        goal[:, 2, 3] = .95
+    elif probe == 'fixture':
+        goal[0, :3, 3] = [.193, 0., .96]
     else:
         goal[:, :3, 3] = [0, 0, 1.22]
     filtered = initial
     timings = []
     minimum = np.inf
+    fixture = np.array([any(profile.names[j].startswith(('fixed:', 'ball:', 'stem:')) for j in p)
+                        for p in profile.pairs])
+    fixture_minimum = np.inf
     inter_arm_minimum = np.inf
     parents = np.array([g['parent'] for g in ctl.spec['geometries']])
     arms = parents[np.array([p['indices'] for p in ctl.spec['pairs']])] // 7
@@ -122,6 +129,7 @@ def test_tracking_and_stopping_probes(controller, probe):
         timings.append(1000*(perf_counter()-start))
         slack = ctl.gaps-ctl.margin
         minimum = min(minimum, np.min(slack))
+        fixture_minimum = min(fixture_minimum, np.min(slack[fixture]))
         inter_arm_minimum = min(inter_arm_minimum, np.min(slack[inter_arm]))
         assert np.all(profile.check(ctl.x[:14])['distances'][0] > ctl.margin)
         sleep(max(0., ctl.dt - (perf_counter()-start)))
@@ -131,6 +139,8 @@ def test_tracking_and_stopping_probes(controller, probe):
         assert np.linalg.norm((ctl.poses-goal)[:, :3, 3], axis=1).max() < .012
     else:
         assert np.linalg.norm((ctl.poses-goal)[:, :3, 3]) > .05
+    if probe == 'fixture':
+        assert fixture_minimum < .005
     if probe == 'cross':
         assert inter_arm_minimum < .001
     overruns = np.count_nonzero(np.array(timings) > 1000*ctl.dt)
@@ -142,3 +152,109 @@ def test_tracking_and_stopping_probes(controller, probe):
         ctl.commit()
         assert np.all(ctl.gaps > ctl.margin)
     assert np.max(np.abs(ctl.x[14:])) < 1e-8
+
+
+def test_ready_return_rejects_blocked_path(controller, monkeypatch):
+    ctl = controller
+    start = ctl.x.copy()
+    monkeypatch.setattr(ctl, 'check', lambda plan, dt=None: False)
+    ctl.propose(ctl.poses, return_ready=True)
+    ctl.commit()
+    assert ctl.mode == 'home_blocked'
+    np.testing.assert_array_equal(ctl.x, start)
+
+
+def test_runtime_orientation_switch(controller):
+    from scipy.spatial.transform import Rotation
+
+    ctl = controller
+    goal = ctl.poses.copy()
+    goal[0, :3, :3] = goal[0, :3, :3] @ Rotation.from_rotvec([.25, 0., 0.]).as_matrix()
+    initial = ctl.x.copy()
+    ctl.set_orientation_tracking(False)
+    for _ in range(10):
+        ctl.propose(goal)
+        ctl.commit()
+    np.testing.assert_allclose(ctl.x, initial, atol=1e-8)
+    ctl.set_orientation_tracking(True)
+    for _ in range(35):
+        ctl.propose(goal)
+        ctl.commit()
+    residual = Rotation.from_matrix(goal[0, :3, :3].T @ ctl.poses[0, :3, :3]).magnitude()
+    assert residual < .14
+
+
+def test_release_snap_and_tether():
+    from casbot_calib.nmpc.interaction import ReleaseSnap, tether
+
+    pose = np.eye(4)
+    snap = ReleaseSnap()
+    assert not snap.update(True, pose, 0.)
+    assert not snap.update(True, pose, .8)
+    assert not snap.update(False, pose, .9)
+    pose[0, 3] += .025
+    assert not snap.update(False, pose, 1.31)
+    assert not snap.update(False, pose, 1.65)
+    assert snap.update(False, pose, 1.72)
+    assert not snap.update(False, pose, 2.2)
+    assert not snap.update(True, pose, 2.3)
+    assert not snap.update(False, pose, 2.4)
+    assert not snap.update(True, pose, 2.5)
+    assert not snap.update(True, pose, 3.1)
+    np.testing.assert_allclose(tether(np.array([.3, .4, 0]), np.zeros(3)), [.06, .08, 0.])
+
+
+def test_limit_indicators(controller):
+    from casbot_calib.nmpc.interaction import LimitIndicators
+
+    ctl = controller
+    indicators = LimitIndicators(ctl)
+    q, gaps = ctl.x[:14].copy(), ctl.gaps.copy()
+    q[5] = ctl.upper[5] - .01
+    right_only = next(i for i in indicators.by_arm[1] if i not in indicators.by_arm[0])
+    gaps[right_only] = ctl.planning_margin[right_only]
+    assert indicators.read(ctl, q, gaps) == [5, -1, -1, right_only]
+
+
+def test_other_arm_keeps_moving_when_one_arm_hits_boundary(controller):
+    from casbot_calib.nmpc.bridge import filtered_target
+
+    ctl = controller
+    ctl.set_orientation_tracking(False)
+    goal = ctl.poses.copy()
+    goal[0, :3, 3] = [0.6, 0.4, 1.5]
+    filtered = ctl.poses.copy()
+    for _ in range(90):
+        filtered = filtered_target(filtered, goal, ctl.dt, ctl.spec['config'])
+        ctl.propose(filtered)
+        ctl.commit()
+    right_start = ctl.poses[1, :3, 3].copy()
+    goal[1, :3, 3] = right_start + np.array([0.08, -0.08, 0.08])
+    for _ in range(35):
+        filtered = filtered_target(filtered, goal, ctl.dt, ctl.spec['config'])
+        ctl.propose(filtered)
+        ctl.commit()
+        assert np.all(ctl.gaps > ctl.planning_margin)
+    assert np.linalg.norm(ctl.poses[1, :3, 3] - right_start) > 0.08
+
+
+def test_ready_return_plans_around_blocked_direct_chord(controller):
+    from casbot_calib.nmpc.bridge import filtered_target
+
+    ctl = controller
+    ctl.set_orientation_tracking(False)
+    goal = ctl.poses.copy()
+    goal[:, :3, 3] = [0.0, 0.0, 1.22]
+    filtered = ctl.poses.copy()
+    for _ in range(60):
+        filtered = filtered_target(filtered, goal, ctl.dt, ctl.spec['config'])
+        ctl.propose(filtered)
+        ctl.commit()
+    for _ in range(400):
+        ctl.propose(ctl.poses, return_ready=True)
+        ctl.commit()
+        assert np.all(ctl.gaps > ctl.planning_margin)
+        if ctl.mode in ('home_done', 'home_blocked'):
+            break
+    assert ctl.mode == 'home_done'
+    np.testing.assert_allclose(ctl.x[:14], ctl.spec['q0'], atol=1e-7)

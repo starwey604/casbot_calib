@@ -5,6 +5,13 @@ from scipy.spatial.transform import Rotation
 from ..shm_data import NAMES
 
 FLANGES = ('left_flange_frame', 'right_flange_frame')
+SQUARE_TUBE = 'fixed:10010002000'
+
+
+def fixture_profile(context):
+    from ..trical.assembly import profile
+
+    return profile(context.bundle, active_arm=None, fixed_parts={SQUARE_TUBE})
 
 
 def arm_chains(context):

@@ -36,7 +36,7 @@ def collision_assets(root=None):
     return m,cache,result
 
 
-def profile(folder,active_arm,ball_id=None,contact=False,*,assets=None,layout=None):
+def profile(folder,active_arm,ball_id=None,contact=False,*,assets=None,layout=None,fixed_parts=None):
     """Build the fixed fixture scene with an optional wrist-mounted tool."""
     if active_arm not in {None,'left','right'}:raise ValueError('Unknown active tool side')
     if active_arm is None and contact:raise ValueError('Contact requires an active tool')
@@ -48,9 +48,13 @@ def profile(folder,active_arm,ball_id=None,contact=False,*,assets=None,layout=No
     tool_frame=next(f for f in engine.model.frames if f.name==active_arm+'_trical_tcp') if active_arm else None
     geometry=list(base.geometry);source_names={g.name:g.name for g in geometry}
     descriptors={r['name']:r for r in m['parts']}
+    if fixed_parts is not None:
+        if not set(fixed_parts) <= {r['name'] for r in m['parts'] if 'side' not in r}:
+            raise ValueError('Unknown fixed fixture part')
     for item in cache['parts']:
         row=descriptors[item['source_name']]
         if row.get('side',active_arm)!=active_arm:continue
+        if fixed_parts is not None and 'side' not in row and row['name'] not in fixed_parts:continue
         g=shapes[item['name']]
         g.parent=tool_frame.parent if 'side' in row else -1
         if 'side' in row:g.placement=tool_frame.placement
@@ -63,6 +67,9 @@ def profile(folder,active_arm,ball_id=None,contact=False,*,assets=None,layout=No
         'fixture_layout':layout,'assembly_manifest_sha256':digest(m),'geometry_sha256':digest(dict(robot=metadata['geometry']['geometry_sha256'],assets=cache,active_arm=active_arm,layout=layout)),
         'exact_contact_pairs':[],'near_contact_pairs':[],'tool_load_known':False,'probe_geometry_scope':'reviewed working-contact state, full free-plunger envelope not measured',
         'assembly_policy':'both hands removed; one physical TriCal mounted at a time' if active_arm else 'bare flange on both arms'}
+    if fixed_parts is not None:
+        data['fixed_parts']=sorted(fixed_parts)
+        data['geometry_sha256']=digest(dict(assembly=data['geometry_sha256'],fixed_parts=data['fixed_parts']))
     result=CollisionProfile(engine,geometry,excluded,data)
     policy=m['near_contact_policy']
     thresholds=np.full(len(result.pairs),policy['ordinary_clearance_m'])

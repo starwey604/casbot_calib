@@ -7,7 +7,7 @@ import yaml
 from ..model_context import load_context
 from ..project_paths import ROOT
 from ..shm_ready import ready_position
-from .model import arm_chains, forward
+from .model import arm_chains, fixture_profile, forward
 from .qp_options import profile_options
 
 CONFIG = ROOT / 'configs/nmpc/dvt2_teleop.yaml'
@@ -70,7 +70,7 @@ def pair_thresholds(config, profile):
 
 
 def import_model(context, config):
-    profile = context.collision_profile()
+    profile = fixture_profile(context)
     engine = profile.engine
     model = arm_chains(context)
     ready = ready_position()
@@ -118,6 +118,7 @@ def import_model(context, config):
     velocity = [min(j.velocity_limit, robot['maximum_velocity_rad_s']) for j in engine.model.joints]
     return dict(**model, model_context=context.identity, q0=ready.tolist(), home=context.home.tolist(),
                 velocity=velocity, config=config, qp_options=profile_options(config['qp_profile']),
+                scene_geometry_sha256=profile.metadata['geometry_sha256'],
                 geometries=geometries, audit_pose_order=['ready', 'home'], pairs=audit)
 
 

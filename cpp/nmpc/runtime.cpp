@@ -87,11 +87,12 @@ struct Runtime {
     std::array<std::unique_ptr<coal::ComputeDistance>, data::count> convex_queries;
     dvt2_solver_capsule* solver = nullptr;
 
-    const int* convex;
+    std::array<int,data::count> convex;
     std::array<double,data::count> planning_margin;
 
-    explicit Runtime(bool hardware)
-        : convex(hardware ? data::hardware_convex : data::simulation_convex) {
+    Runtime(bool hardware, const double* initial_q, int* geometry_modes) {
+        std::copy_n(hardware ? data::hardware_convex : data::simulation_convex,
+                    data::count, convex.begin());
         std::copy_n(hardware ? data::hardware_margin : data::simulation_margin,
                     data::count, planning_margin.begin());
         for (int i = 0; i < data::shapes; ++i) {
@@ -107,7 +108,12 @@ struct Runtime {
             hulls[i] = std::make_shared<Hull>(points, points->size(), faces, faces->size());
             hulls[i]->computeLocalAABB();
         }
+        const Poses initial(initial_q);
         for (int i = 0; i < data::count; ++i) {
+            // Certify measured starts with original CAD if the enclosing capsule overlaps.
+            if (!convex[i] && capsule(initial,data::pairs[2*i],data::pairs[2*i+1]).distance <= planning_margin[i])
+                convex[i] = 1;
+            geometry_modes[i] = convex[i];
             if (convex[i])
                 convex_queries[i] = std::make_unique<coal::ComputeDistance>(
                     hulls[data::pairs[2*i]].get(), hulls[data::pairs[2*i+1]].get());
@@ -148,8 +154,10 @@ Joint gradient(const Poses& pose, int pair, const Witness& w, bool is_convex) {
 }
 }
 
-void* nmpc_create_mode(int hardware) {
-    try { return new Runtime(hardware != 0); } catch (...) { return nullptr; }
+int nmpc_pair_count() { return data::count; }
+
+void* nmpc_create_at(int hardware, const double* initial_q, int* geometry_modes) {
+    try { return new Runtime(hardware != 0, initial_q, geometry_modes); } catch (...) { return nullptr; }
 }
 
 void nmpc_physical_limits(void* handle, double* lower, double* upper, const double* margins) {
@@ -183,6 +191,21 @@ int nmpc_query(void* handle, const double* q, double* gaps, double* grads, doubl
     } catch (...) { return -1; }
 }
 
+void nmpc_orientation_weight(void* handle, double weight) {
+    auto solver = static_cast<Runtime*>(handle)->solver;
+    auto config = dvt2_acados_get_nlp_config(solver);
+    auto dims = dvt2_acados_get_nlp_dims(solver);
+    auto in = dvt2_acados_get_nlp_in(solver);
+    for (int stage = 0; stage <= DVT2_N; ++stage) {
+        const int ny = stage == DVT2_N ? DVT2_NYN : (stage == 0 ? DVT2_NY0 : DVT2_NY);
+        Eigen::MatrixXd W(ny, ny);
+        ocp_nlp_cost_model_get(config, dims, in, stage, "W", W.data());
+        // Each flange contributes three position and nine rotation-matrix entries.
+        for (int offset : {3, 15}) W.diagonal().segment<9>(offset).setConstant(weight);
+        ocp_nlp_cost_model_set(config, dims, in, stage, "W", W.data());
+    }
+}
+
 int nmpc_solve(void* handle, const double* states, const double* controls,
                const double* targets, double* output) {
     try {
@@ -208,11 +231,36 @@ int nmpc_solve(void* handle, const double* states, const double* controls,
                 if (!std::isfinite(witnesses[i].distance)) return -1;
             }
             auto slack = [&](int i) { return witnesses[i].distance-r.planning_margin[i]; };
-            std::partial_sort(ids.begin(), ids.begin()+data::active, ids.end(),
-                              [&](int a, int b) { return slack(a)<slack(b); });
+            // Reserve active slots for each arm so one arm pinned on a boundary cannot starve the other.
+            std::array<int,data::active> selected{};
+            std::array<bool,data::count> used{};
+            int chosen = 0;
+            auto take_best = [&](int limit, auto predicate) {
+                std::vector<int> pool;
+                pool.reserve(data::count);
+                for (int i = 0; i < data::count; ++i)
+                    if (!used[i] && predicate(i)) pool.push_back(i);
+                const int count = std::min<int>(limit, static_cast<int>(pool.size()));
+                if (count <= 0) return;
+                std::partial_sort(pool.begin(), pool.begin()+count, pool.end(),
+                                  [&](int a, int b) { return slack(a)<slack(b); });
+                for (int j = 0; j < count; ++j) {
+                    used[pool[j]] = true;
+                    selected[chosen++] = pool[j];
+                }
+            };
+            auto side_mask = [](int i) {
+                const int pa = data::parents[data::pairs[2*i]];
+                const int pb = data::parents[data::pairs[2*i+1]];
+                return ((pa >= 0 && pa < 7) || (pb >= 0 && pb < 7) ? 1 : 0)
+                     | ((pa >= 7) || (pb >= 7) ? 2 : 0);
+            };
+            take_best(4, [&](int i) { return side_mask(i) == 1; });
+            take_best(4, [&](int i) { return side_mask(i) == 2; });
+            take_best(data::active - chosen, [](int) { return true; });
             std::array<double,DVT2_NP> params{};
             for (int row = 0; row < data::active; ++row) {
-                const int i = ids[row];
+                const int i = selected[row];
                 Joint g = gradient(k,i,witnesses[i],r.convex[i]);
                 if (!g.allFinite()) return -1;
                 Eigen::Map<Joint>(params.data()+15*row) = g;

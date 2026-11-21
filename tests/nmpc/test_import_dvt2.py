@@ -32,14 +32,30 @@ def test_flange_poses(imported):
             np.testing.assert_allclose(pose, engine.frame_pose(q, name), rtol=0, atol=1e-10)
 
 
+def test_viewer_contains_only_installed_tube(imported, tmp_path):
+    import mujoco
+    from casbot_calib.nmpc.mocap_viewer import make_scene
+
+    ctx, spec = imported
+    scene = mujoco.MjModel.from_xml_path(str(make_scene(ctx, spec, tmp_path)))
+    names = [scene.geom(i).name for i in range(scene.ngeom)]
+    assert [n for n in names if n.startswith(('fixture_', 'datum_'))] == ['fixture_square_tube']
+
+
 def test_exact_pairs_and_proxies(imported):
     from casbot_calib import _core
 
     ctx, model = imported
-    profile = ctx.collision_profile()
+    from casbot_calib.nmpc.model import fixture_profile
+    profile = fixture_profile(ctx)
     pairs = model['pairs']
     assert [tuple(p['indices']) for p in pairs] == profile.pairs
-    assert len(pairs) == 502
+    assert len(pairs) == 518
+    fixture_names = [n for n in profile.names if n.startswith(('fixed:', 'stem:', 'ball:'))]
+    assert fixture_names == ['fixed:10010002000']
+    tube = profile.names.index(fixture_names[0])
+    assert sum(tube in pair for pair in profile.pairs) == 16
+    assert model['scene_geometry_sha256'] == profile.metadata['geometry_sha256']
     assert max(g['max_vertex_residual_m'] for g in model['geometries']) <= 1e-10
     starts = np.array([model['q0'], model['home']])
     exact = profile.check(starts)['distances']

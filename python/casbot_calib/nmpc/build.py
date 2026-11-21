@@ -12,7 +12,7 @@ from acados_template import AcadosModel, AcadosOcp, AcadosOcpSolver
 from ..model_context import load_context
 from ..project_paths import ROOT
 from .import_dvt2 import write_model
-from .model import stopping_maps
+from .model import fixture_profile, stopping_maps
 
 BUILD = ROOT / 'build/nmpc/dvt2_bare_flange'
 ACTIVE = 12
@@ -123,22 +123,17 @@ def native_data(spec, profile):
     array('endpoints', [g['endpoints'] for g in geom])
     array('radius', [g['radius_m'] for g in geom])
     array('pairs', [p['indices'] for p in pairs], True)
-    required = set()
     for mode in ('simulation', 'hardware'):
         rows = [pair['modes'][mode] for pair in pairs]
         array(mode+'_margin', [row['pair_clearance_m'] for row in rows])
         array(mode+'_convex', [row['geometry'] == 'convex' for row in rows], True)
-        for pair, row in zip(pairs, rows):
-            if row['geometry'] == 'convex':
-                required.update(pair['indices'])
     vertices, triangles, vertex_offsets, face_offsets = [], [], [0], [0]
-    for i, g in enumerate(profile.geometry):
-        if i in required:
-            placement = g.placement.matrix()
-            if g.parent < 0 and g.attached_to_base:
-                placement = np.array(spec['bases'][0]) @ placement
-            vertices.extend(g.vertices @ placement[:3, :3].T + placement[:3, 3])
-            triangles.extend(g.triangles)
+    for g in profile.geometry:
+        placement = g.placement.matrix()
+        if g.parent < 0 and g.attached_to_base:
+            placement = np.array(spec['bases'][0]) @ placement
+        vertices.extend(g.vertices @ placement[:3, :3].T + placement[:3, 3])
+        triangles.extend(g.triangles)
         vertex_offsets.append(len(vertices))
         face_offsets.append(len(triangles))
     array('vertices', vertices)
@@ -152,7 +147,7 @@ def native_data(spec, profile):
 def build():
     BUILD.mkdir(parents=True, exist_ok=True)
     spec = write_model()
-    profile = load_context().collision_profile()
+    profile = fixture_profile(load_context())
     make_ocp(spec, BUILD)
     (BUILD / 'model_data.hpp').write_text(native_data(spec, profile))
     cmake = BUILD / 'cmake'

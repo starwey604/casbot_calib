@@ -4,8 +4,9 @@ import time
 import numpy as np
 from scipy.spatial.transform import Rotation
 
-from .mocap_viewer import MocapViewer, values
+from .mocap_viewer import MocapViewer, PAUSE, RETURN_READY, values
 from .runtime import BUILD, Controller
+from .interaction import LimitIndicators, tether
 
 
 def filtered_target(previous, target, dt, cfg):
@@ -24,6 +25,36 @@ def filtered_target(previous, target, dt, cfg):
     return result
 
 
+def interactive_target(viewer, ctl, previous, actual, align):
+    packet = values(viewer.targets, -1)
+    orientation = bool(packet[0])
+    goals = packet[3:].reshape(2, 4, 4)
+    if ctl.track_orientation != orientation:
+        ctl.set_orientation_tracking(orientation)
+        print('\n6D 位姿跟踪' if orientation else '\n3D 位置优先', flush=True)
+        previous = previous.copy()
+        previous[:, :3, :3] = actual[:, :3, :3]
+    snapped = packet[1:3] != viewer.aligned
+    viewer.aligned = packet[1:3]
+    if align:
+        return actual.copy()
+    result = filtered_target(previous, goals, ctl.dt, ctl.spec['config']).copy()
+    result[snapped] = actual[snapped]
+    for arm in range(2):
+        result[arm, :3, 3] = tether(result[arm, :3, 3], actual[arm, :3, 3])
+    return result
+
+
+def finish_ready_return(viewer, mode):
+    if mode in ('home_done', 'home_blocked'):
+        with viewer.flags.get_lock():
+            if viewer.flags[0] == RETURN_READY:
+                viewer.flags[0] = PAUSE
+                viewer.flags[1] += 1
+        print('\n准备位参考已到达。' if mode == 'home_done' else '\n回程未通过连续认证，正在停车。',
+              '按空格恢复拖动。', flush=True)
+
+
 def simulate():
     controller = Controller()
     viewer = MocapViewer(BUILD/'model.json', controller.x[:14], controller.poses)
@@ -31,35 +62,34 @@ def simulate():
         while not viewer.ready.wait(.05):
             if not viewer.process.is_alive():
                 raise RuntimeError('MuJoCo window failed to initialize')
+        indicators = LimitIndicators(controller)
         target = controller.poses.copy()
         ready_q = controller.x[:14].copy()
         last_reset = 0
         last_status = 0.
         print('双击蓝色左手柄或橙色右手柄，Ctrl+右键平移，Ctrl+左键旋转。'
-              'Space 暂停，R 对齐，C 显示胶囊，Esc 退出。', flush=True)
+              'Space 暂停，O 切换 3D/6D，H 回准备位，R 对齐，C 显示胶囊，Esc 退出。', flush=True)
         while not viewer.closed.is_set() and viewer.process.is_alive():
             start = time.monotonic()
-            paused, reset, _ = values(viewer.flags, -1)
-            if reset != last_reset or paused:
-                target = controller.poses.copy()
-            else:
-                target = filtered_target(target, values(viewer.targets, (2, 4, 4)),
-                                         controller.dt, controller.spec['config'])
+            paused, reset, _, _ = values(viewer.flags, -1)
+            target = interactive_target(viewer, controller, target, controller.poses, paused or reset != last_reset)
             last_reset = reset
             at_rest = (np.max(np.abs(controller.x[14:])) < 1e-10
                        and np.max(np.abs(controller.backup)) < 1e-10)
             at_ready_goal = (np.max(np.abs(controller.x[:14] - ready_q)) < 1e-10
                              and np.max(np.abs(target - controller.poses)) < 1e-10)
-            idle = at_rest and (paused or at_ready_goal)
+            idle = at_rest and paused != RETURN_READY and (paused or at_ready_goal)
             if idle:
                 controller.mode = 'paused' if paused else 'ready'
                 controller.solve_ms = controller.check_ms = 0.
             else:
-                controller.propose(target, stop=bool(paused))
+                controller.propose(target, stop=bool(paused), return_ready=paused == RETURN_READY)
                 controller.commit()
-                viewer.update(controller.x[:14], controller.poses)
+                finish_ready_return(viewer, controller.mode)
+                viewer.update(controller.x[:14], controller.poses,
+                              indicators.read(controller, controller.x[:14], controller.gaps))
             if start - last_status > .5:
-                mode = 'paused' if paused and np.max(np.abs(controller.x[14:])) < 1e-7 else controller.mode
+                mode = 'paused' if paused == PAUSE and np.max(np.abs(controller.x[14:])) < 1e-7 else controller.mode
                 print(f'\r{mode:9} 间距 {controller.gaps.min()*1000:5.1f} mm  '
                       f'求解 {controller.solve_ms:4.1f} ms  认证 {controller.check_ms:4.1f} ms  '
                       f'周期计算 {(time.monotonic()-start)*1000:4.1f} ms', end='', flush=True)
@@ -93,36 +123,50 @@ def physical_simulation(*, host=None, repo='/home/nvidia/casbot_calib_shm', deli
     try:
         with SHMLoop(client, delivery=delivery, feedforward=feedforward) as loop:
             ctl = loop.controller
-            viewer = MocapViewer(BUILD/'model.json', ctl.x[:14], ctl.poses)
+            initial = ctl.native.query(loop.initial_q, flange=True)[2]
+            viewer = MocapViewer(BUILD/'model.json', loop.initial_q, initial)
             while not viewer.ready.wait(.05):
                 if viewer.closed.is_set() or not viewer.process.is_alive():
                     return
                 loop.poll()
             if viewer.closed.is_set():
                 return
-            loop.start()
+            def show_preparation(q):
+                if viewer.closed.is_set() or not viewer.process.is_alive():
+                    raise KeyboardInterrupt
+                viewer.update(q, ctl.native.query(q, flange=True)[2])
+
+            if loop.needs_ready:
+                with viewer.flags.get_lock():
+                    viewer.flags[0] = PAUSE
+            loop.start(on_preparation=show_preparation)
+            ctl = loop.controller
+            viewer.update(loop.measured_q, loop.measured_poses)
+            if loop.needs_ready:
+                with viewer.flags.get_lock():
+                    viewer.flags[0] = PAUSE
+                    viewer.flags[1] += 1
+                print('已到准备位，按空格开始跟踪。', flush=True)
             print(f"端点 {client.ready['endpoint']}  前馈 {loop.ff.source if feedforward else '关闭'}"
-                  f"  记录 {client.ready['workspace']}", flush=True)
+                  f"  记录 {client.ready['workspace']}  O 切换 3D/6D，H 回准备位，Space 暂停/恢复，Esc 退出。", flush=True)
+            indicators = LimitIndicators(ctl)
             target = ctl.poses.copy()
             reset_seen = 0
             last_status = 0.
             while not viewer.closed.is_set() and viewer.process.is_alive():
                 start = time.monotonic()
-                paused, reset, _ = values(viewer.flags, -1)
-                if reset != reset_seen or paused:
-                    target = loop.measured_poses.copy()
-                else:
-                    target = filtered_target(target, values(viewer.targets, (2, 4, 4)), ctl.dt,
-                                             ctl.spec['config'])
+                paused, reset, _, _ = values(viewer.flags, -1)
+                target = interactive_target(viewer, ctl, target, loop.measured_poses, paused or reset != reset_seen)
                 reset_seen = reset
                 at_rest = np.max(np.abs(ctl.backup)) < 1e-10 and np.max(np.abs(ctl.x[14:])) < 1e-8
-                if at_rest and (paused or np.max(np.abs(target-ctl.poses)) < 1e-10):
+                if at_rest and paused != RETURN_READY and (paused or np.max(np.abs(target-ctl.poses)) < 1e-10):
                     loop.feedback(loop.poll(), ctl.x[:14])
-                    loop.check_connection(ctl.x[:14])
                     ctl.mode = 'paused' if paused else 'ready'
                 else:
-                    loop.step(target, stop=bool(paused))
-                viewer.update(loop.measured_q, loop.measured_poses)
+                    loop.step(target, stop=bool(paused), return_ready=paused == RETURN_READY)
+                    finish_ready_return(viewer, ctl.mode)
+                viewer.update(loop.measured_q, loop.measured_poses,
+                              indicators.read(ctl, loop.measured_q, loop.measured_gaps))
                 if start-last_status >= .5:
                     error = np.max(np.abs(loop.measured_q-ctl.x[:14]))
                     slack = np.min(loop.measured_gaps-ctl.margin)
