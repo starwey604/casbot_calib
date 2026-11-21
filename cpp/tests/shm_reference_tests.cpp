@@ -101,12 +101,15 @@ int test_shm_reference_tests() {
   auto mixed=load(v2,limit+block(mit+","+cst));
   check(mixed.non_arm_hold().slots.size()==2&&mixed.non_arm_hold().has_cst_pd(),"Missing body slots");
   check(mixed.non_arm_hold().cst_comm_timeout_ns==25000000&&mixed.observed_velocity_limit()==1.5,"Wrong v2 limits");
+  check(load(v2,R"("observed_velocity_limit_rad_s":2.0,)"+block(mit)).observed_velocity_limit()==2.0,
+        "Wrong verification feedback velocity limit");
   auto rejects=[&](const std::string& schema,const std::string& fields) {
     try { load(schema,fields); } catch(const std::exception&) { return; }
     throw std::runtime_error("Accepted invalid hold: "+fields);
   };
   rejects("casbot_shm_reference_v1",limit+block(mit));
   rejects(v2,limit);rejects(v2,block(cst));rejects(v2,limit+block(""));
+  rejects(v2,R"("observed_velocity_limit_rad_s":2.01,)"+block(mit));
   rejects(v2,limit+block(mit+","+mit));
   for(auto bad:{R"({"slot":12,"kp":1,"kd":1,"mode":"mit"})",R"({"slot":29,"kp":1,"kd":1,"mode":"mit"})",
                 R"({"slot":0,"kp":1,"kd":1,"mode":"other"})",R"({"slot":4,"kp":1,"kd":1,"mode":"cst_pd"})",

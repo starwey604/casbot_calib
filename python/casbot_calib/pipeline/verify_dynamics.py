@@ -39,6 +39,8 @@ GROUPS = ('G0_stiff', 'G0_soft', 'G1_soft', 'G2_soft', 'G3_soft')
 INSTRUMENTS = ('keyboard', 'drum')
 HOLD_S = 1.0
 TRANSITION = dict(speed_rad_s=1.25, acceleration_rad_s2=2.5, jerk_rad_s3=10.0)
+READY_TO_ANCHOR_SPEED_RAD_S = 0.8
+OBSERVED_VELOCITY_LIMIT_RAD_S = 2.0
 SMOOTHING_FLOOR = 0.015
 EFFORT_STEP_NS = 5_000_000
 
@@ -201,7 +203,7 @@ def _formal_motion(clips):
     q_ready = ready_position()
     q_anchor = keyboard['states'][0][0]
     motion = Motion('band_dynamics_verification', 'verification', q_ready)
-    _move(motion, q_anchor, 1.5, TRANSITION, 'ready_to_anchor')
+    _move(motion, q_anchor, 1.5, dict(TRANSITION, speed_rad_s=READY_TO_ANCHOR_SPEED_RAD_S), 'ready_to_anchor')
     groups = {}
     for name in GROUPS:
         switch_ns = _ns(motion.duration)
@@ -263,6 +265,7 @@ def plan_verification(q_start, robot_config, output, *, delivery=None, clips=Non
     ]
     bundle, motion, proof, _, offset, kinematics = compose_stage_reference(
         formal, q_start, models[2], robot_config, feedforward_mode='none', markers=markers,
+        observed_velocity_limit_rad_s=OBSERVED_VELOCITY_LIMIT_RAD_S,
     )
     for i, name in enumerate(GROUPS):
         row = groups[name]

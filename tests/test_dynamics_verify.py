@@ -114,7 +114,7 @@ def test_complete_preview_preserves_gains_and_session_links(tmp_path, robot):
     for name in ('latest', 'latest_dynamics'):
         (tmp_path / name).symlink_to(existing)
     preview = tmp_path / 'preview'
-    assert verify.main(['--plan-only', '--output-root', str(tmp_path), '--output', str(preview)]) == 0
+    assert verify.main(['--plan-only', '--hold-body', '--output-root', str(tmp_path), '--output', str(preview)]) == 0
     assert verify.CLIP_ASSET.stat().st_size < 60_000
     reference = json.loads((preview / 'reference.json').read_text())
     plan = json.loads((preview / 'plan.json').read_text())
@@ -123,7 +123,10 @@ def test_complete_preview_preserves_gains_and_session_links(tmp_path, robot):
     assert plan['collision_certificate']['minimum_distance_m'] >= 0.01
     assert derivative_bounds(curve).max() < 1.5
     assert reference['purpose'] == 'shm_calib_ready_then_collision_checked'
-    assert reference['observed_velocity_limit_rad_s'] == 1.5
+    assert reference['observed_velocity_limit_rad_s'] == 2.0
+    begin = plan['calibration_begin_ns'] * 1e-9
+    end = plan['groups']['G0_stiff']['switch_ns'] * 1e-9
+    assert np.max(np.abs(curve(np.linspace(begin, end, 1001), nu=1))) <= 0.8
     assert plan['delivery_session'] is None
     schedule = reference['pd_schedule']
     stamps = [row['t_ns'] for row in schedule]

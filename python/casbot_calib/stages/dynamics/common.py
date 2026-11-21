@@ -238,6 +238,7 @@ def compose_stage_reference(
     gravity_feedforward=True,
     feedforward_mode=None,
     markers=None,
+    observed_velocity_limit_rad_s=None,
     max_speed_cap=None,
     max_acceleration_cap=None,
     max_jerk_cap=None,
@@ -287,15 +288,17 @@ def compose_stage_reference(
         prep_cert,
         mode=resolved_ff_mode,
     )
+    if observed_velocity_limit_rad_s is None:
+        observed_velocity_limit_rad_s = robot_config['maximum_velocity_rad_s']
     bundle = export_motion(
         motion,
         kp=robot_config['kp'],
         kd=robot_config['kd'],
         effort=effort, non_arm_hold=hold,
-        observed_velocity_limit_rad_s=robot_config['maximum_velocity_rad_s'],
+        observed_velocity_limit_rad_s=observed_velocity_limit_rad_s,
     )
     bundle['purpose'] = 'shm_calib_ready_then_collision_checked' if prep_cert else 'shm_calib_collision_checked'
-    bundle['observed_velocity_limit_rad_s'] = robot_config['maximum_velocity_rad_s']
+    bundle['observed_velocity_limit_rad_s'] = observed_velocity_limit_rad_s
 
     all_markers = []
     if prep_cert is not None:

@@ -38,7 +38,7 @@ def export_motion(motion, *, kp, kd, effort=None, origin='absolute', non_arm_hol
                 effort=effort or [dict(t_ns=0,value=[0.]*14)],purpose='shm_fieldwork_urdf_only')
 
     if non_arm_hold and non_arm_hold['enabled']:
-        if observed_velocity_limit_rad_s is None or not 0 < observed_velocity_limit_rad_s <= 1.5:
+        if observed_velocity_limit_rad_s is None or not 0 < observed_velocity_limit_rad_s <= 2.0:
             raise ValueError('身体保持参考需要有效的观测速度上限')
         bundle.update(schema='casbot_shm_reference_v2',
                       observed_velocity_limit_rad_s=observed_velocity_limit_rad_s,

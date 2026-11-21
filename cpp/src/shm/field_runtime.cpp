@@ -207,10 +207,11 @@ void run(Channel& channel,StatusFrame state,const CommandFrame& hand,const Eigen
       }
       if(r.received)last_receive=r.receive_at;
       if(r.received&&reference&&reference->observed_velocity_limit()>0) {
+        const double body_speed_limit=std::min(1.5,reference->observed_velocity_limit());
         for(const auto& slot:hold.slots) {
           const double speed=std::abs(double(state.joints[slot.slot].velocity))*1e-6;
-          if(speed>reference->observed_velocity_limit()) {
-            recorder.limit(r.receive_at,phase,slot.slot,"velocity",speed,reference->observed_velocity_limit(),"rad/s","end_control");
+          if(speed>body_speed_limit) {
+            recorder.limit(r.receive_at,phase,slot.slot,"velocity",speed,body_speed_limit,"rad/s","end_control");
             r.phase=phase;r.state=state;r.segment=clock.segment();r.observation=clock.observation(state.timestamp);
             recorder.push(std::move(r));
             throw std::runtime_error("observed_velocity_limit_slot_"+std::to_string(slot.slot));
