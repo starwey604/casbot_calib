@@ -50,6 +50,15 @@ full:
   train_poses_per_arm: 24
   validation_poses_per_arm: 8
   validation_seed: 20261030
+  # 右肩 roll、右肩 yaw、右肘 pitch，单位为度。补入训练集。
+  right_shoulder_roll_supplement_deg:
+    - [-50, -20, -80]
+    - [-50, 20, -40]
+    - [-40, 20, -80]
+    - [-40, 0, -60]
+    - [-40, -20, -40]
+    - [-30, -20, -80]
+    - [-30, 20, -40]
   information_ridge: 1.0e-6
   rank_rtol: 1.0e-7
   timing:

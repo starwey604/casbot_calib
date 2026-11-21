@@ -69,7 +69,7 @@ bash calib/dynamics.sh --reanalyse artifacts/calib/DVT2_01/20261115_103000
 
 只改真正需要调的配置文件（单阶段临时换配置可传 `--config path/to/xxx.yaml`）：
 - 机器人公共参数：[dvt2.yaml](../configs/robot/dvt2.yaml)（`kp`、`kd`、`gravity_world`、力矩上限等）。
-- H1 静态重力：[h1.yaml](../configs/dynamics/h1.yaml)（`small` 准备位附近快速验证 / `full` 双臂同步 D 最优 2-opt 直连，每个采集臂七轴均做正反接近 + 实测角配对滞回分离 / `smoke` 单轴冒烟）。
+- H1 静态重力：[h1.yaml](../configs/dynamics/h1.yaml)（`small` 准备位附近快速验证 / `full` 双臂同步 D 最优 2-opt 直连，每个采集臂七轴均做正反接近 + 实测角配对滞回分离 / `smoke` 单轴冒烟）。`full` 在原双臂采样后回到标定锚点，固定左臂并补采 7 个右肩 roll 姿态。14 个新增窗口进入训练集，验收沿用原来的留出姿态。
 - H2 关节摩擦：[h2.yaml](../configs/dynamics/h2.yaml)（双臂镜像分组对数速度连续扫掠 + C++ 同构 Stribeck 拟合与零偏诊断，自动扣除 H1 重力）。
 - H3 惯量激励：[h3.yaml](../configs/dynamics/h3.yaml)（近远端带宽分层多正弦 + CMA-ES 相位寻优 + 平滑重力摩擦前馈 + 冻结 H1 重力子空间的 140 维刚体与 14 轴转子惯量联合锥拟合）。
 

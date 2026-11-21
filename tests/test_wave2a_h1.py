@@ -53,9 +53,12 @@ def test_h1_recipe_defaults_and_programmatic_inheritance():
 
 
 @pytest.mark.slow
-def test_h1_full_offline_planning_benchmark(tmp_path):
-    robot_cfg = load_robot_config()
+@pytest.mark.parametrize('with_supplement', [False, True])
+def test_h1_full_offline_planning_benchmark(tmp_path, with_supplement):
+    robot_cfg = load_robot_config(hold_body=with_supplement)
     recipe = load_h1_recipe(mode='full')
+    if not with_supplement:
+        recipe['full'].pop('right_shoulder_roll_supplement_deg')
     q0 = ready_position()
 
     plan_dir = tmp_path / 'h1_full_plan'
@@ -76,7 +79,8 @@ def test_h1_full_offline_planning_benchmark(tmp_path):
         f"trials={len(meta['trials'])}, effort_rows={len(ref_bundle['effort'])}"
     )
 
-    assert 350.0 <= duration_s <= 450.0, f'H1 full duration {duration_s:.2f}s outside [350, 450]s'
+    duration_bounds = (500.0, 550.0) if with_supplement else (350.0, 450.0)
+    assert duration_bounds[0] <= duration_s <= duration_bounds[1], duration_s
     assert ref_bytes < int(1.8 * 1024 * 1024), f'reference.json is {ref_mb:.3f} MB (>= 1.8 MB)'
     assert gate['passed'] is True
     assert meta['minimum_reference_distance_m'] >= 0.01
@@ -95,6 +99,24 @@ def test_h1_full_offline_planning_benchmark(tmp_path):
     for t in meta['trials']:
         pose_id = t['conditions']['pose']
         assert '__' in pose_id or pose_id.startswith(('left_', 'right_'))
+
+    supplement = [t for t in meta['trials'] if t['conditions']['pose'].startswith('right_roll_supplement_')]
+    assert len(supplement) == (14 if with_supplement else 0)
+    if with_supplement:
+        assert meta['trials'][-14:] == supplement
+        assert all(t['conditions']['batch'] == 'train' for t in supplement)
+        assert len(val_trials) == 16
+        assert meta['static_motions'][-14]['labels'][0] == 'via_home'
+        np.testing.assert_allclose(
+            np.rad2deg([t['conditions']['target_q_rad'][8:11] for t in supplement[::2]]),
+            recipe['full']['right_shoulder_roll_supplement_deg'],
+        )
+        for m in meta['static_motions'][-14:]:
+            states = np.asarray(m['states'])
+            k = m['labels'].index('approach')
+            np.testing.assert_allclose(states[k:, 0, :7] - np.deg2rad(recipe['full']['home_deg'][:7]), 0.)
+        waist = next(row for row in ref_bundle['non_arm_hold']['slots'] if row['slot'] == 28)
+        assert waist == {'slot': 28, **robot_cfg['non_arm_hold']['slots']['28']}
 
     for motion in meta['static_motions']:
         conditions = motion['conditions']

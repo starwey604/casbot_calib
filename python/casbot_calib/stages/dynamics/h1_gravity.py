@@ -1038,7 +1038,7 @@ def _build_chained_static_motions(ordered_poses, settings, geometry, margin, *, 
     return_anchor_s = float(settings.get('return_anchor_s', timing['minimum_transition_s']))
 
     poses = [deepcopy(r) for r in ordered_poses]
-    via_home = [False] * len(poses)
+    via_home = [row.get('via_home', False) for row in poses]
 
     while True:
         sub_motions = []
@@ -1237,6 +1237,27 @@ def build_small_static_spec(small_cfg, robot_config, geometry):
     )
 
 
+def _right_shoulder_roll_supplement(full_cfg, home):
+    angles = np.asarray(full_cfg.get('right_shoulder_roll_supplement_deg', []), dtype=float)
+    if angles.shape == (0,):
+        return []
+    if angles.ndim != 2 or angles.shape[1] != 3 or not np.isfinite(angles).all():
+        raise ValueError('full.right_shoulder_roll_supplement_deg 每行须为三个有限角度')
+
+    joints = [NAMES.index(name) for name in (
+        'right_shoulder_roll_joint', 'right_shoulder_yaw_joint', 'right_elbow_pitch_joint',
+    )]
+    poses = []
+    for i, values in enumerate(angles):
+        q = home.copy()
+        q[7:] = 0.
+        q[joints] = np.deg2rad(values)
+        poses.append(dict(id=f'right_roll_supplement_{i + 1:02d}', arm='right', split='train',
+                          q_rad=q.tolist(), active_joints=joints, approach_joints=list(range(7, 14)),
+                          via_home=i == 0))
+    return poses
+
+
 def build_full_static_spec(full_cfg, robot_config, engine, geometry):
     home = np.deg2rad(np.asarray(full_cfg['home_deg'], dtype=float))
     if home.shape != (14,) or not np.isfinite(home).all():
@@ -1278,6 +1299,17 @@ def build_full_static_spec(full_cfg, robot_config, engine, geometry):
 
     parallel_arms = bool(full_cfg.get('parallel_arms', True))
     direct_pose_chain = bool(full_cfg.get('direct_pose_chain', True))
+    supplement = _right_shoulder_roll_supplement(full_cfg, home)
+    supplement_ids = {row['id'] for row in supplement}
+    supplement_motions = []
+    if supplement and not direct_pose_chain:
+        try:
+            supplement_motions, _, _ = _build_chained_static_motions(
+                supplement, scan_cfg, geometry, margin,
+                max_speed_rad_s=float(robot_config['maximum_velocity_rad_s']),
+            )
+        except _SinglePoseGateFailure as exc:
+            raise ValueError(f'H1 右肩 roll 补采姿态 {exc.pose_id} 未通过连续碰撞检查') from exc
 
     if not direct_pose_chain and not parallel_arms:
         motions = []
@@ -1297,8 +1329,8 @@ def build_full_static_spec(full_cfg, robot_config, engine, geometry):
             kind='static',
             home_rad=home.tolist(),
             planning_envelope=full_cfg['planning_envelope'],
-            motions=motions,
-            candidates=selected,
+            motions=motions + supplement_motions,
+            candidates=selected + supplement,
         )
 
     permanently_rejected = set()
@@ -1323,7 +1355,7 @@ def build_full_static_spec(full_cfg, robot_config, engine, geometry):
             ordered = _order_poses_2opt(working, home)
             try:
                 motions, final_poses, certified = _build_chained_static_motions(
-                    ordered,
+                    ordered + supplement,
                     scan_cfg,
                     geometry,
                     margin,
@@ -1339,6 +1371,8 @@ def build_full_static_spec(full_cfg, robot_config, engine, geometry):
                     _certified_chain=certified,
                 )
             except _SinglePoseGateFailure as exc:
+                if exc.pose_id in supplement_ids:
+                    raise ValueError(f'H1 右肩 roll 补采姿态 {exc.pose_id} 未通过连续碰撞检查') from exc
                 permanently_rejected.add(exc.pose_id)
                 continue
         else:
@@ -1375,8 +1409,8 @@ def build_full_static_spec(full_cfg, robot_config, engine, geometry):
                 kind='static',
                 home_rad=home.tolist(),
                 planning_envelope=full_cfg['planning_envelope'],
-                motions=motions,
-                candidates=working,
+                motions=motions + supplement_motions,
+                candidates=working + supplement,
             )
 
 
