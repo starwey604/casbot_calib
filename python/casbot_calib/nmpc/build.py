@@ -119,14 +119,18 @@ def native_data(spec, profile):
         array(key, spec[key])
     geom = spec['geometries']
     pairs = spec['pairs']
-    modes = [p['modes']['simulation'] for p in pairs]
     array('parents', [g['parent'] for g in geom], True)
     array('endpoints', [g['endpoints'] for g in geom])
     array('radius', [g['radius_m'] for g in geom])
     array('pairs', [p['indices'] for p in pairs], True)
-    array('margin', [p['pair_clearance_m'] for p in modes])
-    array('convex', [p['geometry'] == 'convex' for p in modes], True)
-    required = {i for p, mode in zip(pairs, modes) if mode['geometry'] == 'convex' for i in p['indices']}
+    required = set()
+    for mode in ('simulation', 'hardware'):
+        rows = [pair['modes'][mode] for pair in pairs]
+        array(mode+'_margin', [row['pair_clearance_m'] for row in rows])
+        array(mode+'_convex', [row['geometry'] == 'convex' for row in rows], True)
+        for pair, row in zip(pairs, rows):
+            if row['geometry'] == 'convex':
+                required.update(pair['indices'])
     vertices, triangles, vertex_offsets, face_offsets = [], [], [0], [0]
     for i, g in enumerate(profile.geometry):
         if i in required:

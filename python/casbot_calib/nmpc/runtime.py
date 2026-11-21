@@ -41,18 +41,20 @@ def position_hull(x, y, dt):
 
 
 class Native:
-    def __init__(self, spec):
+    def __init__(self, spec, mode):
         self.count = len(spec['pairs'])
         self.n = spec['config']['horizon_steps']
         self.lib = ct.CDLL(str(BUILD / 'libcasbot_nmpc_runtime.so'))
         lib = self.lib
-        lib.nmpc_create.argtypes = []
-        lib.nmpc_create.restype = ct.c_void_p
+        lib.nmpc_create_mode.argtypes = [ct.c_int]
+        lib.nmpc_create_mode.restype = ct.c_void_p
+        lib.nmpc_physical_limits.argtypes = [ct.c_void_p, PTR, PTR, PTR]
+        lib.nmpc_physical_limits.restype = None
         lib.nmpc_destroy.argtypes = [ct.c_void_p]
         lib.nmpc_destroy.restype = None
         lib.nmpc_query.argtypes = lib.nmpc_solve.argtypes = [ct.c_void_p] + [PTR]*4
-        lib.nmpc_certify.argtypes = [ct.c_void_p, PTR, PTR, ct.c_int, ct.c_double, PTR, PTR]
-        self.handle = lib.nmpc_create()
+        lib.nmpc_certify.argtypes = [ct.c_void_p, PTR, PTR, ct.c_int, ct.c_double, PTR, PTR, PTR]
+        self.handle = lib.nmpc_create_mode(mode == 'hardware')
         if not self.handle:
             raise RuntimeError('Native NMPC initialization failed')
 
@@ -79,7 +81,7 @@ class Native:
         return None if status else output
 
 
-def motion_radii(spec, profile):
+def motion_radii(spec, profile, mode):
     """Use CAD motion radii for hull pairs and the enclosing capsule radii for proxies."""
     body = np.zeros((len(spec['geometries']), 14))
     origins = np.array(spec['origins']).reshape(14, 4, 4)
@@ -93,20 +95,22 @@ def motion_radii(spec, profile):
             radius += np.linalg.norm(origins[j, :3, 3])
     radii = profile.radii.copy()
     for i, row in enumerate(spec['pairs']):
-        if row['modes']['simulation']['geometry'] == 'capsule':
+        if row['modes'][mode]['geometry'] == 'capsule':
             a, b = body[row['indices']]
             radii[i] = np.where((a > 0) & (b > 0), 0, a+b)
     return np.ascontiguousarray(radii)
 
 
 class Controller:
-    def __init__(self, q=None):
+    def __init__(self, q=None, *, mode='simulation', physical=False):
         self.spec = json.loads((BUILD/'model.json').read_text())
         cfg = self.spec['config']
         ctx = load_context()
         if ctx.identity != self.spec['model_context']:
             raise ValueError('Rebuild NMPC for the selected geometry')
-        self.native = Native(self.spec)
+        if mode not in ('simulation', 'hardware'):
+            raise ValueError(f'Unknown collision policy {mode}')
+        self.native = Native(self.spec, mode)
         self.dt = cfg['dt']
         self.n = cfg['horizon_steps']
         self.tail = cfg['stopping_tail_steps']
@@ -114,13 +118,27 @@ class Controller:
         self.acc_limit = cfg['acceleration_rad_s2']
         self.velocity = np.asarray(self.spec['velocity'])
         self.lower, self.upper = np.asarray(self.spec['bounds']).T
-        self.margin = np.array([p['modes']['simulation']['pair_clearance_m'] for p in self.spec['pairs']])
-        self.radii = motion_radii(self.spec, ctx.collision_profile())
+        self.margin = np.array([p['modes'][mode]['pair_clearance_m'] for p in self.spec['pairs']])
+        self.radii = motion_radii(self.spec, ctx.collision_profile(), mode)
         self.tail_map, _ = stopping_maps(self.tail, self.dt)
         self.x = np.r_[np.array(self.spec['q0'] if q is None else q).reshape(14), np.zeros(28)]
         self.backup = np.zeros((self.n+self.tail, 14))
         self.pending = None
         self.gaps, _, self.poses = self.native.query(self.x[:14], flange=True)
+        self.reference_lower, self.reference_upper = self.lower, self.upper
+        self.planning_margin = self.margin
+        if physical:
+            shm = cfg['shm']
+            self.velocity = np.minimum(self.velocity, shm['reference_velocity_rad_s'])
+            self.planning_margin = self.margin + np.minimum(shm['tracking_clearance_m'],
+                                                             .4*(self.gaps-self.margin).clip(min=0))
+            reserve = shm['tracking_joint_reserve_rad']
+            self.reference_lower = self.lower + np.minimum(reserve, .4*(self.x[:14]-self.lower).clip(min=0))
+            self.reference_upper = self.upper - np.minimum(reserve, .4*(self.upper-self.x[:14]).clip(min=0))
+            acc = np.full(14, self.acc_limit)
+            self.native.lib.nmpc_physical_limits(self.native.handle,
+                pointer(np.r_[self.reference_lower, -self.velocity, -acc]),
+                pointer(np.r_[self.reference_upper, self.velocity, acc]), pointer(self.planning_margin))
         if not self.check(self.backup):
             self.close()
             raise ValueError('Initial posture violates joint or collision limits')
@@ -139,10 +157,10 @@ class Controller:
                 or np.any(np.abs(a) > self.acc_limit+1e-9)
                 or np.any(np.abs(v) > self.velocity+1e-9)
                 or np.any(np.abs(v[:-1]+self.dt*a[:-1]/2) > self.velocity+1e-9)
-                or np.any(low < self.lower-1e-10) or np.any(high > self.upper+1e-10)
+                or np.any(low < self.reference_lower-1e-10) or np.any(high > self.reference_upper+1e-10)
                 or np.max(np.abs(states[-1, 14:])) > 1e-8):
             return False
-        slack = self.gaps - self.margin
+        slack = self.gaps - self.planning_margin
         if np.any(slack <= 0):
             return False
         # First certify the entire horizon and suffix against one set of distance witnesses.
@@ -152,7 +170,7 @@ class Controller:
             return True
         status = self.native.lib.nmpc_certify(
             self.native.handle, pointer(np.ascontiguousarray(states)), pointer(np.ascontiguousarray(jerks)),
-            len(jerks), self.dt, pointer(self.gaps), pointer(self.radii))
+            len(jerks), self.dt, pointer(self.gaps), pointer(self.radii), pointer(self.planning_margin))
         if status < 0:
             raise RuntimeError('Continuous distance query failed')
         return bool(status)

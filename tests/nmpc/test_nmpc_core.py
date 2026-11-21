@@ -63,7 +63,7 @@ def test_between_substep_clearance(controller):
         assert np.min(ctl.native.query(advance(x, jerk[0], t)[:14])[0]-ctl.margin) > 0
     states = np.stack([x, advance(x, jerk[0], 1.)])
     assert ctl.native.lib.nmpc_certify(ctl.native.handle, pointer(states), pointer(jerk),
-                                       1, 1., pointer(ctl.native.query(q)[0]), pointer(ctl.radii)) == 0
+                                       1, 1., pointer(ctl.native.query(q)[0]), pointer(ctl.radii), pointer(ctl.margin)) == 0
 
 
 def test_candidate_rejection_keeps_committed_stop(controller, monkeypatch):

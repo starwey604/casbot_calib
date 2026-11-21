@@ -170,6 +170,16 @@ OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 ~/.conda/envs/casbot_calib/bin/python -
   - `bash scripts/humble/container.sh env PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest -q < /dev/null`
   - `bash scripts/humble/container.sh bash -c 'cmake --build --preset humble && ctest --preset humble' < /dev/null`
 
+**本机人工验收**
+
+```bash
+scripts/nmpc/run.sh mock
+```
+
+物理 Mock 从准备位启动，窗口显示实测关节反馈。操作与 Phase 2 相同。先向前平移单手约 5 cm，再将两手向胸前和交叉方向拖动；按空格观察减速停车。终端显示实测最小间距裕量、最大关节跟踪误差和入队确认耗时。按 Esc 结束并等待失能。
+
+本机缺少默认动力学交付时使用名义模型。可用 `mock --delivery <交付目录>` 载入标定模型，用 `mock --no-ff` 对照相同手势。每次会话在 `artifacts/nmpc/` 新建目录，`owner/native/result.json` 记录退出原因和失能应答。物理闭环的参考速度、关节限位预留及碰撞间距预留见 `configs/nmpc/dvt2_teleop.yaml` 的 `shm` 段。持续驱动故障时，记录中会保留未收到就绪应答的状态。
+
 ### Phase 4：真机联调（仅在用户明确要求上机后执行）
 - 先直接复用现有 Orin `shm_gui_owner` 运行 `scripts/nmpc/run.sh teleop --host nvidia@172.16.0.10 --delivery <标定交付目录>`（低速、按碰撞对核定后的真机 `pair_clearance_m`、低刚度 PD），按现场安全规范确认外部支撑/继电器后，先单臂小幅拖动再双臂联动。
 - 不预设额外 Orin 协议开发：仅在真机实测确认存在可感知阶梯感或需要无工装站立保持时，再单独立项评估 Orin 端插值或 `non_arm_hold` 扩展。

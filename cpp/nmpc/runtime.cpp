@@ -87,7 +87,13 @@ struct Runtime {
     std::array<std::unique_ptr<coal::ComputeDistance>, data::count> convex_queries;
     dvt2_solver_capsule* solver = nullptr;
 
-    Runtime() {
+    const int* convex;
+    std::array<double,data::count> planning_margin;
+
+    explicit Runtime(bool hardware)
+        : convex(hardware ? data::hardware_convex : data::simulation_convex) {
+        std::copy_n(hardware ? data::hardware_margin : data::simulation_margin,
+                    data::count, planning_margin.begin());
         for (int i = 0; i < data::shapes; ++i) {
             if (data::vertex_offsets[i] == data::vertex_offsets[i+1]) continue;
             auto points = std::make_shared<std::vector<Vec>>();
@@ -102,7 +108,7 @@ struct Runtime {
             hulls[i]->computeLocalAABB();
         }
         for (int i = 0; i < data::count; ++i) {
-            if (data::convex[i])
+            if (convex[i])
                 convex_queries[i] = std::make_unique<coal::ComputeDistance>(
                     hulls[data::pairs[2*i]].get(), hulls[data::pairs[2*i+1]].get());
         }
@@ -119,7 +125,7 @@ struct Runtime {
 
     Witness witness(const Poses& pose, int pair) const {
         int i = data::pairs[2*pair], j = data::pairs[2*pair+1];
-        if (!data::convex[pair]) return capsule(pose, i, j);
+        if (!convex[pair]) return capsule(pose, i, j);
         coal::DistanceResult result;
         double gap = (*convex_queries[pair])(pose.transforms[i], pose.transforms[j],
                                              coal::DistanceRequest(true, true), result);
@@ -127,9 +133,9 @@ struct Runtime {
     }
 };
 
-Joint gradient(const Poses& pose, int pair, const Witness& w) {
+Joint gradient(const Poses& pose, int pair, const Witness& w, bool is_convex) {
     Vec normal = (w.first-w.second).normalized();
-    if (data::convex[pair] && w.distance < 0) normal = -normal;
+    if (is_convex && w.distance < 0) normal = -normal;
     Joint g = Joint::Zero();
     for (int side = 0; side < 2; ++side) {
         const int link = data::parents[data::pairs[2*pair+side]];
@@ -142,8 +148,21 @@ Joint gradient(const Poses& pose, int pair, const Witness& w) {
 }
 }
 
-void* nmpc_create() {
-    try { return new Runtime; } catch (...) { return nullptr; }
+void* nmpc_create_mode(int hardware) {
+    try { return new Runtime(hardware != 0); } catch (...) { return nullptr; }
+}
+
+void nmpc_physical_limits(void* handle, double* lower, double* upper, const double* margins) {
+    auto& r = *static_cast<Runtime*>(handle);
+    std::copy_n(margins, data::count, r.planning_margin.begin());
+    auto config = dvt2_acados_get_nlp_config(r.solver);
+    auto dims = dvt2_acados_get_nlp_dims(r.solver);
+    auto in = dvt2_acados_get_nlp_in(r.solver);
+    auto out = dvt2_acados_get_nlp_out(r.solver);
+    for (int stage = 1; stage <= DVT2_N; ++stage) {
+        ocp_nlp_constraints_model_set(config,dims,in,out,stage,"lbx",lower);
+        ocp_nlp_constraints_model_set(config,dims,in,out,stage,"ubx",upper);
+    }
 }
 
 void nmpc_destroy(void* handle) { delete static_cast<Runtime*>(handle); }
@@ -158,7 +177,7 @@ int nmpc_query(void* handle, const double* q, double* gaps, double* grads, doubl
             const auto w = r.witness(k,i);
             if (!std::isfinite(w.distance)) return -1;
             gaps[i] = w.distance;
-            if (grads) Eigen::Map<Joint>(grads+14*i) = gradient(k,i,w);
+            if (grads) Eigen::Map<Joint>(grads+14*i) = gradient(k,i,w,r.convex[i]);
         }
         return 0;
     } catch (...) { return -1; }
@@ -188,13 +207,13 @@ int nmpc_solve(void* handle, const double* states, const double* controls,
                 witnesses[i] = r.witness(k,i);
                 if (!std::isfinite(witnesses[i].distance)) return -1;
             }
-            auto slack = [&](int i) { return witnesses[i].distance-data::margin[i]; };
+            auto slack = [&](int i) { return witnesses[i].distance-r.planning_margin[i]; };
             std::partial_sort(ids.begin(), ids.begin()+data::active, ids.end(),
                               [&](int a, int b) { return slack(a)<slack(b); });
             std::array<double,DVT2_NP> params{};
             for (int row = 0; row < data::active; ++row) {
                 const int i = ids[row];
-                Joint g = gradient(k,i,witnesses[i]);
+                Joint g = gradient(k,i,witnesses[i],r.convex[i]);
                 if (!g.allFinite()) return -1;
                 Eigen::Map<Joint>(params.data()+15*row) = g;
                 const double buffer = std::clamp(slack(i)-1e-4, 0., 0.001);
@@ -236,13 +255,13 @@ Joint excursion(const State& a, const State& b, const Joint& center, double dt) 
 }
 
 bool prove(const Runtime& runtime, const State& x, const Joint& jerk, double dt,
-           const std::vector<int>& ids, const double* radii, int depth) {
+           const std::vector<int>& ids, const double* radii, const double* margins, int depth) {
     State mid = at(x,jerk,dt/2);
     Poses poses(mid.data());
     Joint variation = excursion(x, at(x,jerk,dt), mid.head<14>(), dt);
     std::vector<int> uncertain;
     for (int i : ids) {
-        double slack = runtime.witness(poses,i).distance-data::margin[i];
+        double slack = runtime.witness(poses,i).distance-margins[i];
         if (!(slack > 0)) return false;
         if (slack <= variation.dot(Eigen::Map<const Joint>(radii+14*i)))
             uncertain.push_back(i);
@@ -252,13 +271,13 @@ bool prove(const Runtime& runtime, const State& x, const Joint& jerk, double dt,
     int subdivisions = depth == 0 ? 5 : 2;
     for (int s = 0; s < subdivisions; ++s)
         if (!prove(runtime,at(x,jerk,s*dt/subdivisions),jerk,dt/subdivisions,
-                   uncertain,radii,depth+1)) return false;
+                   uncertain,radii,margins,depth+1)) return false;
     return true;
 }
 }
 
 int nmpc_certify(void* handle, const double* knots, const double* jerks, int segments,
-                 double dt, const double* gaps, const double* radii) {
+                 double dt, const double* gaps, const double* radii, const double* margins) {
     try {
         auto& r = *static_cast<Runtime*>(handle);
         const Joint center = Eigen::Map<const Joint>(knots);
@@ -272,19 +291,19 @@ int nmpc_certify(void* handle, const double* knots, const double* jerks, int seg
         }
         std::vector<int> active, uncertain;
         for (int i = 0; i < data::count; ++i) {
-            if (!(gaps[i] > data::margin[i])) return 0;
-            if (gaps[i]-data::margin[i] <= whole.dot(Eigen::Map<const Joint>(radii+14*i)))
+            if (!(gaps[i] > margins[i])) return 0;
+            if (gaps[i]-margins[i] <= whole.dot(Eigen::Map<const Joint>(radii+14*i)))
                 active.push_back(i);
         }
         // The tail often approaches the boundary first. Its intervals can reject a trial early.
         for (int s = segments-1; s >= 0; --s) {
             uncertain.clear();
             for (int i : active) {
-                if (gaps[i]-data::margin[i] <= variations[s].dot(Eigen::Map<const Joint>(radii+14*i)))
+                if (gaps[i]-margins[i] <= variations[s].dot(Eigen::Map<const Joint>(radii+14*i)))
                     uncertain.push_back(i);
             }
             if (!uncertain.empty() && !prove(r,Eigen::Map<const State>(knots+42*s),
-                    Eigen::Map<const Joint>(jerks+14*s),dt,uncertain,radii,0)) return 0;
+                    Eigen::Map<const Joint>(jerks+14*s),dt,uncertain,radii,margins,0)) return 0;
         }
         return 1;
     } catch (...) { return -1; }

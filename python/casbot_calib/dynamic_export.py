@@ -15,7 +15,6 @@ import pinocchio as pin
 from . import _core
 from .data import write_json
 from .dual_model import nominal_dual_arm
-from .rigid_identification import model_from_parameters
 from .artifact_io import sha256
 from .urdf_resources import rebase_resources,canonical_resources
 
