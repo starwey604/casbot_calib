@@ -29,3 +29,4 @@ fieldwork/.zero-*.yaml
 firmware/.west/
 firmware/zephyr/
 firmware/modules/
+/third_party/

@@ -1,0 +1,27 @@
+dt: 0.04
+horizon_steps: 8
+stopping_tail_steps: 15
+acceleration_rad_s2: 3.0
+jerk_rad_s3: 15.0
+qp_profile: fast
+clearance_m:
+  simulation: 0.015
+  hardware: 0.025
+# 两个启动姿态的原始凸包审计。每项分别应用于同侧的左、右臂。
+near_pairs:
+  - links: [waist_yaw_link, "{side}_shoulder_roll_link"]
+    clearance_m: 0.010
+  - links: ["{side}_wrist_pitch_link", "{side}_flange_frame"]
+    clearance_m: 0.019
+  - links: ["{side}_shoulder_yaw_link", "{side}_wrist_yaw_link"]
+    clearance_m: 0.022
+weights:
+  position: 4000.0
+  orientation: 15.0
+  posture: 0.15
+  velocity: 0.3
+  acceleration: 0.015
+  jerk: 0.15
+  singularity: 0.0
+mocap_linear_m_s: 0.35
+mocap_angular_rad_s: 1.2
