@@ -122,8 +122,11 @@ def test_complete_preview_preserves_gains_and_session_links(tmp_path, robot):
     assert plan['collision_certificate']['passed']
     assert plan['collision_certificate']['minimum_distance_m'] >= 0.01
     assert derivative_bounds(curve).max() < 1.5
+    assert reference['schema'] == 'casbot_shm_retreat_reference_v1'
     assert reference['purpose'] == 'shm_calib_ready_then_collision_checked'
     assert reference['observed_velocity_limit_rad_s'] == 2.0
+    assert set(plan['reference_speed_bounds_rad_s']) == set(NAMES)
+    assert max(plan['reference_speed_bounds_rad_s'].values()) < reference['observed_velocity_limit_rad_s']
     begin = plan['calibration_begin_ns'] * 1e-9
     end = plan['groups']['G0_stiff']['switch_ns'] * 1e-9
     assert np.max(np.abs(curve(np.linspace(begin, end, 1001), nu=1))) <= 0.8

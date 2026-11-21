@@ -34,6 +34,7 @@ class Reference {
   bool has_ready_pose() const{return has_ready_pose_;}
   std::int64_t ready_move_end_ns() const{return ready_move_end_ns_;}
   double observed_velocity_limit() const{return observed_velocity_;}
+  const std::vector<std::int64_t>& retreat_checkpoints() const{return retreat_checkpoints_;}
   const NonArmHoldConfig& non_arm_hold() const{return hold_;}
   bool measured_origin() const{return relative_;}
   const std::vector<std::pair<std::int64_t,std::string>>& markers() const{return markers_;}
@@ -45,6 +46,7 @@ class Reference {
   NonArmHoldConfig hold_;
   double observed_velocity_=0.;
   std::vector<std::int64_t> knots_;
+  std::vector<std::int64_t> retreat_checkpoints_;
   std::vector<std::array<JointVector,4>> states_;
   std::vector<std::array<JointVector,8>> coefficients_;
   JointVector kp_{},kd_{};

@@ -11,6 +11,7 @@ import numpy as np
 from scipy.interpolate import BPoly, make_interp_spline
 from scipy.optimize import bisect
 from scipy.signal import butter, sosfiltfilt
+from scipy.spatial.transform import Rotation
 
 from casbot_calib.data import write_json
 from casbot_calib.model_runtime import collision_for
@@ -26,6 +27,8 @@ HERTZ = 100
 DRUM_AXES = [3, 4, 5, 6, 10, 11, 12, 13]
 QUAD_X, QUAD_W = np.polynomial.legendre.leggauss(7)
 FADE = np.polynomial.Polynomial([0, 0, 0, 10, -15, 6])
+KEYBOARD_TIME_SCALE = 1.4
+KEYBOARD_FLANGE_Y_M = 0.308
 
 
 def _read_song(path):
@@ -135,12 +138,66 @@ def _safe_clips(candidates, geometry, name):
             yield clip
 
 
+def _relocate_keyboard(clip, engine):
+    """Translate both flange paths laterally, then refit their joint curves."""
+    knots = np.asarray(clip['knots_ns']) * 1e-9
+    t = np.linspace(0, knots[-1], round(knots[-1] * HERTZ) + 1)
+    original = BPoly.from_derivatives(knots, clip['states'] * CLIP_STATE_RESOLUTION)(t)
+    q = original.copy()
+    lower = np.array([joint.lower for joint in engine.model.joints])
+    upper = np.array([joint.upper for joint in engine.model.joints])
+    offsets = []
+    weights = np.array([1., 1., 1., .25, .25, .25])
+    regularization = .002 ** 2
+    for start, side, sign in ((0, 'left', 1), (7, 'right', -1)):
+        axes = slice(start, start + 7)
+        frame = f'{side}_flange_frame'
+        target = engine.frame_batch(original, frame)['poses']
+        offset = sign * KEYBOARD_FLANGE_Y_M - target[:, 1, 3].mean()
+        target[:, 1, 3] += offset
+        offsets.append(float(offset))
+        posture = original[:, axes].copy()
+        posture[:, 1] += sign * .45
+        lo, hi = lower[axes] + .005, upper[axes] - .005
+        posture = np.clip(posture, lo, hi)
+        q[:, axes] = posture
+        for _ in range(35):
+            current = engine.frame_batch(q, frame)
+            position = target[:, :3, 3] - current['poses'][:, :3, 3]
+            relative = target[:, :3, :3] @ current['poses'][:, :3, :3].transpose(0, 2, 1)
+            rotation = Rotation.from_matrix(relative).as_rotvec()
+            error = np.column_stack([position, rotation]) * weights
+            if np.max(np.linalg.norm(error, axis=1)) < 5e-5:
+                break
+            jacobian = current['jacobians'][:, :, axes] * weights[None, :, None]
+            transpose = jacobian.transpose(0, 2, 1)
+            rhs = (transpose @ error[:, :, None])[:, :, 0] + regularization * (posture - q[:, axes])
+            step = np.linalg.solve(transpose @ jacobian + regularization * np.eye(7), rhs)
+            q[:, axes] = np.clip(q[:, axes] + np.clip(step, -.15, .15), lo, hi)
+        else:
+            return None
+
+    stationary = [(1, np.zeros(14)), (2, np.zeros(14))]
+    spline = make_interp_spline(t, q, k=5, bc_type=(stationary, stationary))
+    scale = KEYBOARD_TIME_SCALE
+    states = np.stack([spline(knots, nu=d) / scale ** d for d in range(4)], axis=1)
+    states[[0, -1], 1:] = 0.
+    return dict(
+        knots_ns=np.rint(knots * scale * 1e9).astype(np.int64),
+        states=np.rint(states / CLIP_STATE_RESOLUTION).astype(np.int64),
+        source={**clip['source'], 'time_scale': scale, 'fixture': '1105_03', 'flange_lateral_offset_m': offsets},
+    )
+
+
 def extract(data_dir, output):
     robot = load_robot_config()
     geometry = collision_for(robot)
     keyboard = _ranked_clips(data_dir, geometry, 'keyboard')
     drum = _ranked_clips(data_dir, geometry, 'drum')
     for keys in _safe_clips(keyboard, geometry, 'keyboard'):
+        keys = _relocate_keyboard(keys, geometry.engine)
+        if keys is None:
+            continue
         for beats in _safe_clips(drum, geometry, 'drum'):
             with TemporaryDirectory(prefix='casbot-band-clips-') as temp:
                 staging = Path(temp) / 'clips.json'

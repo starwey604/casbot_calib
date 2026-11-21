@@ -238,12 +238,12 @@ def compose_stage_reference(
     gravity_feedforward=True,
     feedforward_mode=None,
     markers=None,
-    observed_velocity_limit_rad_s=None,
+    collision_profile=None,
     max_speed_cap=None,
     max_acceleration_cap=None,
     max_jerk_cap=None,
 ):
-    geometry = collision_for(robot_config)
+    geometry = collision_for(robot_config) if collision_profile is None else collision_profile
     formal_motion.knots = [round(t * 1e9) * 1e-9 for t in formal_motion.knots]
     hold = robot_config.get('non_arm_hold') or {}
     ramp = hold['ramp_s'] if hold.get('enabled') else 0.
@@ -288,17 +288,15 @@ def compose_stage_reference(
         prep_cert,
         mode=resolved_ff_mode,
     )
-    if observed_velocity_limit_rad_s is None:
-        observed_velocity_limit_rad_s = robot_config['maximum_velocity_rad_s']
     bundle = export_motion(
         motion,
         kp=robot_config['kp'],
         kd=robot_config['kd'],
         effort=effort, non_arm_hold=hold,
-        observed_velocity_limit_rad_s=observed_velocity_limit_rad_s,
+        observed_velocity_limit_rad_s=robot_config['maximum_velocity_rad_s'],
     )
     bundle['purpose'] = 'shm_calib_ready_then_collision_checked' if prep_cert else 'shm_calib_collision_checked'
-    bundle['observed_velocity_limit_rad_s'] = observed_velocity_limit_rad_s
+    bundle['observed_velocity_limit_rad_s'] = robot_config['maximum_velocity_rad_s']
 
     all_markers = []
     if prep_cert is not None:
@@ -341,7 +339,7 @@ def resolve_effective_plan_and_capture(plan_dir, capture_dir):
     return plan_dir, capture_dir
 
 
-def read_verified_stage_capture(plan_meta, capture_dir, robot_config):
+def read_verified_stage_capture(plan_meta, capture_dir, robot_config, *, collision_profile=None):
     reader = ObservationReader(capture_dir)
     native = text_result(reader.root / 'result.txt') or {}
     if (
@@ -374,7 +372,7 @@ def read_verified_stage_capture(plan_meta, capture_dir, robot_config):
     if len(formal_q) < 2:
         raise ValueError('正式标定区间没有足够反馈帧')
 
-    geometry = collision_for(robot_config)
+    geometry = collision_for(robot_config) if collision_profile is None else collision_profile
     received_collision = certify_polyline(
         geometry,
         formal_q,

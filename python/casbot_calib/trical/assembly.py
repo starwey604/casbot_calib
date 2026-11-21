@@ -37,13 +37,15 @@ def collision_assets(root=None):
 
 
 def profile(folder,active_arm,ball_id=None,contact=False,*,assets=None,layout=None):
-    if active_arm not in {'left','right'}:raise ValueError('One active tool side required')
+    """Build the fixed fixture scene with an optional wrist-mounted tool."""
+    if active_arm not in {None,'left','right'}:raise ValueError('Unknown active tool side')
+    if active_arm is None and contact:raise ValueError('Contact requires an active tool')
     if contact and ball_id not in {'A','B','C','D'}:raise ValueError('Explicit selected contact ball required')
     engine,metadata=load_bundle(folder);base=robot_profile(folder,environment=True)
     m,cache,shapes=collision_assets(asset_directory(folder) if assets is None else assets)
     shift=layout_shift(layout)
     if metadata['trical_assets_sha256']!=digest(m) or metadata['trical_collision_sha256']!=digest(cache):raise ValueError('Bundle/tool assembly mismatch')
-    frames={f.name:f for f in engine.model.frames};tool_frame=frames[active_arm+'_trical_tcp']
+    tool_frame=next(f for f in engine.model.frames if f.name==active_arm+'_trical_tcp') if active_arm else None
     geometry=list(base.geometry);source_names={g.name:g.name for g in geometry}
     descriptors={r['name']:r for r in m['parts']}
     for item in cache['parts']:
@@ -59,7 +61,8 @@ def profile(folder,active_arm,ball_id=None,contact=False,*,assets=None,layout=No
     excluded=[(indices[x['first']],indices[x['second']]) for x in base.metadata['excluded_pairs']]
     data={**base.metadata,'model_id':engine.model.model_id,'active_tool':active_arm,'inactive_tool':None,
         'fixture_layout':layout,'assembly_manifest_sha256':digest(m),'geometry_sha256':digest(dict(robot=metadata['geometry']['geometry_sha256'],assets=cache,active_arm=active_arm,layout=layout)),
-        'exact_contact_pairs':[],'near_contact_pairs':[],'tool_load_known':False,'probe_geometry_scope':'reviewed working-contact state, full free-plunger envelope not measured','assembly_policy':'both hands removed; one physical TriCal mounted at a time'}
+        'exact_contact_pairs':[],'near_contact_pairs':[],'tool_load_known':False,'probe_geometry_scope':'reviewed working-contact state, full free-plunger envelope not measured',
+        'assembly_policy':'both hands removed; one physical TriCal mounted at a time' if active_arm else 'bare flange on both arms'}
     result=CollisionProfile(engine,geometry,excluded,data)
     policy=m['near_contact_policy']
     thresholds=np.full(len(result.pairs),policy['ordinary_clearance_m'])

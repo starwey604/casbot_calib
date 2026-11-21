@@ -179,6 +179,7 @@ void run(Channel& channel,StatusFrame state,const CommandFrame& hand,const Eigen
   bool soft_stop_handled=false,soft_stop_active=false,return_has_ff=false;
   std::int64_t return_begin_ns=0;
   std::optional<SoftReturn> returning;
+  std::optional<ReferenceRetreat> retreating;
   JointVector return_kp{},return_kd{};
   using ArmTorque=Eigen::Matrix<double,14,1>;
   ArmTorque return_tau_offset=ArmTorque::Zero();
@@ -245,6 +246,8 @@ void run(Channel& channel,StatusFrame state,const CommandFrame& hand,const Eigen
             const auto current=reference->at(relative_ns);
             if(std::all_of(current.kp.begin(),current.kp.end(),[](double kp){return kp==0.;})) {
               change(4,"soft_stop_disable");
+            }else if(!reference->retreat_checkpoints().empty()) {
+              retreating.emplace(*reference,relative_ns);
             }else {
               std::optional<JointVector> via;
               const auto ready_ns=reference->ready_move_end_ns();
@@ -252,6 +255,8 @@ void run(Channel& channel,StatusFrame state,const CommandFrame& hand,const Eigen
                 via=reference->at(ready_ns).state[0];
               returning=SoftReturn::plan(current.state[0],current.state[1],current.state[2],
                                          start,via,lower,upper,return_speed);
+            }
+            if(returning||retreating) {
               return_kp=current.kp;return_kd=current.kd;
               const Eigen::Map<const ArmTorque> current_tau(current.effort.data());
               return_has_ff=current_tau.cwiseAbs().maxCoeff()>1e-6;
@@ -282,9 +287,10 @@ void run(Channel& channel,StatusFrame state,const CommandFrame& hand,const Eigen
         const std::int64_t relative_ns=first_stream?now-first_stream:0;
         const double elapsed=relative_ns*1e-9;
         if(hold.enabled())body_targets(command,state,hold,origin,elapsed);
-        if(returning) {
+        if(returning||retreating) {
           const double t=(now-return_begin_ns)*1e-9;
-          const auto sample=returning->at(t);
+          const auto sample=retreating?retreating->at(t):returning->at(t);
+          const auto end=retreating?retreating->total_duration_s():returning->total_duration_s();
           ArmTorque tau=ArmTorque::Zero();
           if(return_has_ff) {
             const double u=std::clamp(t/.5,0.,1.);
@@ -295,7 +301,7 @@ void run(Channel& channel,StatusFrame state,const CommandFrame& hand,const Eigen
           }
           for(int j=0;j<14;++j)
             arm_target(command,j,sample.position[j],sample.velocity[j],return_kp[j],return_kd[j],tau[j]);
-          if(t>=returning->total_duration_s())change(4,"soft_stop_disable");
+          if(t>=end)change(4,"soft_stop_disable");
         }else if(reference) {
           while(marker_index<reference->markers().size()&&relative_ns>=reference->markers()[marker_index].first)
             recorder.event(3,reference->markers()[marker_index++].second);
@@ -303,7 +309,7 @@ void run(Channel& channel,StatusFrame state,const CommandFrame& hand,const Eigen
           for(int j=0;j<14;++j)arm_target(command,j,value.state[0][j],value.state[1][j],value.kp[j],value.kd[j],value.effort[j]);
         }
         if(jogging){const auto value=jog_at(elapsed,o.segment,o.amplitude);arm_target(command,arm_index(o.id),q0[arm_index(o.id)]+value.position,value.velocity,o.kp,o.kd);}
-        if(!returning&&phase==3&&elapsed>=(reference?reference->duration_ns()*1e-9+(reference->direct_fields()?0.:.5):jogging?3*o.segment+.5:o.duration)) {
+        if(!returning&&!retreating&&phase==3&&elapsed>=(reference?reference->duration_ns()*1e-9+(reference->direct_fields()?0.:.5):jogging?3*o.segment+.5:o.duration)) {
           if(o.which=="C05")change(6,"command_writes_stopped");
           else if(o.which=="C06")change(7,"kill_ready");
           else change(4,"exiting_disable");

@@ -1,4 +1,5 @@
 #include "reference.hpp"
+#include "soft_return.hpp"
 #include <cmath>
 #include <filesystem>
 #include <fstream>
@@ -32,7 +33,8 @@ std::string write_temp_reference(
     const casbot::shm::JointVector& q1,
     const casbot::shm::JointVector& dq0 = {},
     const casbot::shm::JointVector& dq1 = {},
-    std::string schema = "casbot_shm_reference_v1", std::string fields = "") {
+    std::string schema = "casbot_shm_reference_v1", std::string fields = "",
+    const std::vector<std::pair<std::int64_t,casbot::shm::JointVector>>& waypoints = {}) {
   const auto path = std::filesystem::temp_directory_path() /
       ("casbot_ref_test_" + std::to_string(getpid()) + ".json");
   std::ofstream out(path);
@@ -50,10 +52,14 @@ std::string write_temp_reference(
   out << "],\n"
       << "  \"kp\": " << json_vec(kp) << ",\n"
       << "  \"kd\": " << json_vec(kd) << ",\n"
-      << "  \"knots_ns\": [0," << duration_ns << "],\n"
+      << "  \"knots_ns\": [0";
+  for(const auto& waypoint:waypoints)out<<','<<waypoint.first;
+  out << ',' << duration_ns << "],\n"
       << "  \"states\": [\n"
-      << "    [" << json_vec(q0) << ',' << json_vec(dq0) << ',' << json_vec(zeros) << ',' << json_vec(zeros) << "],\n"
-      << "    [" << json_vec(q1) << ',' << json_vec(dq1) << ',' << json_vec(zeros) << ',' << json_vec(zeros) << "]\n"
+      << "    [" << json_vec(q0) << ',' << json_vec(dq0) << ',' << json_vec(zeros) << ',' << json_vec(zeros) << "],\n";
+  for(const auto& waypoint:waypoints)
+    out<<"    ["<<json_vec(waypoint.second)<<','<<json_vec(zeros)<<','<<json_vec(zeros)<<','<<json_vec(zeros)<<"],\n";
+  out << "    [" << json_vec(q1) << ',' << json_vec(dq1) << ',' << json_vec(zeros) << ',' << json_vec(zeros) << "]\n"
       << "  ],\n"
       << "  \"effort\": [{\"t_ns\": 0, \"value\": " << json_vec(zeros) << "}]\n"
       << "}\n";
@@ -110,6 +116,26 @@ int test_shm_reference_tests() {
   rejects("casbot_shm_reference_v1",limit+block(mit));
   rejects(v2,limit);rejects(v2,block(cst));rejects(v2,limit+block(""));
   rejects(v2,R"("observed_velocity_limit_rad_s":2.01,)"+block(mit));
+  const std::string prepared=limit+R"("purpose":"shm_calib_ready_then_collision_checked",)";
+  JointVector anchor{},middle{};
+  anchor[0]=.4;middle=anchor;middle[1]=.4;
+  const std::string retreat_schema="casbot_shm_retreat_reference_v1";
+  const auto route_path=write_temp_reference(11000000000LL,q0,q0,{}, {},retreat_schema,
+      prepared+R"("soft_stop_checkpoints_ns":[1000000000,3000000000,9000000000],)",
+      {{1000000000,q0},{3000000000,anchor},{6000000000,middle},{9000000000,anchor}});
+  const auto route=Reference::load(route_path);
+  check(route.retreat_checkpoints().size()==5,"Missing retreat checkpoints");
+  const std::int64_t interrupt_ns=4000000000;
+  const ReferenceRetreat retreat(route,interrupt_ns);
+  const auto interrupted=route.at(interrupt_ns);
+  const auto initial=retreat.at(0.);
+  check(initial.position==interrupted.state[0]&&initial.velocity==interrupted.state[1],"Retreat changes the initial command");
+  check(retreat.at(1.).velocity[1]<0.,"Retreat did not reverse toward the nearby anchor");
+  check(retreat.at(3.25).position==anchor&&retreat.at(3.25).velocity==JointVector{},"Retreat did not reach the anchor at rest");
+  check(retreat.at(4.).position[0]<anchor[0]&&retreat.at(4.).position[1]==0.,"Retreat skipped the checked exit");
+  check(retreat.at(retreat.total_duration_s()).position==q0,"Retreat did not return to ready");
+  rejects(retreat_schema,prepared);
+  rejects(retreat_schema,prepared+R"("soft_stop_checkpoints_ns":[1,2],)");
   rejects(v2,limit+block(mit+","+mit));
   for(auto bad:{R"({"slot":12,"kp":1,"kd":1,"mode":"mit"})",R"({"slot":29,"kp":1,"kd":1,"mode":"mit"})",
                 R"({"slot":0,"kp":1,"kd":1,"mode":"other"})",R"({"slot":4,"kp":1,"kd":1,"mode":"cst_pd"})",

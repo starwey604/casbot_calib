@@ -4,6 +4,7 @@ import argparse
 from dataclasses import dataclass
 from hashlib import sha256
 import json
+import math
 from pathlib import Path
 import sys
 import time
@@ -17,13 +18,14 @@ from .. import _core
 from ..control_policy import scale_pd
 from ..data import write_json
 from ..dynamic_export import _restore_runtime
-from ..model_runtime import model_for
+from ..model_runtime import context_for, model_for
 from ..shm_data import DIRECTION, NAMES, ROOT
 from ..shm_observations import ObservationReader
 from ..shm_ready import ready_position
 from ..shm_reference import save_bundle
 from ..shm_takeover import HandoffError
-from ..staged_motion import Motion, _move
+from ..staged_motion import Motion, _move, derivative_bounds
+from ..trical.assembly import profile as trical_profile
 from ..stages.dynamics.common import (
     compose_stage_reference, read_verified_stage_capture, resolve_effective_plan_and_capture,
 )
@@ -40,7 +42,8 @@ INSTRUMENTS = ('keyboard', 'drum')
 HOLD_S = 1.0
 TRANSITION = dict(speed_rad_s=1.25, acceleration_rad_s2=2.5, jerk_rad_s3=10.0)
 READY_TO_ANCHOR_SPEED_RAD_S = 0.8
-OBSERVED_VELOCITY_LIMIT_RAD_S = 2.0
+MAX_OBSERVED_VELOCITY_RAD_S = 2.0
+OBSERVED_VELOCITY_MARGIN = 1.5
 SMOOTHING_FLOOR = 0.015
 EFFORT_STEP_NS = 5_000_000
 
@@ -198,6 +201,14 @@ def _append_clip(motion, clip, label):
     return [begin, _ns(motion.duration)]
 
 
+def _instrument_transition(motion, target, label):
+    lift = np.zeros(14)
+    lift[[0, 7]] = -.16  # Shoulder pitch
+    lift[[3, 10]] = -.12  # Elbow pitch
+    for waypoint in (motion.states[-1][0] + lift, target + lift, target):
+        _move(motion, waypoint, 1.0, TRANSITION, label)
+
+
 def _formal_motion(clips):
     keyboard, drum = (clips[f'{name}_clip'] for name in INSTRUMENTS)
     q_ready = ready_position()
@@ -209,9 +220,9 @@ def _formal_motion(clips):
         switch_ns = _ns(motion.duration)
         motion.add(HOLD_S, q_anchor, label='group_switch')
         keyboard_ns = _append_clip(motion, keyboard, 'keyboard')
-        _move(motion, drum['states'][0][0], 1.5, TRANSITION, 'keyboard_to_drum')
+        _instrument_transition(motion, drum['states'][0][0], 'keyboard_to_drum')
         drum_ns = _append_clip(motion, drum, 'drum')
-        _move(motion, q_anchor, 1.5, TRANSITION, 'drum_to_anchor')
+        _instrument_transition(motion, q_anchor, 'drum_to_anchor')
         groups[name] = dict(switch_ns=switch_ns, run_ns=[keyboard_ns[0], _ns(motion.duration)],
                             keyboard=keyboard_ns, drum=drum_ns)
     _move(motion, q_ready, 1.5, TRANSITION, 'anchor_to_ready')
@@ -263,10 +274,17 @@ def plan_verification(q_start, robot_config, output, *, delivery=None, clips=Non
         for instrument, abbr in (('keyboard', 'kbd'), ('drum', 'drum'))
         for stamp, end in zip(row[instrument], ('begin', 'end'))
     ]
+    fixture = trical_profile(context_for(robot_config).bundle, None)
     bundle, motion, proof, _, offset, kinematics = compose_stage_reference(
         formal, q_start, models[2], robot_config, feedforward_mode='none', markers=markers,
-        observed_velocity_limit_rad_s=OBSERVED_VELOCITY_LIMIT_RAD_S,
+        collision_profile=fixture,
     )
+    speed_bounds = derivative_bounds(motion.polynomial()).max(axis=0)
+    # Add feedback headroom above the worst planned joint, within the field limit.
+    observed_limit = min(MAX_OBSERVED_VELOCITY_RAD_S,
+                         math.ceil(10 * OBSERVED_VELOCITY_MARGIN * speed_bounds.max()) / 10)
+    bundle['observed_velocity_limit_rad_s'] = observed_limit
+    bundle['schema'] = 'casbot_shm_retreat_reference_v1'
     for i, name in enumerate(GROUPS):
         row = groups[name]
         row['switch_ns'] += offset
@@ -279,12 +297,18 @@ def plan_verification(q_start, robot_config, output, *, delivery=None, clips=Non
         # Match the executor's 0.1-unit fixed-point gain fields.
         row['kp'] = (np.trunc(kp * 10) / 10).tolist()
         row['kd'] = (np.trunc(kd * 10) / 10).tolist()
+    bundle['soft_stop_checkpoints_ns'] = [
+        offset, *(row['switch_ns'] for row in groups.values()), groups[GROUPS[-1]]['run_ns'][1],
+    ]
     bundle['effort'] = _effort_table(motion, groups, models, robot_config['feedforward_limit_nm'])
     if recommended is not None:
         recommended.update({key: groups['G3_soft'][key] for key in ('kp', 'kd')})
     plan = dict(
         duration_ns=bundle['knots_ns'][-1], calibration_begin_ns=offset,
         robot_config=robot_config, groups=groups, collision_certificate=proof, kinematics=kinematics,
+        fixture_assembly_sha256=fixture.metadata['assembly_manifest_sha256'],
+        reference_speed_bounds_rad_s=dict(zip(NAMES, speed_bounds.tolist())),
+        observed_velocity_limit_rad_s=observed_limit,
         clips={name: clip['source'] for name, clip in clips.items()},
         delivery_session=str(delivery.root) if delivery else None,
         recommended=recommended,
@@ -483,7 +507,8 @@ def analyse_verification(verify_dir):
     plan_dir, capture_dir = resolve_effective_plan_and_capture(verify_dir / 'plan', verify_dir / 'capture')
     plan = _read_json(plan_dir / 'plan.json')
     robot = load_robot_config(plan['robot_config'])
-    _, _, feedback_proof = read_verified_stage_capture(plan, capture_dir, robot)
+    fixture = trical_profile(context_for(robot).bundle, None) if 'fixture_assembly_sha256' in plan else None
+    _, _, feedback_proof = read_verified_stage_capture(plan, capture_dir, robot, collision_profile=fixture)
     reader = ObservationReader(capture_dir)
     reference = _read_json(reader.root / 'reference.json')
     curve = BPoly.from_derivatives(np.asarray(reference['knots_ns']) * 1e-9, reference['states'])

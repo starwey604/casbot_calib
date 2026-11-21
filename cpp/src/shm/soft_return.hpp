@@ -12,6 +12,60 @@ struct SoftReturnSample {
   JointVector position{},velocity{};
 };
 
+// Retiming stays on the checked reference, including when approaching a checkpoint in reverse.
+class ReferenceRetreat {
+ public:
+  ReferenceRetreat(const Reference& reference,std::int64_t start_ns)
+      :reference_(reference),start_(std::min(start_ns,reference.duration_ns())*1e-9) {
+    const auto& checkpoints=reference.retreat_checkpoints();
+    finish_=checkpoints.back()*1e-9;
+    exit_=checkpoints[checkpoints.size()-2]*1e-9;
+    stopped_=std::min(finish_,start_+ramp_/2.);
+    const auto next=std::lower_bound(checkpoints.begin()+1,checkpoints.end(),stopped_,
+                                    [](const auto point,double time){return point*1e-9<time;});
+    checkpoint_=*next*1e-9;
+    const double previous=*(next-1)*1e-9;
+    if(stopped_<exit_&&stopped_-previous<checkpoint_-stopped_)checkpoint_=previous;
+    direction_=checkpoint_<stopped_?-1.:1.;
+    const double distance=std::abs(checkpoint_-stopped_);
+    to_checkpoint_=ramp_+std::max(0.,distance/speed_-ramp_/2.);
+    if(checkpoint_>=checkpoints[2]*1e-9&&checkpoint_<finish_)exit_duration_=(finish_-exit_)/speed_;
+  }
+
+  double total_duration_s() const {return ramp_+to_checkpoint_+exit_duration_+.5;}
+
+  SoftReturnSample at(double t) const {
+    if(t<ramp_) {
+      const double u=t/ramp_;
+      return sample(std::min(finish_,start_+ramp_*(u-integral(u))),1.-smooth(u));
+    }
+    t-=ramp_;
+    if(t<to_checkpoint_) {
+      const double u=std::min(1.,t/ramp_);
+      const double travel=speed_*(ramp_*integral(u)+std::max(0.,t-ramp_));
+      if(travel>=std::abs(checkpoint_-stopped_))return sample(checkpoint_,0.);
+      return sample(stopped_+direction_*travel,direction_*speed_*smooth(u));
+    }
+    t-=to_checkpoint_;
+    if(t<exit_duration_)return sample(exit_+speed_*t,speed_);
+    return sample(exit_duration_>0.?finish_:checkpoint_,0.);
+  }
+
+ private:
+  static constexpr double ramp_=.5,speed_=.5;
+  const Reference& reference_;
+  double start_,finish_,exit_,stopped_,checkpoint_,direction_,to_checkpoint_,exit_duration_=0.;
+
+  static double smooth(double u) {return u*u*u*(10.+u*(-15.+6.*u));}
+  static double integral(double u) {return u*u*u*u*(2.5+u*(-3.+u));}
+  SoftReturnSample sample(double time,double scale) const {
+    const auto state=reference_.at(std::llround(time*1e9)).state;
+    SoftReturnSample result{state[0],state[1]};
+    for(auto& v:result.velocity)v*=scale;
+    return result;
+  }
+};
+
 class SoftReturn {
  public:
   static SoftReturn plan(const JointVector& position,const JointVector& velocity,const JointVector& acceleration,

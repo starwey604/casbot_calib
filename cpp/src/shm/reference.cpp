@@ -72,10 +72,11 @@ bool NonArmHoldConfig::has_cst_pd() const {
 Reference Reference::load(const std::string& file) {
   const auto json=read_json(file);Reference r;
   const auto schema=json.get<std::string>("schema");r.direct_=schema=="casbot_shm_fields_v1";
-  const bool body=schema=="casbot_shm_reference_v2";
-  if(!body&&!r.direct_&&schema!="casbot_shm_reference_v1")throw std::invalid_argument("Unsupported SHM reference schema");
+  const bool checked_retreat=schema=="casbot_shm_retreat_reference_v1";
+  const bool body=schema=="casbot_shm_reference_v2"||(checked_retreat&&json.get_child_optional("non_arm_hold"));
+  if(!body&&!r.direct_&&!checked_retreat&&schema!="casbot_shm_reference_v1")throw std::invalid_argument("Unsupported SHM reference schema");
   if(body)r.hold_=parse_hold(json.get_child("non_arm_hold"));
-  else if(json.get_child_optional("non_arm_hold"))throw std::invalid_argument("non_arm_hold requires v2");
+  else if(json.get_child_optional("non_arm_hold"))throw std::invalid_argument("Reference schema does not support non_arm_hold");
   const auto origin=json.get<std::string>("origin","absolute");
   if(origin!="absolute"&&origin!="measured_start")throw std::invalid_argument("Unknown reference origin");
   r.relative_=origin=="measured_start";
@@ -137,6 +138,29 @@ Reference Reference::load(const std::string& file) {
   if(r.relative_)for(double q:r.states_.front()[0])if(std::abs(q)>1e-12)throw std::invalid_argument("Measured-origin reference must start at zero offset");
   if(!r.direct_)for(const auto* state:{&r.states_.front(),&r.states_.back()})
     for(int d=1;d<4;++d)for(double v:(*state)[d])if(std::abs(v)>1e-10)throw std::invalid_argument("Trajectory must join stationary entry/exit holds");
+  if(checked_retreat) {
+    const auto& retreat=json.get_child("soft_stop_checkpoints_ns");
+    if(r.relative_||!r.has_ready_pose_||retreat.size()<2)
+      throw std::invalid_argument("Soft-stop checkpoints require a prepared reference");
+    r.retreat_checkpoints_.push_back(0);
+    JointVector anchor{};
+    for(const auto& [key,row]:retreat) {
+      const auto stamp=row.get_value<std::int64_t>();
+      const auto knot=std::lower_bound(r.knots_.begin(),r.knots_.end(),stamp);
+      if(!key.empty()||stamp<=r.retreat_checkpoints_.back()||stamp>=r.duration_ns()||knot==r.knots_.end()||*knot!=stamp)
+        throw std::invalid_argument("Invalid soft-stop checkpoint time");
+      const auto& state=r.states_[knot-r.knots_.begin()];
+      for(int d=1;d<4;++d)for(double v:state[d])if(std::abs(v)>1e-10)
+        throw std::invalid_argument("Soft-stop checkpoint must be stationary");
+      const auto count=r.retreat_checkpoints_.size();
+      if(count==2)anchor=state[0];
+      const auto& expected=count==1?r.states_.back()[0]:anchor;
+      for(int j=0;j<14;++j)if(std::abs(state[0][j]-expected[j])>1e-10)
+        throw std::invalid_argument("Soft-stop checkpoint poses do not match");
+      r.retreat_checkpoints_.push_back(stamp);
+    }
+    r.retreat_checkpoints_.push_back(r.duration_ns());
+  }
   for(std::size_t k=0;k+1<r.knots_.size();++k) {
     std::array<JointVector,8> b{};const double h=(r.knots_[k+1]-r.knots_[k])*1e-9;
     for(int j=0;j<14;++j) {
