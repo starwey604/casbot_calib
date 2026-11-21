@@ -276,9 +276,17 @@ def test_h2_full_offline_planning_and_duration_gate(tmp_path):
     print(f'\n[BENCH H2 full] wall_s={wall_s:.3f}s, duration_s={duration_s:.2f}s, min_dist_mm={meta_full["collision_certificate"]["minimum_distance_m"]*1e3:.2f}')
     ceiling_s = 12.0 if platform.machine().lower() in ('aarch64', 'arm64') else 8.0
     assert wall_s < ceiling_s, f'H2 full planning took {wall_s:.2f}s (>= {ceiling_s:.1f}s)'
-    assert 290.0 <= duration_s <= 360.0, f'H2 full duration {duration_s:.2f}s outside [290, 360]s'
+    assert 390.0 <= duration_s <= 430.0, f'H2 full duration {duration_s:.2f}s outside [390, 430]s'
     assert meta_full['collision_certificate']['passed']
     assert meta_full['collision_certificate']['minimum_distance_m'] >= 0.01
+
+    for sweep in meta_full['sweeps']:
+        for p in sweep['passes']:
+            seconds = (p['plateau_ns'][1] - p['plateau_ns'][0]) * 1e-9
+            if sweep['split'] == 'train' and sweep['speed_rad_s'] == 0.025:
+                assert seconds == pytest.approx(4.0)
+            else:
+                assert seconds <= 1.5 + 1e-9
 
     # Verify zero redundant intermediate approaches across speeds of the same (pose_offset, group):
     # 3 pose offsets * 7 bilateral groups = 21 total approaches, NOT 3*7*3.3 = 77!

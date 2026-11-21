@@ -91,26 +91,32 @@ def load_h2_recipe(source=DEFAULT_H2_CONFIG, **overrides):
     block['speeds_rad_s'] = speeds
 
     timing = dict(block['timing'])
-    max_plateau_raw = timing.pop('max_plateau_s', None)
+    for key in ('max_plateau_s', 'slowest_train_max_plateau_s'):
+        value = timing.pop(key, None)
+        if value is not None:
+            cap = float(value)
+            if not np.isfinite(cap) or cap <= 2.0 * float(timing['plateau_trim_s']) + 0.2:
+                raise ValueError(f'H2 timing.{key} 须大于 2*plateau_trim_s + 0.2s')
+            timing[key] = cap
     envelope = dict(block['planning_envelope'])
     nums = [*timing.values(), *envelope.values()]
     if not np.isfinite(nums).all() or min(nums) <= 0:
         raise ValueError('H2 timing 与 planning_envelope 参数须为正有限值')
-    if max_plateau_raw is not None:
-        max_plateau_s = float(max_plateau_raw)
-        if not np.isfinite(max_plateau_s) or max_plateau_s <= 2.0 * float(timing['plateau_trim_s']) + 0.2:
-            raise ValueError('H2 timing.max_plateau_s 须大于 2*plateau_trim_s + 0.2s')
-        timing['max_plateau_s'] = max_plateau_s
 
     max_speed = max(*speeds['train'], *speeds['validation'])
-    min_speed = min(*speeds['train'], *speeds['validation'])
     ramp_s = float(timing['speed_ramp_s'])
-    if 2.0 * np.deg2rad(stroke_deg) - max_speed * ramp_s <= 0.005:
+    stroke_rad = 2.0 * np.deg2rad(stroke_deg)
+    if stroke_rad - max_speed * ramp_s <= 0.005:
         raise ValueError('H2 扫描半幅过短，无法容纳最高速度的加减速段与匀速平台')
-    min_raw_plateau = (2.0 * np.deg2rad(stroke_deg) - min_speed * ramp_s) / min_speed
-    eff_min_plateau = min(min_raw_plateau, timing['max_plateau_s']) if 'max_plateau_s' in timing else min_raw_plateau
-    if min_speed * eff_min_plateau <= 0.005:
-        raise ValueError('H2 最低速度匀速平台有效行程过短（须 > 0.005 rad）')
+    plateau_cap = timing.get('max_plateau_s', np.inf)
+    slowest_train_speed = min(speeds['train'])
+    for split in ('train', 'validation'):
+        for speed in speeds[split]:
+            cap = (timing.get('slowest_train_max_plateau_s', plateau_cap)
+                   if split == 'train' and speed == slowest_train_speed else plateau_cap)
+            distance = min(stroke_rad - speed * ramp_s, speed * cap)
+            if distance <= 0.005:
+                raise ValueError('H2 匀速平台有效行程过短（须 > 0.005 rad）')
 
     block['timing'] = timing
     block['planning_envelope'] = envelope
@@ -483,6 +489,8 @@ def plan_h2(q_start, robot_config, recipe, out_dir, *, session=None):
     rev_hold_s = float(timing['reverse_hold_s'])
     trans_s = float(timing['transition_s'])
     max_plateau_s = timing.get('max_plateau_s')
+    slowest_train_max_plateau_s = timing.get('slowest_train_max_plateau_s', max_plateau_s)
+    slowest_train_speed = min(cfg['speeds_rad_s']['train'])
 
     active_indices = [NAMES.index(name) for name in cfg['joints']]
     groups = _joint_groups(active_indices)
@@ -508,8 +516,10 @@ def plan_h2(q_start, robot_config, recipe, out_dir, *, session=None):
                 for speed in cfg['speeds_rad_s'][split]:
                     raw_distance = 2.0 * extent - speed * ramp_s
                     raw_plateau_s = raw_distance / speed
-                    if max_plateau_s is not None and raw_plateau_s > float(max_plateau_s):
-                        plateau_s = float(max_plateau_s)
+                    plateau_cap = (slowest_train_max_plateau_s
+                                   if split == 'train' and speed == slowest_train_speed else max_plateau_s)
+                    if plateau_cap is not None and raw_plateau_s > float(plateau_cap):
+                        plateau_s = float(plateau_cap)
                         distance = speed * plateau_s
                         sweep_extent = 0.5 * (distance + speed * ramp_s)
                     else:

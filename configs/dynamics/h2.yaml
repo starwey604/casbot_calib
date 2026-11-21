@@ -41,6 +41,7 @@ full:
     transition_s: 1.5
     speed_ramp_s: 0.25
     max_plateau_s: 1.5
+    slowest_train_max_plateau_s: 4.0
     reverse_hold_s: 0.2
     plateau_trim_s: 0.15
     final_hold_s: 0.5
