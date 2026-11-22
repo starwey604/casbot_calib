@@ -43,3 +43,5 @@ bash calib/dev.sh kinematics-mock --mode full
 ```
 
 Mock 在私有 SHM 端点运行物理仿真并模拟三表读数，默认提高模拟表频以缩短测试耗时，实际接线配置仍保存在同一配方中。
+
+MDH/Hayati 参数化与两层回归原理见[标定原理与算法参考](methodology.md)。
