@@ -8,7 +8,6 @@ from scipy.interpolate import BPoly
 from scipy.optimize import linear_sum_assignment
 from scipy.spatial.distance import cdist
 import yaml
-from ...collision import certify_polyline
 from ...data import write_json
 from ...field_gravity import write_gravity_candidate, write_static_diagnostics
 from ...field_motion import jog_motion, static_motion
@@ -18,8 +17,6 @@ from ...pipeline.stage import Stage
 from ...rigid_identification import parameter_scales
 from ...run_marker import run_marker
 from ...shm_data import DIRECTION, NAMES, PARTS, ROOT
-from ...shm_fieldwork import text_result
-from ...shm_observations import ObservationReader
 from ...shm_ready import handover_fraction, pd_schedule, preparation, prepend, ready_position
 from ...shm_reference import export_motion
 from ...staged_motion import (
@@ -30,7 +27,10 @@ from ...staged_motion import (
     gate_motion,
 )
 from ...staged_motion import _move
-from .common import ensure_leading_hold
+from .common import (
+    ensure_leading_hold, read_verified_stage_capture, received_clearance_line,
+    resolve_effective_plan_and_capture,
+)
 from .h1_selection import _select_arm, candidate_pool, information, paired_motions, screen_candidates
 
 DEFAULT_H1_CONFIG = ROOT / 'configs/dynamics/h1.yaml'
@@ -1568,24 +1568,8 @@ def plan_h1(q_start, robot_config, recipe, plan_dir):
     return metadata
 
 
-def analyse_h1(plan_dir, capture_dir, analysis_dir, *, windows_only=False):
-    plan_dir = Path(plan_dir).resolve()
-    capture_dir = Path(capture_dir).resolve()
-    if (capture_dir / 'result.json').is_file():
-        wrapper = json.loads((capture_dir / 'result.json').read_text(encoding='utf-8'))
-        if isinstance(wrapper.get('effective_capture'), str):
-            if not wrapper.get('execution_completed'):
-                raise ValueError('H1 采集未完成，不执行拟合分析')
-            if wrapper.get('effective_plan'):
-                plan_dir = (capture_dir / wrapper['effective_plan']).resolve()
-            capture_dir = (capture_dir / wrapper['effective_capture']).resolve()
-
-    native_dir = capture_dir / 'native' if (capture_dir / 'native').is_dir() else capture_dir
-    native = text_result(native_dir / 'result.txt')
-    if not native or native.get('execution_completed') != '1':
-        raise ValueError('H1 执行未正常完成，记录仅作故障诊断')
-    if native.get('recording_stopped') != '0':
-        raise ValueError('H1 记录中途停录，不作完整采集分析')
+def analyse_h1(plan_dir, capture_dir, analysis_dir, *, windows_only=False, diagnostic=False):
+    plan_dir, capture_dir = resolve_effective_plan_and_capture(plan_dir, capture_dir, diagnostic=diagnostic)
 
     m = json.loads((plan_dir / 'plan.json').read_text(encoding='utf-8'))
     robot_cfg = m['robot_config']
@@ -1596,66 +1580,28 @@ def analyse_h1(plan_dir, capture_dir, analysis_dir, *, windows_only=False):
     analysis_dir = Path(analysis_dir).resolve()
     analysis_dir.mkdir(parents=True, exist_ok=False)
 
-    geometry = collision_for(robot_cfg, engine)
-    reader = ObservationReader(capture_dir)
     motion = json.loads((plan_dir / 'motion.json').read_text(encoding='utf-8'))
     curve = BPoly.from_derivatives(motion['knots_s'], np.asarray(motion['states']))
     ready_cert = m.get('preparation')
-    calibration_begin = ready_cert['calibration_begin_ns'] * 1e-9 if ready_cert else 0.0
+    calibration_begin_ns = ready_cert['calibration_begin_ns'] if ready_cert else 0
+    calibration_begin = calibration_begin_ns * 1e-9
     interval = motion['conditions'].get('comparison_window_s', [calibration_begin, m['duration_ns'] * 1e-9])
 
-    arr = reader.arrays()
-    receive_ns = arr['receive_ns']
-    obs_ns = arr['observation_time_ns']
-    elapsed_s = arr['elapsed_s']
-    phase = arr['phase']
-    seg = arr['clock_segment']
-    ambig = arr['time_ambiguous']
-    q_all = arr['q']
-    dq_all = arr['dq']
-    effort_raw = arr['effort_raw']
-    count = int(len(receive_ns))
-
-    formal_mask = (
-        np.ones(count, dtype=bool)
-        if ready_cert is None
-        else ((phase == 3) & (elapsed_s >= calibration_begin))
+    obs, native, clearance = read_verified_stage_capture(
+        dict(m, calibration_begin_ns=calibration_begin_ns), capture_dir, robot_cfg,
+        collision_profile=collision_for(robot_cfg, engine), minimum_feedback_rows=2,
+        diagnostic=diagnostic, legacy_h1=True,
     )
-    checked = int(formal_mask.sum())
-    excluded = count - checked
-
-    proofs = []
-    padded = np.r_[False, formal_mask, False]
-    edges = np.flatnonzero(padded[1:] != padded[:-1]).reshape(-1, 2)
-    for run_start, run_end in edges:
-        run_len = int(run_end - run_start)
-        q_run = q_all[run_start:run_end]
-        ns_run = receive_ns[run_start:run_end]
-        for s in range(0, run_len - 1, 1023):
-            q_blk = q_run[s:s + 1024]
-            ns_blk = ns_run[s:s + 1024]
-            proof = certify_polyline(
-                geometry,
-                q_blk,
-                (ns_blk - ns_blk[0]) * 1e-9,
-                clearance_m=robot_cfg['scene']['clearance_m'],
-                block_samples=1024,
-            )
-            if not proof['passed']:
-                write_json(analysis_dir / 'collision_received_failure.json', proof)
-                raise ValueError('实测接收位置折线未通过连续碰撞检查')
-            proofs.append(dict(
-                passed=True,
-                minimum_distance_m=proof.get('minimum_distance_m', proof.get('minimum_sampled_distance_m')),
-                rows=int(len(q_blk)),
-            ))
-
-    if count < 2 or checked < 2:
-        raise ValueError('H1 正式段缺少足够的完整反馈帧')
-
-    first_receive = int(receive_ns[0])
-    last_receive = int(receive_ns[-1])
-    relative_ns = obs_ns - np.int64(reader.origin)
+    obs_ns = obs['observation_time_ns']
+    relative_ns = obs['relative_ns']
+    elapsed_s = obs['elapsed_s']
+    seg = obs['clock_segment']
+    ambig = obs['time_ambiguous']
+    q_all = obs['q']
+    dq_all = obs['dq']
+    effort_nm = obs['effort_nm']
+    count = obs['feedback_rows']
+    checked = obs['formal_rows']
     is_monotonic = bool(np.all(obs_ns[1:] >= obs_ns[:-1]))
 
     tmask = (elapsed_s >= interval[0]) & (elapsed_s < interval[1])
@@ -1667,13 +1613,13 @@ def analyse_h1(plan_dir, capture_dir, analysis_dir, *, windows_only=False):
         track_res = _trapezoid_time_mean(obs_ns[:0], seg[:0], ambig[:0], q_all[:0])
 
     trial_metadata = {row['trial_name']: row for row in m.get('static_motions', [])}
-    effort_zero = np.asarray(robot_cfg['effort_zero_nm'], dtype=np.float64)[None, :]
-    effort_gain = np.asarray(robot_cfg['effort_gain'], dtype=np.float64)[None, :]
 
     means = []
     for trial in m['trials']:
         b_s = float(trial['measure_begin_s'])
         e_s = float(trial['measure_end_s'])
+        if diagnostic and e_s > elapsed_s[-1]:
+            continue
         if is_monotonic:
             lo_i = int(np.searchsorted(elapsed_s, b_s, side='left'))
             hi_i = int(np.searchsorted(elapsed_s, e_s, side='left'))
@@ -1683,7 +1629,7 @@ def analyse_h1(plan_dir, capture_dir, analysis_dir, *, windows_only=False):
 
         q_w = q_all[sl]
         dq_w = dq_all[sl]
-        torque_w = (effort_raw[sl] - effort_zero) * effort_gain
+        torque_w = effort_nm[sl]
         win_res = _trapezoid_time_mean(obs_ns[sl], seg[sl], ambig[sl], np.hstack([q_w, torque_w]))
         speed = float(np.max(np.abs(dq_w))) if len(q_w) else 0.0
 
@@ -1755,14 +1701,15 @@ def analyse_h1(plan_dir, capture_dir, analysis_dir, *, windows_only=False):
     report = dict(
         stage_name='h1',
         passed=True,
-        execution_completed=True,
-        collection_complete=True,
+        execution_completed=native.get("execution_completed") == "1",
+        collection_complete=not diagnostic,
+        received_collision=clearance,
         mode=m['mode'],
         stage=m['stage'],
         feedback_rows=count,
-        feedback_receive_hz=(count - 1) * 1e9 / (last_receive - first_receive),
-        observation_time_origin_ns=reader.origin,
-        first_shm_write_mono_ns=int(native['first_shm_write_mono_ns']),
+        feedback_receive_hz=obs['mean_feedback_hz'],
+        observation_time_origin_ns=obs['origin_ns'],
+        first_shm_write_mono_ns=int(native.get('first_shm_write_mono_ns', 0)),
         analysis_available=(position is not None) if m['stage'] == 'position' else False,
         tracking_rmse_rad=np.sqrt(position[:14]) if position is not None else None,
         tracking_unavailable_reason=track_res['error'],
@@ -1773,11 +1720,10 @@ def analyse_h1(plan_dir, capture_dir, analysis_dir, *, windows_only=False):
     write_json(
         analysis_dir / 'collision_received_interpolant.json',
         dict(
-            passed=True,
-            chunks=proofs,
+            **clearance,
             feedback_rows=count,
             collision_checked_rows=checked,
-            excluded_rows=excluded,
+            excluded_rows=count - checked,
             execution_begin_s=calibration_begin,
         ),
     )
@@ -1811,8 +1757,8 @@ class H1GravityStage(Stage):
     def plan(self, q_start, robot_config, recipe, plan_dir, *, session=None):
         return plan_h1(q_start, robot_config, recipe, plan_dir)
 
-    def analyse(self, plan_dir, capture_dir, analysis_dir, *, session=None):
-        return analyse_h1(plan_dir, capture_dir, analysis_dir)
+    def analyse(self, plan_dir, capture_dir, analysis_dir, *, session=None, diagnostic=False):
+        return analyse_h1(plan_dir, capture_dir, analysis_dir, diagnostic=diagnostic)
 
     def write_summary(self, stage_dir, plan_meta, capture_summary, report):
         stage_dir = Path(stage_dir).resolve()
@@ -1830,7 +1776,8 @@ class H1GravityStage(Stage):
             return path
 
         lines.extend([
-            f'- 采集反馈：{report["feedback_rows"]} 帧（平均 {report["feedback_receive_hz"]:.1f} Hz），正式段接收折线碰撞复核通过',
+            f'- 采集反馈：{report["feedback_rows"]} 帧（平均 {report["feedback_receive_hz"]:.1f} Hz）',
+            received_clearance_line(report["received_collision"]),
         ])
         if report.get('static_diagnostics'):
             diag = report['static_diagnostics']
@@ -1841,13 +1788,9 @@ class H1GravityStage(Stage):
         if report.get('fit_succeeded'):
             nom_all = report['overall_nominal_validation_rmse_nm']
             cal_all = report['overall_validation_rmse_nm']
-            acc = report.get('acceptance') or {}
-            gate_str = '通过（自动采纳）' if acc.get('accepted', True) else f'未通过（{acc.get("reason", "degraded")}，自动回退名义先验）'
             lines.extend([
-                f'- PSD 重力拟合：成功（矩阵秩 {report["fit"]["rank"]}/{report["fit"]["columns"]}，URDF 独立重载通过）',
+                f'- PSD 重力拟合：成功（矩阵秩 {report["fit"]["rank"]}/{report["fit"]["columns"]}）',
                 f'- 有效正反配对留出集力矩 RMSE：名义 **{nom_all:.4f} Nm** → 候选 **{cal_all:.4f} Nm**',
-                f'- 防退化验收门禁：{gate_str}',
-                f'- 候选模型文件：`{stage_dir / "analysis" / report["candidate_urdf"]}`',
                 '',
                 '## 逐轴留出验证 RMSE（Nm）',
                 '',

@@ -120,7 +120,7 @@ def ensure_ready_channel(
     *,
     endpoint='/shm_mc',
     explicit_hand_background=None,
-    require_hand_background=True,
+    require_hand_background=False,
     host=None,
     dev_shm=Path('/dev/shm'),
     search_roots=(ROOT / 'artifacts',),
@@ -135,6 +135,7 @@ def ensure_ready_channel(
             raise ValueError(f'无效的手部背景帧（需 744 字节且 hand_count≤2）：{bg}')
     else:
         bg = None
+    use_hand_background = require_hand_background or bg is not None
 
     # Private test endpoints never run systemd takeover.
     if endpoint.startswith('/casbot_calib_test_'):
@@ -211,7 +212,7 @@ def ensure_ready_channel(
         boot_id=boot_id,
         endpoint=endpoint,
         shm_inode=list(headers['inode']),
-        hand_background=str(cached_bg) if require_hand_background else None,
+        hand_background=str(cached_bg) if use_hand_background else None,
         takeover_performed=takeover_performed,
         handshake_performed=handshake_performed,
         updated_wall_ns=time.time_ns(),
@@ -219,7 +220,7 @@ def ensure_ready_channel(
     write_json(boot_dir / 'state.json', state)
     return dict(
         endpoint=endpoint,
-        hand_background=cached_bg if require_hand_background else None,
+        hand_background=cached_bg if use_hand_background else None,
         boot_id=boot_id,
         takeover_performed=takeover_performed,
         handshake_performed=handshake_performed,

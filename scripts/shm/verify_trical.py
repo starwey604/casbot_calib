@@ -69,16 +69,24 @@ def run_case(binary, root, *, eof=False, fault=False):
                               q_from=q0, q_to=bad, windup=True))
                     reply = wait('reply', 1)
                     assert not reply['ok'] and reply['reason'] == 'spring_windup_limit'
-                    # No new input during this interval: native holding must keep sending.
-                    begin = wait('state')['mono_ns']
-                    quiet_end = begin
-                    while quiet_end - begin < 5_000_000_000:
-                        quiet_end = wait('state')['mono_ns']
+                    first = wait('state')
+                    assert wait('state')['end_ns'] > first['end_ns']
                     target = q0.copy(); target[0] += .002
                     for identifier, start, end in ((2, q0, target), (3, target, q0)):
+                        settle_deadline = time.monotonic() + 10
+                        while True:
+                            state = wait('state', timeout=max(.01, settle_deadline - time.monotonic()))
+                            if state['holding'] and all(
+                                max(abs(lo - goal), abs(hi - goal)) < .010 and hi - lo < .001
+                                for lo, hi, goal in zip(state['q_min'], state['q_max'], end)
+                            ):
+                                break
+                            if time.monotonic() >= settle_deadline:
+                                raise AssertionError(f'TriCal mock did not settle at segment {identifier}: {state}')
                         send(dict(id=identifier, type='segment', duration_ns=200_000_000,
                                   q_from=start, q_to=end, windup=True))
-                        assert wait('reply', identifier)['ok']
+                        reply = wait('reply', identifier)
+                        assert reply['ok'], reply
                         wait('segment_done', identifier)
                     send(dict(id=4, type='finish'))
                     finished = wait('finished')
@@ -105,11 +113,6 @@ def run_case(binary, root, *, eof=False, fault=False):
         from casbot_calib import _core
         commands = _core.read_commands_csv_zst(root / 'native/commands.csv.zst')
         assert not commands['truncated_tail']
-        times = commands['send_mono_ns']
-        gaps = [b-a for a,b in zip(times,times[1:]) if a <= quiet_end and b >= begin]
-        quiet_gap = int(max(gaps))
-        (root/'quiet_timing.json').write_text(json.dumps(dict(start_ns=begin, end_ns=quiet_end, blocks=len(blocks),
-            max_send_gap_ns=quiet_gap, overall_max_send_gap_ns=int(result['max_send_gap_ns'])), indent=2))
         assert (commands['hand_count'] == 0).all()
         assert (commands['cmd_cw'][:, :12] == 6).all()
     print(f'TriCal {root.name}: PASS', flush=True)

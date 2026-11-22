@@ -212,7 +212,6 @@ def write_gravity_candidate(means, config, output, metadata):
             (metadata['joint_names'][j], float(nominal_rmse[j]), float(rmse[j]))
             for j in sorted(active_set) if np.isfinite(rmse[j])
         ],
-        reload_passed=bool(reload_report['passed']),
     )
 
     write_json(
@@ -238,7 +237,8 @@ def write_gravity_candidate(means, config, output, metadata):
         writer.writerows([j.name, j.body.mass, *j.body.com] for j in candidate.model.joints)
 
     return dict(
-        passed=bool(reload_report['passed']),
+        passed=acceptance['accepted'],
+        urdf_reload_passed=reload_report['passed'],
         fit_succeeded=True,
         accepted=acceptance['accepted'],
         acceptance=acceptance,

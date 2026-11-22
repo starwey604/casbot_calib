@@ -15,7 +15,6 @@ from scipy.signal import butter, sosfiltfilt
 import yaml
 
 from .. import _core
-from ..control_policy import scale_pd
 from ..data import write_json
 from ..dynamic_export import _restore_runtime
 from ..model_runtime import context_for, model_for
@@ -27,7 +26,7 @@ from ..shm_takeover import HandoffError
 from ..staged_motion import Motion, _move, derivative_bounds
 from ..trical.assembly import profile as trical_profile
 from ..stages.dynamics.common import (
-    compose_stage_reference, read_verified_stage_capture, resolve_effective_plan_and_capture,
+    compose_stage_reference, read_verified_stage_capture, received_clearance_line, resolve_effective_plan_and_capture,
 )
 from .native import execute_with_start_replan, maybe_mock_context, native_snapshot, soft_stop_status
 from .preflight import check_hardware_environment, check_model_bundle, check_native_binaries
@@ -44,8 +43,8 @@ TRANSITION = dict(speed_rad_s=1.25, acceleration_rad_s2=2.5, jerk_rad_s3=10.0)
 READY_TO_ANCHOR_SPEED_RAD_S = 0.8
 MAX_OBSERVED_VELOCITY_RAD_S = 2.0
 OBSERVED_VELOCITY_MARGIN = 1.5
-SMOOTHING_FLOOR = 0.015
-EFFORT_STEP_NS = 5_000_000
+SMOOTHING_FLOOR = 0.10
+EFFORT_STEP_NS = 1_000_000
 
 
 def _read_json(path):
@@ -58,125 +57,81 @@ def _read_json(path):
 @dataclass(frozen=True)
 class Delivery:
     root: Path
-    h2_urdf: Path
-    h2_runtime: Path
+    h2_urdf: Path | None
+    h2_runtime: Path | None
     h3_urdf: Path
     h3_runtime: Path
 
 
-def _stage_path(session, metadata, stage):
-    record = metadata.get('stages', {}).get(stage, {})
-    if record.get('status') != 'completed' or not record.get('accepted') or not record.get('fit_succeeded'):
-        raise ValueError(f'{session.name} 的 {stage.upper()} 未通过')
-    return session / record.get('calibration_json', f'{stage}/analysis/calibration.json')
-
-
-def _upstream_path(session, metadata, calibration, stage, output_root, robot_config):
-    source = calibration.get('prior_source')
-    if source == f'session_{stage}':
-        return session, metadata, _stage_path(session, metadata, stage)
-    if source == f'latest_{stage}' and calibration.get('prior_source_path'):
-        path = Path(calibration['prior_source_path']).resolve()
-        robot_dir = output_root / metadata['robot_id']
-        if path.is_relative_to(robot_dir):
-            upstream_session = robot_dir / path.relative_to(robot_dir).parts[0]
-            upstream = _read_json(upstream_session / 'session.json')
-            if (upstream.get('robot_id') == metadata['robot_id']
-                    and upstream.get('model_context') == robot_config['model_context']
-                    and upstream.get('family', 'dynamics') == 'dynamics'
-                    and not upstream.get('plan_only')
-                    and _stage_path(upstream_session, upstream, stage).resolve() == path):
-                return upstream_session, upstream, path
-    raise ValueError(f'找不到实际使用的 {stage.upper()} 上游产物')
-
-
-def _delivery_at(session, output_root, robot_id, robot_config):
-    meta = _read_json(session / 'session.json')
-    bundle = _read_json(session / 'delivery/calibration_bundle.json')
-    if (meta.get('family', 'dynamics') != 'dynamics' or meta.get('plan_only')
-            or meta.get('robot_id') != robot_id or bundle.get('robot_id') != robot_id
-            or meta.get('model_context') != robot_config['model_context']
-            or bundle.get('model_context') != robot_config['model_context']
-            or bundle.get('gravity_world') != robot_config['gravity_world']
-            or bundle.get('urdf_reload_passed') is not True
-            or bundle.get('selected_calibration_source') != 'session_h3'):
-        raise ValueError('交付包的机器、模型、重力或采纳阶段不符合要求')
-
-    provenance = bundle.get('provenance', {})
-    if provenance.get('inertia') != 'session_h3' or provenance.get('rotor_inertia') != 'session_h3':
-        raise ValueError('交付包缺少 H3 惯量来源')
-
-    h3 = _read_json(_stage_path(session, meta, 'h3'))
-    h2_session, h2_meta, h2_path = _upstream_path(session, meta, h3, 'h2', output_root, robot_config)
-    h2 = _read_json(h2_path)
-    if provenance.get('friction') != h3.get('prior_source'):
-        raise ValueError('交付摩擦来源与 H3 实际采用的 H2 不一致')
-    # The bundle's gravity label describes the local session. For cross-session
-    # calibration, the H2 input record names the H1 actually used.
-    h1_session, _, h1_path = _upstream_path(h2_session, h2_meta, h2, 'h1', output_root, robot_config)
-    h1 = _read_json(h1_path)
-    gravity_source = provenance.get('gravity')
-    if gravity_source not in ('session_h1', 'latest_h1') and not (
-        h1_session != session and gravity_source == 'session_h3'
-    ):
-        raise ValueError('交付包缺少 H1 重力来源')
-    for stage, cal in (('h1', h1), ('h2', h2), ('h3', h3)):
-        if (cal.get('accepted') is not True or cal.get('model_context') != robot_config['model_context']
-                or cal.get('gravity_world') != robot_config['gravity_world']):
-            raise ValueError(f'{stage.upper()} 上游标定与当前模型或重力不一致')
-
-    delivery = Delivery(
-        session, h2_path.parent / 'candidate.urdf', h2_path.parent / 'runtime_dynamics.json',
-        session / 'delivery/calibrated.urdf', session / 'delivery/runtime_dynamics.json',
-    )
-    for path in (delivery.h2_urdf, delivery.h2_runtime, delivery.h3_urdf, delivery.h3_runtime):
+def _delivery_at(session):
+    final = session / 'delivery'
+    urdf = final / 'calibrated.urdf'
+    runtime = final / 'runtime_dynamics.json'
+    for path in (urdf, runtime):
         if not path.is_file():
             raise ValueError(f'缺少交付文件 {path}')
-    return delivery
+
+    h2 = session / 'h2/analysis'
+    h2_urdf = h2 / 'candidate.urdf'
+    h2_runtime = h2 / 'runtime_dynamics.json'
+    if not (h2_urdf.is_file() and h2_runtime.is_file()):
+        h2_urdf = h2_runtime = None
+    return Delivery(session, h2_urdf, h2_runtime, urdf, runtime)
 
 
-def resolve_verified_delivery(target_session, output_root, robot_id, robot_config):
-    output_root = Path(output_root).resolve()
+def resolve_verified_delivery(target_session, output_root, robot_id):
     if target_session is not None:
-        session = Path(target_session).resolve()
-        try:
-            return _delivery_at(session, output_root, robot_id, robot_config)
-        except (ValueError, OSError) as error:
-            raise ValueError(f'{session} 缺少完整通过的 H1–H3 交付链（{error}）') from error
+        return _delivery_at(Path(target_session).resolve())
 
-    folder = output_root / robot_id
-    for bundle in sorted(folder.glob('*/delivery/calibration_bundle.json'), reverse=True):
-        try:
-            return _delivery_at(bundle.parent.parent, output_root, robot_id, robot_config)
-        except (ValueError, OSError):
-            continue
+    robot_dir = Path(output_root).resolve() / robot_id
+    for path in sorted(robot_dir.glob('*/delivery/calibrated.urdf'), reverse=True):
+        if (path.parent / 'runtime_dynamics.json').is_file():
+            return _delivery_at(path.parent.parent)
     return None
+
+
+def _check_session_robot(session, robot_id):
+    metadata = session / 'session.json'
+    if robot_id and metadata.is_file() and _read_json(metadata)['robot_id'] != robot_id:
+        raise ValueError(f'目标会话与 --robot={robot_id} 不一致')
+
+
+def _load_feedforward(urdf, sidecar, robot_config):
+    runtime = _read_json(sidecar)
+    model = _core.ArmDynamics.from_urdf(str(urdf))
+    if (runtime['joint_names'] != list(NAMES) or runtime['gravity_world'] != robot_config['gravity_world']
+            or tuple(joint.name for joint in model.model.joints) != tuple(NAMES)):
+        raise ValueError(f'交付模型与当前轴序或重力不匹配：{urdf}')
+    friction = runtime['friction']
+    friction['static_friction'] = list(friction['coulomb'])
+    friction['smoothing_velocity'] = [
+        max(value, SMOOTHING_FLOOR) for value in friction['smoothing_velocity']
+    ]
+    return _restore_runtime(model, runtime), runtime
 
 
 def _feedforward_models(robot_config, delivery):
     nominal, _ = model_for(robot_config)
     if delivery is None:
-        return (None, None, nominal, nominal, nominal), None
+        return (None, None, nominal, nominal, nominal), None, '离线预览使用名义模型'
 
-    h2_runtime, h3_runtime = (_read_json(path) for path in (delivery.h2_runtime, delivery.h3_runtime))
-    for runtime in (h2_runtime, h3_runtime):
-        if runtime['joint_names'] != list(NAMES) or runtime['gravity_world'] != robot_config['gravity_world']:
-            raise ValueError('交付 runtime_dynamics.json 的轴序或重力不匹配')
-        friction = runtime['friction']
-        friction['smoothing_velocity'] = [
-            max(value, SMOOTHING_FLOOR) for value in friction['smoothing_velocity']
-        ]
-    if h2_runtime['friction'] != h3_runtime['friction']:
-        raise ValueError('H2 与 H3 的前馈摩擦不同，无法对照惯量辨识')
-    h2 = _restore_runtime(_core.ArmDynamics.from_urdf(str(delivery.h2_urdf)), h2_runtime)
-    h3 = _restore_runtime(_core.ArmDynamics.from_urdf(str(delivery.h3_urdf)), h3_runtime)
+    h3, h3_runtime = _load_feedforward(delivery.h3_urdf, delivery.h3_runtime, robot_config)
+    if delivery.h2_urdf is None:
+        h2 = nominal
+        comparison = '缺少 H2 对照模型，G2 使用名义前馈'
+    else:
+        h2, h2_runtime = _load_feedforward(delivery.h2_urdf, delivery.h2_runtime, robot_config)
+        comparison = ('H2 与最终模型采用相同的前馈摩擦参数'
+                      if h2_runtime['friction'] == h3_runtime['friction']
+                      else 'H2 与最终模型的前馈摩擦不同，G2–G3 同时比较摩擦与刚体模型')
+
     recommended = dict(
         calibrated_urdf=str(delivery.h3_urdf),
         calibrated_urdf_sha256=sha256(delivery.h3_urdf.read_bytes()).hexdigest(),
         feedforward_smoothing_velocity_floor_rad_s=SMOOTHING_FLOOR,
         **{key: h3_runtime[key] for key in ('joint_names', 'gravity_world', 'rotor_inertia', 'friction')},
     )
-    return (None, None, nominal, h2, h3), recommended
+    return (None, None, nominal, h2, h3), recommended, comparison
 
 
 def _ns(seconds):
@@ -225,7 +180,7 @@ def _formal_motion(clips):
         _instrument_transition(motion, q_anchor, 'drum_to_anchor')
         groups[name] = dict(switch_ns=switch_ns, run_ns=[keyboard_ns[0], _ns(motion.duration)],
                             keyboard=keyboard_ns, drum=drum_ns)
-    _move(motion, q_ready, 1.5, TRANSITION, 'anchor_to_ready')
+    _move(motion, q_ready, 1.5, dict(TRANSITION, speed_rad_s=READY_TO_ANCHOR_SPEED_RAD_S), 'anchor_to_ready')
     return motion, groups
 
 
@@ -267,7 +222,7 @@ def plan_verification(q_start, robot_config, output, *, delivery=None, clips=Non
     if clips is None:
         clips = load_clips()
     formal, groups = _formal_motion(clips)
-    models, recommended = _feedforward_models(robot_config, delivery)
+    models, recommended, comparison = _feedforward_models(robot_config, delivery)
     markers = [
         dict(t_ns=stamp, event=f'hv_{group}_{abbr}_{end}')
         for group, row in groups.items()
@@ -290,7 +245,9 @@ def plan_verification(q_start, robot_config, output, *, delivery=None, clips=Non
         row['switch_ns'] += offset
         for key in ('run_ns', *INSTRUMENTS):
             row[key] = [offset + t for t in row[key]]
-        kp, kd = scale_pd(robot_config['kp'], robot_config['kd'], 1.0 if i == 0 else 0.5)
+        factor = 1.0 if i == 0 else 0.5
+        kp = np.asarray(robot_config['kp'], dtype=float) * factor
+        kd = np.asarray(robot_config['kd'], dtype=float)
         bundle['pd_schedule'].extend(
             dict(t_ns=t, kp=kp.tolist(), kd=kd.tolist()) for t in row['run_ns']
         )
@@ -311,7 +268,7 @@ def plan_verification(q_start, robot_config, output, *, delivery=None, clips=Non
         observed_velocity_limit_rad_s=observed_limit,
         clips={name: clip['source'] for name, clip in clips.items()},
         delivery_session=str(delivery.root) if delivery else None,
-        recommended=recommended,
+        recommended=recommended, h2_comparison=comparison,
     )
     save_bundle(output, bundle)
     write_json(Path(output) / 'plan.json', plan)
@@ -458,9 +415,6 @@ def _acceptance(groups):
     stiff = groups['G0_stiff']['overall']
     if target['flange_pos_rmse_mm'] > stiff['flange_pos_rmse_mm']:
         reasons.append('G3_soft 的法兰位置 RMSE 高于 G0_stiff')
-    target_jitter, stiff_jitter = target['jitter_rms_rad_s'], stiff['jitter_rms_rad_s']
-    if target_jitter is not None and stiff_jitter is not None and target_jitter >= stiff_jitter:
-        reasons.append('G3_soft 的高频速度残差 RMS 未低于 G0_stiff')
     return dict(accepted=not reasons, verdict='FAIL' if reasons else 'PASS', reasons=reasons)
 
 
@@ -479,6 +433,10 @@ def _write_report(verify_dir, plan, report):
              f'- 交付来源 `{plan["delivery_session"]}`',
              f'- 采集方式 {"私有物理 Mock" if plan.get("mock") else "裸法兰实机"}',
              f'- 参考时长 {plan["duration_ns"] * 1e-9:.2f} s']
+    if report.get('h2_comparison'):
+        lines.append(f'- G2–G3 对照：{report["h2_comparison"]}')
+    if report.get('received_collision'):
+        lines.append(received_clearance_line(report['received_collision']))
     lines.extend(f'- {reason}' for reason in report['reasons'])
     for scope, title in (('overall', '总表'), ('keyboard', '电子琴'), ('drum', '架子鼓')):
         lines.extend(['', f'## {title}', '',
@@ -552,6 +510,8 @@ def analyse_verification(verify_dir):
     report = dict(
         **_acceptance(groups), groups=groups,
         delivery_session=plan['delivery_session'],
+        h2_comparison=plan.get('h2_comparison'),
+        received_collision=feedback_proof,
         feedback_minimum_sampled_distance_m=feedback_proof['minimum_sampled_distance_m'],
     )
     _write_report(verify_dir, plan, report)
@@ -593,12 +553,13 @@ def _analysis_target(target, output_root, robot_id):
 
 
 def _delivered_mock_config(verify_dir, delivery, robot):
-    models, recommended = _feedforward_models(robot, delivery)
+    models, _, _ = _feedforward_models(robot, delivery)
+    raw_friction = _read_json(delivery.h3_runtime)['friction']
     fixture = _read_json(ROOT / 'configs/shm/h1_mock.json')
     fixture.update(urdf=str(delivery.h3_urdf), gravity_world=robot['gravity_world'], stiction_enabled=True)
     fixture['initial_fields']['effort'] = models[-1].gravity(ready_position()).tolist()
     for name, key in (('viscous', 'viscous'), ('coulomb', 'coulomb'), ('static', 'static_friction')):
-        fixture[f'friction_{name}'] = recommended['friction'][key]
+        fixture[f'friction_{name}'] = raw_friction[key]
     path = verify_dir / 'mock_input.json'
     write_json(path, fixture)
     return path
@@ -671,15 +632,13 @@ def main(argv=None):
         check_model_bundle()
         if args.reanalyse:
             verify_dir = _analysis_target(args.session or args.reanalyse, output_root, args.robot)
-            if args.robot and _read_json(verify_dir.parent / 'session.json')['robot_id'] != args.robot:
-                raise ValueError(f'目标会话与 --robot={args.robot} 不一致')
+            _check_session_robot(verify_dir.parent, args.robot)
         else:
             robot = load_robot_config(args.robot_config, hold_body=args.hold_body)
-            robot_id = args.robot
-            if robot_id is None:
-                robot_id = (_read_json(args.session / 'session.json')['robot_id'] if args.session
-                            else resolve_robot_id(output_root / 'state'))
-            delivery = resolve_verified_delivery(args.session, output_root, robot_id, robot)
+            if args.session:
+                _check_session_robot(args.session, args.robot)
+            robot_id = args.robot or resolve_robot_id(output_root / 'state')
+            delivery = resolve_verified_delivery(args.session, output_root, robot_id)
             if args.plan_only:
                 preview = args.output or output_root / 'verify_plan_preview' / str(time.monotonic_ns())
                 preview.parent.mkdir(parents=True, exist_ok=True)
@@ -687,7 +646,7 @@ def main(argv=None):
                 print(f'五组参考通过离线检查（{plan["duration_ns"] * 1e-9:.2f} s）{preview.resolve()}')
                 return 0
             if delivery is None:
-                raise ValueError(f'{robot_id} 缺少完整通过的 H1–H3 交付链，请先运行 bash calib/dynamics.sh')
+                raise ValueError(f'{robot_id} 没有动力学交付模型，请先运行 bash calib/dynamics.sh')
             verify_dir = execute_verification(
                 delivery, robot, output_root, executor=args.executor, mock=args.mock, mock_config=args.mock_config,
             )

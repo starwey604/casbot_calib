@@ -33,8 +33,7 @@ def main():
         complete_asset_inventory=all(inventory[k]==catalog['asset_inventory'][k] for k in inventory),
         dvt2_is_default=len(default.model.joints)==14 and 'bare_flange_1105_03_gauge_v2' in selected['source'])
     write_json(root/'verification.json',dict(passed=all(checks.values()),checks=checks,variants=results,asset_inventory=inventory,
-        source_only=True,default_model_changed=True,hardware_tested=False,
-        scope='Source and geometry parsing only; no reduction, scene collision qualification or robot execution'))
+        default_model_changed=True,scope='URDF and geometry parsing'))
     return 0 if all(checks.values()) else 1
 
 

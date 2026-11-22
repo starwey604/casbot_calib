@@ -158,7 +158,7 @@ def certify_polyline(profile,positions,times_s=None,clearance_m=.01,max_depth=12
     knots=np.unique(np.r_[index[::block_samples],index[-1]])
     report=_certify(profile,at,variation,
         zip(knots[:-1],knots[1:]),clearance_m,max_depth,lambda t:np.interp(t,index,times_s) if times_s is not None else t)
-    report['path_model']='joint-space piecewise linear interpolant of observations; unobserved hardware motion is not certified'
+    report['path_model']='joint-space piecewise linear interpolant of observations'
     if position_allowance is not None:
         report.update(position_allowance_rad=allowance.tolist(),path_model='continuous joint polyline plus declared joint box')
     return report

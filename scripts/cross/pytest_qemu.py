@@ -10,22 +10,12 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
 
-WALL_CLOCK = {
-    'test_cache_before_settling_is_discarded_and_equal_values_count',
-    'test_entire_window_drift_retries',
-    'test_stopped_response_times_out_and_duplicate_request_fails',
-    'test_dpp_ridge_grid_selects_optimal_ridge_under_250ms',
-    'test_static_move_matches_bernstein_bounds_and_runs_fast',
-    'test_h1_full_offline_planning_benchmark',
-    'test_h2_full_offline_planning_and_duration_gate',
-    'test_run_logged_does_not_wait_for_inherited_stdout',
-}
 LIVE_SHM = {
     'test_stiction_bounded_correction_enters_range',
     'test_dynamics_h1_shell_end_to_end_and_resume',
     'test_three_stage_closed_loop_with_physical_shm_mock',
     'test_live_native_executor_zstdcat_matches_arrays',
-    'test_eight_windows_physics_fit',
+    'test_h1_operator_stop',
     'test_only_zero_write_no_fault_start_mismatch_can_replan',
     'test_fault_during_execution_ends_collection_without_replan',
     'test_native_observed_velocity_ends_and_records_trigger',
@@ -47,8 +37,6 @@ def exclusion(name, fixtures, filename):
         return 'amd64 Docker build orchestration (tested on host)'
     if name == 'test_preview_widgets_without_graphics_or_control':
         return 'host GUI extra (imgui_bundle)'
-    if name in WALL_CLOCK:
-        return 'native wall-clock performance limit'
     if name in LIVE_SHM or {'master', 'owner', 'client'} & set(fixtures):
         return 'live SHM / physical Mock scheduling'
     return None

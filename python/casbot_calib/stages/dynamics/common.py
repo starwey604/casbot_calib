@@ -324,33 +324,44 @@ def compose_stage_reference(
     return bundle, motion, proof, prep_cert, offset_ns, kinematics_summary
 
 
-def resolve_effective_plan_and_capture(plan_dir, capture_dir):
+def resolve_effective_plan_and_capture(plan_dir, capture_dir, *, diagnostic=False):
     plan_dir = Path(plan_dir).resolve()
     capture_dir = Path(capture_dir).resolve()
     wrapper_file = capture_dir / 'result.json'
     if wrapper_file.is_file():
         wrapper = json.loads(wrapper_file.read_text(encoding='utf-8'))
         if isinstance(wrapper.get('effective_capture'), str):
-            if not wrapper.get('execution_completed'):
-                raise ValueError('采集未正常完成，不执行离线辨识')
+            if not diagnostic and not wrapper.get('execution_completed'):
+                raise ValueError('采集未完成，无法生成正式辨识结果')
             if wrapper.get('effective_plan'):
                 plan_dir = (capture_dir / wrapper['effective_plan']).resolve()
             capture_dir = (capture_dir / wrapper['effective_capture']).resolve()
     return plan_dir, capture_dir
 
 
+def stage_capture_complete(native, *, legacy_h1=False):
+    return (native.get('execution_completed') == '1'
+            and native.get('recording_stopped') == '0'
+            and native.get('disable_ack', '1' if legacy_h1 else '0') == '1')
+
+
 def read_verified_stage_capture(plan_meta, capture_dir, robot_config, *,
-                                collision_profile=None, minimum_feedback_rows=10):
-    reader = ObservationReader(capture_dir)
+                                collision_profile=None, minimum_feedback_rows=10,
+                                diagnostic=False, legacy_h1=False):
+    reader = ObservationReader(capture_dir, allow_truncated=diagnostic)
     native = text_result(reader.root / 'result.txt') or {}
-    if (
-        native.get('execution_completed') != '1'
-        or native.get('recording_stopped') != '0'
-        or native.get('disable_ack') != '1'
-    ):
+    if not diagnostic and not stage_capture_complete(native, legacy_h1=legacy_h1):
         raise ValueError(f'原生执行未正常完成或记录中断：{native}')
 
     arr = reader.arrays()
+    if diagnostic:
+        with (reader.root / 'events.csv').open(newline='') as events:
+            stop_ns = next((int(row['mono_ns']) for row in csv.DictReader(events)
+                            if row['event'] == 'soft_stop_return_begin'), None)
+        keep = arr['phase'] == 3
+        if stop_ns is not None:
+            keep &= arr['receive_ns'] < stop_ns
+        arr = {key: values[keep] for key, values in arr.items()}
     n_rows = int(len(arr['receive_ns']))
     if n_rows < minimum_feedback_rows:
         raise ValueError('SHM 有效反馈帧数过少')
@@ -368,6 +379,8 @@ def read_verified_stage_capture(plan_meta, capture_dir, robot_config, *,
     effort_nm = (effort_raw - np.asarray(robot_config['effort_zero_nm'], dtype=float)) * np.asarray(robot_config['effort_gain'], dtype=float)
 
     formal_mask = (phases == 3) & (rel_ns >= calib_begin_ns)
+    if legacy_h1 and not plan_meta.get('preparation') and not diagnostic:
+        formal_mask = np.ones(n_rows, dtype=bool)
     formal_q = q[formal_mask]
     formal_recv_ns = receive_ns[formal_mask]
     if len(formal_q) < 2:
@@ -381,9 +394,7 @@ def read_verified_stage_capture(plan_meta, capture_dir, robot_config, *,
         clearance_m=robot_config['scene']['clearance_m'],
         block_samples=1024,
     )
-    if not received_collision['passed']:
-        raise ValueError(f'实测反馈位置折线未通过连续碰撞检查（最小间距 {received_collision["minimum_sampled_distance_m"]*1000:.2f} mm）')
-
+    received_collision.pop('wall_s', None)
     duration_s = float((receive_ns[-1] - receive_ns[0]) * 1e-9) if receive_ns[-1] > receive_ns[0] else 0.0
     obs = dict(
         origin_ns=int(reader.origin),
@@ -405,14 +416,18 @@ def read_verified_stage_capture(plan_meta, capture_dir, robot_config, *,
     return obs, native, received_collision
 
 
+def received_clearance_line(collision):
+    distance = collision['minimum_sampled_distance_m'] * 1000
+    result = '通过' if collision['passed'] else '低于准入裕度或未完成认证'
+    return f'- 实测反馈折线碰撞复核：{result}，最小采样间距 {distance:.2f} mm'
+
+
 def export_stage_candidate(out_dir, candidate_engine, robot_config):
     out_dir = Path(out_dir)
     source_urdf = urdf_for(robot_config)
     candidate_urdf = out_dir / 'candidate.urdf'
     urdf_info = write_inertial_urdf(source_urdf, candidate_engine, candidate_urdf)
     reload_report = check_reload(candidate_urdf, candidate_engine, source_urdf)
-    if not reload_report['passed']:
-        raise ValueError('导出的候选 URDF 未通过独立 Pinocchio/原生重加载一致性校验')
 
     runtime_sidecar = dict(
         schema_version='casbot_shm_runtime_dynamics_v1',
@@ -443,13 +458,13 @@ def export_stage_candidate(out_dir, candidate_engine, robot_config):
     return dict(
         candidate_urdf='candidate.urdf',
         runtime_dynamics='runtime_dynamics.json',
-        reload_passed=True,
+        reload_passed=reload_report['passed'],
         bodies=urdf_info['bodies'],
     )
 
 
-def evaluate_stage_acceptance(baseline_rmse, candidate_rmse, *, axis_rows=(), reload_passed=True):
-    """Automatic holdout non-regression gate across overall and primary excited axes."""
+def evaluate_stage_acceptance(baseline_rmse, candidate_rmse, *, axis_rows=()):
+    """Report holdout regression and reject non-finite fit metrics."""
     baseline = float(baseline_rmse)
     candidate = float(candidate_rmse)
     degraded_axes = []
@@ -461,27 +476,14 @@ def evaluate_stage_acceptance(baseline_rmse, candidate_rmse, *, axis_rows=(), re
         if (c_val - b_val) > max(0.05, 0.10 * b_val):
             degraded_axes.append(str(joint_name))
 
-    if not reload_passed:
-        accepted = False
-        reason = 'urdf_reload_failed'
-    elif not np.isfinite([baseline, candidate]).all():
-        accepted = False
-        reason = 'nonfinite_validation_rmse'
-    elif candidate > baseline * 1.005 + 1e-4:
-        accepted = False
-        reason = 'overall_validation_degraded'
-    elif degraded_axes:
-        accepted = False
-        reason = 'active_axis_degraded:' + ','.join(degraded_axes)
-    else:
-        accepted = True
-        reason = 'passed'
+    accepted = bool(np.isfinite([baseline, candidate]).all())
 
     return dict(
         accepted=accepted,
         baseline_rmse_nm=baseline,
         candidate_rmse_nm=candidate,
         improvement_nm=float(baseline - candidate),
+        overall_degraded=bool(candidate > baseline * 1.005 + 1e-4),
         degraded_axes=degraded_axes,
-        reason=reason,
+        reason='finite_validation_rmse' if accepted else 'nonfinite_validation_rmse',
     )

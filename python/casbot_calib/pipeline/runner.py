@@ -3,10 +3,15 @@ import argparse
 import json
 from pathlib import Path
 import sys
+from tempfile import TemporaryDirectory
 import time
+import numpy as np
+from ..data import write_json
+from ..shm_fieldwork import text_result
+from ..shm_observations import native_directory
 from ..shm_ready import ready_position
 from ..shm_takeover import HandoffError
-from ..stages.dynamics.common import resolve_effective_plan_and_capture
+from ..stages.dynamics.common import resolve_effective_plan_and_capture, stage_capture_complete
 from .delivery import build_session_delivery
 from .native import execute_with_start_replan, maybe_mock_context, native_snapshot, soft_stop_status
 from .preflight import check_hardware_environment, check_model_bundle, check_native_binaries, check_python_runtime
@@ -31,6 +36,29 @@ def _stage_checkpoint(session, stage_name, eff_plan_dir, eff_capture_dir, analys
         checkpoint['candidate_urdf'] = str((analysis_dir / report['candidate_urdf']).relative_to(session.root))
         checkpoint['calibration_json'] = str((analysis_dir / 'calibration.json').relative_to(session.root))
     return checkpoint
+
+
+def _reanalyse_partial(stage, stage_dir, plan_dir, plan_meta, capture_dir, summary):
+    diagnostic_dir = stage_dir / 'diagnostic'
+    diagnostic_dir.mkdir(exist_ok=True)
+    with TemporaryDirectory(dir=diagnostic_dir) as temporary:
+        root = Path(temporary)
+        try:
+            report = stage.analyse(plan_dir, capture_dir, root / 'analysis', diagnostic=True)
+            markdown = stage.write_summary(root, plan_meta, summary, report).read_text(encoding='utf-8')
+            heading, body = markdown.split('\n', 1)
+        except (ValueError, FileNotFoundError, np.linalg.LinAlgError) as error:
+            report = dict(stage=stage.name, fit_succeeded=False, analysis_unavailable_reason=str(error))
+            heading = f'# {stage.title}报告'
+            body = f'\n- 拟合未生成（{error}）\n'
+
+    for key in ('candidate_urdf', 'runtime_dynamics', 'accepted'):
+        report.pop(key, None)
+    report.update(collection_complete=False, diagnostic_only=True)
+    write_json(diagnostic_dir / 'report.json', report)
+    report_path = diagnostic_dir / 'report.md'
+    report_path.write_text(f'{heading}\n\n**半程采集诊断，不入交付。**\n{body}', encoding='utf-8')
+    return report_path
 
 
 def reanalyse_session(
@@ -65,12 +93,13 @@ def reanalyse_session(
     if not targets:
         raise ValueError(f'会话 {session.root} 中没有可重分析的已采集阶段')
 
+    updated_delivery = False
     for stage in targets:
         stage_dir = session.root / stage.name
         rec = session.stage_record(stage.name) or {}
         raw_plan = session.root / rec['plan_dir'] if rec.get('plan_dir') else (stage_dir / 'plan')
         raw_capture = session.root / rec['capture_dir'] if rec.get('capture_dir') else (stage_dir / 'capture')
-        eff_plan_dir, eff_capture_dir = resolve_effective_plan_and_capture(raw_plan, raw_capture)
+        eff_plan_dir, eff_capture_dir = resolve_effective_plan_and_capture(raw_plan, raw_capture, diagnostic=True)
         eff_plan_meta = json.loads((eff_plan_dir / 'plan.json').read_text(encoding='utf-8'))
 
         wrapper_path = (stage_dir / 'capture' / 'result.json')
@@ -79,6 +108,15 @@ def reanalyse_session(
             if wrapper_path.is_file()
             else {'execution_completed': True}
         )
+        native = text_result(native_directory(eff_capture_dir) / 'result.txt') or {}
+        complete = (capture_summary.get('execution_completed')
+                    and stage_capture_complete(native, legacy_h1=stage.name == 'h1'))
+        if not complete:
+            report_path = _reanalyse_partial(
+                stage, stage_dir, eff_plan_dir, eff_plan_meta, eff_capture_dir, capture_summary,
+            )
+            print(f'[{stage.name.upper()}] 半程采集诊断：{report_path}', flush=True)
+            continue
 
         analysis_dir = stage_dir / 'analysis'
         if analysis_dir.exists():
@@ -89,12 +127,15 @@ def reanalyse_session(
         report_path = stage.write_summary(stage_dir, eff_plan_meta, capture_summary, report)
         checkpoint = _stage_checkpoint(session, stage.name, eff_plan_dir, eff_capture_dir, analysis_dir, report_path, report)
         session.mark_stage(stage.name, 'completed', **checkpoint)
+        updated_delivery = True
         print(f'[{stage.name.upper()}] 免动重分析完成，报告：{report_path}', flush=True)
 
-    delivery = build_session_delivery(session, robot_cfg)
-    session.metadata['delivery'] = delivery
-    session.save()
-    print(f'[DELIVERY] 交付包已更新：{session.root / delivery["summary_md"]}', flush=True)
+    delivery = session.metadata.get('delivery')
+    if updated_delivery:
+        delivery = build_session_delivery(session, robot_cfg)
+        session.metadata['delivery'] = delivery
+        session.save()
+        print(f'[DELIVERY] 交付包已更新：{session.root / delivery["summary_md"]}', flush=True)
     return dict(session=session, completed=True, plan_only=False, reanalysed=True, delivery=delivery)
 
 
@@ -139,7 +180,6 @@ def run_pipeline(
             output_root=output_root,
         )
 
-    stage_objs = resolve_stages(stages)
     is_stage_map = isinstance(stage_config, dict) and bool(stage_config) and set(stage_config) <= {'h1', 'h2', 'h3'}
     if stage_config is not None and not is_stage_map and len(stage_objs) != 1:
         raise ValueError('--config 仅在单阶段运行时使用')
@@ -167,17 +207,18 @@ def run_pipeline(
         for s in stage_objs
     }
 
-    binary = None
-    if not plan_only and not resume:
-        binary = check_native_binaries(executor=executor, mock=mock, endpoint=endpoint)
-        if not mock:
-            check_hardware_environment(endpoint=endpoint)
-
     if resume:
         session = Session.resume(output_root=output_root, target=resume_target, model_context=robot_cfg['model_context'])
         if robot_id is not None and robot_id != session.metadata.get('robot_id'):
             raise ValueError(f'--robot={robot_id} 与待续跑会话机器编号 {session.metadata.get("robot_id")} 不一致')
-    else:
+
+    pending = [s for s in stage_objs if not (resume and session.stage_completed(s.name))]
+    if not plan_only and pending:
+        binary = check_native_binaries(executor=executor, mock=mock, endpoint=endpoint)
+        if not mock:
+            check_hardware_environment(endpoint=endpoint)
+
+    if not resume:
         session = Session.create(
             output_root=output_root,
             robot_id=robot_id,
@@ -186,7 +227,6 @@ def run_pipeline(
             plan_only=plan_only,
         )
 
-    pending = [s for s in stage_objs if not (resume and session.stage_completed(s.name))]
     if not pending:
         delivery = build_session_delivery(session, robot_cfg)
         session.metadata['delivery'] = delivery
@@ -210,11 +250,6 @@ def run_pipeline(
             )
             print(f'[{stage.name.upper()}] 离线规划与连续碰撞检查通过：{report_path}', flush=True)
         return dict(session=session, completed=True, plan_only=True)
-
-    if binary is None:
-        binary = check_native_binaries(executor=executor, mock=mock, endpoint=endpoint)
-        if not mock:
-            check_hardware_environment(endpoint=endpoint)
 
     channel_info = None
     if not mock:

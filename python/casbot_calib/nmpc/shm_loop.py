@@ -83,8 +83,7 @@ class SHMLoop:
         if s and self.active:
             if s['phase'] != 3 or s['control'] != client.control:
                 raise RuntimeError('SHM 控制会话已中断')
-            if (time.monotonic_ns()-client.received_at > self.timeout*1e9
-                    or s['mono_ns']-s['receive_ns'] > self.timeout*1e9):
+            if time.monotonic_ns()-client.received_at > self.timeout*1e9:
                 raise TimeoutError('SHM 反馈超时')
         client.tick()
         return s

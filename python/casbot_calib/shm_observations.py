@@ -1,4 +1,4 @@
-"""SHM observation time is mapped master conversion time, never receive/sample time."""
+"""SHM observations with master conversion times mapped to the local clock."""
 import csv
 import json
 from pathlib import Path
@@ -21,7 +21,7 @@ def native_directory(root):
     return root / 'native' if (root / 'native').is_dir() else root
 
 
-def command_origin(root):
+def command_origin(root, *, allow_truncated=False):
     root = native_directory(root)
     result = text_result(root / 'result.txt')
     if not result:
@@ -33,7 +33,7 @@ def command_origin(root):
     if not path.is_file():
         raise ValueError('缺少命令记录文件')
     command = _core.read_commands_csv_zst(path, timing_only=True)
-    if command['truncated_tail']:
+    if command['truncated_tail'] and not allow_truncated:
         raise ValueError('SHM命令记录尾部不完整')
     stream = np.flatnonzero(command['phase'] == 3)
     if not len(stream) or command['send_mono_ns'][stream[0]] != origin:
@@ -50,9 +50,10 @@ def _has_passive_event(path):
 
 
 class ObservationReader:
-    def __init__(self, root):
+    def __init__(self, root, *, allow_truncated=False):
         self.root = native_directory(root)
-        self.origin = command_origin(self.root)
+        self.allow_truncated = allow_truncated
+        self.origin = command_origin(self.root, allow_truncated=allow_truncated)
         self.pairs = list(csv_rows(self.root / 'clock_pairs.csv'))
         self.pair_times = [int(p['mono_after_ns']) for p in self.pairs]
         if any(b <= a for a, b in zip(self.pair_times, self.pair_times[1:])):
@@ -64,7 +65,7 @@ class ObservationReader:
 
     def arrays(self):
         records = _core.read_feedback_csv_zst(self.root / 'feedback.csv.zst')
-        if records['truncated_tail']:
+        if records['truncated_tail'] and not self.allow_truncated:
             raise ValueError('SHM反馈记录尾部不完整')
         passive = self.root / 'passive_commands.csv.zst'
         events = self.root / 'events.csv'
@@ -174,6 +175,5 @@ class ObservationReader:
             clock_segment=chosen,
             raw_rows=raw_rows,
             source_timestamp_quantum_ns=1_000_000,
-            time_basis='mapped master conversion time; not motor acquisition',
-            raw_receive_times_preserved=True,
+            time_basis='主站转换时间，经时钟映射',
         )

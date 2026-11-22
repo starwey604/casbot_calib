@@ -50,6 +50,19 @@ class Owner:
                 last=self.latest['challenge'];self.send('renew',control=self.control,challenge=last,seq=self.latest['seq'])
             time.sleep(.005)
         raise AssertionError((self.latest,list(self.events.queue)))
+    def reply(self, identifier, *, renew=False):
+        def matching():
+            with self.events.mutex:
+                return next((item for item in self.events.queue
+                             if item['type'] == 'reply' and item.get('id') == identifier), None)
+
+        self.wait(matching, renew=renew)
+        return matching()
+
+    def next_telemetry(self):
+        seq = self.latest['seq']
+        self.wait(lambda: self.latest['seq'] > seq)
+
     def start(self):
         self.wait(lambda:self.hello and self.latest and self.latest['master_frame']>1)
         self.send('start');self.wait(lambda:self.latest['phase']==3,renew=True)
@@ -93,9 +106,11 @@ def test_repeated_controls_fields_quantization_and_stop(owner):
     for j in [0,11,26,28]:assert o.latest['joints'][j][0]&0x6f==0x21
     o.send('stop',control=first);o.wait(lambda:o.latest['phase']==-1)
     assert o.latest['disable_ack']
-    writes=o.latest['writes'];time.sleep(.05);assert o.latest['writes']==writes
+    writes=o.latest['writes'];o.next_telemetry();assert o.latest['writes']==writes
     o.start();assert o.control!=first
-    o.send('fields',control=first,revision=100,**fields);time.sleep(.03)
+    rejected = o.send('fields', control=first, revision=100, **fields)
+    assert o.reply(rejected, renew=True)['reason'] == 'not_current_control'
+    o.next_telemetry()
     assert o.latest['revision']==0
 
 
@@ -105,7 +120,7 @@ def test_lease_expires_without_more_gui_ticks(owner):
     o.wait(lambda:o.latest['phase']==-1,duration=2)
     assert o.latest['disable_ack']
     assert any('lease_expired' in x.get('reason','') for x in o.events.queue)
-    writes=o.latest['writes'];time.sleep(.03);assert o.latest['writes']==writes
+    writes=o.latest['writes'];o.next_telemetry();assert o.latest['writes']==writes
 
 
 @pytest.mark.slow
@@ -120,9 +135,15 @@ def test_eof_and_signal_disable_and_preserve_results(owner):
 @pytest.mark.slow
 def test_invalid_target_keeps_last_revision_and_missing_background(owner):
     o,_,_=owner();o.start();fields={k:list(v) for k,v in o.latest['command'].items()}
-    fields['position'][0]=999;o.send('fields',control=o.control,revision=1,**fields)
-    time.sleep(.05);assert o.latest['revision']==0
-    o2,_,_=owner(background=False);o2.wait(lambda:o2.latest is not None);o2.send('start');time.sleep(.05)
+    fields['position'][0] = 999
+    rejected = o.send('fields', control=o.control, revision=1, **fields)
+    assert o.reply(rejected, renew=True)['reason'] == 'target_range_id_12'
+    o.next_telemetry()
+    assert o.latest['revision'] == 0
+    o2, _, _ = owner(background=False)
+    o2.wait(lambda: o2.latest is not None)
+    assert o2.reply(o2.send('start'))['reason'] == 'hand_background_required'
+    o2.next_telemetry()
     assert o2.latest['writes']==0
 
 
@@ -148,12 +169,24 @@ def test_exclusive_owner_refuses_second_reader(owner,tmp_path):
 
 @pytest.mark.slow
 def test_old_challenge_cannot_keep_control_alive(owner):
-    o,_,_=owner();o.start();old=dict(control=o.control,challenge=o.latest['challenge'],seq=o.latest['seq'])
-    o.send('renew',**old);time.sleep(.03)
-    end=time.monotonic()+1.4
-    while time.monotonic()<end:
-        o.send('renew',**old);time.sleep(.03)
-    o.wait(lambda:o.latest['phase']==-1)
+    o, _, _ = owner()
+    o.start()
+    o.next_telemetry()
+    old = dict(control=o.control, challenge=o.latest['challenge'], seq=o.latest['seq'])
+    o.send('renew', **old)
+    o.wait(lambda: o.latest['challenge'] != old['challenge'])
+    last = 0
+
+    def repeat_stale_renewals():
+        nonlocal last
+        if o.latest['phase'] == -1:
+            return True
+        if o.latest['seq'] != last:
+            last = o.latest['seq']
+            o.send('renew', **old)
+        return False
+
+    o.wait(repeat_stale_renewals)
     assert o.latest['disable_ack']
 
 
@@ -164,7 +197,9 @@ def test_drive_error_ends_control_without_reenable(master,tmp_path):
         o.wait(lambda:o.latest and o.latest['master_frame']>1);o.send('start')
         o.wait(lambda:o.latest['phase']==-1 and o.latest['writes']>10,renew=True)
         assert o.latest['disable_ack']
-        writes=o.latest['writes'];o.send('start');time.sleep(.05)
+        writes = o.latest['writes']
+        assert not o.reply(o.send('start'))['ok']
+        o.next_telemetry()
         assert o.latest['writes']==writes
     finally:o.close()
 
@@ -181,7 +216,9 @@ def test_online_axis_observation_and_next_control_input_policy(owner):
     o.wait(lambda:o.latest['revision']==1,renew=True)
     assert o.latest['command']['kp'][0]==60 # input policy frozen at start
     o.send('stop');o.wait(lambda:o.latest['phase']==-1);o.start()
-    o.send('fields',control=o.control,revision=1,**fields);time.sleep(.04)
+    rejected = o.send('fields', control=o.control, revision=1, **fields)
+    assert o.reply(rejected, renew=True)['reason'] == 'target_range_id_12'
+    o.next_telemetry()
     assert o.latest['revision']==0 # next control uses the new ID12 cap
 
 
@@ -189,6 +226,10 @@ def test_online_axis_observation_and_next_control_input_policy(owner):
 def test_stop_tombstones_late_start(owner):
     o,_,_=owner();o.wait(lambda:o.latest is not None)
     stopped=o.send('stop')
+    assert o.reply(stopped)['ok']
     # Replay an older start using the protocol, not a fresh explicit start.
-    o.p.stdin.write((json.dumps(dict(type='start',id=stopped))+'\n').encode());o.p.stdin.flush();time.sleep(.05)
+    o.p.stdin.write((json.dumps(dict(type='start',id=stopped))+'\n').encode());o.p.stdin.flush()
+    o.wait(lambda: any(x.get('id') == stopped and x.get('reason') == 'start_already_processed'
+                       for x in o.events.queue))
+    o.next_telemetry()
     assert o.latest['writes']==0

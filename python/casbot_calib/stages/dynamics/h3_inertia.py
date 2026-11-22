@@ -27,6 +27,7 @@ from .common import (
     evaluate_stage_acceptance,
     export_stage_candidate,
     read_verified_stage_capture,
+    received_clearance_line,
     resolve_effective_plan_and_capture,
     resolve_stage_prior,
 )
@@ -610,8 +611,8 @@ def _build_rotor_regressor(ddq_active, active_indices):
     return rot_reg
 
 
-def analyse_h3(plan_dir, capture_dir, out_dir, *, session=None):
-    plan_dir, capture_dir = resolve_effective_plan_and_capture(plan_dir, capture_dir)
+def analyse_h3(plan_dir, capture_dir, out_dir, *, session=None, diagnostic=False):
+    plan_dir, capture_dir = resolve_effective_plan_and_capture(plan_dir, capture_dir, diagnostic=diagnostic)
     out_dir = Path(out_dir).resolve()
     out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -625,7 +626,9 @@ def analyse_h3(plan_dir, capture_dir, out_dir, *, session=None):
     ridge_grid = recipe.get('ridge_grid')
     identify_rotor = bool(recipe.get('identify_rotor_inertia', True))
 
-    obs, native, received_collision = read_verified_stage_capture(plan_meta, capture_dir, robot_config)
+    obs, _, received_collision = read_verified_stage_capture(
+        plan_meta, capture_dir, robot_config, diagnostic=diagnostic,
+    )
 
     if session is not None:
         live = resolve_stage_prior(session, 'h3', robot_config)
@@ -666,6 +669,8 @@ def analyse_h3(plan_dir, capture_dir, out_dir, *, session=None):
     block_diagnostics = []
 
     for blk in plan_meta['blocks']:
+        if diagnostic and blk['steady_ns'][1] > obs['relative_ns'][-1]:
+            continue
         reg_band, ddq_band, dyn_target, diag = _extract_block_harmonic_data(
             obs,
             prior_engine,
@@ -804,7 +809,6 @@ def analyse_h3(plan_dir, capture_dir, out_dir, *, session=None):
             for row in axis_reports
             if row['identified']
         ],
-        reload_passed=exported['reload_passed'],
     )
 
     stribeck_out = (
@@ -872,10 +876,8 @@ def analyse_h3(plan_dir, capture_dir, out_dir, *, session=None):
         feedback_rows=obs['feedback_rows'],
         formal_rows=obs['formal_rows'],
         mean_feedback_hz=obs['mean_feedback_hz'],
-        received_collision=dict(
-            passed=True,
-            minimum_distance_m=received_collision['minimum_sampled_distance_m'],
-        ),
+        received_collision=received_collision,
+        urdf_reload_passed=exported['reload_passed'],
         fit_succeeded=True,
         accepted=acceptance['accepted'],
         acceptance=acceptance,
@@ -909,14 +911,11 @@ def write_h3_summary_markdown(stage_dir, plan_meta, capture_summary, report):
         lines.extend(['', '> 仅生成离线规划（`--plan-only`），未连接设备。'])
     else:
         hz = f'{report["mean_feedback_hz"]:.1f} Hz' if report.get('mean_feedback_hz') else 'n/a'
-        acc = report.get('acceptance') or {}
-        gate_str = '通过（自动采纳）' if acc.get('accepted', True) else f'未通过（{acc.get("reason", "degraded")}，自动回退上游先验）'
         lines.extend([
-            f'- **有效反馈帧数**：{report["feedback_rows"]}（均值频率 {hz}，实测最小碰撞间距 {report["received_collision"]["minimum_distance_m"] * 1000:.2f} mm）',
+            f'- **有效反馈帧数**：{report["feedback_rows"]}（均值频率 {hz} Hz）',
+            received_clearance_line(report['received_collision']),
             f'- **PSD 惯量锥 + 转子惯量拟合**：成功（可观秩 `{report["observable_rank"]}/{report["total_columns"]}`，静态重力冻结偏差 `{report["max_gravity_change_nm"]:.2e} Nm`）',
             f'- **留出集整体动态力矩 RMSE**：上游先验 **{report["prior_validation_rmse_nm"]:.4f} Nm** → 拟合候选 **{report["validation_rmse_nm"]:.4f} Nm**',
-            f'- **防退化验收门禁**：{gate_str}',
-            f'- **导出模型**：`analysis/{report["candidate_urdf"]}` + `analysis/{report["runtime_dynamics"]}`',
             '',
             '## 逐轴质心主惯量、转子反射惯量与留出集动态力矩 RMSE（Nm）',
             '',
@@ -952,8 +951,8 @@ class H3InertiaStage(Stage):
     def plan(self, q_start, robot_config, recipe, out_dir, *, session=None):
         return plan_h3(q_start, robot_config, recipe, out_dir, session=session)
 
-    def analyse(self, plan_dir, capture_dir, out_dir, *, session=None):
-        return analyse_h3(plan_dir, capture_dir, out_dir, session=session)
+    def analyse(self, plan_dir, capture_dir, out_dir, *, session=None, diagnostic=False):
+        return analyse_h3(plan_dir, capture_dir, out_dir, session=session, diagnostic=diagnostic)
 
     def write_summary(self, stage_dir, plan_meta, capture_summary, report):
         return write_h3_summary_markdown(stage_dir, plan_meta, capture_summary, report)

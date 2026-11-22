@@ -141,7 +141,7 @@ def check_reload(path,expected,source,*,samples=32,seed=20261029):
     original=pin.buildModelFromUrdf(str(source))
     compare('fixed_root_inertia',parsed.inertias[0].toDynamicParameters(),original.inertias[0].toDynamicParameters())
     return dict(passed=all(checks.values()),checks=checks,maximum_absolute_errors=errors,atol=ATOL,rtol=RTOL,
-        samples=samples,seed=seed,backend='Pinocchio direct URDF plus native adapter',hardware_executable=False,
-        scope='serialization/coordinate/runtime consistency only; not new parameter identification or physical validation')
+        samples=samples,seed=seed,backend='Pinocchio direct URDF plus native adapter',
+        scope='serialization, coordinates and runtime consistency')
 
 

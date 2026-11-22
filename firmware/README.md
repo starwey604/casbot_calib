@@ -72,7 +72,7 @@ USB VID/PID 暂沿用 Zephyr 的开发默认值 `2fe3:0004`，对外发布固件
 - 普通应用在 `trical_bridge/`，独立频率测试在 `tests/qas_rate/`，共用 `trical_bridge/lib/`。
 - [USB 读写指南](docs/qas_usb.md)提供主机工具和行协议；[频率实验](tests/qas_rate/README.md)提供运行方式、统计含义和旧脚本缺陷分析。
 
-[单表蓝牙实测记录](../docs/records/nicenano_single_gauge_20261120.md)：8 Hz 轮询时，60 秒内收到 218 条有效读数。仪表采样时刻、单位/尺度/mastering 和三表静态配对尚未实测；现有 K1–K5/SDK 标定入口保持原行为。
+TriCal 现场接线、清零及 K1–K3 流程见[运动学手册](../docs/kinematics.md)。
 构建不依赖外部协议分析仓库。
 
 ## 构建证据

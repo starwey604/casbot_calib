@@ -114,7 +114,7 @@ void write_result(const std::filesystem::path& root,const std::string& reason,bo
   result<<"execution_completed="<<completed<<"\nreason="<<reason<<"\nfirst_stream_mono_ns="<<first
     <<"\nfirst_command_mono_ns="<<first<<"\nfirst_shm_write_mono_ns="<<first_write
     <<"\nmax_send_gap_ns="<<max_gap<<"\ncommands_sent="<<writes<<"\nsend_skipped="<<failures
-    <<"\nrecording_stopped="<<recording_stopped<<"\ndisable_ack="<<ack<<"\nphysical_stop_observed=unknown\n";
+    <<"\nrecording_stopped="<<recording_stopped<<"\ndisable_ack="<<ack<<"\n";
 }
 void observe(const Options& o) {
   const auto root=std::filesystem::path(o.output);
@@ -416,7 +416,7 @@ int field_main(int argc,char** argv) {
     if(o.mode=="--inspect"){
       const auto s=passive_snapshot(o.name);binary(root/"command.bin",s.command);binary(root/"status.bin",s.status);
       binary(root/"command_queue.bin",s.command_queue);binary(root/"status_queue.bin",s.status_queue);print_status(s.status);
-      write_result(root,"passive_snapshot_not_live_proof",true,false);return 0;
+      write_result(root,"inspect_completed",true,false);return 0;
     }
     const auto parent=getppid();if(parent<=1||prctl(PR_SET_PDEATHSIG,SIGTERM)||getppid()!=parent)throw std::runtime_error("No live supervisor");
     if(o.mode=="--observe"||o.mode=="--passive-observe"){observe(o);return 0;}

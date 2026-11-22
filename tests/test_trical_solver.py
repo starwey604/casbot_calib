@@ -72,7 +72,8 @@ def test_two_layer_fit_offsets_and_geometry_export(tmp_path):
     geometry = np.zeros(parameters.size); geometry[14:] = rng.normal(0,.05,parameters.size-14)
     geometric = parameters.build(geometry)
     check = export_geometry(nominal, geometric, context.urdf, tmp_path/'calibrated.urdf')
-    assert max(check.values()) < 1e-12
+    assert check['passed']
+    assert max(check['max_pose_error'], check['max_mass_matrix_error']) < 1e-12
     # Zero corrections are separately applied at the encoder input.
     combined = geometry.copy(); combined[:14] = truth[:14]
     coupled = parameters.build(combined)

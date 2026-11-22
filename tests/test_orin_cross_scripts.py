@@ -157,11 +157,12 @@ def test_package_elf_architecture_and_runtime_paths(monkeypatch, header, dynamic
 
 @pytest.mark.parametrize('name,fixtures,filename,expected', [
     ('test_preview_widgets_without_graphics_or_control', [], 'test_shm_gui.py', 'host GUI extra (imgui_bundle)'),
-    ('test_h1_full_offline_planning_benchmark', [], 'test_wave2a_h1.py', 'native wall-clock performance limit'),
+    ('test_h1_full_offline_planning_gate', [], 'test_wave2a_h1.py', None),
     ('test_hold_enable_and_disable', ['master'], 'test_shm_fieldwork.py', 'live SHM / physical Mock scheduling'),
     ('test_native_rejects_bad_schedule_before_opening_any_channel', ['native'], 'test_shm_ready.py', None),
     ('test_backend_selection_and_environment_restoration', ['native'], 'test_fieldwork_window.py', None),
-    ('test_h1_small_and_smoke_offline_planning_benchmarks', [], 'test_wave2a_h1.py', None),
+    ('test_qemu_excludes_scheduling_but_keeps_offline_safety', [], 'test_orin_cross_scripts.py',
+     'amd64 Docker build orchestration (tested on host)'),
     ('test_only_zero_write_no_fault_start_mismatch_can_replan', [], 'test_shm_h1.py', 'live SHM / physical Mock scheduling'),
 ])
 def test_qemu_excludes_scheduling_but_keeps_offline_safety(name, fixtures, filename, expected):

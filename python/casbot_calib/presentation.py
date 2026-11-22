@@ -130,7 +130,7 @@ class DemoPresentation:
         canvas=Image.new("RGB",(1280,720),BG);draw=ImageDraw.Draw(canvas)
         self._text(draw,(24,18),"CASBOT / 动力学标定流程",24,TEXT,True)
         self._text(draw,(894,23),"合成实验 / 只读回放",13,CYAN,True)
-        self._text(draw,(24,53),"独立采集记录 / 输出侧等效关节 / 仅作几何显示",13,MUTED)
+        self._text(draw,(24,53),"采集记录 / 输出侧等效关节",13,MUTED)
         labels=LABELS
         for i,label in enumerate(labels):
             x=24+i*155
@@ -195,7 +195,6 @@ class DemoPresentation:
         virtual_s=(last-first)*1e-9
         speed=virtual_s/clip["seconds"]
         self._text(draw,(24,674),f"采集记录回放  {speed:.2f}x   |   采样时间 {frame.sample_ns*1e-9:.3f} s",12,MUTED)
-        self._text(draw,(735,674),"仅作几何显示；不计算动力学，不下发指令。",12,CYAN)
         draw.rectangle((24,702,1256,706),fill=EDGE)
         draw.rectangle((24,702,24+1232*(index+progress)/len(self.clips),706),fill=CYAN)
         if (self.width,self.height)!=(1280,720):

@@ -10,4 +10,4 @@ bash scripts/humble/container.sh .venv-humble/bin/python -c 'import imgui_bundle
 bash scripts/humble/container.sh cmake --preset humble -DCALIB_BUILD_PYTHON=ON -DCALIB_BUILD_SHM=ON -DCALIB_BUILD_SHM_MOCK=ON
 bash scripts/humble/container.sh cmake --build build/humble --target shm_gui_bundle --parallel 1
 bash scripts/humble/container.sh cmake --install build/humble --component Shm --prefix "$repo/install/shm-core"
-echo '已准备本机GUI依赖和原生程序。启动：bash fieldwork/shm/run.sh gui --mock'
+echo '已准备本机GUI依赖和原生程序。启动：bash calib/gui.sh --mock'

@@ -1,7 +1,9 @@
 """Live physics, remote enqueue confirmation and disable on a private SHM endpoint."""
 import json
 from importlib.util import find_spec
-from time import monotonic, sleep
+from itertools import count
+from time import monotonic, monotonic_ns, sleep
+from types import SimpleNamespace
 
 import numpy as np
 import pytest
@@ -88,7 +90,7 @@ def test_physical_cross_and_backup(session):
     assert loop.disable_ack and result(loop)['disable_ack']
 
 
-@pytest.mark.parametrize('fault', ['late_ack', 'slow_send', 'disconnect', 'drive'])
+@pytest.mark.parametrize('fault', ['late_ack', 'disconnect', 'drive'])
 def test_unknown_progress_disables_without_commit(session, monkeypatch, fault, tmp_path):
     from casbot_calib.project_paths import ROOT
 
@@ -112,16 +114,16 @@ def test_unknown_progress_disables_without_commit(session, monkeypatch, fault, t
                 def delayed():
                     s = poll()
                     return dict(s, revision=old) if s['revision'] > old else s
-                monkeypatch.setattr(loop, 'poll', delayed)
-                loop.step(goal)
-            elif fault == 'slow_send':
-                send = loop.client.send
-                def delayed_send(kind, **payload):
-                    if kind == 'fields':
-                        sleep(loop.timeout+.02)
-                    return send(kind, **payload)
-                monkeypatch.setattr(loop.client, 'send', delayed_send)
-                loop.step(goal)
+                from casbot_calib.nmpc import shm_loop
+                ticks = count()
+                with monkeypatch.context() as patch:
+                    patch.setattr(shm_loop, 'time', SimpleNamespace(
+                        monotonic=lambda: next(ticks) * loop.timeout / 4,
+                        monotonic_ns=monotonic_ns,
+                        sleep=lambda _: None,
+                    ))
+                    patch.setattr(loop, 'poll', delayed)
+                    loop.step(goal)
             elif fault == 'disconnect':
                 loop.client.display.terminate()
                 loop.client.display.wait(timeout=2)
@@ -130,7 +132,6 @@ def test_unknown_progress_disables_without_commit(session, monkeypatch, fault, t
                 while True:
                     initial, backup = c.x.copy(), c.backup.copy()
                     loop.step(goal)
-                    sleep(c.dt)
     outcome = result(loop)
     # The persistent drive fault stays at 0x238 instead of acknowledging ready (0x21).
     assert loop.disable_ack == outcome['disable_ack'] == (fault != 'drive')

@@ -61,6 +61,7 @@ class K3IdentifyStage(Stage):
             score = result['holdout_rmse_m'][result['selected_layer']]
             lines += ['', f'交付层级：`{result["selected_layer"]}`。',
                       f'留出 RMSE：内部目标 {"通过" if max(score.values())<=.0004 else "未通过"}；交付阈值 {"通过" if max(score.values())<=.0007 else "未通过"}。',
+                      f'URDF 重加载复核：{"通过" if check["passed"] else "发现差异，见 calibration_bundle.json"}。',
                       '', '台架修正 [tx, ty, tz, rx, rz]（m / rad）：`'+str(bundle['fixture_correction'])+'`。',
                       '', '最大读表极差：'+f'{max(max(r["reading_span_m"]) for r in rows)*1e6:.3f} µm。',
                       '', '## 关节零偏', '', '| SHM ID | offset (rad) |', '|---|---:|']

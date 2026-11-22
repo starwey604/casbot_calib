@@ -20,6 +20,7 @@ from .common import (
     evaluate_stage_acceptance,
     export_stage_candidate,
     read_verified_stage_capture,
+    received_clearance_line,
     resolve_effective_plan_and_capture,
     resolve_stage_prior,
 )
@@ -725,8 +726,8 @@ def _extract_sweep_pair(obs, gravity_engine, gravity_nm, sw, trim_s, pair_points
     return plat_tuple, trans_tuple, offset_vec, onset_torques, pair_meta
 
 
-def analyse_h2(plan_dir, capture_dir, out_dir, *, session=None):
-    plan_dir, capture_dir = resolve_effective_plan_and_capture(plan_dir, capture_dir)
+def analyse_h2(plan_dir, capture_dir, out_dir, *, session=None, diagnostic=False):
+    plan_dir, capture_dir = resolve_effective_plan_and_capture(plan_dir, capture_dir, diagnostic=diagnostic)
     out_dir = Path(out_dir).resolve()
     out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -741,7 +742,9 @@ def analyse_h2(plan_dir, capture_dir, out_dir, *, session=None):
     min_train_speed = float(train_speeds[0])
     n_train_speeds = len(train_speeds)
 
-    obs, native, received_collision = read_verified_stage_capture(plan_meta, capture_dir, robot_config)
+    obs, _, received_collision = read_verified_stage_capture(
+        plan_meta, capture_dir, robot_config, diagnostic=diagnostic,
+    )
 
     if session is not None:
         live = resolve_stage_prior(session, 'h2', robot_config)
@@ -784,6 +787,9 @@ def analyse_h2(plan_dir, capture_dir, out_dir, *, session=None):
     sweep_diagnostics = []
 
     for sw in plan_meta['sweeps']:
+        if diagnostic and max((p.get('brake_ns') or p['plateau_ns'])[1]
+                              for p in sw['passes']) > obs['relative_ns'][-1]:
+            continue
         j = int(sw['joint_index'])
         plat_tuple, trans_tuple, offset_vec, onsets, pair_meta = _extract_sweep_pair(
             obs,
@@ -816,7 +822,7 @@ def analyse_h2(plan_dir, capture_dir, out_dir, *, session=None):
     fit_sq_errors = []
 
     for j, name in enumerate(NAMES):
-        if j not in plat_by_split['train']:
+        if j not in plat_by_split['train'] or (diagnostic and j not in plat_by_split['validation']):
             axis_reports.append(dict(
                 joint_index=j,
                 joint=name,
@@ -891,6 +897,8 @@ def analyse_h2(plan_dir, capture_dir, out_dir, *, session=None):
             **fit_info,
         ))
 
+    if not zero_sq_errors:
+        raise ValueError('H2 缺少同轴训练与留出的有效扫描窗口')
     overall_zero_rmse = float(np.sqrt(np.mean(np.concatenate(zero_sq_errors))))
     overall_val_rmse = float(np.sqrt(np.mean(np.concatenate(fit_sq_errors))))
 
@@ -913,7 +921,6 @@ def analyse_h2(plan_dir, capture_dir, out_dir, *, session=None):
             for row in axis_reports
             if row['identified']
         ],
-        reload_passed=exported['reload_passed'],
     )
 
     smoothing_out = (
@@ -972,10 +979,8 @@ def analyse_h2(plan_dir, capture_dir, out_dir, *, session=None):
         feedback_rows=obs['feedback_rows'],
         formal_rows=obs['formal_rows'],
         mean_feedback_hz=obs['mean_feedback_hz'],
-        received_collision=dict(
-            passed=True,
-            minimum_distance_m=received_collision['minimum_sampled_distance_m'],
-        ),
+        received_collision=received_collision,
+        urdf_reload_passed=exported['reload_passed'],
         fit_succeeded=True,
         accepted=acceptance['accepted'],
         acceptance=acceptance,
@@ -1004,13 +1009,10 @@ def write_h2_summary_markdown(stage_dir, plan_meta, capture_summary, report):
         lines.extend(['', '> 仅生成离线规划（`--plan-only`），未连接设备。'])
     else:
         hz = f'{report["mean_feedback_hz"]:.1f} Hz' if report.get('mean_feedback_hz') else 'n/a'
-        acc = report.get('acceptance') or {}
-        gate_str = '通过（自动采纳）' if acc.get('accepted', True) else f'未通过（{acc.get("reason", "degraded")}，自动回退上游先验）'
         lines.extend([
-            f'- **有效反馈帧数**：{report["feedback_rows"]}（均值频率 {hz}，实测最小碰撞间距 {report["received_collision"]["minimum_distance_m"] * 1000:.2f} mm）',
+            f'- **有效反馈帧数**：{report["feedback_rows"]}（均值频率 {hz} Hz）',
+            received_clearance_line(report['received_collision']),
             f'- **留出集整体摩擦残差 RMSE**：零摩擦基线 **{report["zero_friction_validation_rmse_nm"]:.4f} Nm** → Stribeck 拟合候选 **{report["validation_rmse_nm"]:.4f} Nm**',
-            f'- **防退化验收门禁**：{gate_str}',
-            f'- **导出模型**：`analysis/{report["candidate_urdf"]}` + `analysis/{report["runtime_dynamics"]}`',
             '',
             '## 逐轴 Stribeck 摩擦参数与留出集残差（Nm）',
             '',
@@ -1046,8 +1048,8 @@ class H2FrictionStage(Stage):
     def plan(self, q_start, robot_config, recipe, out_dir, *, session=None):
         return plan_h2(q_start, robot_config, recipe, out_dir, session=session)
 
-    def analyse(self, plan_dir, capture_dir, out_dir, *, session=None):
-        return analyse_h2(plan_dir, capture_dir, out_dir, session=session)
+    def analyse(self, plan_dir, capture_dir, out_dir, *, session=None, diagnostic=False):
+        return analyse_h2(plan_dir, capture_dir, out_dir, session=session, diagnostic=diagnostic)
 
     def write_summary(self, stage_dir, plan_meta, capture_summary, report):
         return write_h2_summary_markdown(stage_dir, plan_meta, capture_summary, report)

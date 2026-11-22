@@ -1,0 +1,732 @@
+{
+  "verdict": "PASS",
+  "reasons": [],
+  "native": {
+    "execution_completed": "1",
+    "reason": "completed_with_disable_ack",
+    "first_stream_mono_ns": "14264943710787",
+    "first_command_mono_ns": "14264943710787",
+    "first_shm_write_mono_ns": "14264875654602",
+    "max_send_gap_ns": "1098800",
+    "commands_sent": "140953",
+    "send_skipped": "0",
+    "recording_stopped": "0",
+    "disable_ack": "1",
+    "physical_stop_observed": "unknown",
+    "reference_kind": "septic_hermite",
+    "reference_duration_ns": "140356969268"
+  },
+  "observed_limit_events": [],
+  "whole_formal_scene_sampled_min_mm": 11.32029707556185,
+  "right_elbow_pitch": {
+    "shm_id": 22,
+    "feedback_limit_rad_s": 2.0,
+    "count_over_limit": 0,
+    "feedback_rows": 140952,
+    "max_abs": {
+      "value_rad_s": 1.112087,
+      "elapsed_s": 138.37864990100002,
+      "reference_at_peak_rad_s": 0.7860249262946752,
+      "phase": 3,
+      "segment": "anchor_to_ready",
+      "segment_elapsed_s": 1.6970361020000002
+    },
+    "windows": {
+      "G0_stiff": {
+        "keyboard": {
+          "value_rad_s": -0.865934,
+          "elapsed_s": 20.898649901000002,
+          "reference_at_peak_rad_s": -0.5742559699612663,
+          "phase": 3
+        },
+        "keyboard_to_drum": {
+          "value_rad_s": -0.883516,
+          "elapsed_s": 25.385649901,
+          "reference_at_peak_rad_s": -0.5938686183112862,
+          "phase": 3
+        },
+        "drum": {
+          "value_rad_s": 0.55824,
+          "elapsed_s": 27.913649901000003,
+          "reference_at_peak_rad_s": 0.18720656800104704,
+          "phase": 3
+        },
+        "drum_to_keyboard": {
+          "value_rad_s": 0.734066,
+          "elapsed_s": 35.519649901,
+          "reference_at_peak_rad_s": 0.4407107953020228,
+          "phase": 3
+        }
+      },
+      "G0_soft": {
+        "keyboard": {
+          "value_rad_s": 0.892307,
+          "elapsed_s": 46.493649901000005,
+          "reference_at_peak_rad_s": 0.5722015167714442,
+          "phase": 3
+        },
+        "keyboard_to_drum": {
+          "value_rad_s": -0.821977,
+          "elapsed_s": 50.180649901,
+          "reference_at_peak_rad_s": -0.5950549779836354,
+          "phase": 3
+        },
+        "drum": {
+          "value_rad_s": 0.505495,
+          "elapsed_s": 52.708649901,
+          "reference_at_peak_rad_s": 0.21252627900417806,
+          "phase": 3
+        },
+        "drum_to_keyboard": {
+          "value_rad_s": 0.707693,
+          "elapsed_s": 60.24564990100001,
+          "reference_at_peak_rad_s": 0.4048259734740428,
+          "phase": 3
+        }
+      },
+      "G1_soft": {
+        "keyboard": {
+          "value_rad_s": -0.8395589999999999,
+          "elapsed_s": 70.613649901,
+          "reference_at_peak_rad_s": -0.5206120737741792,
+          "phase": 3
+        },
+        "keyboard_to_drum": {
+          "value_rad_s": -0.857143,
+          "elapsed_s": 74.938649901,
+          "reference_at_peak_rad_s": -0.5981824296523585,
+          "phase": 3
+        },
+        "drum": {
+          "value_rad_s": 0.55824,
+          "elapsed_s": 77.46964990100001,
+          "reference_at_peak_rad_s": 0.3231375394960611,
+          "phase": 3
+        },
+        "drum_to_keyboard": {
+          "value_rad_s": 0.7692289999999999,
+          "elapsed_s": 85.23164990100001,
+          "reference_at_peak_rad_s": 0.45794252034299954,
+          "phase": 3
+        }
+      },
+      "G2_soft": {
+        "keyboard": {
+          "value_rad_s": -0.883516,
+          "elapsed_s": 95.32364990100001,
+          "reference_at_peak_rad_s": -0.5749782598004041,
+          "phase": 3
+        },
+        "keyboard_to_drum": {
+          "value_rad_s": -0.830768,
+          "elapsed_s": 99.703649901,
+          "reference_at_peak_rad_s": -0.5939411209350184,
+          "phase": 3
+        },
+        "drum": {
+          "value_rad_s": 0.575824,
+          "elapsed_s": 102.297649901,
+          "reference_at_peak_rad_s": 0.2605126335483346,
+          "phase": 3
+        },
+        "drum_to_keyboard": {
+          "value_rad_s": 0.707693,
+          "elapsed_s": 109.991649901,
+          "reference_at_peak_rad_s": 0.4566067388057404,
+          "phase": 3
+        }
+      },
+      "G3_soft": {
+        "keyboard": {
+          "value_rad_s": -0.786813,
+          "elapsed_s": 120.11764990100001,
+          "reference_at_peak_rad_s": -0.5753587150111624,
+          "phase": 3
+        },
+        "keyboard_to_drum": {
+          "value_rad_s": -0.821977,
+          "elapsed_s": 124.500649901,
+          "reference_at_peak_rad_s": -0.5930363614740232,
+          "phase": 3
+        },
+        "drum": {
+          "value_rad_s": 0.584615,
+          "elapsed_s": 127.902649901,
+          "reference_at_peak_rad_s": 0.33884647575792787,
+          "phase": 3
+        },
+        "drum_to_keyboard": {
+          "value_rad_s": 0.663736,
+          "elapsed_s": 134.778649901,
+          "reference_at_peak_rad_s": 0.4546795324134255,
+          "phase": 3
+        }
+      }
+    },
+    "legacy_1p5_limit": {
+      "frames": 0,
+      "elapsed_s_min": null,
+      "elapsed_s_max": null,
+      "all_in_final_return": false
+    }
+  },
+  "transfers": [
+    {
+      "group": "G0_stiff",
+      "segment": "keyboard_to_drum",
+      "samples": 3735,
+      "min_fixture_sampled_mm": 27.96846395906582,
+      "fixture_pair": [
+        "robot_left_wrist_roll_link_0",
+        "ball:C"
+      ],
+      "transfer_elapsed_s": 2.621294432,
+      "min_scene_sampled_mm": 11.452144454270854,
+      "scene_pair": [
+        "robot_waist_yaw_link_0",
+        "robot_left_shoulder_roll_link_0"
+      ],
+      "fixture_certified_lower_bound_mm": 27.73886671043934
+    },
+    {
+      "group": "G0_stiff",
+      "segment": "drum_to_keyboard",
+      "samples": 3718,
+      "min_fixture_sampled_mm": 28.781302781314643,
+      "fixture_pair": [
+        "robot_left_wrist_roll_link_0",
+        "ball:C"
+      ],
+      "transfer_elapsed_s": 1.2547947910000001,
+      "min_scene_sampled_mm": 11.424192469903245,
+      "scene_pair": [
+        "robot_waist_yaw_link_0",
+        "robot_right_shoulder_roll_link_0"
+      ],
+      "fixture_certified_lower_bound_mm": 28.558242103064632
+    },
+    {
+      "group": "G0_soft",
+      "segment": "keyboard_to_drum",
+      "samples": 3735,
+      "min_fixture_sampled_mm": 19.21863738545295,
+      "fixture_pair": [
+        "robot_right_wrist_roll_link_0",
+        "fixed:300X500X130001"
+      ],
+      "transfer_elapsed_s": 0.345042766,
+      "min_scene_sampled_mm": 11.493398127879678,
+      "scene_pair": [
+        "robot_waist_yaw_link_0",
+        "robot_left_shoulder_roll_link_0"
+      ],
+      "fixture_certified_lower_bound_mm": 19.01552613608189
+    },
+    {
+      "group": "G0_soft",
+      "segment": "drum_to_keyboard",
+      "samples": 3719,
+      "min_fixture_sampled_mm": 18.407736081161445,
+      "fixture_pair": [
+        "robot_left_wrist_roll_link_0",
+        "fixed:300X500X130001"
+      ],
+      "transfer_elapsed_s": 3.479543125,
+      "min_scene_sampled_mm": 11.436134268518979,
+      "scene_pair": [
+        "robot_waist_yaw_link_0",
+        "robot_right_shoulder_roll_link_0"
+      ],
+      "fixture_certified_lower_bound_mm": 18.218267735090073
+    },
+    {
+      "group": "G1_soft",
+      "segment": "keyboard_to_drum",
+      "samples": 3734,
+      "min_fixture_sampled_mm": 32.171797658635214,
+      "fixture_pair": [
+        "robot_left_wrist_roll_link_0",
+        "ball:C"
+      ],
+      "transfer_elapsed_s": 3.1557911,
+      "min_scene_sampled_mm": 11.43292055173682,
+      "scene_pair": [
+        "robot_waist_yaw_link_0",
+        "robot_left_shoulder_roll_link_0"
+      ],
+      "fixture_certified_lower_bound_mm": 31.931362325699915
+    },
+    {
+      "group": "G1_soft",
+      "segment": "drum_to_keyboard",
+      "samples": 3719,
+      "min_fixture_sampled_mm": 30.580959924581997,
+      "fixture_pair": [
+        "robot_left_wrist_roll_link_0",
+        "ball:C"
+      ],
+      "transfer_elapsed_s": 0.6722914590000001,
+      "min_scene_sampled_mm": 11.407832189570938,
+      "scene_pair": [
+        "robot_waist_yaw_link_0",
+        "robot_right_shoulder_roll_link_0"
+      ],
+      "fixture_certified_lower_bound_mm": 30.294187706140093
+    },
+    {
+      "group": "G2_soft",
+      "segment": "keyboard_to_drum",
+      "samples": 3734,
+      "min_fixture_sampled_mm": 31.62716958286904,
+      "fixture_pair": [
+        "robot_left_wrist_roll_link_0",
+        "ball:C"
+      ],
+      "transfer_elapsed_s": 3.119539434,
+      "min_scene_sampled_mm": 11.433318204424186,
+      "scene_pair": [
+        "robot_waist_yaw_link_0",
+        "robot_left_shoulder_roll_link_0"
+      ],
+      "fixture_certified_lower_bound_mm": 31.431547223035835
+    },
+    {
+      "group": "G2_soft",
+      "segment": "drum_to_keyboard",
+      "samples": 3719,
+      "min_fixture_sampled_mm": 30.898305109811105,
+      "fixture_pair": [
+        "robot_left_wrist_roll_link_0",
+        "ball:C"
+      ],
+      "transfer_elapsed_s": 0.647039793,
+      "min_scene_sampled_mm": 11.382907542602887,
+      "scene_pair": [
+        "robot_waist_yaw_link_0",
+        "robot_right_shoulder_roll_link_0"
+      ],
+      "fixture_certified_lower_bound_mm": 30.6174670890913
+    },
+    {
+      "group": "G3_soft",
+      "segment": "keyboard_to_drum",
+      "samples": 3735,
+      "min_fixture_sampled_mm": 31.95538863268173,
+      "fixture_pair": [
+        "robot_left_wrist_roll_link_0",
+        "ball:C"
+      ],
+      "transfer_elapsed_s": 3.114287768,
+      "min_scene_sampled_mm": 11.433328664212961,
+      "scene_pair": [
+        "robot_waist_yaw_link_0",
+        "robot_left_shoulder_roll_link_0"
+      ],
+      "fixture_certified_lower_bound_mm": 31.65928648728777
+    },
+    {
+      "group": "G3_soft",
+      "segment": "drum_to_keyboard",
+      "samples": 3718,
+      "min_fixture_sampled_mm": 31.846133477656828,
+      "fixture_pair": [
+        "robot_left_wrist_roll_link_0",
+        "ball:C"
+      ],
+      "transfer_elapsed_s": 0.6357881270000001,
+      "min_scene_sampled_mm": 11.389739617708589,
+      "scene_pair": [
+        "robot_waist_yaw_link_0",
+        "robot_right_shoulder_roll_link_0"
+      ],
+      "fixture_certified_lower_bound_mm": 31.59662475369608
+    }
+  ],
+  "tracking": {
+    "G0_stiff": {
+      "keyboard": {
+        "by_arm": {
+          "left": {
+            "rmse": 25.46841939928362,
+            "max": 28.948641865149895,
+            "p95": 27.48800024709296,
+            "rotation_rmse_deg": 4.244582078584229
+          },
+          "right": {
+            "rmse": 28.464271768997484,
+            "max": 32.788566419110936,
+            "p95": 31.998773822390664,
+            "rotation_rmse_deg": 4.729560377047394
+          }
+        },
+        "joint_rmse_deg": 1.4529472445124483,
+        "jitter_rms_rad_s": 0.01606372456069203,
+        "right_elbow": {
+          "id": 22,
+          "joint": "right_elbow_pitch_joint",
+          "joint_rmse_deg": 1.4516529425208948,
+          "joint_max_deg": 2.8658552603605716,
+          "jitter_rms_rad_s": 0.02654080234252018
+        }
+      },
+      "drum": {
+        "by_arm": {
+          "left": {
+            "rmse": 19.915628387425553,
+            "max": 19.97118707635943,
+            "p95": 19.971187076359215,
+            "rotation_rmse_deg": 3.4690773455054393
+          },
+          "right": {
+            "rmse": 32.57401547351603,
+            "max": 40.700400014933884,
+            "p95": 39.9089839606005,
+            "rotation_rmse_deg": 6.390987123418981
+          }
+        },
+        "joint_rmse_deg": 1.5147221736112837,
+        "jitter_rms_rad_s": 0.01982843373498673,
+        "right_elbow": {
+          "id": 22,
+          "joint": "right_elbow_pitch_joint",
+          "joint_rmse_deg": 2.905646266670661,
+          "joint_max_deg": 3.9887158665790063,
+          "jitter_rms_rad_s": 0.037212947650838255
+        }
+      },
+      "overall": {
+        "by_arm": {
+          "left": {
+            "rmse": 23.403088396009544,
+            "max": 28.948641865149895,
+            "p95": 27.48800024709285,
+            "rotation_rmse_deg": 3.952282632884267
+          },
+          "right": {
+            "rmse": 30.177598194493083,
+            "max": 40.700400014933884,
+            "p95": 39.01926791810252,
+            "rotation_rmse_deg": 5.456083944439859
+          }
+        },
+        "joint_rmse_deg": 1.4779997209980038,
+        "jitter_rms_rad_s": 0.017668109931802366,
+        "right_elbow": {
+          "id": 22,
+          "joint": "right_elbow_pitch_joint",
+          "joint_rmse_deg": 2.1551851640662063,
+          "joint_max_deg": 3.9887158665790063,
+          "jitter_rms_rad_s": 0.03125571289634666
+        }
+      }
+    },
+    "G0_soft": {
+      "keyboard": {
+        "by_arm": {
+          "left": {
+            "rmse": 47.4623903919083,
+            "max": 54.18865428332275,
+            "p95": 51.43072961514669,
+            "rotation_rmse_deg": 7.726802943929453
+          },
+          "right": {
+            "rmse": 45.84692548077358,
+            "max": 52.78341635619327,
+            "p95": 51.96603715028879,
+            "rotation_rmse_deg": 7.460974369308438
+          }
+        },
+        "joint_rmse_deg": 2.5509618626433546,
+        "jitter_rms_rad_s": 0.016488069104059894,
+        "right_elbow": {
+          "id": 22,
+          "joint": "right_elbow_pitch_joint",
+          "joint_rmse_deg": 2.6991346518252906,
+          "joint_max_deg": 4.9689460560818315,
+          "jitter_rms_rad_s": 0.02809683401097359
+        }
+      },
+      "drum": {
+        "by_arm": {
+          "left": {
+            "rmse": 42.25232704929404,
+            "max": 42.42037036495343,
+            "p95": 42.3053155437025,
+            "rotation_rmse_deg": 7.810436826097809
+          },
+          "right": {
+            "rmse": 63.90458922383083,
+            "max": 73.07887931075614,
+            "p95": 72.04840991965817,
+            "rotation_rmse_deg": 12.102568377259466
+          }
+        },
+        "joint_rmse_deg": 3.0545950676170697,
+        "jitter_rms_rad_s": 0.015585357133756535,
+        "right_elbow": {
+          "id": 22,
+          "joint": "right_elbow_pitch_joint",
+          "joint_rmse_deg": 5.956871874727244,
+          "joint_max_deg": 7.34658768976887,
+          "jitter_rms_rad_s": 0.024484749552631083
+        }
+      },
+      "overall": {
+        "by_arm": {
+          "left": {
+            "rmse": 45.44738537662866,
+            "max": 54.18865428332275,
+            "p95": 49.91422154399013,
+            "rotation_rmse_deg": 7.760408705149333
+          },
+          "right": {
+            "rmse": 53.811947134182994,
+            "max": 73.07887931075614,
+            "p95": 71.03027411441393,
+            "rotation_rmse_deg": 9.59355631426001
+          }
+        },
+        "joint_rmse_deg": 2.763720243768557,
+        "jitter_rms_rad_s": 0.016132585534642505,
+        "right_elbow": {
+          "id": 22,
+          "joint": "right_elbow_pitch_joint",
+          "joint_rmse_deg": 4.31042478908202,
+          "joint_max_deg": 7.34658768976887,
+          "jitter_rms_rad_s": 0.02670885282150052
+        }
+      }
+    },
+    "G1_soft": {
+      "keyboard": {
+        "by_arm": {
+          "left": {
+            "rmse": 9.218654118318442,
+            "max": 13.87124601124951,
+            "p95": 11.965497690274889,
+            "rotation_rmse_deg": 2.37455595832676
+          },
+          "right": {
+            "rmse": 6.874370818447509,
+            "max": 12.165121173311741,
+            "p95": 10.153526629448423,
+            "rotation_rmse_deg": 2.5408805664503733
+          }
+        },
+        "joint_rmse_deg": 1.0396424631229246,
+        "jitter_rms_rad_s": 0.01554025199631789,
+        "right_elbow": {
+          "id": 22,
+          "joint": "right_elbow_pitch_joint",
+          "joint_rmse_deg": 0.8609872323436573,
+          "joint_max_deg": 1.6328745922406456,
+          "jitter_rms_rad_s": 0.024747513109376656
+        }
+      },
+      "drum": {
+        "by_arm": {
+          "left": {
+            "rmse": 9.167673294111742,
+            "max": 9.344300397071988,
+            "p95": 9.328097190334606,
+            "rotation_rmse_deg": 3.5633633219942924
+          },
+          "right": {
+            "rmse": 8.234881205887765,
+            "max": 14.942255019436269,
+            "p95": 11.651620769988854,
+            "rotation_rmse_deg": 2.4396981555493644
+          }
+        },
+        "joint_rmse_deg": 0.8477787933941794,
+        "jitter_rms_rad_s": 0.015658936463240913,
+        "right_elbow": {
+          "id": 22,
+          "joint": "right_elbow_pitch_joint",
+          "joint_rmse_deg": 0.8984514315482802,
+          "joint_max_deg": 1.9169832102981859,
+          "jitter_rms_rad_s": 0.014534568585496364
+        }
+      },
+      "overall": {
+        "by_arm": {
+          "left": {
+            "rmse": 9.19826888832119,
+            "max": 13.87124601124951,
+            "p95": 10.253503055656179,
+            "rotation_rmse_deg": 2.909612824235866
+          },
+          "right": {
+            "rmse": 7.449181633625221,
+            "max": 14.942255019436269,
+            "p95": 11.478897702302826,
+            "rotation_rmse_deg": 2.5008458828903826
+          }
+        },
+        "joint_rmse_deg": 0.9673752633756192,
+        "jitter_rms_rad_s": 0.015587895265687561,
+        "right_elbow": {
+          "id": 22,
+          "joint": "right_elbow_pitch_joint",
+          "joint_rmse_deg": 0.876184956714175,
+          "joint_max_deg": 1.9169832102981859,
+          "jitter_rms_rad_s": 0.02125462131431725
+        }
+      }
+    },
+    "G2_soft": {
+      "keyboard": {
+        "by_arm": {
+          "left": {
+            "rmse": 8.287908156309449,
+            "max": 9.147968193428934,
+            "p95": 8.963858024511977,
+            "rotation_rmse_deg": 2.026898932655726
+          },
+          "right": {
+            "rmse": 6.876245565935541,
+            "max": 9.464122249547477,
+            "p95": 9.058236586293527,
+            "rotation_rmse_deg": 1.6479936813116702
+          }
+        },
+        "joint_rmse_deg": 0.7241051954825686,
+        "jitter_rms_rad_s": 0.016235758513033074,
+        "right_elbow": {
+          "id": 22,
+          "joint": "right_elbow_pitch_joint",
+          "joint_rmse_deg": 0.7759362955469344,
+          "joint_max_deg": 1.5846225221468502,
+          "jitter_rms_rad_s": 0.026401358102362528
+        }
+      },
+      "drum": {
+        "by_arm": {
+          "left": {
+            "rmse": 5.327082004677844,
+            "max": 5.404102063528551,
+            "p95": 5.3999394861441745,
+            "rotation_rmse_deg": 2.574477320782051
+          },
+          "right": {
+            "rmse": 4.697473135116728,
+            "max": 7.340723877549237,
+            "p95": 6.724288576094103,
+            "rotation_rmse_deg": 1.4856728489134954
+          }
+        },
+        "joint_rmse_deg": 0.7068191873202598,
+        "jitter_rms_rad_s": 0.02433524870906146,
+        "right_elbow": {
+          "id": 22,
+          "joint": "right_elbow_pitch_joint",
+          "joint_rmse_deg": 0.3943733501925009,
+          "joint_max_deg": 0.8130262299850122,
+          "jitter_rms_rad_s": 0.05176097758378368
+        }
+      },
+      "overall": {
+        "by_arm": {
+          "left": {
+            "rmse": 7.248694033035732,
+            "max": 9.147968193428934,
+            "p95": 8.962589033022645,
+            "rotation_rmse_deg": 2.262187124438579
+          },
+          "right": {
+            "rmse": 6.09777717055812,
+            "max": 9.464122249547477,
+            "p95": 8.869291140866308,
+            "rotation_rmse_deg": 1.5849769123243436
+          }
+        },
+        "joint_rmse_deg": 0.7172317144922977,
+        "jitter_rms_rad_s": 0.01987990268796711,
+        "right_elbow": {
+          "id": 22,
+          "joint": "right_elbow_pitch_joint",
+          "joint_rmse_deg": 0.6505562836715935,
+          "joint_max_deg": 1.5846225221468502,
+          "jitter_rms_rad_s": 0.038612398020363
+        }
+      }
+    },
+    "G3_soft": {
+      "keyboard": {
+        "by_arm": {
+          "left": {
+            "rmse": 7.864057829357714,
+            "max": 9.695276854725932,
+            "p95": 8.301880450231218,
+            "rotation_rmse_deg": 1.8363473633531124
+          },
+          "right": {
+            "rmse": 6.105011725977435,
+            "max": 10.202560449730923,
+            "p95": 8.81096832171573,
+            "rotation_rmse_deg": 1.8419974007137996
+          }
+        },
+        "joint_rmse_deg": 0.6954794146481331,
+        "jitter_rms_rad_s": 0.016564022607607486,
+        "right_elbow": {
+          "id": 22,
+          "joint": "right_elbow_pitch_joint",
+          "joint_rmse_deg": 0.719365274954406,
+          "joint_max_deg": 1.5511840175237037,
+          "jitter_rms_rad_s": 0.026230601159167515
+        }
+      },
+      "drum": {
+        "by_arm": {
+          "left": {
+            "rmse": 5.959677640581325,
+            "max": 6.119364452263142,
+            "p95": 6.061898193443906,
+            "rotation_rmse_deg": 2.416091089440275
+          },
+          "right": {
+            "rmse": 3.9770630186406786,
+            "max": 6.223167621015164,
+            "p95": 5.346783876875366,
+            "rotation_rmse_deg": 1.27363381697746
+          }
+        },
+        "joint_rmse_deg": 0.6793833746911339,
+        "jitter_rms_rad_s": 0.022146309972955237,
+        "right_elbow": {
+          "id": 22,
+          "joint": "right_elbow_pitch_joint",
+          "joint_rmse_deg": 0.2877294501249602,
+          "joint_max_deg": 0.6184566641937215,
+          "jitter_rms_rad_s": 0.05156744190810154
+        }
+      },
+      "overall": {
+        "by_arm": {
+          "left": {
+            "rmse": 7.1623526748984885,
+            "max": 9.695276854725932,
+            "p95": 8.226936926682098,
+            "rotation_rmse_deg": 2.0879651594951025
+          },
+          "right": {
+            "rmse": 5.355205458195917,
+            "max": 10.202560449730923,
+            "p95": 8.251341508989853,
+            "rotation_rmse_deg": 1.6381996919134247
+          }
+        },
+        "joint_rmse_deg": 0.689077669519175,
+        "jitter_rms_rad_s": 0.01899775738703873,
+        "right_elbow": {
+          "id": 22,
+          "joint": "right_elbow_pitch_joint",
+          "joint_rmse_deg": 0.5859850077834394,
+          "joint_max_deg": 1.5511840175237037,
+          "jitter_rms_rad_s": 0.03843852448227602
+        }
+      }
+    }
+  }
+}

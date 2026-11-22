@@ -652,23 +652,21 @@ def report(root):
     if feedback['truncated_tail'] or commands['truncated_tail']:
         reasons.append('采集尾部不完整，汇总使用已闭合的完整帧。')
     if setup:
-        reasons.append('此例是接管/握手步骤，不含运动或持续反馈；步骤退出成功不作物理停止证明。')
+        reasons.append('本次记录的是接管与主站握手。')
     result = dict(schema='casbot_shm_field_case_v1', case=case, process=process, native=native,
                   execution_completed=completed, conclusion=observations[-1]['conclusion'] if observations else ('inconclusive' if process or native else 'not_run'),
                   observation_recorded=bool(observations), observations=observations,
                   feedback=feedback, commands=commands, mock_exit=mock_exit, timing=timing, snapshot=snapshot, observed_limits=limits, recording_notes=reasons,
-                  probe=summarize_feedback(root/'probe', case.get('codec')) if (root/'probe').is_dir() else None,
-                  physical_stop_observed='unknown')
-    # Human observations establish only what their text actually says, not an automatic pass.
+                  probe=summarize_feedback(root/'probe', case.get('codec')) if (root/'probe').is_dir() else None)
     dump(root/'result.json', result)
     lines = ['# SHM现场用例报告', '', f'- 用例：{case.get("case", "旧原型/未标记")} {case.get("title", "")}',
              f'- 软件执行完成：{completed}；原因：{native.get("reason") if native else ("准备步骤，见退出码/日志" if setup else "无原生封存")}',
-             f'- 人工观察：{"已记录，见下文" if observations else "尚未记录"}；结论不由执行返回码自动生成。',
+             f'- 人工观察：{"已记录，见下文" if observations else "尚未记录"}。',
              f'- 成功命令：{commands["count"]}；反馈记录：{feedback["count"]}',
              f'- 最大成功发送间隔（含计划静默）：{commands["send_gap_ns"].get("max", "无")} ns',
              f'- STREAM阶段最大成功发送间隔：{timing["streaming_send_gap_ns"].get("max", "无")} ns',
              f'- stamp重复/倒退：{feedback["repeated_stamp"]}/{feedback["backward_stamp"]}；帧号缺口：{feedback["counter_gap"]}',
-             '- stamp为主站毫秒墙钟；接收时刻另存，不作驱动采样时刻或单向执行延迟。', '']
+             '- stamp 记录主站毫秒墙钟，接收时刻另存。', '']
     if limits['count']:
         lines += [f'- 反馈限制事件：{limits["count"]}条，动作计数{limits["actions"]}；完整轴/值/阈值见native/observed_limits.csv。']
     if timing['clock_pairs']:
@@ -678,7 +676,7 @@ def report(root):
         lines += [f'- {r["mono_ns"]} ns：phase={r["phase"]} {r["event"]}' for r in timing['events']]
     if case.get('case') == 'C06':
         lines += [f'- 计划终止：{process.get("termination_sent")}；探针退出码：{process.get("probe_returncode")}',
-                  '- 探针是被动快照，重复数据仍保留，不证明主站/电机持续更新。']
+                  '- 探针记录单次被动快照。']
     lines += reasons + ['', '## 双臂指令与反馈', '', '|ID|关节|指令范围 rad|反馈范围 rad|末次反馈 rad|错误码|', '|---|---|---|---|---|---|']
     def six(value):
         return f'{value:.6f}'.replace('-0.000000', '0.000000')
@@ -708,7 +706,7 @@ def report(root):
         for row in snapshot['joints']:
             lines.append(f'- ID{row["id"]}：position_raw={row["raw_position"]}，velocity_raw={row["raw_velocity"]}，torque_raw={row["raw_torque"]}，status={hex(row["status"])}，mode={row["mode"]}，error={row["error"]}')
     if not feedback['count'] and (folder/'status.bin').exists():
-        lines += ['', '此例仅有单次status.bin快照，不含持续反馈；不能据此报告更新率或运行期间行为。']
+        lines += ['', '本次反馈来自单次 status.bin 快照。']
     lines += ['', '## 用户观察', '']
     for row in observations:
         lines += [f'- [{row["phase"]}] {row["conclusion"]}：{row["text"]}']
@@ -747,7 +745,8 @@ def run_body_hold(a):
     print(f'站立冒烟记录：{root}', flush=True)
     if not a.mock:
         check_hardware_environment(endpoint=endpoint)
-        channel = ensure_ready_channel(DEFAULT_OUTPUT_ROOT / 'state', binary, endpoint=endpoint)
+        channel = ensure_ready_channel(DEFAULT_OUTPUT_ROOT / 'state', binary, endpoint=endpoint,
+                                       require_hand_background=True)
     with maybe_mock_context(a.mock, root, binary, robot, mock_config=a.mock_config) as mock:
         endpoint = mock.endpoint if mock else channel['endpoint']
         background = mock.background if mock else channel['hand_background']

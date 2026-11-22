@@ -185,7 +185,7 @@ scripts/nmpc/run.sh mock
 本机缺少默认动力学交付时使用名义模型。可用 `mock --delivery <交付目录>` 载入标定模型，用 `mock --no-ff` 对照相同手势。每次会话在 `artifacts/nmpc/` 新建目录，`owner/native/result.json` 记录退出原因和失能应答。物理闭环的参考速度、关节限位预留及碰撞间距预留见 `configs/nmpc/dvt2_teleop.yaml` 的 `shm` 段。持续驱动故障时，记录中会保留未收到就绪应答的状态。
 
 ### Phase 4：真机联调（仅在用户明确要求上机后执行）
-- DVT2_01 使用固定工装承托整机。操作员确认支撑和继电器后，在本机运行 `scripts/nmpc/run.sh teleop --host nvidia@172.16.0.10 --delivery docs/records/dynamics/DVT2_01/20261121`。
+- DVT2_01 使用固定工装承托整机。操作员确认支撑和继电器后，在本机运行 `scripts/nmpc/run.sh teleop --host nvidia@172.16.0.10 --delivery configs/examples/dvt2_01_delivery`。
 - 从当次实测姿态沿动力学标定的准备轨迹进入双肩外展位（ID13 +20°、ID20 −20°，其余为零）。准备段连续检查 URDF 限位、速度与工装间距，在起点静止期间平滑加入重力补偿。已在准备位附近时直接检查实测起点。
 - 准备段完成后，从实测关节位置重新认证全部碰撞对及停车尾段。关节跟踪误差超过 0.12 rad 时终端报告轴号、参考角与实测角，控制继续；工装间距、关节限位和反馈时效各自独立检查。窗口提示到位后按空格开始跟踪，先单臂小幅移动、返回，再做双臂联动。退出后核对 Orin 会话目录的 `native/result.json` 中 `disable_ack`。
 - 不预设额外 Orin 协议开发：仅在真机实测确认存在可感知阶梯感或需要无工装站立保持时，再单独立项评估 Orin 端插值或 `non_arm_hold` 扩展。

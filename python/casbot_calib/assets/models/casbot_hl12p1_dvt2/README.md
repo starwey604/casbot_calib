@@ -21,4 +21,4 @@ Python通过`casbot_calib.model_sources.dvt2_source(variant)`取得本目录、U
 
 C++/ROS消费者使用CMake导出的`casbot_calib_MODEL_DIRECTORY`，其中的`casbot_hl12p1_dvt2/`与本目录结构相同。独立CMake安装需额外安装`Models`组件；ament正常安装包含该组件。Python wheel 通过 `CASBOT_PROJECT_ROOT` 读取仓库侧模型资产。
 
-仓库使用说明：`docs/dvt2_model_sources.md`、`docs/dvt2_model_candidate.md`。当前派生参数保存在 `derived/bare_flange_1105_03_gauge_v2/model.json`，碰撞与显示使用同一模型身份。
+安装和读取方式见[构建手册](../../../../../docs/shm_build.md#模型资产)。当前派生参数保存在 `derived/bare_flange_1105_03_gauge_v2/model.json`，碰撞与显示使用同一模型身份。

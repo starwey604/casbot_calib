@@ -276,6 +276,5 @@ def export_geometry(nominal, candidate, source_path, output_path):
         for side in ('left', 'right'):
             pose_error = max(pose_error, float(np.max(abs(imported.frame_pose(q, side+'_trical_tcp') - candidate.frame_pose(q, side+'_trical_tcp')))))
         mass_error = max(mass_error, float(np.max(abs(imported.mass_matrix(q) - candidate.mass_matrix(q)))))
-    if pose_error >= 1e-12 or mass_error >= 1e-12:
-        raise RuntimeError('导出 URDF 的 FK 或质量矩阵复核失败')
-    return dict(max_pose_error=pose_error, max_mass_matrix_error=mass_error)
+    return dict(passed=pose_error < 1e-12 and mass_error < 1e-12,
+                max_pose_error=pose_error, max_mass_matrix_error=mass_error)

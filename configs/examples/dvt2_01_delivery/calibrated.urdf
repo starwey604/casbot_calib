@@ -9,7 +9,7 @@
     <visual name="base_link_vis">
       <origin rpy="0 0 0" xyz="0 0 0" />
       <geometry>
-        <mesh filename="../../../../../python/casbot_calib/assets/models/casbot_hl12p1_dvt2/source/assets/visual/CASBOTHL12/base_link.obj" />
+        <mesh filename="../../../python/casbot_calib/assets/models/casbot_hl12p1_dvt2/source/assets/visual/CASBOTHL12/base_link.obj" />
       </geometry>
       <material name="metal">
         <color rgba="0.85 0.85 0.85 1" />
@@ -18,7 +18,7 @@
     <collision name="base_link_col">
       <origin rpy="0 0 0" xyz="0 0 0" />
       <geometry>
-        <mesh filename="../../../../../python/casbot_calib/assets/models/casbot_hl12p1_dvt2/source/assets/collision/CASBOTHL12/base_link.obj" />
+        <mesh filename="../../../python/casbot_calib/assets/models/casbot_hl12p1_dvt2/source/assets/collision/CASBOTHL12/base_link.obj" />
       </geometry>
     </collision>
     <inertial>
@@ -36,7 +36,7 @@
     <visual name="left_hip_pitch_link_vis">
       <origin rpy="0 0 0" xyz="0 0 0" />
       <geometry>
-        <mesh filename="../../../../../python/casbot_calib/assets/models/casbot_hl12p1_dvt2/source/assets/visual/CASBOTHL12/left_hip_pitch_link.obj" />
+        <mesh filename="../../../python/casbot_calib/assets/models/casbot_hl12p1_dvt2/source/assets/visual/CASBOTHL12/left_hip_pitch_link.obj" />
       </geometry>
       <material name="metal">
         <color rgba="0.85 0.85 0.85 1" />
@@ -45,7 +45,7 @@
     <collision name="left_hip_pitch_link_col">
       <origin rpy="0 0 0" xyz="0 0 0" />
       <geometry>
-        <mesh filename="../../../../../python/casbot_calib/assets/models/casbot_hl12p1_dvt2/source/assets/collision/CASBOTHL12/left_hip_pitch_link.obj" />
+        <mesh filename="../../../python/casbot_calib/assets/models/casbot_hl12p1_dvt2/source/assets/collision/CASBOTHL12/left_hip_pitch_link.obj" />
       </geometry>
     </collision>
     <inertial>
@@ -63,7 +63,7 @@
     <visual name="left_hip_roll_link_vis">
       <origin rpy="0 0 0" xyz="0 0 0" />
       <geometry>
-        <mesh filename="../../../../../python/casbot_calib/assets/models/casbot_hl12p1_dvt2/source/assets/visual/CASBOTHL12/left_hip_roll_link.obj" />
+        <mesh filename="../../../python/casbot_calib/assets/models/casbot_hl12p1_dvt2/source/assets/visual/CASBOTHL12/left_hip_roll_link.obj" />
       </geometry>
       <material name="metal">
         <color rgba="0.85 0.85 0.85 1" />
@@ -72,7 +72,7 @@
     <collision name="left_hip_roll_link_col">
       <origin rpy="0 0 0" xyz="0 0 0" />
       <geometry>
-        <mesh filename="../../../../../python/casbot_calib/assets/models/casbot_hl12p1_dvt2/source/assets/collision/CASBOTHL12/left_hip_roll_link.obj" />
+        <mesh filename="../../../python/casbot_calib/assets/models/casbot_hl12p1_dvt2/source/assets/collision/CASBOTHL12/left_hip_roll_link.obj" />
       </geometry>
     </collision>
     <inertial>
@@ -90,7 +90,7 @@
     <visual name="left_hip_yaw_link_vis">
       <origin rpy="0 0 0" xyz="0 0 0" />
       <geometry>
-        <mesh filename="../../../../../python/casbot_calib/assets/models/casbot_hl12p1_dvt2/source/assets/visual/CASBOTHL12/left_hip_yaw_link.obj" />
+        <mesh filename="../../../python/casbot_calib/assets/models/casbot_hl12p1_dvt2/source/assets/visual/CASBOTHL12/left_hip_yaw_link.obj" />
       </geometry>
       <material name="metal">
         <color rgba="0.85 0.85 0.85 1" />
@@ -99,7 +99,7 @@
     <collision name="left_hip_yaw_link_col">
       <origin rpy="0 0 0" xyz="0 0 0" />
       <geometry>
-        <mesh filename="../../../../../python/casbot_calib/assets/models/casbot_hl12p1_dvt2/source/assets/collision/CASBOTHL12/left_hip_yaw_link.obj" />
+        <mesh filename="../../../python/casbot_calib/assets/models/casbot_hl12p1_dvt2/source/assets/collision/CASBOTHL12/left_hip_yaw_link.obj" />
       </geometry>
     </collision>
     <inertial>
@@ -117,7 +117,7 @@
     <visual name="left_knee_pitch_link_vis">
       <origin rpy="0 0 0" xyz="0 0 0" />
       <geometry>
-        <mesh filename="../../../../../python/casbot_calib/assets/models/casbot_hl12p1_dvt2/source/assets/visual/CASBOTHL12/left_knee_pitch_link.obj" />
+        <mesh filename="../../../python/casbot_calib/assets/models/casbot_hl12p1_dvt2/source/assets/visual/CASBOTHL12/left_knee_pitch_link.obj" />
       </geometry>
       <material name="metal">
         <color rgba="0.85 0.85 0.85 1" />
@@ -126,7 +126,7 @@
     <collision name="left_knee_pitch_link_col">
       <origin rpy="0 0 0" xyz="0 0 0" />
       <geometry>
-        <mesh filename="../../../../../python/casbot_calib/assets/models/casbot_hl12p1_dvt2/source/assets/collision/CASBOTHL12/left_knee_pitch_link.obj" />
+        <mesh filename="../../../python/casbot_calib/assets/models/casbot_hl12p1_dvt2/source/assets/collision/CASBOTHL12/left_knee_pitch_link.obj" />
       </geometry>
     </collision>
     <inertial>
@@ -144,7 +144,7 @@
     <visual name="left_ankle_pitch_link_vis">
       <origin rpy="0 0 0" xyz="0 0 0" />
       <geometry>
-        <mesh filename="../../../../../python/casbot_calib/assets/models/casbot_hl12p1_dvt2/source/assets/visual/CASBOTHL12/left_ankle_pitch_link.obj" />
+        <mesh filename="../../../python/casbot_calib/assets/models/casbot_hl12p1_dvt2/source/assets/visual/CASBOTHL12/left_ankle_pitch_link.obj" />
       </geometry>
       <material name="metal">
         <color rgba="0.85 0.85 0.85 1" />
@@ -153,7 +153,7 @@
     <collision name="left_ankle_pitch_link_col">
       <origin rpy="0 0 0" xyz="0 0 0" />
       <geometry>
-        <mesh filename="../../../../../python/casbot_calib/assets/models/casbot_hl12p1_dvt2/source/assets/collision/CASBOTHL12/left_ankle_pitch_link.obj" />
+        <mesh filename="../../../python/casbot_calib/assets/models/casbot_hl12p1_dvt2/source/assets/collision/CASBOTHL12/left_ankle_pitch_link.obj" />
       </geometry>
     </collision>
     <inertial>
@@ -171,7 +171,7 @@
     <visual name="left_ankle_roll_link_vis">
       <origin rpy="0 0 0" xyz="0 0 0" />
       <geometry>
-        <mesh filename="../../../../../python/casbot_calib/assets/models/casbot_hl12p1_dvt2/source/assets/visual/CASBOTHL12/left_ankle_roll_link.obj" />
+        <mesh filename="../../../python/casbot_calib/assets/models/casbot_hl12p1_dvt2/source/assets/visual/CASBOTHL12/left_ankle_roll_link.obj" />
       </geometry>
       <material name="metal">
         <color rgba="0.85 0.85 0.85 1" />
@@ -180,7 +180,7 @@
     <collision name="left_ankle_roll_link_col">
       <origin rpy="0 0 0" xyz="0 0 0" />
       <geometry>
-        <mesh filename="../../../../../python/casbot_calib/assets/models/casbot_hl12p1_dvt2/source/assets/collision/CASBOTHL12/left_ankle_roll_link.obj" />
+        <mesh filename="../../../python/casbot_calib/assets/models/casbot_hl12p1_dvt2/source/assets/collision/CASBOTHL12/left_ankle_roll_link.obj" />
       </geometry>
     </collision>
     <inertial>
@@ -250,7 +250,7 @@
     <visual name="right_hip_pitch_link_vis">
       <origin rpy="0 0 0" xyz="0 0 0" />
       <geometry>
-        <mesh filename="../../../../../python/casbot_calib/assets/models/casbot_hl12p1_dvt2/source/assets/visual/CASBOTHL12/right_hip_pitch_link.obj" />
+        <mesh filename="../../../python/casbot_calib/assets/models/casbot_hl12p1_dvt2/source/assets/visual/CASBOTHL12/right_hip_pitch_link.obj" />
       </geometry>
       <material name="metal">
         <color rgba="0.85 0.85 0.85 1" />
@@ -259,7 +259,7 @@
     <collision name="right_hip_pitch_link_col">
       <origin rpy="0 0 0" xyz="0 0 0" />
       <geometry>
-        <mesh filename="../../../../../python/casbot_calib/assets/models/casbot_hl12p1_dvt2/source/assets/collision/CASBOTHL12/right_hip_pitch_link.obj" />
+        <mesh filename="../../../python/casbot_calib/assets/models/casbot_hl12p1_dvt2/source/assets/collision/CASBOTHL12/right_hip_pitch_link.obj" />
       </geometry>
     </collision>
     <inertial>
@@ -277,7 +277,7 @@
     <visual name="right_hip_roll_link_vis">
       <origin rpy="0 0 0" xyz="0 0 0" />
       <geometry>
-        <mesh filename="../../../../../python/casbot_calib/assets/models/casbot_hl12p1_dvt2/source/assets/visual/CASBOTHL12/right_hip_roll_link.obj" />
+        <mesh filename="../../../python/casbot_calib/assets/models/casbot_hl12p1_dvt2/source/assets/visual/CASBOTHL12/right_hip_roll_link.obj" />
       </geometry>
       <material name="metal">
         <color rgba="0.85 0.85 0.85 1" />
@@ -286,7 +286,7 @@
     <collision name="right_hip_roll_link_col">
       <origin rpy="0 0 0" xyz="0 0 0" />
       <geometry>
-        <mesh filename="../../../../../python/casbot_calib/assets/models/casbot_hl12p1_dvt2/source/assets/collision/CASBOTHL12/right_hip_roll_link.obj" />
+        <mesh filename="../../../python/casbot_calib/assets/models/casbot_hl12p1_dvt2/source/assets/collision/CASBOTHL12/right_hip_roll_link.obj" />
       </geometry>
     </collision>
     <inertial>
@@ -304,7 +304,7 @@
     <visual name="right_hip_yaw_link_vis">
       <origin rpy="0 0 0" xyz="0 0 0" />
       <geometry>
-        <mesh filename="../../../../../python/casbot_calib/assets/models/casbot_hl12p1_dvt2/source/assets/visual/CASBOTHL12/right_hip_yaw_link.obj" />
+        <mesh filename="../../../python/casbot_calib/assets/models/casbot_hl12p1_dvt2/source/assets/visual/CASBOTHL12/right_hip_yaw_link.obj" />
       </geometry>
       <material name="metal">
         <color rgba="0.85 0.85 0.85 1" />
@@ -313,7 +313,7 @@
     <collision name="right_hip_yaw_link_col">
       <origin rpy="0 0 0" xyz="0 0 0" />
       <geometry>
-        <mesh filename="../../../../../python/casbot_calib/assets/models/casbot_hl12p1_dvt2/source/assets/collision/CASBOTHL12/right_hip_yaw_link.obj" />
+        <mesh filename="../../../python/casbot_calib/assets/models/casbot_hl12p1_dvt2/source/assets/collision/CASBOTHL12/right_hip_yaw_link.obj" />
       </geometry>
     </collision>
     <inertial>
@@ -331,7 +331,7 @@
     <visual name="right_knee_pitch_link_vis">
       <origin rpy="0 0 0" xyz="0 0 0" />
       <geometry>
-        <mesh filename="../../../../../python/casbot_calib/assets/models/casbot_hl12p1_dvt2/source/assets/visual/CASBOTHL12/right_knee_pitch_link.obj" />
+        <mesh filename="../../../python/casbot_calib/assets/models/casbot_hl12p1_dvt2/source/assets/visual/CASBOTHL12/right_knee_pitch_link.obj" />
       </geometry>
       <material name="metal">
         <color rgba="0.85 0.85 0.85 1" />
@@ -340,7 +340,7 @@
     <collision name="right_knee_pitch_link_col">
       <origin rpy="0 0 0" xyz="0 0 0" />
       <geometry>
-        <mesh filename="../../../../../python/casbot_calib/assets/models/casbot_hl12p1_dvt2/source/assets/collision/CASBOTHL12/right_knee_pitch_link.obj" />
+        <mesh filename="../../../python/casbot_calib/assets/models/casbot_hl12p1_dvt2/source/assets/collision/CASBOTHL12/right_knee_pitch_link.obj" />
       </geometry>
     </collision>
     <inertial>
@@ -358,7 +358,7 @@
     <visual name="right_ankle_pitch_link_vis">
       <origin rpy="0 0 0" xyz="0 0 0" />
       <geometry>
-        <mesh filename="../../../../../python/casbot_calib/assets/models/casbot_hl12p1_dvt2/source/assets/visual/CASBOTHL12/right_ankle_pitch_link.obj" />
+        <mesh filename="../../../python/casbot_calib/assets/models/casbot_hl12p1_dvt2/source/assets/visual/CASBOTHL12/right_ankle_pitch_link.obj" />
       </geometry>
       <material name="metal">
         <color rgba="0.85 0.85 0.85 1" />
@@ -367,7 +367,7 @@
     <collision name="right_ankle_pitch_link_col">
       <origin rpy="0 0 0" xyz="0 0 0" />
       <geometry>
-        <mesh filename="../../../../../python/casbot_calib/assets/models/casbot_hl12p1_dvt2/source/assets/collision/CASBOTHL12/right_ankle_pitch_link.obj" />
+        <mesh filename="../../../python/casbot_calib/assets/models/casbot_hl12p1_dvt2/source/assets/collision/CASBOTHL12/right_ankle_pitch_link.obj" />
       </geometry>
     </collision>
     <inertial>
@@ -385,7 +385,7 @@
     <visual name="right_ankle_roll_link_vis">
       <origin rpy="0 0 0" xyz="0 0 0" />
       <geometry>
-        <mesh filename="../../../../../python/casbot_calib/assets/models/casbot_hl12p1_dvt2/source/assets/visual/CASBOTHL12/right_ankle_roll_link.obj" />
+        <mesh filename="../../../python/casbot_calib/assets/models/casbot_hl12p1_dvt2/source/assets/visual/CASBOTHL12/right_ankle_roll_link.obj" />
       </geometry>
       <material name="metal">
         <color rgba="0.85 0.85 0.85 1" />
@@ -394,7 +394,7 @@
     <collision name="right_ankle_roll_link_col">
       <origin rpy="0 0 0" xyz="0 0 0" />
       <geometry>
-        <mesh filename="../../../../../python/casbot_calib/assets/models/casbot_hl12p1_dvt2/source/assets/collision/CASBOTHL12/right_ankle_roll_link.obj" />
+        <mesh filename="../../../python/casbot_calib/assets/models/casbot_hl12p1_dvt2/source/assets/collision/CASBOTHL12/right_ankle_roll_link.obj" />
       </geometry>
     </collision>
     <inertial>
@@ -464,7 +464,7 @@
     <visual name="waist_yaw_link_vis">
       <origin rpy="0 0 0" xyz="0 0 0" />
       <geometry>
-        <mesh filename="../../../../../python/casbot_calib/assets/models/casbot_hl12p1_dvt2/source/assets/visual/CASBOTHL12/waist_yaw_link.obj" />
+        <mesh filename="../../../python/casbot_calib/assets/models/casbot_hl12p1_dvt2/source/assets/visual/CASBOTHL12/waist_yaw_link.obj" />
       </geometry>
       <material name="metal">
         <color rgba="0.85 0.85 0.85 1" />
@@ -473,7 +473,7 @@
     <collision name="waist_yaw_link_col">
       <origin rpy="0 0 0" xyz="0 0 0" />
       <geometry>
-        <mesh filename="../../../../../python/casbot_calib/assets/models/casbot_hl12p1_dvt2/source/assets/collision/CASBOTHL12/waist_yaw_link.obj" />
+        <mesh filename="../../../python/casbot_calib/assets/models/casbot_hl12p1_dvt2/source/assets/collision/CASBOTHL12/waist_yaw_link.obj" />
       </geometry>
     </collision>
     <inertial>
@@ -491,7 +491,7 @@
     <visual name="head_yaw_link_vis">
       <origin rpy="0 0 0" xyz="0 0 0" />
       <geometry>
-        <mesh filename="../../../../../python/casbot_calib/assets/models/casbot_hl12p1_dvt2/source/assets/visual/CASBOTHL12/head_yaw_link.obj" />
+        <mesh filename="../../../python/casbot_calib/assets/models/casbot_hl12p1_dvt2/source/assets/visual/CASBOTHL12/head_yaw_link.obj" />
       </geometry>
       <material name="metal">
         <color rgba="0.85 0.85 0.85 1" />
@@ -500,7 +500,7 @@
     <collision name="head_yaw_link_col">
       <origin rpy="0 0 0" xyz="0 0 0" />
       <geometry>
-        <mesh filename="../../../../../python/casbot_calib/assets/models/casbot_hl12p1_dvt2/source/assets/collision/CASBOTHL12/head_yaw_link.obj" />
+        <mesh filename="../../../python/casbot_calib/assets/models/casbot_hl12p1_dvt2/source/assets/collision/CASBOTHL12/head_yaw_link.obj" />
       </geometry>
     </collision>
     <inertial>
@@ -518,7 +518,7 @@
     <visual name="head_pitch_link_vis">
       <origin rpy="0 0 0" xyz="0 0 0" />
       <geometry>
-        <mesh filename="../../../../../python/casbot_calib/assets/models/casbot_hl12p1_dvt2/source/assets/visual/CASBOTHL12/head_pitch_link.obj" />
+        <mesh filename="../../../python/casbot_calib/assets/models/casbot_hl12p1_dvt2/source/assets/visual/CASBOTHL12/head_pitch_link.obj" />
       </geometry>
       <material name="metal">
         <color rgba="0.85 0.85 0.85 1" />
@@ -527,7 +527,7 @@
     <collision name="head_pitch_link_col">
       <origin rpy="0 0 0" xyz="0 0 0" />
       <geometry>
-        <mesh filename="../../../../../python/casbot_calib/assets/models/casbot_hl12p1_dvt2/source/assets/collision/CASBOTHL12/head_pitch_link.obj" />
+        <mesh filename="../../../python/casbot_calib/assets/models/casbot_hl12p1_dvt2/source/assets/collision/CASBOTHL12/head_pitch_link.obj" />
       </geometry>
     </collision>
     <inertial>
@@ -551,7 +551,7 @@
     <visual name="head_camera_link_vis">
       <origin rpy="0 0 0" xyz="0 0 0" />
       <geometry>
-        <mesh filename="../../../../../python/casbot_calib/assets/models/casbot_hl12p1_dvt2/source/assets/visual/CASBOTHL12/gemini_336_camera_link.obj" />
+        <mesh filename="../../../python/casbot_calib/assets/models/casbot_hl12p1_dvt2/source/assets/visual/CASBOTHL12/gemini_336_camera_link.obj" />
       </geometry>
       <material name="gemini_336_body">
         <color rgba="0.8 0.82 0.86 1" />
@@ -560,7 +560,7 @@
     <collision name="head_camera_link_col">
       <origin rpy="0 0 0" xyz="0 0 0" />
       <geometry>
-        <mesh filename="../../../../../python/casbot_calib/assets/models/casbot_hl12p1_dvt2/source/assets/collision/CASBOTHL12/gemini_336_camera_link.obj" />
+        <mesh filename="../../../python/casbot_calib/assets/models/casbot_hl12p1_dvt2/source/assets/collision/CASBOTHL12/gemini_336_camera_link.obj" />
       </geometry>
     </collision>
   </link>
@@ -647,7 +647,7 @@
     <visual name="waist_down_camera_link_vis">
       <origin rpy="0 0 0" xyz="0 0 0" />
       <geometry>
-        <mesh filename="../../../../../python/casbot_calib/assets/models/casbot_hl12p1_dvt2/source/assets/visual/CASBOTHL12/gemini_336_camera_link.obj" />
+        <mesh filename="../../../python/casbot_calib/assets/models/casbot_hl12p1_dvt2/source/assets/visual/CASBOTHL12/gemini_336_camera_link.obj" />
       </geometry>
       <material name="gemini_336_body">
         <color rgba="0.8 0.82 0.86 1" />
@@ -656,7 +656,7 @@
     <collision name="waist_down_camera_link_col">
       <origin rpy="0 0 0" xyz="0 0 0" />
       <geometry>
-        <mesh filename="../../../../../python/casbot_calib/assets/models/casbot_hl12p1_dvt2/source/assets/collision/CASBOTHL12/gemini_336_camera_link.obj" />
+        <mesh filename="../../../python/casbot_calib/assets/models/casbot_hl12p1_dvt2/source/assets/collision/CASBOTHL12/gemini_336_camera_link.obj" />
       </geometry>
     </collision>
   </link>
@@ -743,7 +743,7 @@
     <visual name="waist_up_camera_link_vis">
       <origin rpy="0 0 0" xyz="0 0 0" />
       <geometry>
-        <mesh filename="../../../../../python/casbot_calib/assets/models/casbot_hl12p1_dvt2/source/assets/visual/CASBOTHL12/gemini_336_l_camera_link.obj" />
+        <mesh filename="../../../python/casbot_calib/assets/models/casbot_hl12p1_dvt2/source/assets/visual/CASBOTHL12/gemini_336_l_camera_link.obj" />
       </geometry>
       <material name="gemini_336_l_body">
         <color rgba="0.8 0.82 0.86 1" />
@@ -752,7 +752,7 @@
     <collision name="waist_up_camera_link_col">
       <origin rpy="0 0 0" xyz="0 0 0" />
       <geometry>
-        <mesh filename="../../../../../python/casbot_calib/assets/models/casbot_hl12p1_dvt2/source/assets/collision/CASBOTHL12/gemini_336_l_camera_link.obj" />
+        <mesh filename="../../../python/casbot_calib/assets/models/casbot_hl12p1_dvt2/source/assets/collision/CASBOTHL12/gemini_336_l_camera_link.obj" />
       </geometry>
     </collision>
   </link>
@@ -837,7 +837,7 @@
     <visual name="left_shoulder_pitch_link_vis">
       <origin rpy="0 0 0" xyz="0 0 0" />
       <geometry>
-        <mesh filename="../../../../../python/casbot_calib/assets/models/casbot_hl12p1_dvt2/source/assets/visual/CASBOTHL12/left_shoulder_pitch_link.obj" />
+        <mesh filename="../../../python/casbot_calib/assets/models/casbot_hl12p1_dvt2/source/assets/visual/CASBOTHL12/left_shoulder_pitch_link.obj" />
       </geometry>
       <material name="metal">
         <color rgba="0.85 0.85 0.85 1" />
@@ -846,7 +846,7 @@
     <collision name="left_shoulder_pitch_link_col">
       <origin rpy="0 0 0" xyz="0 0 0" />
       <geometry>
-        <mesh filename="../../../../../python/casbot_calib/assets/models/casbot_hl12p1_dvt2/source/assets/collision/CASBOTHL12/left_shoulder_pitch_link.obj" />
+        <mesh filename="../../../python/casbot_calib/assets/models/casbot_hl12p1_dvt2/source/assets/collision/CASBOTHL12/left_shoulder_pitch_link.obj" />
       </geometry>
     </collision>
     <inertial>
@@ -868,7 +868,7 @@
     <visual name="left_shoulder_roll_link_vis">
       <origin rpy="0 0 0" xyz="0 0 0" />
       <geometry>
-        <mesh filename="../../../../../python/casbot_calib/assets/models/casbot_hl12p1_dvt2/source/assets/visual/CASBOTHL12/left_shoulder_roll_link.obj" />
+        <mesh filename="../../../python/casbot_calib/assets/models/casbot_hl12p1_dvt2/source/assets/visual/CASBOTHL12/left_shoulder_roll_link.obj" />
       </geometry>
       <material name="metal">
         <color rgba="0.85 0.85 0.85 1" />
@@ -877,7 +877,7 @@
     <collision name="left_shoulder_roll_link_col">
       <origin rpy="0 0 0" xyz="0 0 0" />
       <geometry>
-        <mesh filename="../../../../../python/casbot_calib/assets/models/casbot_hl12p1_dvt2/source/assets/collision/CASBOTHL12/left_shoulder_roll_link.obj" />
+        <mesh filename="../../../python/casbot_calib/assets/models/casbot_hl12p1_dvt2/source/assets/collision/CASBOTHL12/left_shoulder_roll_link.obj" />
       </geometry>
     </collision>
     <inertial>
@@ -899,7 +899,7 @@
     <visual name="left_shoulder_yaw_link_vis">
       <origin rpy="0 0 0" xyz="0 0 0" />
       <geometry>
-        <mesh filename="../../../../../python/casbot_calib/assets/models/casbot_hl12p1_dvt2/source/assets/visual/CASBOTHL12/left_shoulder_yaw_link.obj" />
+        <mesh filename="../../../python/casbot_calib/assets/models/casbot_hl12p1_dvt2/source/assets/visual/CASBOTHL12/left_shoulder_yaw_link.obj" />
       </geometry>
       <material name="metal">
         <color rgba="0.85 0.85 0.85 1" />
@@ -908,7 +908,7 @@
     <collision name="left_shoulder_yaw_link_col">
       <origin rpy="0 0 0" xyz="0 0 0" />
       <geometry>
-        <mesh filename="../../../../../python/casbot_calib/assets/models/casbot_hl12p1_dvt2/source/assets/collision/CASBOTHL12/left_shoulder_yaw_link.obj" />
+        <mesh filename="../../../python/casbot_calib/assets/models/casbot_hl12p1_dvt2/source/assets/collision/CASBOTHL12/left_shoulder_yaw_link.obj" />
       </geometry>
     </collision>
     <inertial>
@@ -930,7 +930,7 @@
     <visual name="left_elbow_pitch_link_vis">
       <origin rpy="0 0 0" xyz="0 0 0" />
       <geometry>
-        <mesh filename="../../../../../python/casbot_calib/assets/models/casbot_hl12p1_dvt2/source/assets/visual/CASBOTHL12/left_elbow_pitch_link.obj" />
+        <mesh filename="../../../python/casbot_calib/assets/models/casbot_hl12p1_dvt2/source/assets/visual/CASBOTHL12/left_elbow_pitch_link.obj" />
       </geometry>
       <material name="metal">
         <color rgba="0.85 0.85 0.85 1" />
@@ -939,7 +939,7 @@
     <collision name="left_elbow_pitch_link_col">
       <origin rpy="0 0 0" xyz="0 0 0" />
       <geometry>
-        <mesh filename="../../../../../python/casbot_calib/assets/models/casbot_hl12p1_dvt2/source/assets/collision/CASBOTHL12/left_elbow_pitch_link.obj" />
+        <mesh filename="../../../python/casbot_calib/assets/models/casbot_hl12p1_dvt2/source/assets/collision/CASBOTHL12/left_elbow_pitch_link.obj" />
       </geometry>
     </collision>
     <inertial>
@@ -961,7 +961,7 @@
     <visual name="left_wrist_yaw_link_vis">
       <origin rpy="0 0 0" xyz="0 0 0" />
       <geometry>
-        <mesh filename="../../../../../python/casbot_calib/assets/models/casbot_hl12p1_dvt2/source/assets/visual/CASBOTHL12/left_wrist_yaw_link.obj" />
+        <mesh filename="../../../python/casbot_calib/assets/models/casbot_hl12p1_dvt2/source/assets/visual/CASBOTHL12/left_wrist_yaw_link.obj" />
       </geometry>
       <material name="metal">
         <color rgba="0.85 0.85 0.85 1" />
@@ -970,7 +970,7 @@
     <collision name="left_wrist_yaw_link_col">
       <origin rpy="0 0 0" xyz="0 0 0" />
       <geometry>
-        <mesh filename="../../../../../python/casbot_calib/assets/models/casbot_hl12p1_dvt2/source/assets/collision/CASBOTHL12/left_wrist_yaw_link.obj" />
+        <mesh filename="../../../python/casbot_calib/assets/models/casbot_hl12p1_dvt2/source/assets/collision/CASBOTHL12/left_wrist_yaw_link.obj" />
       </geometry>
     </collision>
     <inertial>
@@ -992,7 +992,7 @@
     <visual name="left_wrist_pitch_link_vis">
       <origin rpy="0 0 0" xyz="0 0 0" />
       <geometry>
-        <mesh filename="../../../../../python/casbot_calib/assets/models/casbot_hl12p1_dvt2/source/assets/visual/CASBOTHL12/left_wrist_pitch_link.obj" />
+        <mesh filename="../../../python/casbot_calib/assets/models/casbot_hl12p1_dvt2/source/assets/visual/CASBOTHL12/left_wrist_pitch_link.obj" />
       </geometry>
       <material name="metal">
         <color rgba="0.85 0.85 0.85 1" />
@@ -1001,7 +1001,7 @@
     <collision name="left_wrist_pitch_link_col">
       <origin rpy="0 0 0" xyz="0 0 0" />
       <geometry>
-        <mesh filename="../../../../../python/casbot_calib/assets/models/casbot_hl12p1_dvt2/source/assets/collision/CASBOTHL12/left_wrist_pitch_link.obj" />
+        <mesh filename="../../../python/casbot_calib/assets/models/casbot_hl12p1_dvt2/source/assets/collision/CASBOTHL12/left_wrist_pitch_link.obj" />
       </geometry>
     </collision>
     <inertial>
@@ -1023,7 +1023,7 @@
     <visual name="left_wrist_roll_link_vis">
       <origin rpy="0 0 0" xyz="0 0 0" />
       <geometry>
-        <mesh filename="../../../../../python/casbot_calib/assets/models/casbot_hl12p1_dvt2/source/assets/visual/CASBOTHL12/left_wrist_roll_link.obj" />
+        <mesh filename="../../../python/casbot_calib/assets/models/casbot_hl12p1_dvt2/source/assets/visual/CASBOTHL12/left_wrist_roll_link.obj" />
       </geometry>
       <material name="metal">
         <color rgba="0.85 0.85 0.85 1" />
@@ -1032,7 +1032,7 @@
     <collision name="left_wrist_roll_link_col">
       <origin rpy="0 0 0" xyz="0 0 0" />
       <geometry>
-        <mesh filename="../../../../../python/casbot_calib/assets/models/casbot_hl12p1_dvt2/source/assets/collision/CASBOTHL12/left_wrist_roll_link.obj" />
+        <mesh filename="../../../python/casbot_calib/assets/models/casbot_hl12p1_dvt2/source/assets/collision/CASBOTHL12/left_wrist_roll_link.obj" />
       </geometry>
     </collision>
     <inertial>
@@ -1076,7 +1076,7 @@
     <visual name="right_shoulder_pitch_link_vis">
       <origin rpy="0 0 0" xyz="0 0 0" />
       <geometry>
-        <mesh filename="../../../../../python/casbot_calib/assets/models/casbot_hl12p1_dvt2/source/assets/visual/CASBOTHL12/right_shoulder_pitch_link.obj" />
+        <mesh filename="../../../python/casbot_calib/assets/models/casbot_hl12p1_dvt2/source/assets/visual/CASBOTHL12/right_shoulder_pitch_link.obj" />
       </geometry>
       <material name="metal">
         <color rgba="0.85 0.85 0.85 1" />
@@ -1085,7 +1085,7 @@
     <collision name="right_shoulder_pitch_link_col">
       <origin rpy="0 0 0" xyz="0 0 0" />
       <geometry>
-        <mesh filename="../../../../../python/casbot_calib/assets/models/casbot_hl12p1_dvt2/source/assets/collision/CASBOTHL12/right_shoulder_pitch_link.obj" />
+        <mesh filename="../../../python/casbot_calib/assets/models/casbot_hl12p1_dvt2/source/assets/collision/CASBOTHL12/right_shoulder_pitch_link.obj" />
       </geometry>
     </collision>
     <inertial>
@@ -1107,7 +1107,7 @@
     <visual name="right_shoulder_roll_link_vis">
       <origin rpy="0 0 0" xyz="0 0 0" />
       <geometry>
-        <mesh filename="../../../../../python/casbot_calib/assets/models/casbot_hl12p1_dvt2/source/assets/visual/CASBOTHL12/right_shoulder_roll_link.obj" />
+        <mesh filename="../../../python/casbot_calib/assets/models/casbot_hl12p1_dvt2/source/assets/visual/CASBOTHL12/right_shoulder_roll_link.obj" />
       </geometry>
       <material name="metal">
         <color rgba="0.85 0.85 0.85 1" />
@@ -1116,7 +1116,7 @@
     <collision name="right_shoulder_roll_link_col">
       <origin rpy="0 0 0" xyz="0 0 0" />
       <geometry>
-        <mesh filename="../../../../../python/casbot_calib/assets/models/casbot_hl12p1_dvt2/source/assets/collision/CASBOTHL12/right_shoulder_roll_link.obj" />
+        <mesh filename="../../../python/casbot_calib/assets/models/casbot_hl12p1_dvt2/source/assets/collision/CASBOTHL12/right_shoulder_roll_link.obj" />
       </geometry>
     </collision>
     <inertial>
@@ -1138,7 +1138,7 @@
     <visual name="right_shoulder_yaw_link_vis">
       <origin rpy="0 0 0" xyz="0 0 0" />
       <geometry>
-        <mesh filename="../../../../../python/casbot_calib/assets/models/casbot_hl12p1_dvt2/source/assets/visual/CASBOTHL12/right_shoulder_yaw_link.obj" />
+        <mesh filename="../../../python/casbot_calib/assets/models/casbot_hl12p1_dvt2/source/assets/visual/CASBOTHL12/right_shoulder_yaw_link.obj" />
       </geometry>
       <material name="metal">
         <color rgba="0.85 0.85 0.85 1" />
@@ -1147,7 +1147,7 @@
     <collision name="right_shoulder_yaw_link_col">
       <origin rpy="0 0 0" xyz="0 0 0" />
       <geometry>
-        <mesh filename="../../../../../python/casbot_calib/assets/models/casbot_hl12p1_dvt2/source/assets/collision/CASBOTHL12/right_shoulder_yaw_link.obj" />
+        <mesh filename="../../../python/casbot_calib/assets/models/casbot_hl12p1_dvt2/source/assets/collision/CASBOTHL12/right_shoulder_yaw_link.obj" />
       </geometry>
     </collision>
     <inertial>
@@ -1169,7 +1169,7 @@
     <visual name="right_elbow_pitch_link_vis">
       <origin rpy="0 0 0" xyz="0 0 0" />
       <geometry>
-        <mesh filename="../../../../../python/casbot_calib/assets/models/casbot_hl12p1_dvt2/source/assets/visual/CASBOTHL12/right_elbow_pitch_link.obj" />
+        <mesh filename="../../../python/casbot_calib/assets/models/casbot_hl12p1_dvt2/source/assets/visual/CASBOTHL12/right_elbow_pitch_link.obj" />
       </geometry>
       <material name="metal">
         <color rgba="0.85 0.85 0.85 1" />
@@ -1178,7 +1178,7 @@
     <collision name="right_elbow_pitch_link_col">
       <origin rpy="0 0 0" xyz="0 0 0" />
       <geometry>
-        <mesh filename="../../../../../python/casbot_calib/assets/models/casbot_hl12p1_dvt2/source/assets/collision/CASBOTHL12/right_elbow_pitch_link.obj" />
+        <mesh filename="../../../python/casbot_calib/assets/models/casbot_hl12p1_dvt2/source/assets/collision/CASBOTHL12/right_elbow_pitch_link.obj" />
       </geometry>
     </collision>
     <inertial>
@@ -1200,7 +1200,7 @@
     <visual name="right_wrist_yaw_link_vis">
       <origin rpy="0 0 0" xyz="0 0 0" />
       <geometry>
-        <mesh filename="../../../../../python/casbot_calib/assets/models/casbot_hl12p1_dvt2/source/assets/visual/CASBOTHL12/right_wrist_yaw_link.obj" />
+        <mesh filename="../../../python/casbot_calib/assets/models/casbot_hl12p1_dvt2/source/assets/visual/CASBOTHL12/right_wrist_yaw_link.obj" />
       </geometry>
       <material name="metal">
         <color rgba="0.85 0.85 0.85 1" />
@@ -1209,7 +1209,7 @@
     <collision name="right_wrist_yaw_link_col">
       <origin rpy="0 0 0" xyz="0 0 0" />
       <geometry>
-        <mesh filename="../../../../../python/casbot_calib/assets/models/casbot_hl12p1_dvt2/source/assets/collision/CASBOTHL12/right_wrist_yaw_link.obj" />
+        <mesh filename="../../../python/casbot_calib/assets/models/casbot_hl12p1_dvt2/source/assets/collision/CASBOTHL12/right_wrist_yaw_link.obj" />
       </geometry>
     </collision>
     <inertial>
@@ -1231,7 +1231,7 @@
     <visual name="right_wrist_pitch_link_vis">
       <origin rpy="0 0 0" xyz="0 0 0" />
       <geometry>
-        <mesh filename="../../../../../python/casbot_calib/assets/models/casbot_hl12p1_dvt2/source/assets/visual/CASBOTHL12/right_wrist_pitch_link.obj" />
+        <mesh filename="../../../python/casbot_calib/assets/models/casbot_hl12p1_dvt2/source/assets/visual/CASBOTHL12/right_wrist_pitch_link.obj" />
       </geometry>
       <material name="metal">
         <color rgba="0.85 0.85 0.85 1" />
@@ -1240,7 +1240,7 @@
     <collision name="right_wrist_pitch_link_col">
       <origin rpy="0 0 0" xyz="0 0 0" />
       <geometry>
-        <mesh filename="../../../../../python/casbot_calib/assets/models/casbot_hl12p1_dvt2/source/assets/collision/CASBOTHL12/right_wrist_pitch_link.obj" />
+        <mesh filename="../../../python/casbot_calib/assets/models/casbot_hl12p1_dvt2/source/assets/collision/CASBOTHL12/right_wrist_pitch_link.obj" />
       </geometry>
     </collision>
     <inertial>
@@ -1262,7 +1262,7 @@
     <visual name="right_wrist_roll_link_vis">
       <origin rpy="0 0 0" xyz="0 0 0" />
       <geometry>
-        <mesh filename="../../../../../python/casbot_calib/assets/models/casbot_hl12p1_dvt2/source/assets/visual/CASBOTHL12/right_wrist_roll_link.obj" />
+        <mesh filename="../../../python/casbot_calib/assets/models/casbot_hl12p1_dvt2/source/assets/visual/CASBOTHL12/right_wrist_roll_link.obj" />
       </geometry>
       <material name="metal">
         <color rgba="0.85 0.85 0.85 1" />
@@ -1271,7 +1271,7 @@
     <collision name="right_wrist_roll_link_col">
       <origin rpy="0 0 0" xyz="0 0 0" />
       <geometry>
-        <mesh filename="../../../../../python/casbot_calib/assets/models/casbot_hl12p1_dvt2/source/assets/collision/CASBOTHL12/right_wrist_roll_link.obj" />
+        <mesh filename="../../../python/casbot_calib/assets/models/casbot_hl12p1_dvt2/source/assets/collision/CASBOTHL12/right_wrist_roll_link.obj" />
       </geometry>
     </collision>
     <inertial>
@@ -1311,7 +1311,7 @@
     <visual name="waist_lidar_link_vis">
       <origin rpy="0 0 0" xyz="0 0 0" />
       <geometry>
-        <mesh filename="../../../../../python/casbot_calib/assets/models/casbot_hl12p1_dvt2/source/assets/visual/CASBOTHL12/waist_lidar_link.obj" />
+        <mesh filename="../../../python/casbot_calib/assets/models/casbot_hl12p1_dvt2/source/assets/visual/CASBOTHL12/waist_lidar_link.obj" />
       </geometry>
       <material name="metal">
         <color rgba="0.85 0.85 0.85 1" />
@@ -1320,7 +1320,7 @@
     <collision name="waist_lidar_link_col">
       <origin rpy="0 0 0" xyz="0 0 0" />
       <geometry>
-        <mesh filename="../../../../../python/casbot_calib/assets/models/casbot_hl12p1_dvt2/source/assets/collision/CASBOTHL12/waist_lidar_link.obj" />
+        <mesh filename="../../../python/casbot_calib/assets/models/casbot_hl12p1_dvt2/source/assets/collision/CASBOTHL12/waist_lidar_link.obj" />
       </geometry>
     </collision>
     <inertial>

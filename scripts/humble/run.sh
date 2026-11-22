@@ -11,7 +11,7 @@ if [[ ! -f "$venv_activate" ]]; then
   printf '[run.sh] Humble venv is missing: %s\n' "$venv_activate" >&2
   printf '[run.sh] Bootstrap it from the host repository root:\n' >&2
   printf '[run.sh]   bash scripts/humble/setup.sh\n' >&2
-  printf '[run.sh] (or the manual bootstrap steps in docs/humble_environment.md)\n' >&2
+  printf '[run.sh] (or the manual bootstrap steps in docs/shm_build.md)\n' >&2
   exit 1
 fi
 source "$venv_activate"

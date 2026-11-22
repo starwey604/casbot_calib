@@ -2,6 +2,14 @@
 set -euo pipefail
 repo=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 cd "$repo"
+if [[ ${1:-} == gui ]]; then
+  shift
+  exec bash "$repo/calib/gui.sh" "$@"
+fi
+if [[ ${1:-} == h1 ]]; then
+  shift
+  exec bash "$repo/calib/dynamics_h1.sh" "$@"
+fi
 source "$repo/scripts/shm/python_path.sh" "$repo/.venv-shm"
 if [[ ${1:-} == dynamics-verify-mock ]]; then
   shift

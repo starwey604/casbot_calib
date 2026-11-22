@@ -63,8 +63,15 @@ def test_physical_remote_round_trip_and_main_loop_lease(client):
 def test_display_disconnect_causes_control_stop(client):
     c=client;wait(c,lambda:c.hello and c.latest and c.latest['receive_ns']);c.send('start');wait(c,lambda:c.latest['phase']==3)
     c.display.terminate();c.display.wait(timeout=2)
-    deadline=time.monotonic()+2
-    while time.monotonic()<deadline:c.tick();time.sleep(.01)
+    deadline = time.monotonic() + 3
+    while time.monotonic() < deadline:
+        c.tick()
+        if any(message['type'] == 'status' and message['phase'] == -1 and message['disable_ack']
+               for message in c.drain()):
+            break
+        time.sleep(.01)
+    else:
+        pytest.fail('Display disconnect did not produce a disable acknowledgement')
     c.close()
     result=json.loads((Path(c.ready['workspace'])/'native/result.json').read_text())
     assert result['disable_ack']

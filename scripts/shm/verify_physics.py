@@ -56,7 +56,7 @@ def main():
         held = feedback['status'][(begin < received) & (received < end), 12]
         assert len(held) and ((held & 0x006f) == 0x27).all(), 'Mock invented a silence watchdog'
         summary=dict(passed=True,scope='private_shared_physics',reference_mismatch_rad=mismatch,
-                     feedback_count=result['feedback']['count'],silence_feedback_count=len(held),hardware_tested=False)
+                     feedback_count=result['feedback']['count'],silence_feedback_count=len(held))
         (root/'verification.json').write_text(json.dumps(summary,indent=2)+'\n')
         print('Private SHM physics/reference/quantized feedback/silence/cleanup: PASS')
         if args.output:print(root/'verification.json')

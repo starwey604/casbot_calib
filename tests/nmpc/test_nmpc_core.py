@@ -1,6 +1,5 @@
 """Offline native runtime, certified stopping and kinematic viewer acceptance."""
 from importlib.util import find_spec
-from time import perf_counter, sleep
 
 import numpy as np
 import pytest
@@ -112,7 +111,6 @@ def test_tracking_and_stopping_probes(controller, probe):
     else:
         goal[:, :3, 3] = [0, 0, 1.22]
     filtered = initial
-    timings = []
     minimum = np.inf
     fixture = np.array([any(profile.names[j].startswith(('fixed:', 'ball:', 'stem:')) for j in p)
                         for p in profile.pairs])
@@ -122,17 +120,14 @@ def test_tracking_and_stopping_probes(controller, probe):
     arms = parents[np.array([p['indices'] for p in ctl.spec['pairs']])] // 7
     inter_arm = (arms.min(axis=1) == 0) & (arms.max(axis=1) == 1)
     for _ in range(round(4.5/ctl.dt)):
-        start = perf_counter()
         filtered = filtered_target(filtered, goal, ctl.dt, ctl.spec['config'])
         ctl.propose(filtered)
         ctl.commit()
-        timings.append(1000*(perf_counter()-start))
         slack = ctl.gaps-ctl.margin
         minimum = min(minimum, np.min(slack))
         fixture_minimum = min(fixture_minimum, np.min(slack[fixture]))
         inter_arm_minimum = min(inter_arm_minimum, np.min(slack[inter_arm]))
         assert np.all(profile.check(ctl.x[:14])['distances'][0] > ctl.margin)
-        sleep(max(0., ctl.dt - (perf_counter()-start)))
     assert minimum > 0
     assert np.linalg.norm((ctl.poses-initial)[:, :3, 3]) > .04
     if probe == 'reach':
@@ -143,10 +138,6 @@ def test_tracking_and_stopping_probes(controller, probe):
         assert fixture_minimum < .005
     if probe == 'cross':
         assert inter_arm_minimum < .001
-    overruns = np.count_nonzero(np.array(timings) > 1000*ctl.dt)
-    print(f'{probe}: min slack {1e3*minimum:.3f} mm; median/p95/max ms',
-          np.round(np.percentile(timings, [50, 95, 100]), 2),
-          f'overruns {overruns}/{len(timings)}')
     for _ in range(len(ctl.backup)):
         ctl.propose(goal, stop=True)
         ctl.commit()

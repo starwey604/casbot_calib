@@ -76,36 +76,39 @@ def _delivery(root, robot, *, h3_accepted=True):
     return session
 
 
-def test_resolve_delivery_skips_sessions_that_fell_back(tmp_path, robot):
-    complete = _delivery(tmp_path, robot)
+def test_resolve_delivery_uses_latest_pair_even_after_stage_fallback(tmp_path, robot):
     fallback = _delivery(tmp_path, robot, h3_accepted=False)
     bundle = json.loads((fallback.root / 'delivery/calibration_bundle.json').read_text())
-    assert bundle['urdf_reload_passed'] and bundle['selected_calibration_source'] == 'session_h2'
-    with pytest.raises(ValueError, match='缺少完整通过'):
-        verify.resolve_verified_delivery(fallback.root, tmp_path, fallback.robot_id, robot)
-    delivery = verify.resolve_verified_delivery(None, tmp_path, complete.robot_id, robot)
-    assert delivery.root == complete.root
-    assert delivery.h2_urdf.parent == complete.root / 'h2/analysis'
+    assert bundle['selected_calibration_source'] == 'session_h2'
+    delivery = verify.resolve_verified_delivery(None, tmp_path, fallback.robot_id)
+    assert delivery.root == fallback.root
+    assert delivery.h2_urdf.parent == fallback.root / 'h2/analysis'
 
 
-def test_resolve_delivery_uses_h2_from_the_actual_prior_session(tmp_path, robot):
-    prior = _delivery(tmp_path, robot, h3_accepted=False)
-    session = Session.create(output_root=tmp_path, robot_id=prior.robot_id,
-                             model_context=robot['model_context'], stages_requested=['h3'])
-    source = prior.root / 'h2/analysis/calibration.json'
-    analysis = session.root / 'h3/analysis'
-    shutil.copytree(prior.root / 'h3/analysis', analysis)
-    path = analysis / 'calibration.json'
-    cal = json.loads(path.read_text())
-    cal.update(accepted=True, prior_source='latest_h2', prior_source_path=str(source))
-    write_json(path, cal)
-    write_json(analysis / 'report.json', dict(fit_succeeded=True, acceptance=dict(accepted=True)))
-    session.mark_stage('h3', 'completed', fit_succeeded=True, accepted=True)
-    build_session_delivery(session, robot)
+def test_portable_delivery_without_h2_uses_nominal_g2(tmp_path, robot):
+    source = _delivery(tmp_path, robot)
+    portable = tmp_path / 'portable'
+    bundle = portable / 'delivery'
+    bundle.mkdir(parents=True)
+    for name in ('calibrated.urdf', 'runtime_dynamics.json'):
+        shutil.copy2(source.root / 'delivery' / name, bundle)
+    delivery = verify.resolve_verified_delivery(portable, tmp_path, source.robot_id)
+    models, recommended, comparison = verify._feedforward_models(robot, delivery)
+    assert delivery.h2_urdf is None
+    assert models[3] is models[2]
+    assert 'G2 使用名义前馈' in comparison
+    assert recommended['calibrated_urdf'] == str(delivery.h3_urdf)
 
-    delivery = verify.resolve_verified_delivery(None, tmp_path, prior.robot_id, robot)
-    assert delivery.root == session.root
-    assert delivery.h2_urdf.parent == source.parent
+
+def test_friction_mismatch_reports_comparison_without_stopping(tmp_path, robot):
+    session = _delivery(tmp_path, robot)
+    delivery = verify.resolve_verified_delivery(session.root, tmp_path, session.robot_id)
+    sidecar = json.loads(delivery.h2_runtime.read_text())
+    sidecar['friction']['viscous'][0] *= 2
+    write_json(delivery.h2_runtime, sidecar)
+    models, _, comparison = verify._feedforward_models(robot, delivery)
+    assert models[3].model.joints[0].friction.viscous == 2 * models[4].model.joints[0].friction.viscous
+    assert '前馈摩擦不同' in comparison
 
 
 def test_complete_preview_preserves_gains_and_session_links(tmp_path, robot):
@@ -130,6 +133,9 @@ def test_complete_preview_preserves_gains_and_session_links(tmp_path, robot):
     begin = plan['calibration_begin_ns'] * 1e-9
     end = plan['groups']['G0_stiff']['switch_ns'] * 1e-9
     assert np.max(np.abs(curve(np.linspace(begin, end, 1001), nu=1))) <= 0.8
+    retreat_begin = plan['groups']['G3_soft']['run_ns'][1] * 1e-9
+    retreat_end = plan['duration_ns'] * 1e-9
+    assert np.max(np.abs(curve(np.linspace(retreat_begin, retreat_end, 1001), nu=1))) <= 0.8
     assert plan['delivery_session'] is None
     schedule = reference['pd_schedule']
     stamps = [row['t_ns'] for row in schedule]
@@ -137,6 +143,8 @@ def test_complete_preview_preserves_gains_and_session_links(tmp_path, robot):
         begin, end = entry['run_ns']
         assert stamps.index(end) == stamps.index(begin) + 1
         assert all(schedule[stamps.index(begin)][key] == schedule[stamps.index(end)][key] for key in ('kp', 'kd'))
+    assert plan['groups']['G3_soft']['kp'] == [0.5 * v for v in robot['kp']]
+    assert plan['groups']['G3_soft']['kd'] == robot['kd']
     assert all((tmp_path / name).resolve() == existing for name in ('latest', 'latest_dynamics'))
     assert not (tmp_path / 'latest_verify').exists()
     checker = _executor().with_name('shm_reference_check')
@@ -161,15 +169,19 @@ def test_observation_windows_average_duplicates_and_keep_available_samples():
 
 def test_recommendation_only_on_pass(tmp_path, robot):
     session = _delivery(tmp_path, robot)
-    delivery = verify.resolve_verified_delivery(session.root, tmp_path, session.robot_id, robot)
-    _, recommended = verify._feedforward_models(robot, delivery)
+    delivery = verify.resolve_verified_delivery(session.root, tmp_path, session.robot_id)
+    _, recommended, _ = verify._feedforward_models(robot, delivery)
     row = dict(valid=False, invalid_reason='fixture')
     plan = dict(delivery_session=str(session.root), duration_ns=1, recommended=recommended)
     groups = {name: dict(keyboard=row, drum=row, overall=row) for name in verify.GROUPS}
     report = dict(groups=groups, reasons=[], accepted=True, verdict='PASS')
     verify._write_report(tmp_path, plan, report)
     recommendation = tmp_path / 'analysis/recommended_band_gains.yaml'
-    assert min(yaml.safe_load(recommendation.read_text())['friction']['smoothing_velocity']) == 0.015
+    loaded_rec = yaml.safe_load(recommendation.read_text())
+    assert min(loaded_rec['friction']['smoothing_velocity']) == verify.SMOOTHING_FLOOR
+    assert loaded_rec['friction']['static_friction'] == loaded_rec['friction']['coulomb']
+    mock_cfg = json.loads(verify._delivered_mock_config(tmp_path, delivery, robot).read_text())
+    assert all(s > c for s, c in zip(mock_cfg['friction_static'], mock_cfg['friction_coulomb']))
     verify._write_report(tmp_path, plan, dict(report, accepted=False, verdict='FAIL'))
     assert not recommendation.exists()
 

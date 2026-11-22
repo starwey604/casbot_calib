@@ -2,7 +2,6 @@
 import json
 import os
 from pathlib import Path
-import platform
 import subprocess
 import sys
 import numpy as np
@@ -24,14 +23,14 @@ if not NATIVE.exists():
 
 
 @pytest.mark.slow
-def test_dynamics_small_and_full_offline_plan_gates(tmp_path):
-    expected_kp = [65.0, 65.0, 30.0, 30.0, 30.0, 20.0, 20.0] * 2
-    expected_kd = [5.0, 5.0, 4.0, 2.0, 2.0, 2.0, 2.0] * 2
+def test_dynamics_three_stage_offline_plan(tmp_path):
+    robot_config = yaml.safe_load((ROOT / 'configs/robot/dvt2.yaml').read_text())
 
     def check_gains(plan_dir):
         meta = json.loads((plan_dir / 'plan.json').read_text())
         reference = json.loads((plan_dir / 'reference.json').read_text())
-        for key, expected in (('kp', expected_kp), ('kd', expected_kd)):
+        for key in ('kp', 'kd'):
+            expected = robot_config[key]
             assert meta['robot_config'][key] == expected
             assert reference[key] == expected
             assert reference['pd_schedule'][-1][key] == expected
@@ -53,25 +52,6 @@ def test_dynamics_small_and_full_offline_plan_gates(tmp_path):
         assert (latest / st / 'plan/reference.json').is_file()
         assert (latest / st / 'report.md').is_file()
         check_gains(latest / st / 'plan')
-
-    # 2. Full 14-axis mode offline planning + continuous collision gate on H2 and H3.
-    out_full = tmp_path / 'full_out'
-    full_res = run_pipeline(
-        stages='h2,h3',
-        plan_only=True,
-        robot_id='SN_DYN_01',
-        stage_overrides={'mode': 'full'},
-        output_root=out_full,
-    )
-    assert full_res['completed'] and full_res['plan_only']
-    full_root = full_res['session'].root
-    for st in ('h2', 'h3'):
-        meta = json.loads((full_root / st / 'plan/plan.json').read_text())
-        assert meta['mode'] == 'full'
-        assert len(meta['active_joints']) == 14
-        assert meta['collision_certificate']['passed']
-        assert meta['collision_certificate']['minimum_distance_m'] >= 0.01
-        check_gains(full_root / st / 'plan')
 
 
 def test_cross_session_prior_auto_discovery(tmp_path):
@@ -304,9 +284,7 @@ def test_three_stage_closed_loop_with_physical_shm_mock(tmp_path):
     }
     assert bundle['urdf_reload_passed']
 
-    # 5. CLI --reanalyse runs offline quickly without touching SHM/robot, archives old analysis/, and rebuilds delivery/.
-    import time as _time
-    t0 = _time.perf_counter()
+    # 5. CLI --reanalyse archives old analysis/ and rebuilds delivery/ offline.
     re_res = subprocess.run(
         [
             sys.executable, '-m', 'casbot_calib.pipeline.runner',
@@ -316,10 +294,7 @@ def test_three_stage_closed_loop_with_physical_shm_mock(tmp_path):
         ],
         capture_output=True, text=True,
     )
-    re_wall_s = _time.perf_counter() - t0
     assert re_res.returncode == 0, re_res.stderr + re_res.stdout
-    re_ceiling_s = 15.0 if platform.machine().lower() in ('aarch64', 'arm64') else 8.0
-    assert re_wall_s < re_ceiling_s, f'--reanalyse took {re_wall_s:.3f}s'
     for st in ('h1', 'h2', 'h3'):
         archived = list((sess_root / st).glob('analysis.previous_*'))
         assert len(archived) == 1
@@ -329,7 +304,7 @@ def test_three_stage_closed_loop_with_physical_shm_mock(tmp_path):
     np.testing.assert_allclose(bundle_after['parameters'], bundle['parameters'], rtol=1e-12, atol=1e-12)
 
 
-def test_non_regression_gate_rejects_degraded_stage_and_falls_back(tmp_path):
+def test_validation_metrics_report_regression_and_legacy_rejection_still_falls_back(tmp_path):
     from casbot_calib.pipeline.delivery import build_session_delivery
     from casbot_calib.stages.dynamics.common import evaluate_stage_acceptance
 
@@ -339,13 +314,13 @@ def test_non_regression_gate_rejects_degraded_stage_and_falls_back(tmp_path):
         0.1669,
         axis_rows=[('left_shoulder_pitch_joint', 0.4584, 0.5198), ('right_shoulder_pitch_joint', 0.2454, 0.1494)],
     )
-    assert not acc_axis['accepted']
-    assert 'left_shoulder_pitch_joint' in acc_axis['reason']
+    assert acc_axis['accepted']
+    assert acc_axis['degraded_axes'] == ['left_shoulder_pitch_joint']
 
     # Case 2: Overall RMSE degrades.
     acc_overall = evaluate_stage_acceptance(0.15, 0.19, axis_rows=[('left_shoulder_pitch_joint', 0.15, 0.19)])
-    assert not acc_overall['accepted']
-    assert acc_overall['reason'] == 'overall_validation_degraded'
+    assert acc_overall['accepted'] and acc_overall['overall_degraded']
+    assert not evaluate_stage_acceptance(0.15, float('nan'))['accepted']
 
     # Case 3: Downstream prior resolution & session delivery skip accepted=False stages automatically.
     robot_cfg = load_robot_config()

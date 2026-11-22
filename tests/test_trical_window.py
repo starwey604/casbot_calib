@@ -1,21 +1,43 @@
 import json
-import time
 import numpy as np
 import pytest
 
+from casbot_calib.trical import indicators, window
 from casbot_calib.trical.indicators import IndicatorFault, MockQasBridge, UsbBridgeIndicatorDriver
 from casbot_calib.trical.window import SettledWindowCollector
 
 
+@pytest.fixture
+def clock(monkeypatch):
+    class Clock:
+        now_ns = 0
+
+        def monotonic_ns(self):
+            return self.now_ns
+
+        def monotonic(self):
+            return self.now_ns * 1e-9
+
+        def sleep(self, seconds):
+            self.now_ns += round(seconds * 1e9)
+
+    clock = Clock()
+    monkeypatch.setattr(indicators, 'time', clock)
+    monkeypatch.setattr(window, 'time', clock)
+    monkeypatch.setattr(MockQasBridge, '_run', lambda self: None)
+    return clock
+
+
 class Feedback:
-    def __init__(self, drift=False):
+    def __init__(self, clock, drift=False):
         self.blocks = []
-        self.start = time.monotonic_ns()
+        self.clock = clock
+        self.start = clock.monotonic_ns()
         self.last = self.start
         self.drift = drift
 
     def pump(self):
-        now = time.monotonic_ns()
+        now = self.clock.monotonic_ns()
         if now - self.last >= 2_000_000:
             # A transient after settling: the first complete window must be retried.
             q = .001 if self.drift and .02 < (now-self.start)*1e-9 < .05 else 0.
@@ -24,35 +46,43 @@ class Feedback:
             self.last = now
 
 
-def test_cache_before_settling_is_discarded_and_equal_values_count(tmp_path):
+def test_cache_before_settling_is_discarded_and_equal_values_count(tmp_path, clock, monkeypatch):
     value = np.zeros(3)
-    driver = MockQasBridge(lambda: (value.copy(), ['VALID']*3), tmp_path/'raw.jsonl',
-                           hz=100, reply_delay_s=.012)
+    log = tmp_path / 'raw.jsonl'
+    driver = MockQasBridge(lambda: (value.copy(), ['VALID']*3), log, reply_delay_s=.012)
+    request = driver.request
+
+    def request_then_refresh(slot):
+        request(slot)
+        if slot == driver.slots[-1]:
+            # The first batch has already snapped the old cache on all three slots.
+            value[:] = .002
+            driver._sample()
+
+    monkeypatch.setattr(driver, 'request', request_then_refresh)
     try:
-        # request snapshots old cache; acquisition clock updates independently.
-        for s in driver.slots: driver.request(s)
-        value[:] = .002
-        time.sleep(.016)
-        assert [e.value_m for e in driver.poll()] == [0., 0., 0.]
-        collector = SettledWindowCollector(driver, Feedback(), settle_window_s=.01)
+        collector = SettledWindowCollector(driver, Feedback(clock), settle_window_s=.01)
         result = collector.collect()
         np.testing.assert_allclose(result['readings_m'], [.002]*3)
         assert result['reading_span_m'] == [0.]*3
         assert all(len(samples) == 3 for samples in result['samples'])
     finally:
         driver.close()
-    rows = [json.loads(line) for line in (tmp_path/'raw.jsonl').read_text().splitlines()]
-    assert sum(r['type'] == 'notify' for r in rows) == 15
+    rows = [json.loads(line) for line in log.read_text().splitlines()]
+    assert [row['value_m'] for row in rows if row['type'] == 'notify'] == [0.] * 3 + [.002] * 9
 
 
-def test_entire_window_drift_retries(tmp_path):
-    driver = MockQasBridge(lambda: ([0.]*3, ['VALID']*3), tmp_path/'raw', hz=100, reply_delay_s=.012)
-    feedback = Feedback(drift=True)
+def test_entire_window_drift_retries(tmp_path, clock):
+    log = tmp_path / 'raw.jsonl'
+    driver = MockQasBridge(lambda: ([0.]*3, ['VALID']*3), log, reply_delay_s=.012)
+    feedback = Feedback(clock, drift=True)
     try:
         result = SettledWindowCollector(driver, feedback, settle_window_s=.01).collect()
         assert result['t_start_ns'] > feedback.start + 50_000_000
     finally:
         driver.close()
+    rows = [json.loads(line) for line in log.read_text().splitlines()]
+    assert sum(row['type'] == 'notify' for row in rows) == 24
 
 
 @pytest.mark.parametrize('fault', ['disconnect', 'epoch_change', 'unsolicited'])
@@ -64,13 +94,13 @@ def test_faults(tmp_path, fault):
         driver.close()
 
 
-def test_stopped_response_times_out_and_duplicate_request_fails(tmp_path):
+def test_stopped_response_times_out_and_duplicate_request_fails(tmp_path, clock):
     driver = MockQasBridge(lambda: ([0.]*3, ['VALID']*3), tmp_path/'raw',
                            reply_timeout_s=.01, faults={'drop_slots': [0]})
     try:
         driver.request(0)
         with pytest.raises(IndicatorFault, match='在途'): driver.request(0)
-        time.sleep(.012)
+        clock.sleep(.012)
         with pytest.raises(IndicatorFault, match='超时'): driver.poll()
     finally:
         driver.close()

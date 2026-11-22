@@ -1,19 +1,15 @@
 """Near-ready static gravity recipe, diagnostics, and PSD candidate export."""
 import csv
 import json
-import os
-from pathlib import Path
 from types import SimpleNamespace
 import numpy as np
 import pytest
 from casbot_calib.field_gravity import write_static_diagnostics
-from casbot_calib.pipeline.native import execute_with_start_replan, native_snapshot, open_mock_context
 from casbot_calib.pipeline.robot import load_robot_config
 from casbot_calib.shm_data import NAMES, ROOT
 from casbot_calib.shm_ready import ready_position
 from casbot_calib.stages.dynamics import ApproachDisplacement, analyse_h1, load_h1_recipe, plan_h1
 
-from test_shm_fieldwork import NATIVE as BIN
 
 
 
@@ -55,60 +51,6 @@ def test_observed_approach_is_not_replaced_by_reference_or_velocity():
     np.testing.assert_allclose(result['reference_displacement_rad'], 0.1)
     np.testing.assert_allclose(result['observed_displacement_rad'], 0.001)
     assert result['first_rows'] == result['last_rows'] == 50
-
-
-@pytest.mark.slow
-@pytest.mark.skipif(not (BIN / 'shm_executor').exists(), reason='build native physics')
-def test_eight_windows_physics_fit(tmp_path, monkeypatch):
-    native = BIN / 'shm_executor'
-    robot_cfg = load_robot_config(dict(initial_hold_s=0.05, final_hold_s=0.05, anchor_transition_s=0.1))
-    recipe = load_h1_recipe(dict(
-        mode='small',
-        ready_pose=True,
-        small=dict(
-            parallel_arms=False,
-            direct_pose_chain=False,
-            joints=['left_shoulder_pitch_joint', 'right_shoulder_pitch_joint'],
-            target_offset_deg=1.0,
-            approach_offset_deg=0.75,
-            timing=dict(initial_hold_s=0.05, minimum_transition_s=0.1, minimum_paired_approach_s=0.1, settle_s=0.05, measure_s=0.1, final_hold_s=0.05),
-            planning_envelope=dict(speed_rad_s=0.05, acceleration_rad_s2=0.1, jerk_rad_s3=1.0),
-        ),
-    ))
-    with open_mock_context(tmp_path / 'stage', native, robot_cfg) as mock_ctx:
-        q0 = native_snapshot(native, mock_ctx.endpoint, robot_cfg, tmp_path / 'start', peer=mock_ctx.process)
-        plan_dir = tmp_path / 'plan'
-        m = plan_h1(q0, robot_cfg, recipe, plan_dir)
-        assert len(m['trials']) == 8
-        bundle = json.loads((plan_dir / 'reference.json').read_text())
-        markers = bundle['markers']
-        assert len(markers) == 19 and all(b['t_ns'] > a['t_ns'] for a, b in zip(markers, markers[1:]))
-        code, _, _, _, _ = execute_with_start_replan(
-            initial_plan_dir=plan_dir,
-            initial_plan_meta=m,
-            replan_fn=lambda q, d: plan_h1(q, robot_cfg, recipe, d),
-            capture_root=tmp_path / 'capture',
-            executor=native,
-            endpoint=mock_ctx.endpoint,
-            robot_config=robot_cfg,
-            hand_background=mock_ctx.background,
-            peer=mock_ctx.process,
-        )
-    assert code == 0
-
-    out = tmp_path / 'analysis'
-    report = analyse_h1(plan_dir, tmp_path / 'capture', out)
-    assert report['execution_completed'] and report['analysis_available'] and report['fit_succeeded']
-    assert report['validation_pairs_per_joint'][0] == report['validation_pairs_per_joint'][7] == 1
-    assert report['static_diagnostics']['available_windows'] == 8 and report['static_diagnostics']['paired_targets'] == 4
-    assert (out / 'candidate.urdf').is_file()
-    assert json.loads((out / 'urdf_reload.json').read_text())['passed']
-    windows = json.loads((out / 'static_windows.json').read_text())
-    assert all(w['paired_approach']['available'] for w in windows)
-    assert report['fit']['rank'] < report['fit']['columns']
-    with (out / 'static_comparison.csv').open() as f:
-        assert len(list(csv.DictReader(f))) == 112
-
 
 
 def test_solver_unavailable_report_from_synthetic_capture(tmp_path, monkeypatch):

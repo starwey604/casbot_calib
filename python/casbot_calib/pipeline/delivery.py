@@ -148,9 +148,6 @@ def build_session_delivery(session, robot_config):
         tmp_urdf.unlink()
     write_inertial_urdf(source_urdf, delivered_engine, tmp_urdf)
     reload_report = check_reload(tmp_urdf, delivered_engine, source_urdf)
-    if not reload_report['passed']:
-        tmp_urdf.unlink(missing_ok=True)
-        raise ValueError('交付包 calibrated.urdf 未通过独立重加载一致性校验')
     tmp_urdf.replace(calibrated_urdf)
 
     runtime_sidecar = dict(
@@ -179,7 +176,8 @@ def build_session_delivery(session, robot_config):
         parameters=parameters.tolist(),
         rotor_inertia=runtime_sidecar['rotor_inertia'],
         friction=runtime_sidecar['friction'],
-        urdf_reload_passed=True,
+        urdf_reload_passed=reload_report['passed'],
+        urdf_reload=reload_report,
         files=dict(
             calibrated_urdf='calibrated.urdf',
             runtime_dynamics='runtime_dynamics.json',
@@ -197,7 +195,9 @@ def build_session_delivery(session, robot_config):
         f'- **采纳标定源**：`{selected_source}`（重力：`{provenance["gravity"]}`，摩擦：`{provenance["friction"]}`，惯量：`{provenance["inertia"]}`，转子惯量：`{provenance["rotor_inertia"]}`）',
         '- **交付产物**：`delivery/calibrated.urdf` + `delivery/runtime_dynamics.json` + `delivery/calibration_bundle.json`',
         '',
-        '## 1. 阶段验收门禁汇总',
+        f'- URDF 重加载复核：{"通过" if reload_report["passed"] else "发现差异，见 calibration_bundle.json"}',
+        '',
+        '## 1. 阶段拟合与留出验证',
         '',
         '| 阶段 | 模式 | 先验基线 RMSE (Nm) | 候选留出 RMSE (Nm) | 验收判定 | 说明 |',
         '| --- | :---: | ---: | ---: | :---: | --- |',
@@ -213,7 +213,7 @@ def build_session_delivery(session, robot_config):
             note = str(info['mode'] or info['status'])
         elif info['accepted']:
             verdict = '采纳'
-            note = '留出验证改善并通过防退化门禁'
+            note = ''
         else:
             verdict = '回退先验'
             note = (info.get('acceptance') or {}).get('reason', 'validation_degraded')

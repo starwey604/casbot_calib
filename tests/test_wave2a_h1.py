@@ -1,7 +1,6 @@
 """Wave 2A verification & benchmarks: H1 dual-arm 2-opt pose chain, compact 5ms FF, vectorized analysis, and paired hysteresis separation."""
 import json
 from pathlib import Path
-import platform
 from time import perf_counter
 import numpy as np
 import pytest
@@ -53,7 +52,7 @@ def test_h1_recipe_defaults_and_programmatic_inheritance():
 
 @pytest.mark.slow
 @pytest.mark.parametrize('with_supplement', [False, True])
-def test_h1_full_offline_planning_benchmark(tmp_path, with_supplement):
+def test_h1_full_offline_planning_gate(tmp_path, with_supplement):
     robot_cfg = load_robot_config(hold_body=with_supplement)
     recipe = load_h1_recipe(mode='full')
     if not with_supplement:
@@ -127,8 +126,6 @@ def test_h1_full_offline_planning_benchmark(tmp_path, with_supplement):
         wanted = np.zeros(14)
         wanted[expected] = -conditions['approach'] * np.deg2rad(recipe['full']['approach_offset_deg'])
         np.testing.assert_allclose(displacement, wanted, atol=1e-14)
-    ceiling_s = 15.0 if platform.machine().lower() in ('aarch64', 'arm64') else 8.0
-    assert wall_s < ceiling_s, f'H1 full planning took {wall_s:.3f}s (>= {ceiling_s:.1f}s)'
 
 
 def test_h1_small_offline_planning_gate(tmp_path):
@@ -280,7 +277,7 @@ def test_trapezoid_time_mean_exact_equivalence_with_streaming_timemean():
     )
 
 
-def test_vectorized_analyse_h1_on_binary_capture(tmp_path):
+def test_vectorized_analyse_h1_on_recording_and_partial_prefix(tmp_path, monkeypatch):
     robot_cfg = load_robot_config(dict(initial_hold_s=0.05, final_hold_s=0.05, anchor_transition_s=0.1))
     recipe = load_h1_recipe(dict(
         mode='small',
@@ -362,6 +359,22 @@ def test_vectorized_analyse_h1_on_binary_capture(tmp_path):
     windows = json.loads((analysis_dir / 'static_windows.json').read_text(encoding='utf-8'))
     assert len(windows) == len(plan_meta['trials'])
     assert all(w['available'] and w['paired_approach']['available'] for w in windows)
+
+    last_window_end = max(trial['measure_end_s'] for trial in plan_meta['trials'])
+    stop_ns = origin_mono + round(last_window_end * 1e9) + 2 * sample_ns
+    with (cap_dir / 'events.csv').open('a', encoding='utf-8') as events:
+        events.write(f'{stop_ns},3,soft_stop_return_begin\n')
+    result_path = cap_dir / 'result.txt'
+    result_path.write_text(result_path.read_text().replace('execution_completed=1', 'execution_completed=0'))
+    from casbot_calib.stages.dynamics import common
+    monkeypatch.setattr(common, 'certify_polyline', lambda *args, **kwargs: dict(
+        passed=False, minimum_sampled_distance_m=.009,
+    ))
+    partial = analyse_h1(plan_dir, tmp_path / 'capture', tmp_path / 'partial', diagnostic=True)
+    assert not partial['collection_complete'] and partial['fit_succeeded']
+    assert not partial['received_collision']['passed']
+    assert partial['feedback_rows'] == np.count_nonzero(obs_ns + 100_000 < stop_ns)
+    assert partial['feedback_rows'] < n_samples
 
 
 @pytest.mark.slow

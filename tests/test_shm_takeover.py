@@ -1,9 +1,6 @@
 """Only fake hosts and owned subprocesses; never services, real master or SHM."""
 import json
-from pathlib import Path
-import subprocess
 import sys
-import time
 import pytest
 from casbot_calib import shm_takeover as takeover
 from casbot_calib import shm_fieldwork as fw
@@ -76,13 +73,16 @@ def test_start_only_keeps_old_stop_log_and_checks_old_process(tmp_path,monkeypat
     assert host.events==['diagnosis'] and (out/'stop.log').read_text()=='previous stop log'
 
 
-def test_run_logged_does_not_wait_for_inherited_stdout(tmp_path):
-    # Vendor-style background child keeps stdout open after its parent exits.
-    code='import subprocess,sys; subprocess.Popen([sys.executable,"-c","import time; time.sleep(2)"]); print("Service stopped successfully.",flush=True)'
-    begin=time.monotonic()
-    assert takeover.run_logged([sys.executable,'-c',code],tmp_path/'stop.log',timeout=.8)==0
-    assert time.monotonic()-begin<.8
-    assert 'Service stopped successfully.' in (tmp_path/'stop.log').read_text()
+def test_run_logged_redirects_stdout_to_log_file(tmp_path):
+    # Descendants may keep stdout open after the foreground process exits.
+    code = (
+        'import os, stat\n'
+        'assert stat.S_ISREG(os.fstat(1).st_mode)\n'
+        'print("Service stopped successfully.")\n'
+    )
+    log = tmp_path / 'stop.log'
+    assert takeover.run_logged([sys.executable, '-c', code], log) == 0
+    assert log.read_text() == 'Service stopped successfully.\n'
 
 
 def test_stop_helper_timeout_is_bounded(tmp_path):
