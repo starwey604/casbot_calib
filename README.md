@@ -21,6 +21,7 @@ bash calib/dynamics.sh --plan-only
 | [GUI 与开发诊断](docs/gui_and_dev.md) | 本机运行 `bash calib/gui.sh --mock` | GUI 会话记录、接管与开发 Mock 验证 |
 | [构建、测试与部署](docs/shm_build.md) | 本机 `bash scripts/humble/setup.sh` / 部署 Orin | Humble 容器环境、原生程序与 ARM64 预编译包 |
 | [标定原理与算法参考](docs/methodology.md) | 数学模型、约束公式与文献对应 | H1–H3 动力学、TriCal 几何与闭环验收原理 |
+| [实机验收交付样例](configs/examples/dvt2_01_delivery/README.md) | DVT2_01 裸法兰全阶段与闭环验收实测结果（PASS） | [验收报告](configs/examples/dvt2_01_delivery/verification.md)、标定 URDF 与推荐运行配置 |
 
 ## 本机构建与测试
 

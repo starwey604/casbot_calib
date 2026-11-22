@@ -51,5 +51,6 @@ bash calib/dynamics_verify.sh --reanalyse
 
 - G2 对照组优先加载同一会话中 H2 的无惯量对照模型；若 H2 对照缺失，则退回名义前馈，报告会标明 G2 实际来源以及它与最终模型之间摩擦参数的差异。
 - 验收通过（退出码 `0`）会生成 `verify/analysis/recommended_band_gains.yaml`。退出码 `1` 表示验收指标未通过或有效反馈不足，`2` 表示执行或分析异常中止。
+- 实机参考样例见 [DVT2_01 标定交付与闭环验收（PASS）](../configs/examples/dvt2_01_delivery/README.md)（可直接对照 [交付总表](../configs/examples/dvt2_01_delivery/summary.md) 与 [五组闭环验收报告](../configs/examples/dvt2_01_delivery/verification.md)）。
 
 数学模型、PSD 约束与五组验收对照定义见[标定原理与算法参考](methodology.md)。
