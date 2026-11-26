@@ -12,6 +12,7 @@ from pathlib import Path
 import xml.etree.ElementTree as ET
 import numpy as np
 import pinocchio as pin
+import yaml
 from . import _core
 from .data import write_json
 from .dual_model import nominal_dual_arm
@@ -143,5 +144,58 @@ def check_reload(path,expected,source,*,samples=32,seed=20261029):
     return dict(passed=all(checks.values()),checks=checks,maximum_absolute_errors=errors,atol=ATOL,rtol=RTOL,
         samples=samples,seed=seed,backend='Pinocchio direct URDF plus native adapter',
         scope='serialization, coordinates and runtime consistency')
+
+
+HL_FF_SCHEMA = 'casbot_hl_dynamics_ff_v1'
+_FRICTION_KEYS = (
+    'viscous',
+    'coulomb',
+    'static_friction',
+    'smoothing_velocity',
+    'stribeck_velocity',
+)
+
+
+def build_hl_dynamics_ff_payload(runtime):
+    """Build hl_robot_control sidecar dynamics payload from runtime_dynamics dict."""
+    joint_names = list(runtime['joint_names'])
+    count = len(joint_names)
+    rotor_inertia = [float(x) for x in runtime['rotor_inertia']]
+    if len(rotor_inertia) != count:
+        raise ValueError(f'Expected {count} rotor_inertia values, got {len(rotor_inertia)}')
+    gravity = [float(x) for x in runtime.get('gravity_world', [0.0, 0.0, -9.81])]
+    if len(gravity) != 3:
+        raise ValueError(f'Expected 3 gravity_world components, got {len(gravity)}')
+    friction = runtime['friction']
+    for key in _FRICTION_KEYS:
+        if len(friction[key]) != count:
+            raise ValueError(f'Expected {count} friction.{key} values, got {len(friction[key])}')
+
+    joints = {}
+    for index, name in enumerate(joint_names):
+        joints[name] = {
+            'rotor_inertia': rotor_inertia[index],
+            'friction': {key: float(friction[key][index]) for key in _FRICTION_KEYS},
+        }
+    return {
+        'schema': HL_FF_SCHEMA,
+        'gravity_world': gravity,
+        'joints': joints,
+    }
+
+
+def export_hl_dynamics_ff(runtime_json_path, output_yaml_path):
+    """Export runtime_dynamics.json into hl_robot_control dynamics_ff sidecar YAML."""
+    runtime_path = Path(runtime_json_path)
+    output_path = Path(output_yaml_path)
+    runtime = json.loads(runtime_path.read_text(encoding='utf-8'))
+    payload = build_hl_dynamics_ff_payload(runtime)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(
+        yaml.safe_dump(payload, sort_keys=False, default_flow_style=False),
+        encoding='utf-8',
+    )
+    return output_path
+
 
 

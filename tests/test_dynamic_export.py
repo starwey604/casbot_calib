@@ -8,7 +8,8 @@ import pytest
 from casbot_calib import _core
 from casbot_calib.dual_model import nominal_dual_arm
 from casbot_calib.rigid_identification import model_from_parameters
-from casbot_calib.dynamic_export import check_reload, write_inertial_urdf
+import yaml
+from casbot_calib.dynamic_export import check_reload, export_hl_dynamics_ff, write_inertial_urdf
 from casbot_calib.artifact_io import sha256
 
 SOURCE=__import__('casbot_calib.model_context',fromlist=['load_context']).load_context().urdf
@@ -79,3 +80,17 @@ def test_geometry_changes_cannot_hide_in_an_inertial_export(accepted,tmp_path):
 def test_axis_change_at_zero_configuration_is_still_rejected(accepted,tmp_path):
     _,engine=accepted;model=engine.model;joints=model.joints;joints[0].axis=[0,0,1];model.joints=joints
     with pytest.raises(ValueError,match='geometry/constraints'):write_inertial_urdf(SOURCE,_core.ArmDynamics(model),tmp_path/'wrong_axis.urdf')
+
+
+def test_export_hl_dynamics_ff_round_trips_dvt2_delivery(tmp_path):
+    runtime_path=Path(__file__).resolve().parents[1]/'configs/examples/dvt2_01_delivery/runtime_dynamics.json'
+    out_path=tmp_path/'dynamics_ff.yaml'
+    export_hl_dynamics_ff(runtime_path,out_path)
+    runtime=json.loads(runtime_path.read_text(encoding='utf-8'))
+    loaded=yaml.safe_load(out_path.read_text(encoding='utf-8'))
+    assert loaded['schema']=='casbot_hl_dynamics_ff_v1'
+    assert loaded['gravity_world']==runtime['gravity_world']
+    assert list(loaded['joints'].keys())==runtime['joint_names']
+    first=runtime['joint_names'][0]
+    assert loaded['joints'][first]['rotor_inertia']==pytest.approx(runtime['rotor_inertia'][0])
+    assert loaded['joints'][first]['friction']['viscous']==pytest.approx(runtime['friction']['viscous'][0])
